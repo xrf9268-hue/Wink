@@ -20,7 +20,8 @@ final class MenuBarController {
 
     func install() {
         if let button = statusItem.button {
-            button.title = "HotApp"
+            button.image = NSImage(systemSymbolName: "command.square", accessibilityDescription: "HotApp Clone")
+            button.image?.size = NSSize(width: 18, height: 18)
         }
 
         let menu = NSMenu()

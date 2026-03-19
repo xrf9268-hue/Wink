@@ -11,6 +11,14 @@ struct GeneralTabView: View {
             ))
 
             Spacer()
+
+            HStack {
+                Spacer()
+                Text("HotApp Clone v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0")")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+            }
         }
     }
 }
