@@ -23,6 +23,10 @@ A macOS menu bar utility inspired by Thor and the recovered HotApp article. It b
 - `docs/clone-scope.md`
 - `docs/packaging-and-permissions.md`
 - `docs/toggle-semantics.md`
+- `docs/macos-validation-checklist.md`
+- `docs/next-phase-plan.md`
+- `docs/handoff-notes.md`
+- `TODO.md`
 - `scripts/package-app.sh`
 
 ## Run and build
