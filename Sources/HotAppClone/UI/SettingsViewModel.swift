@@ -10,12 +10,14 @@ final class SettingsViewModel: ObservableObject {
     @Published var isRecordingShortcut: Bool = false
     @Published var accessibilityGranted: Bool = false
     @Published var conflictMessage: String?
+    @Published var launchAtLoginEnabled: Bool = false
 
     private let shortcutStore: ShortcutStore
     private let shortcutManager: ShortcutManager
     private let usageTracker: UsageTracker?
     private let appBundleLocator = AppBundleLocator()
     private let shortcutValidator = ShortcutValidator()
+    private let launchAtLoginService = LaunchAtLoginService()
 
     init(shortcutStore: ShortcutStore, shortcutManager: ShortcutManager, usageTracker: UsageTracker? = nil) {
         self.shortcutStore = shortcutStore
@@ -23,6 +25,7 @@ final class SettingsViewModel: ObservableObject {
         self.usageTracker = usageTracker
         self.shortcuts = shortcutStore.shortcuts
         self.accessibilityGranted = shortcutManager.hasAccessibilityAccess()
+        self.launchAtLoginEnabled = launchAtLoginService.isEnabled
     }
 
     func addShortcut() {
@@ -88,6 +91,11 @@ final class SettingsViewModel: ObservableObject {
 
     func refreshPermissions() {
         accessibilityGranted = shortcutManager.hasAccessibilityAccess()
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        launchAtLoginService.setEnabled(enabled)
+        launchAtLoginEnabled = launchAtLoginService.isEnabled
     }
 
     func clearRecordedShortcut() {
