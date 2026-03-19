@@ -46,8 +46,19 @@ struct SettingsView: View {
                     .frame(width: 240, height: 28)
 
                     if let recordedShortcut = viewModel.recordedShortcut {
-                        Text(recordedShortcut.displayText)
-                            .font(.system(.body, design: .monospaced))
+                        HStack(spacing: 4) {
+                            Text(recordedShortcut.displayText)
+                                .font(.system(.body, design: .monospaced))
+                            if recordedShortcut.isHyper {
+                                Text("Hyper")
+                                    .font(.caption2.bold())
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(.purple.opacity(0.2))
+                                    .foregroundStyle(.purple)
+                                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                            }
+                        }
                     } else if viewModel.isRecordingShortcut {
                         Text("Listening…")
                             .foregroundStyle(.secondary)
@@ -81,8 +92,19 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(shortcut.modifierFlags.joined(separator: "+") + "+" + shortcut.keyEquivalent.uppercased())
-                            .font(.system(.body, design: .monospaced))
+                        HStack(spacing: 4) {
+                            Text(shortcut.displayText)
+                                .font(.system(.body, design: .monospaced))
+                            if shortcut.isHyper {
+                                Text("Hyper")
+                                    .font(.caption2.bold())
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(.purple.opacity(0.2))
+                                    .foregroundStyle(.purple)
+                                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                            }
+                        }
                         Button(role: .destructive) {
                             viewModel.removeShortcut(id: shortcut.id)
                         } label: {
