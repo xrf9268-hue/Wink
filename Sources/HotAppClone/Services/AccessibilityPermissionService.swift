@@ -1,13 +1,19 @@
-import ApplicationServices
+import IOKit
 
 struct AccessibilityPermissionService {
     func isTrusted() -> Bool {
-        AXIsProcessTrusted()
+        IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
     }
 
     @discardableResult
     func requestIfNeeded(prompt: Bool = true) -> Bool {
-        let options = ["AXTrustedCheckOptionPrompt": prompt] as CFDictionary
-        return AXIsProcessTrustedWithOptions(options)
+        let status = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
+        if status == kIOHIDAccessTypeGranted {
+            return true
+        }
+        if prompt && status != kIOHIDAccessTypeDenied {
+            return IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
+        }
+        return false
     }
 }
