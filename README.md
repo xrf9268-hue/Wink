@@ -16,6 +16,7 @@ A macOS menu bar utility inspired by Thor and the recovered HotApp article. It b
 - Packaging scaffold for `.app`
 
 ## Quick navigation
+- Agent guidance: [`AGENTS.md`](./AGENTS.md)
 - Docs index: [`docs/README.md`](./docs/README.md)
 - Architecture: [`docs/architecture.md`](./docs/architecture.md)
 - Architecture remediation: [`docs/architecture-remediation-plan.md`](./docs/architecture-remediation-plan.md)
@@ -28,6 +29,7 @@ A macOS menu bar utility inspired by Thor and the recovered HotApp article. It b
 - TODO list: [`TODO.md`](./TODO.md)
 
 ## Project layout
+- `AGENTS.md`
 - `Package.swift`
 - `Sources/HotAppClone/`
 - `Sources/HotAppClone/Resources/Info.plist`
