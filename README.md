@@ -4,24 +4,32 @@ A macOS menu bar utility inspired by Thor and the recovered HotApp article. It b
 
 ## Current scope
 - Swift 6 / SPM-only project layout
-- Menu bar app shell
-- SwiftUI + AppKit settings window
-- Persistent shortcut storage
+- Menu bar app (AppKit-first, selective SwiftUI)
+- Tabbed settings window (Shortcuts / General / Insights)
+- Persistent shortcut storage (SQLite)
 - App picker and shortcut CRUD
-- CGEvent tap baseline for global key capture
-- Accessibility permission check/request flow
-- Basic shortcut conflict detection
+- Global key capture via CGEvent tap (Input Monitoring permission)
+- Permission check/request flow with recovery after changes (no relaunch needed)
+- Shortcut conflict detection
 - Recorder-style shortcut capture UI
-- Thor-like toggle semantics baseline
-- Packaging scaffold for `.app`
+- Thor-like toggle semantics (activate, restore previous app, hide as fallback)
+- Hyper Key support (⌃⌥⇧⌘ combinations) with symbol display
+- O(1) precompiled trigger index for hot-path matching
+- EventTap lifecycle management with auto-recovery on disable/timeout
+- Launch-at-login via SMAppService
+- UsageTracker with SQLite daily aggregation
+- Insights tab with trend chart and app ranking
+- Automated `.app` packaging script
+- GitHub Actions CI for macOS build validation
+- Signing, notarization, and release workflow documented
 
 ## Quick navigation
 - Agent guidance: [`AGENTS.md`](./AGENTS.md)
 - Docs index: [`docs/README.md`](./docs/README.md)
-- Main execution order: [`docs/issue-priority-plan.md`](./docs/issue-priority-plan.md)
-- macOS validation: [`docs/macos-validation-checklist.md`](./docs/macos-validation-checklist.md)
+- Issue tracker status: [`docs/issue-priority-plan.md`](./docs/issue-priority-plan.md)
+- macOS validation checklist: [`docs/macos-validation-checklist.md`](./docs/macos-validation-checklist.md)
 - Architecture: [`docs/architecture.md`](./docs/architecture.md)
-- Architecture remediation: [`docs/architecture-remediation-plan.md`](./docs/architecture-remediation-plan.md)
+- Signing and release: [`docs/signing-and-release.md`](./docs/signing-and-release.md)
 - TODO board: [`TODO.md`](./TODO.md)
 
 ## Project layout
@@ -42,8 +50,12 @@ A macOS menu bar utility inspired by Thor and the recovered HotApp article. It b
 - `docs/macos-validation-checklist.md`
 - `docs/handoff-notes.md`
 - `docs/issues-backlog.md`
+- `docs/signing-and-release.md`
+- `docs/plans/app-structure-direction.md`
+- `docs/superpowers/specs/2026-03-19-insights-feature-design.md`
 - `TODO.md`
 - `scripts/package-app.sh`
+- `.github/workflows/ci.yml`
 
 ## Run and build
 This repository targets macOS 14+ with Swift 6.
@@ -54,29 +66,27 @@ swift build
 swift test
 ```
 
-### Package app scaffold
+### Package app bundle
 ```bash
 swift build -c release
 ./scripts/package-app.sh
 cp .build/release/Quickey build/Quickey.app/Contents/MacOS/Quickey
 ```
 
-### Accessibility
-The app needs Accessibility permission to observe global key events.
+### Permissions
+The app requires **Input Monitoring** permission to observe global key events via CGEvent tap.
 
 - First launch should trigger the permission request path
 - If not granted, open:
-  - System Settings
-  - Privacy & Security
-  - Accessibility
+  - System Settings → Privacy & Security → Input Monitoring
 - Enable the built app bundle
+- Permission changes are recovered automatically without relaunch
 
-## Known gaps
-- Recorder UI is basic and not yet a polished KeyboardShortcuts-style control
-- No SkyLight/private activation path yet
-- No signed/notarized release flow yet
-- Not compiled on this Linux host; final verification must happen on macOS
-- Toggle behavior is best-effort and still needs macOS edge-case validation
+## Known remaining gaps
+- End-to-end validation on a real macOS device is still pending (build compiles cleanly, CI passes)
+- No signed/notarized distributable yet (workflow documented in `docs/signing-and-release.md`, execution pending a Developer ID cert)
+- No private SkyLight/low-latency activation path (intentionally deferred)
+- Toggle behavior edge cases with fullscreen / multi-window apps need real device confirmation
 
 ## Notes
 This project is an independent clone implementation target, not a workspace snapshot.
