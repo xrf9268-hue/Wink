@@ -9,7 +9,7 @@ private let logger = Logger(subsystem: "com.hotappclone", category: "EventTapMan
 final class EventTapManager {
     typealias ShortcutHandler = (KeyPress) -> Void
 
-    struct KeyPress: Equatable {
+    struct KeyPress: Equatable, Sendable {
         let keyCode: CGKeyCode
         let modifiers: NSEvent.ModifierFlags
     }

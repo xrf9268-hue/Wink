@@ -1,7 +1,6 @@
 import Foundation
 
-struct PersistenceService {
-    private let fileManager = FileManager.default
+struct PersistenceService: Sendable {
     private let fileName = "shortcuts.json"
 
     func load() -> [AppShortcut] {
@@ -27,13 +26,14 @@ struct PersistenceService {
     }
 
     private func storageURL() -> URL? {
-        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+        let fm = FileManager.default
+        guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return nil
         }
 
         let directory = appSupport.appendingPathComponent("HotAppClone", isDirectory: true)
-        if !fileManager.fileExists(atPath: directory.path) {
-            try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        if !fm.fileExists(atPath: directory.path) {
+            try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
         }
         return directory.appendingPathComponent(fileName)
     }

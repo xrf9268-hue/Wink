@@ -1,7 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 
-struct ShortcutTrigger: Hashable {
+struct ShortcutTrigger: Hashable, Sendable {
     let keyCode: CGKeyCode
     let modifierMask: UInt
 }

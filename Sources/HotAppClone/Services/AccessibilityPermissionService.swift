@@ -1,6 +1,6 @@
 import IOKit
 
-struct AccessibilityPermissionService {
+struct AccessibilityPermissionService: Sendable {
     func isTrusted() -> Bool {
         IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
     }
