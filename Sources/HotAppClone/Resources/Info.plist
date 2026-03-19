@@ -6,8 +6,8 @@
   <key>CFBundleExecutable</key><string>HotAppClone</string>
   <key>CFBundleIdentifier</key><string>com.xrf9268.hotapp-clone</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-  <key>CFBundleName</key><string>HotAppClone</string>
-  <key>CFBundleDisplayName</key><string>HotApp Clone</string>
+  <key>CFBundleName</key><string>Quickey</string>
+  <key>CFBundleDisplayName</key><string>Quickey</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.2.0</string>
   <key>CFBundleVersion</key><string>2</string>

@@ -26,7 +26,7 @@ final class SettingsWindowController {
         let hostingController = NSHostingController(rootView: contentView)
 
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "HotApp Clone"
+        window.title = "Quickey"
         window.setContentSize(NSSize(width: 720, height: 480))
         window.styleMask.insert(.titled)
         window.styleMask.insert(.closable)

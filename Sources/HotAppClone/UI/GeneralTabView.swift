@@ -14,7 +14,7 @@ struct GeneralTabView: View {
 
             HStack {
                 Spacer()
-                Text("HotApp Clone v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0")")
+                Text("Quickey v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0")")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                 Spacer()
