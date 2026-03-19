@@ -1,6 +1,9 @@
 import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
+import os.log
+
+private let logger = Logger(subsystem: "com.hotappclone", category: "EventTapManager")
 
 @MainActor
 final class EventTapManager {
@@ -13,6 +16,7 @@ final class EventTapManager {
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var retainedBox: Unmanaged<EventTapBox>?
     private var onKeyPress: ShortcutHandler?
 
     func start(onKeyPress: @escaping ShortcutHandler) {
@@ -31,7 +35,8 @@ final class EventTapManager {
         }
 
         let box = EventTapBox(manager: self)
-        let userInfo = UnsafeMutableRawPointer(Unmanaged.passRetained(box).toOpaque())
+        let retained = Unmanaged.passRetained(box)
+        let userInfo = UnsafeMutableRawPointer(retained.toOpaque())
 
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -41,8 +46,12 @@ final class EventTapManager {
             callback: callback,
             userInfo: userInfo
         ) else {
+            retained.release()
+            logger.error("Failed to create CGEvent tap — ensure accessibility permissions are granted")
             return
         }
+
+        retainedBox = retained
 
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
@@ -59,6 +68,8 @@ final class EventTapManager {
         if let source = runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
         }
+        retainedBox?.release()
+        retainedBox = nil
         eventTap = nil
         runLoopSource = nil
         onKeyPress = nil

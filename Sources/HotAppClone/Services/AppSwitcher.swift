@@ -27,6 +27,6 @@ final class AppSwitcher {
         }
 
         frontmostTracker.noteCurrentFrontmostApp(excluding: shortcut.bundleIdentifier)
-        return runningApp.activate(options: [.activateIgnoringOtherApps])
+        return runningApp.activate()
     }
 }

@@ -21,6 +21,6 @@ final class FrontmostApplicationTracker {
               let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first else {
             return false
         }
-        return app.activate(options: [.activateIgnoringOtherApps])
+        return app.activate()
     }
 }
