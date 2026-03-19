@@ -1,4 +1,7 @@
 import Foundation
+import os.log
+
+private let logger = Logger(subsystem: "com.hotappclone", category: "ShortcutManager")
 
 @MainActor
 final class ShortcutManager {
@@ -9,6 +12,8 @@ final class ShortcutManager {
     private let permissionService: AccessibilityPermissionService
     private let keyMatcher = KeyMatcher()
     private var triggerIndex: [ShortcutTrigger: AppShortcut] = [:]
+    private var permissionTimer: Timer?
+    private var lastPermissionState: Bool = false
 
     init(
         shortcutStore: ShortcutStore,
@@ -25,18 +30,14 @@ final class ShortcutManager {
     }
 
     func start() {
-        guard permissionService.requestIfNeeded(prompt: true) else {
-            return
-        }
-
-        rebuildIndex()
-
-        eventTapManager.start { [weak self] keyPress in
-            self?.handleKeyPress(keyPress)
-        }
+        permissionService.requestIfNeeded(prompt: true)
+        startPermissionMonitoring()
+        attemptStartIfPermitted()
     }
 
     func stop() {
+        permissionTimer?.invalidate()
+        permissionTimer = nil
         eventTapManager.stop()
     }
 
@@ -54,6 +55,43 @@ final class ShortcutManager {
     func hasAccessibilityAccess() -> Bool {
         permissionService.isTrusted()
     }
+
+    // MARK: - Permission monitoring
+
+    private func startPermissionMonitoring() {
+        lastPermissionState = permissionService.isTrusted()
+        permissionTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.checkPermissionChange()
+            }
+        }
+    }
+
+    private func checkPermissionChange() {
+        let granted = permissionService.isTrusted()
+        guard granted != lastPermissionState else { return }
+        lastPermissionState = granted
+
+        if granted {
+            logger.info("Input Monitoring permission granted — starting event tap")
+            attemptStartIfPermitted()
+        } else {
+            logger.warning("Input Monitoring permission revoked — stopping event tap")
+            eventTapManager.stop()
+        }
+    }
+
+    private func attemptStartIfPermitted() {
+        guard permissionService.isTrusted() else { return }
+        guard !eventTapManager.isRunning else { return }
+
+        rebuildIndex()
+        eventTapManager.start { [weak self] keyPress in
+            self?.handleKeyPress(keyPress)
+        }
+    }
+
+    // MARK: - Key handling
 
     private func rebuildIndex() {
         triggerIndex = keyMatcher.buildIndex(for: shortcutStore.shortcuts)
