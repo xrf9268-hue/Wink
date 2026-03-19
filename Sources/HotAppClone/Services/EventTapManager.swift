@@ -30,14 +30,26 @@ final class EventTapManager {
         self.onKeyPress = onKeyPress
 
         let mask = (1 << CGEventType.keyDown.rawValue)
-        let callback: CGEventTapCallBack = { _, type, event, userInfo in
-            guard type == .keyDown else {
+        let callback: CGEventTapCallBack = { proxy, type, event, userInfo in
+            let box = Unmanaged<EventTapBox>.fromOpaque(userInfo!).takeUnretainedValue()
+
+            switch type {
+            case .tapDisabledByTimeout, .tapDisabledByUserInput:
+                // macOS disabled the tap (slow callback or user input flood).
+                // Re-enable it immediately via the stored CFMachPort.
+                logger.warning("Event tap disabled by system (reason: \(type.rawValue)), re-enabling")
+                if let tap = box.tap {
+                    CGEvent.tapEnable(tap: tap, enable: true)
+                }
+                return Unmanaged.passUnretained(event)
+
+            case .keyDown:
+                box.manager.handle(event: event)
+                return Unmanaged.passUnretained(event)
+
+            default:
                 return Unmanaged.passUnretained(event)
             }
-
-            let manager = Unmanaged<EventTapBox>.fromOpaque(userInfo!).takeUnretainedValue().manager
-            manager.handle(event: event)
-            return Unmanaged.passUnretained(event)
         }
 
         // EventTapBox uses unowned reference to avoid retain cycle:
@@ -62,6 +74,7 @@ final class EventTapManager {
         }
 
         retainedBox = retained
+        box.tap = tap
 
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
@@ -99,8 +112,10 @@ final class EventTapManager {
 // Boxes the EventTapManager reference for the C callback's userInfo pointer.
 // Uses unowned to break the retain cycle with EventTapManager.retainedBox.
 // Lifetime is explicitly managed: retained in start(), released in stop().
+// Also holds the CFMachPort so the callback can re-enable a disabled tap.
 private final class EventTapBox {
     unowned let manager: EventTapManager
+    var tap: CFMachPort?
 
     init(manager: EventTapManager) {
         self.manager = manager
