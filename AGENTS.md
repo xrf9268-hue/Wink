@@ -6,7 +6,6 @@ This file is for coding agents and automation tools. Use it together with:
 - `README.md`
 - `docs/README.md`
 - `docs/issue-priority-plan.md`
-- `docs/codex-review-summary.md`
 - `TODO.md`
 
 ## Project overview
@@ -105,21 +104,17 @@ If working from a non-macOS host without Swift installed:
 
 ## Architecture expectations
 
-The current code is a scaffold, not a final architecture.
+The codebase is feature-complete. All originally planned architecture work is resolved:
+- permission model aligned with CGEvent tap monitoring
+- event tap lifecycle hardened with ownership and recovery
+- runtime hot path moved off unnecessary `@MainActor` usage
+- O(1) precompiled trigger index in place
+- app-shell direction decided (AppKit-first, selective SwiftUI)
 
 Before making large structural changes, read:
 - `docs/architecture.md`
-- `docs/architecture-remediation-plan.md`
-- `docs/codex-review-summary.md`
 
-Known architecture themes already identified:
-- permission model should align with CGEvent tap monitoring
-- event tap lifecycle needs stronger ownership and recovery
-- runtime hot path should move away from unnecessary `@MainActor` usage
-- linear shortcut scans should become a precompiled trigger index
-- app-shell direction should eventually be decided explicitly: modern SwiftUI scene-based vs deliberate AppKit-first
-
-Do not re-discover these as if they were new findings.
+Historical architecture remediation docs are in `docs/archive/` for reference.
 
 ## What to optimize first
 
@@ -174,8 +169,6 @@ Most likely docs to update after meaningful changes:
 - `README.md`
 - `TODO.md`
 - `docs/architecture.md`
-- `docs/architecture-remediation-plan.md`
-- `docs/codex-review-summary.md`
 - `docs/issue-priority-plan.md`
 - `docs/macos-validation-checklist.md`
 
@@ -186,8 +179,7 @@ Do not turn `TODO.md` into a duplicate of the full issue tracker.
 
 Before opening new issues, check whether the topic is already covered by:
 - existing GitHub issues
-- `docs/issues-backlog.md`
-- `docs/codex-review-summary.md`
+- `docs/issue-priority-plan.md`
 
 If creating a new issue, make it concrete:
 - clear goal

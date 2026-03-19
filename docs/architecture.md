@@ -182,7 +182,7 @@ Global keyDown event
 
 ## Current design choices
 - **SPM-first**: simple repo layout and source organization
-- **AppKit-first with selective SwiftUI**: deliberate architectural decision documented in `docs/plans/app-structure-direction.md`; hard AppKit requirements (`.accessory` policy, raw key capture, CGEvent tap, NSWorkspace) prevent a pure SwiftUI scene-based approach
+- **AppKit-first with selective SwiftUI**: deliberate architectural decision documented in `docs/archive/app-structure-direction.md`; hard AppKit requirements (`.accessory` policy, raw key capture, CGEvent tap, NSWorkspace) prevent a pure SwiftUI scene-based approach
 - **Input Monitoring permission**: aligned with the real CGEvent tap monitoring path (not Accessibility trust)
 - **O(1) trigger index**: `ShortcutSignature` dictionary replaces linear scans in the hot path
 - **Hardened EventTap lifecycle**: explicit ownership, auto-recovery on disable/timeout, run-loop cleanup
