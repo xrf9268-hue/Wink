@@ -21,7 +21,8 @@ final class SettingsWindowController {
         }
 
         let viewModel = SettingsViewModel(shortcutStore: shortcutStore, shortcutManager: shortcutManager, usageTracker: usageTracker)
-        let contentView = SettingsView(viewModel: viewModel)
+        let insightsViewModel = InsightsViewModel(usageTracker: usageTracker, shortcutStore: shortcutStore)
+        let contentView = SettingsView(viewModel: viewModel, insightsViewModel: insightsViewModel)
         let hostingController = NSHostingController(rootView: contentView)
 
         let window = NSWindow(contentViewController: hostingController)
