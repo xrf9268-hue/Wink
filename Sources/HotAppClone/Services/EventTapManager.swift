@@ -41,13 +41,13 @@ final class EventTapManager {
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .defaultTap,
+            options: .listenOnly,
             eventsOfInterest: CGEventMask(mask),
             callback: callback,
             userInfo: userInfo
         ) else {
             retained.release()
-            logger.error("Failed to create CGEvent tap — ensure accessibility permissions are granted")
+            logger.error("Failed to create CGEvent tap — ensure Input Monitoring permission is granted in System Settings > Privacy & Security")
             return
         }
 
