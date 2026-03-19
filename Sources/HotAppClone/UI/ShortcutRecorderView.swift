@@ -14,19 +14,23 @@ struct ShortcutRecorderView: NSViewRepresentable {
         field.onRecordingChange = { recording in
             isRecording = recording
         }
+        field.onCancel = {
+            isRecording = false
+        }
         return field
     }
 
     func updateNSView(_ nsView: RecorderField, context: Context) {
-        nsView.placeholderString = isRecording ? "Press shortcut" : "Click to record shortcut"
-        nsView.stringValue = recordedShortcut?.displayText ?? ""
+        nsView.updateRecordingState(isRecording: isRecording, shortcut: recordedShortcut)
     }
 }
 
 final class RecorderField: NSTextField {
     var onCapture: ((RecordedShortcut) -> Void)?
     var onRecordingChange: ((Bool) -> Void)?
+    var onCancel: (() -> Void)?
     private let keySymbolMapper = KeySymbolMapper()
+    private var isRecording = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -41,21 +45,61 @@ final class RecorderField: NSTextField {
         fatalError("init(coder:) has not been implemented")
     }
 
+    func updateRecordingState(isRecording: Bool, shortcut: RecordedShortcut?) {
+        self.isRecording = isRecording
+        if isRecording {
+            placeholderString = "Press shortcut (Esc to cancel)"
+            stringValue = ""
+            textColor = .controlAccentColor
+        } else {
+            placeholderString = "Click to record shortcut"
+            stringValue = shortcut?.displayText ?? ""
+            textColor = .labelColor
+        }
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         onRecordingChange?(true)
     }
 
     override func keyDown(with event: NSEvent) {
-        let modifiers = normalizedModifiers(from: event.modifierFlags)
-        guard !modifiers.isEmpty,
-              let keyEquivalent = keySymbolMapper.keyEquivalent(for: CGKeyCode(event.keyCode)) else {
-            NSSound.beep()
+        guard isRecording else { return }
+
+        // Escape cancels recording
+        if event.keyCode == 53 {
+            onCancel?()
             return
         }
 
-        onCapture?(RecordedShortcut(keyEquivalent: keyEquivalent, modifierFlags: modifiers))
-        stringValue = RecordedShortcut(keyEquivalent: keyEquivalent, modifierFlags: modifiers).displayText
+        let modifiers = normalizedModifiers(from: event.modifierFlags)
+        let keyEquivalent = keySymbolMapper.keyEquivalent(for: CGKeyCode(event.keyCode))
+
+        if modifiers.isEmpty {
+            stringValue = "Requires at least one modifier (⌘⌥⌃⇧)"
+            textColor = .systemOrange
+            return
+        }
+
+        guard let keyEquivalent else {
+            stringValue = "Unsupported key — try a letter, number, or F-key"
+            textColor = .systemOrange
+            return
+        }
+
+        let shortcut = RecordedShortcut(keyEquivalent: keyEquivalent, modifierFlags: modifiers)
+        onCapture?(shortcut)
+        stringValue = shortcut.displayText
+        textColor = .labelColor
+    }
+
+    override func resignFirstResponder() -> Bool {
+        if isRecording {
+            onCancel?()
+        }
+        return super.resignFirstResponder()
     }
 
     private func normalizedModifiers(from flags: NSEvent.ModifierFlags) -> [String] {
