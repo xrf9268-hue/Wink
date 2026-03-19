@@ -8,6 +8,7 @@ final class ShortcutManager {
     private let eventTapManager: EventTapManager
     private let permissionService: AccessibilityPermissionService
     private let keyMatcher = KeyMatcher()
+    private var triggerIndex: [ShortcutTrigger: AppShortcut] = [:]
 
     init(
         shortcutStore: ShortcutStore,
@@ -28,6 +29,8 @@ final class ShortcutManager {
             return
         }
 
+        rebuildIndex()
+
         eventTapManager.start { [weak self] keyPress in
             self?.handleKeyPress(keyPress)
         }
@@ -40,6 +43,7 @@ final class ShortcutManager {
     func save(shortcuts: [AppShortcut]) {
         shortcutStore.replaceAll(with: shortcuts)
         persistenceService.save(shortcuts)
+        rebuildIndex()
     }
 
     @discardableResult
@@ -51,8 +55,13 @@ final class ShortcutManager {
         permissionService.isTrusted()
     }
 
+    private func rebuildIndex() {
+        triggerIndex = keyMatcher.buildIndex(for: shortcutStore.shortcuts)
+    }
+
     private func handleKeyPress(_ keyPress: EventTapManager.KeyPress) {
-        guard let match = shortcutStore.shortcuts.first(where: { keyMatcher.matches(keyPress, shortcut: $0) }) else {
+        let key = keyMatcher.trigger(for: keyPress)
+        guard let match = triggerIndex[key] else {
             return
         }
         _ = trigger(match)

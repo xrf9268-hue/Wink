@@ -1,86 +1,101 @@
 import AppKit
 import Carbon.HIToolbox
 
+struct ShortcutTrigger: Hashable {
+    let keyCode: CGKeyCode
+    let modifierMask: UInt
+}
+
 struct KeyMatcher {
     func matches(_ keyPress: EventTapManager.KeyPress, shortcut: AppShortcut) -> Bool {
-        keyPress.keyCode == keyCode(for: shortcut.keyEquivalent)
-            && normalizedModifiers(from: keyPress.modifiers) == normalizedModifiers(from: shortcut.modifierFlags)
+        trigger(for: keyPress) == trigger(for: shortcut)
     }
+
+    func trigger(for keyPress: EventTapManager.KeyPress) -> ShortcutTrigger {
+        let mask = keyPress.modifiers.intersection(NSEvent.ModifierFlags.deviceIndependentFlagsMask)
+        return ShortcutTrigger(keyCode: keyPress.keyCode, modifierMask: normalizedMask(from: mask))
+    }
+
+    func trigger(for shortcut: AppShortcut) -> ShortcutTrigger {
+        ShortcutTrigger(
+            keyCode: keyCode(for: shortcut.keyEquivalent),
+            modifierMask: normalizedMask(from: shortcut.modifierFlags)
+        )
+    }
+
+    func buildIndex(for shortcuts: [AppShortcut]) -> [ShortcutTrigger: AppShortcut] {
+        var index: [ShortcutTrigger: AppShortcut] = [:]
+        index.reserveCapacity(shortcuts.count)
+        for shortcut in shortcuts {
+            index[trigger(for: shortcut)] = shortcut
+        }
+        return index
+    }
+
+    // MARK: - Key code mapping (shared data source for KeySymbolMapper reverse lookups)
+
+    static let keyEquivalentToCode: [String: CGKeyCode] = [
+        "a": CGKeyCode(kVK_ANSI_A), "b": CGKeyCode(kVK_ANSI_B), "c": CGKeyCode(kVK_ANSI_C),
+        "d": CGKeyCode(kVK_ANSI_D), "e": CGKeyCode(kVK_ANSI_E), "f": CGKeyCode(kVK_ANSI_F),
+        "g": CGKeyCode(kVK_ANSI_G), "h": CGKeyCode(kVK_ANSI_H), "i": CGKeyCode(kVK_ANSI_I),
+        "j": CGKeyCode(kVK_ANSI_J), "k": CGKeyCode(kVK_ANSI_K), "l": CGKeyCode(kVK_ANSI_L),
+        "m": CGKeyCode(kVK_ANSI_M), "n": CGKeyCode(kVK_ANSI_N), "o": CGKeyCode(kVK_ANSI_O),
+        "p": CGKeyCode(kVK_ANSI_P), "q": CGKeyCode(kVK_ANSI_Q), "r": CGKeyCode(kVK_ANSI_R),
+        "s": CGKeyCode(kVK_ANSI_S), "t": CGKeyCode(kVK_ANSI_T), "u": CGKeyCode(kVK_ANSI_U),
+        "v": CGKeyCode(kVK_ANSI_V), "w": CGKeyCode(kVK_ANSI_W), "x": CGKeyCode(kVK_ANSI_X),
+        "y": CGKeyCode(kVK_ANSI_Y), "z": CGKeyCode(kVK_ANSI_Z),
+        "0": CGKeyCode(kVK_ANSI_0), "1": CGKeyCode(kVK_ANSI_1), "2": CGKeyCode(kVK_ANSI_2),
+        "3": CGKeyCode(kVK_ANSI_3), "4": CGKeyCode(kVK_ANSI_4), "5": CGKeyCode(kVK_ANSI_5),
+        "6": CGKeyCode(kVK_ANSI_6), "7": CGKeyCode(kVK_ANSI_7), "8": CGKeyCode(kVK_ANSI_8),
+        "9": CGKeyCode(kVK_ANSI_9),
+        "space": CGKeyCode(kVK_Space), "return": CGKeyCode(kVK_Return), "enter": CGKeyCode(kVK_Return),
+        "escape": CGKeyCode(kVK_Escape), "esc": CGKeyCode(kVK_Escape),
+        "tab": CGKeyCode(kVK_Tab), "delete": CGKeyCode(kVK_Delete), "backspace": CGKeyCode(kVK_Delete),
+        "up": CGKeyCode(kVK_UpArrow), "down": CGKeyCode(kVK_DownArrow),
+        "left": CGKeyCode(kVK_LeftArrow), "right": CGKeyCode(kVK_RightArrow),
+        "f1": CGKeyCode(kVK_F1), "f2": CGKeyCode(kVK_F2), "f3": CGKeyCode(kVK_F3),
+        "f4": CGKeyCode(kVK_F4), "f5": CGKeyCode(kVK_F5), "f6": CGKeyCode(kVK_F6),
+        "f7": CGKeyCode(kVK_F7), "f8": CGKeyCode(kVK_F8), "f9": CGKeyCode(kVK_F9),
+        "f10": CGKeyCode(kVK_F10), "f11": CGKeyCode(kVK_F11), "f12": CGKeyCode(kVK_F12),
+    ]
+
+    static let codeToKeyEquivalent: [CGKeyCode: String] = {
+        var reverse: [CGKeyCode: String] = [:]
+        for (key, code) in keyEquivalentToCode {
+            // Prefer canonical names (skip aliases like "enter", "esc", "backspace")
+            if reverse[code] == nil || key.count < (reverse[code]?.count ?? Int.max) {
+                reverse[code] = key
+            }
+        }
+        return reverse
+    }()
 
     private func keyCode(for keyEquivalent: String) -> CGKeyCode {
-        switch keyEquivalent.lowercased() {
-        case "a": return CGKeyCode(kVK_ANSI_A)
-        case "b": return CGKeyCode(kVK_ANSI_B)
-        case "c": return CGKeyCode(kVK_ANSI_C)
-        case "d": return CGKeyCode(kVK_ANSI_D)
-        case "e": return CGKeyCode(kVK_ANSI_E)
-        case "f": return CGKeyCode(kVK_ANSI_F)
-        case "g": return CGKeyCode(kVK_ANSI_G)
-        case "h": return CGKeyCode(kVK_ANSI_H)
-        case "i": return CGKeyCode(kVK_ANSI_I)
-        case "j": return CGKeyCode(kVK_ANSI_J)
-        case "k": return CGKeyCode(kVK_ANSI_K)
-        case "l": return CGKeyCode(kVK_ANSI_L)
-        case "m": return CGKeyCode(kVK_ANSI_M)
-        case "n": return CGKeyCode(kVK_ANSI_N)
-        case "o": return CGKeyCode(kVK_ANSI_O)
-        case "p": return CGKeyCode(kVK_ANSI_P)
-        case "q": return CGKeyCode(kVK_ANSI_Q)
-        case "r": return CGKeyCode(kVK_ANSI_R)
-        case "s": return CGKeyCode(kVK_ANSI_S)
-        case "t": return CGKeyCode(kVK_ANSI_T)
-        case "u": return CGKeyCode(kVK_ANSI_U)
-        case "v": return CGKeyCode(kVK_ANSI_V)
-        case "w": return CGKeyCode(kVK_ANSI_W)
-        case "x": return CGKeyCode(kVK_ANSI_X)
-        case "y": return CGKeyCode(kVK_ANSI_Y)
-        case "z": return CGKeyCode(kVK_ANSI_Z)
-        case "0": return CGKeyCode(kVK_ANSI_0)
-        case "1": return CGKeyCode(kVK_ANSI_1)
-        case "2": return CGKeyCode(kVK_ANSI_2)
-        case "3": return CGKeyCode(kVK_ANSI_3)
-        case "4": return CGKeyCode(kVK_ANSI_4)
-        case "5": return CGKeyCode(kVK_ANSI_5)
-        case "6": return CGKeyCode(kVK_ANSI_6)
-        case "7": return CGKeyCode(kVK_ANSI_7)
-        case "8": return CGKeyCode(kVK_ANSI_8)
-        case "9": return CGKeyCode(kVK_ANSI_9)
-        case "space": return CGKeyCode(kVK_Space)
-        case "return", "enter": return CGKeyCode(kVK_Return)
-        case "escape", "esc": return CGKeyCode(kVK_Escape)
-        case "tab": return CGKeyCode(kVK_Tab)
-        case "delete", "backspace": return CGKeyCode(kVK_Delete)
-        case "up": return CGKeyCode(kVK_UpArrow)
-        case "down": return CGKeyCode(kVK_DownArrow)
-        case "left": return CGKeyCode(kVK_LeftArrow)
-        case "right": return CGKeyCode(kVK_RightArrow)
-        case "f1": return CGKeyCode(kVK_F1)
-        case "f2": return CGKeyCode(kVK_F2)
-        case "f3": return CGKeyCode(kVK_F3)
-        case "f4": return CGKeyCode(kVK_F4)
-        case "f5": return CGKeyCode(kVK_F5)
-        case "f6": return CGKeyCode(kVK_F6)
-        case "f7": return CGKeyCode(kVK_F7)
-        case "f8": return CGKeyCode(kVK_F8)
-        case "f9": return CGKeyCode(kVK_F9)
-        case "f10": return CGKeyCode(kVK_F10)
-        case "f11": return CGKeyCode(kVK_F11)
-        case "f12": return CGKeyCode(kVK_F12)
-        default: return CGKeyCode(UInt16.max)
+        Self.keyEquivalentToCode[keyEquivalent.lowercased()] ?? CGKeyCode(UInt16.max)
+    }
+
+    private func normalizedMask(from flags: NSEvent.ModifierFlags) -> UInt {
+        var mask: UInt = 0
+        if flags.contains(.command) { mask |= NSEvent.ModifierFlags.command.rawValue }
+        if flags.contains(.option) { mask |= NSEvent.ModifierFlags.option.rawValue }
+        if flags.contains(.control) { mask |= NSEvent.ModifierFlags.control.rawValue }
+        if flags.contains(.shift) { mask |= NSEvent.ModifierFlags.shift.rawValue }
+        if flags.contains(.function) { mask |= NSEvent.ModifierFlags.function.rawValue }
+        return mask
+    }
+
+    private func normalizedMask(from modifiers: [String]) -> UInt {
+        var mask: UInt = 0
+        for mod in modifiers {
+            switch mod.lowercased() {
+            case "command": mask |= NSEvent.ModifierFlags.command.rawValue
+            case "option": mask |= NSEvent.ModifierFlags.option.rawValue
+            case "control": mask |= NSEvent.ModifierFlags.control.rawValue
+            case "shift": mask |= NSEvent.ModifierFlags.shift.rawValue
+            case "function": mask |= NSEvent.ModifierFlags.function.rawValue
+            default: break
+            }
         }
-    }
-
-    private func normalizedModifiers(from flags: NSEvent.ModifierFlags) -> Set<String> {
-        var result: Set<String> = []
-        if flags.contains(.command) { result.insert("command") }
-        if flags.contains(.option) { result.insert("option") }
-        if flags.contains(.control) { result.insert("control") }
-        if flags.contains(.shift) { result.insert("shift") }
-        if flags.contains(.function) { result.insert("function") }
-        return result
-    }
-
-    private func normalizedModifiers(from modifiers: [String]) -> Set<String> {
-        Set(modifiers.map { $0.lowercased() })
+        return mask
     }
 }
