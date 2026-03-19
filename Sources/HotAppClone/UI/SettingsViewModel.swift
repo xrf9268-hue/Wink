@@ -13,12 +13,14 @@ final class SettingsViewModel: ObservableObject {
 
     private let shortcutStore: ShortcutStore
     private let shortcutManager: ShortcutManager
+    private let usageTracker: UsageTracker?
     private let appBundleLocator = AppBundleLocator()
     private let shortcutValidator = ShortcutValidator()
 
-    init(shortcutStore: ShortcutStore, shortcutManager: ShortcutManager) {
+    init(shortcutStore: ShortcutStore, shortcutManager: ShortcutManager, usageTracker: UsageTracker? = nil) {
         self.shortcutStore = shortcutStore
         self.shortcutManager = shortcutManager
+        self.usageTracker = usageTracker
         self.shortcuts = shortcutStore.shortcuts
         self.accessibilityGranted = shortcutManager.hasAccessibilityAccess()
     }
@@ -54,6 +56,9 @@ final class SettingsViewModel: ObservableObject {
         let updated = shortcuts.filter { $0.id != id }
         shortcuts = updated
         shortcutManager.save(shortcuts: updated)
+        if let usageTracker {
+            Task { await usageTracker.deleteUsage(shortcutId: id) }
+        }
     }
 
     func chooseApplication() {

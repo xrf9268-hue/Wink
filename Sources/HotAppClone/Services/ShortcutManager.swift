@@ -10,6 +10,7 @@ final class ShortcutManager {
     private let appSwitcher: AppSwitcher
     private let eventTapManager: EventTapManager
     private let permissionService: AccessibilityPermissionService
+    private let usageTracker: UsageTracker?
     private let keyMatcher = KeyMatcher()
     private var triggerIndex: [ShortcutTrigger: AppShortcut] = [:]
     private var permissionTimer: Timer?
@@ -20,13 +21,15 @@ final class ShortcutManager {
         persistenceService: PersistenceService,
         appSwitcher: AppSwitcher,
         eventTapManager: EventTapManager = EventTapManager(),
-        permissionService: AccessibilityPermissionService = AccessibilityPermissionService()
+        permissionService: AccessibilityPermissionService = AccessibilityPermissionService(),
+        usageTracker: UsageTracker? = nil
     ) {
         self.shortcutStore = shortcutStore
         self.persistenceService = persistenceService
         self.appSwitcher = appSwitcher
         self.eventTapManager = eventTapManager
         self.permissionService = permissionService
+        self.usageTracker = usageTracker
     }
 
     func start() {
@@ -49,7 +52,11 @@ final class ShortcutManager {
 
     @discardableResult
     func trigger(_ shortcut: AppShortcut) -> Bool {
-        appSwitcher.toggleApplication(for: shortcut)
+        let success = appSwitcher.toggleApplication(for: shortcut)
+        if success, let usageTracker {
+            Task { await usageTracker.recordUsage(shortcutId: shortcut.id) }
+        }
+        return success
     }
 
     func hasAccessibilityAccess() -> Bool {

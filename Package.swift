@@ -12,7 +12,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "HotAppClone",
-            path: "Sources/HotAppClone"
+            path: "Sources/HotAppClone",
+            linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .testTarget(
             name: "HotAppCloneTests",

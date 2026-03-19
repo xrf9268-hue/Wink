@@ -5,11 +5,13 @@ import SwiftUI
 final class SettingsWindowController {
     private let shortcutStore: ShortcutStore
     private let shortcutManager: ShortcutManager
+    private let usageTracker: UsageTracker?
     private var window: NSWindow?
 
-    init(shortcutStore: ShortcutStore, shortcutManager: ShortcutManager) {
+    init(shortcutStore: ShortcutStore, shortcutManager: ShortcutManager, usageTracker: UsageTracker? = nil) {
         self.shortcutStore = shortcutStore
         self.shortcutManager = shortcutManager
+        self.usageTracker = usageTracker
     }
 
     func show() {
@@ -18,7 +20,7 @@ final class SettingsWindowController {
             return
         }
 
-        let viewModel = SettingsViewModel(shortcutStore: shortcutStore, shortcutManager: shortcutManager)
+        let viewModel = SettingsViewModel(shortcutStore: shortcutStore, shortcutManager: shortcutManager, usageTracker: usageTracker)
         let contentView = SettingsView(viewModel: viewModel)
         let hostingController = NSHostingController(rootView: contentView)
 

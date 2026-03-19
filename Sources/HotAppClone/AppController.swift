@@ -4,11 +4,13 @@ import AppKit
 final class AppController {
     private let shortcutStore = ShortcutStore()
     private let persistenceService = PersistenceService()
+    private let usageTracker = UsageTracker()
     private lazy var appSwitcher = AppSwitcher()
     private lazy var shortcutManager = ShortcutManager(
         shortcutStore: shortcutStore,
         persistenceService: persistenceService,
-        appSwitcher: appSwitcher
+        appSwitcher: appSwitcher,
+        usageTracker: usageTracker
     )
     private lazy var menuBarController = MenuBarController(
         onOpenSettings: { [weak self] in self?.openSettings() },
@@ -16,7 +18,8 @@ final class AppController {
     )
     private lazy var settingsWindowController = SettingsWindowController(
         shortcutStore: shortcutStore,
-        shortcutManager: shortcutManager
+        shortcutManager: shortcutManager,
+        usageTracker: usageTracker
     )
 
     func start() {

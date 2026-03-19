@@ -308,3 +308,59 @@ struct KeySymbolMapperTests {
         }
     }
 }
+
+// MARK: - UsageTracker
+
+@Suite("UsageTracker")
+struct UsageTrackerTests {
+    @Test
+    func recordAndQueryUsage() async {
+        let tracker = UsageTracker(databasePath: ":memory:")
+        let id = UUID()
+
+        await tracker.recordUsage(shortcutId: id)
+        await tracker.recordUsage(shortcutId: id)
+
+        let counts = await tracker.usageCounts(days: 1)
+        #expect(counts[id] == 2)
+    }
+
+    @Test
+    func totalSwitchesAggregatesAll() async {
+        let tracker = UsageTracker(databasePath: ":memory:")
+        let id1 = UUID()
+        let id2 = UUID()
+
+        await tracker.recordUsage(shortcutId: id1)
+        await tracker.recordUsage(shortcutId: id1)
+        await tracker.recordUsage(shortcutId: id2)
+
+        let total = await tracker.totalSwitches(days: 1)
+        #expect(total == 3)
+    }
+
+    @Test
+    func deleteRemovesUsage() async {
+        let tracker = UsageTracker(databasePath: ":memory:")
+        let id = UUID()
+
+        await tracker.recordUsage(shortcutId: id)
+        await tracker.deleteUsage(shortcutId: id)
+
+        let counts = await tracker.usageCounts(days: 1)
+        #expect(counts[id] == nil)
+    }
+
+    @Test
+    func dailyCountsReturnsPerDayBreakdown() async {
+        let tracker = UsageTracker(databasePath: ":memory:")
+        let id = UUID()
+
+        await tracker.recordUsage(shortcutId: id)
+
+        let daily = await tracker.dailyCounts(days: 1)
+        let entries = daily[id.uuidString]
+        #expect(entries != nil)
+        #expect(entries?.isEmpty == false)
+    }
+}
