@@ -124,6 +124,67 @@ struct KeyMatcherTests {
         #expect(index[key]?.bundleIdentifier == "com.apple.Terminal")
     }
 
+    @Test @MainActor
+    func hyperStyleShortcutMatchesAllFourModifiers() {
+        let shortcut = AppShortcut(
+            appName: "Hyper", bundleIdentifier: "com.hyper",
+            keyEquivalent: "h", modifierFlags: ["command", "option", "control", "shift"]
+        )
+        let keyPress = EventTapManager.KeyPress(
+            keyCode: CGKeyCode(kVK_ANSI_H),
+            modifiers: [.command, .option, .control, .shift]
+        )
+        #expect(matcher.matches(keyPress, shortcut: shortcut))
+    }
+
+    @Test @MainActor
+    func hyperStyleDoesNotMatchSubsetOfModifiers() {
+        let shortcut = AppShortcut(
+            appName: "Hyper", bundleIdentifier: "com.hyper",
+            keyEquivalent: "h", modifierFlags: ["command", "option", "control", "shift"]
+        )
+        let threeModifiers = EventTapManager.KeyPress(
+            keyCode: CGKeyCode(kVK_ANSI_H),
+            modifiers: [.command, .option, .control]
+        )
+        #expect(!matcher.matches(threeModifiers, shortcut: shortcut))
+    }
+
+    @Test @MainActor
+    func hyperStyleIndexLookupWorks() {
+        let shortcut = AppShortcut(
+            appName: "Hyper", bundleIdentifier: "com.hyper",
+            keyEquivalent: "j", modifierFlags: ["command", "option", "control", "shift"]
+        )
+        let index = matcher.buildIndex(for: [shortcut])
+        let keyPress = EventTapManager.KeyPress(
+            keyCode: CGKeyCode(kVK_ANSI_J),
+            modifiers: [.command, .option, .control, .shift]
+        )
+        let key = matcher.trigger(for: keyPress)
+        #expect(index[key]?.bundleIdentifier == "com.hyper")
+    }
+
+    @Test
+    func modifierOrderDoesNotAffectTrigger() {
+        let ordered = AppShortcut(appName: "A", bundleIdentifier: "com.a", keyEquivalent: "a", modifierFlags: ["command", "option", "shift"])
+        let reversed = AppShortcut(appName: "A", bundleIdentifier: "com.a", keyEquivalent: "a", modifierFlags: ["shift", "option", "command"])
+        #expect(matcher.trigger(for: ordered) == matcher.trigger(for: reversed))
+    }
+
+    @Test @MainActor
+    func functionModifierMatchesCorrectly() {
+        let shortcut = AppShortcut(
+            appName: "FnApp", bundleIdentifier: "com.fn",
+            keyEquivalent: "f1", modifierFlags: ["function"]
+        )
+        let keyPress = EventTapManager.KeyPress(
+            keyCode: CGKeyCode(kVK_F1),
+            modifiers: [.function]
+        )
+        #expect(matcher.matches(keyPress, shortcut: shortcut))
+    }
+
     @Test
     func unknownKeyEquivalentReturnsMaxKeyCode() {
         let shortcut = AppShortcut(
@@ -191,6 +252,20 @@ struct ShortcutValidatorTests {
     func noConflictInEmptyList() {
         let candidate = AppShortcut(appName: "A", bundleIdentifier: "com.a", keyEquivalent: "s", modifierFlags: ["command"])
         #expect(validator.conflict(for: candidate, in: []) == nil)
+    }
+
+    @Test
+    func hyperStyleConflictDetected() {
+        let existing = AppShortcut(appName: "A", bundleIdentifier: "com.a", keyEquivalent: "h", modifierFlags: ["command", "option", "control", "shift"])
+        let candidate = AppShortcut(appName: "B", bundleIdentifier: "com.b", keyEquivalent: "h", modifierFlags: ["shift", "control", "option", "command"])
+        #expect(validator.conflict(for: candidate, in: [existing]) != nil)
+    }
+
+    @Test
+    func hyperVsTripleModifierNoConflict() {
+        let hyper = AppShortcut(appName: "A", bundleIdentifier: "com.a", keyEquivalent: "h", modifierFlags: ["command", "option", "control", "shift"])
+        let triple = AppShortcut(appName: "B", bundleIdentifier: "com.b", keyEquivalent: "h", modifierFlags: ["command", "option", "control"])
+        #expect(validator.conflict(for: triple, in: [hyper]) == nil)
     }
 }
 
