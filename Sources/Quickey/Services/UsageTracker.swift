@@ -5,7 +5,21 @@ import os.log
 private let logger = Logger(subsystem: "com.quickey.app", category: "UsageTracker")
 
 actor UsageTracker {
+    // Safety: db is only accessed from actor-isolated methods and deinit.
+    // nonisolated(unsafe) is required because OpaquePointer is not Sendable,
+    // but the actor serializes all access. Do not add nonisolated methods that touch db.
     private nonisolated(unsafe) let db: OpaquePointer?
+
+    /// Destructor constant that tells SQLite to copy bound text immediately,
+    /// preventing use-after-free when the source NSString buffer is deallocated.
+    private static let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = .current
+        return formatter
+    }()
 
     init() {
         db = Self.openDatabase(path: Self.defaultDatabasePath())
@@ -37,8 +51,8 @@ actor UsageTracker {
         defer { sqlite3_finalize(stmt) }
 
         let idString = shortcutId.uuidString
-        sqlite3_bind_text(stmt, 1, (idString as NSString).utf8String, -1, nil)
-        sqlite3_bind_text(stmt, 2, (todayString() as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(stmt, 1, (idString as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, (todayString() as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
         if sqlite3_step(stmt) != SQLITE_DONE {
             logger.error("Failed to record usage: \(String(cString: sqlite3_errmsg(self.db!)))")
@@ -51,7 +65,7 @@ actor UsageTracker {
         defer { sqlite3_finalize(stmt) }
 
         let idString = shortcutId.uuidString
-        sqlite3_bind_text(stmt, 1, (idString as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(stmt, 1, (idString as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
         if sqlite3_step(stmt) != SQLITE_DONE {
             logger.error("Failed to delete usage: \(String(cString: sqlite3_errmsg(self.db!)))")
@@ -66,7 +80,7 @@ actor UsageTracker {
         defer { sqlite3_finalize(stmt) }
 
         let cutoff = dateString(daysAgo: days)
-        sqlite3_bind_text(stmt, 1, (cutoff as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(stmt, 1, (cutoff as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
         var result: [UUID: Int] = [:]
         while sqlite3_step(stmt) == SQLITE_ROW {
@@ -84,7 +98,7 @@ actor UsageTracker {
         defer { sqlite3_finalize(stmt) }
 
         let cutoff = dateString(daysAgo: days)
-        sqlite3_bind_text(stmt, 1, (cutoff as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(stmt, 1, (cutoff as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
         var result: [String: [(date: String, count: Int)]] = [:]
         while sqlite3_step(stmt) == SQLITE_ROW {
@@ -104,7 +118,7 @@ actor UsageTracker {
         defer { sqlite3_finalize(stmt) }
 
         let cutoff = dateString(daysAgo: days)
-        sqlite3_bind_text(stmt, 1, (cutoff as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(stmt, 1, (cutoff as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
         if sqlite3_step(stmt) == SQLITE_ROW {
             return Int(sqlite3_column_int64(stmt, 0))
@@ -115,14 +129,8 @@ actor UsageTracker {
     // MARK: - Database setup
 
     private static func defaultDatabasePath() -> String {
-        let fm = FileManager.default
-        guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+        guard let directory = StoragePaths.appSupportDirectory() else {
             return ":memory:"
-        }
-
-        let directory = appSupport.appendingPathComponent("Quickey", isDirectory: true)
-        if !fm.fileExists(atPath: directory.path) {
-            try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
         }
         return directory.appendingPathComponent("usage.db").path
     }
@@ -174,10 +182,7 @@ actor UsageTracker {
     }
 
     private func dateString(daysAgo days: Int) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = .current
         let date = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-        return formatter.string(from: date)
+        return Self.dateFormatter.string(from: date)
     }
 }

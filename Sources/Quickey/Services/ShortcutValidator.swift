@@ -1,19 +1,16 @@
 import Foundation
 
 struct ShortcutValidator {
+    private let keyMatcher = KeyMatcher()
+
     func conflict(for candidate: AppShortcut, in shortcuts: [AppShortcut]) -> ShortcutConflict? {
+        let candidateTrigger = keyMatcher.trigger(for: candidate)
         guard let existing = shortcuts.first(where: {
-            $0.id != candidate.id
-            && $0.keyEquivalent.caseInsensitiveCompare(candidate.keyEquivalent) == .orderedSame
-            && Set($0.modifierFlags.map { $0.lowercased() }) == Set(candidate.modifierFlags.map { $0.lowercased() })
+            $0.id != candidate.id && keyMatcher.trigger(for: $0) == candidateTrigger
         }) else {
             return nil
         }
 
         return ShortcutConflict(existingShortcut: existing, attemptedShortcut: candidate)
-    }
-
-    func normalizedKey(_ key: String) -> String {
-        key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }

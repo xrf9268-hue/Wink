@@ -26,15 +26,6 @@ struct PersistenceService: Sendable {
     }
 
     private func storageURL() -> URL? {
-        let fm = FileManager.default
-        guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-
-        let directory = appSupport.appendingPathComponent("Quickey", isDirectory: true)
-        if !fm.fileExists(atPath: directory.path) {
-            try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
-        }
-        return directory.appendingPathComponent(fileName)
+        StoragePaths.appSupportDirectory()?.appendingPathComponent(fileName)
     }
 }

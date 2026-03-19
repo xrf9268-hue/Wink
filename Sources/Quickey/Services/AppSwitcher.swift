@@ -1,4 +1,7 @@
 import AppKit
+import os.log
+
+private let logger = Logger(subsystem: "com.quickey.app", category: "AppSwitcher")
 
 @MainActor
 final class AppSwitcher {
@@ -15,7 +18,11 @@ final class AppSwitcher {
             if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: shortcut.bundleIdentifier) {
                 frontmostTracker.noteCurrentFrontmostApp(excluding: shortcut.bundleIdentifier)
                 let configuration = NSWorkspace.OpenConfiguration()
-                NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { _, _ in }
+                NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { app, error in
+                    if let error {
+                        logger.error("Failed to launch \(shortcut.bundleIdentifier): \(error.localizedDescription)")
+                    }
+                }
                 return true
             }
             return false

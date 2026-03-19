@@ -309,6 +309,80 @@ struct KeySymbolMapperTests {
     }
 }
 
+// MARK: - PersistenceService
+
+@Suite("PersistenceService")
+struct PersistenceServiceTests {
+    @Test
+    func roundTripEncodesAndDecodesShortcuts() {
+        let shortcuts = [
+            AppShortcut(appName: "Safari", bundleIdentifier: "com.apple.Safari", keyEquivalent: "s", modifierFlags: ["command", "option"]),
+            AppShortcut(appName: "Terminal", bundleIdentifier: "com.apple.Terminal", keyEquivalent: "t", modifierFlags: ["command", "control", "shift"]),
+        ]
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try! encoder.encode(shortcuts)
+        let decoded = try! JSONDecoder().decode([AppShortcut].self, from: data)
+
+        #expect(decoded.count == 2)
+        #expect(decoded[0].bundleIdentifier == "com.apple.Safari")
+        #expect(decoded[0].keyEquivalent == "s")
+        #expect(decoded[0].modifierFlags == ["command", "option"])
+        #expect(decoded[1].bundleIdentifier == "com.apple.Terminal")
+        #expect(decoded[1].appName == "Terminal")
+    }
+
+    @Test
+    func decodesEmptyArrayFromEmptyJSON() {
+        let data = "[]".data(using: .utf8)!
+        let decoded = try! JSONDecoder().decode([AppShortcut].self, from: data)
+        #expect(decoded.isEmpty)
+    }
+
+    @Test
+    func preservesUUIDThroughRoundTrip() {
+        let original = AppShortcut(appName: "Test", bundleIdentifier: "com.test", keyEquivalent: "a", modifierFlags: ["command"])
+        let data = try! JSONEncoder().encode([original])
+        let decoded = try! JSONDecoder().decode([AppShortcut].self, from: data)
+        #expect(decoded.first?.id == original.id)
+    }
+
+    @Test
+    func hyperShortcutRoundTrips() {
+        let shortcut = AppShortcut(
+            appName: "Hyper", bundleIdentifier: "com.hyper",
+            keyEquivalent: "h", modifierFlags: ["command", "option", "control", "shift"]
+        )
+        let data = try! JSONEncoder().encode([shortcut])
+        let decoded = try! JSONDecoder().decode([AppShortcut].self, from: data)
+        #expect(decoded.first?.modifierFlags == ["command", "option", "control", "shift"])
+        #expect(decoded.first?.isHyper == true)
+    }
+}
+
+// MARK: - ShortcutValidator with KeyMatcher unification
+
+@Suite("ShortcutValidator alias handling")
+struct ShortcutValidatorAliasTests {
+    let validator = ShortcutValidator()
+
+    @Test
+    func enterAndReturnAreConsideredEquivalent() {
+        let existing = AppShortcut(appName: "A", bundleIdentifier: "com.a", keyEquivalent: "return", modifierFlags: ["command"])
+        let candidate = AppShortcut(appName: "B", bundleIdentifier: "com.b", keyEquivalent: "enter", modifierFlags: ["command"])
+        // With unified KeyMatcher-based validation, "enter" and "return" map to the same key code
+        #expect(validator.conflict(for: candidate, in: [existing]) != nil)
+    }
+
+    @Test
+    func escAndEscapeAreConsideredEquivalent() {
+        let existing = AppShortcut(appName: "A", bundleIdentifier: "com.a", keyEquivalent: "escape", modifierFlags: ["command"])
+        let candidate = AppShortcut(appName: "B", bundleIdentifier: "com.b", keyEquivalent: "esc", modifierFlags: ["command"])
+        #expect(validator.conflict(for: candidate, in: [existing]) != nil)
+    }
+}
+
 // MARK: - UsageTracker
 
 @Suite("UsageTracker")
