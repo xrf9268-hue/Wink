@@ -15,23 +15,24 @@ Quickey is a macOS menu bar utility inspired by Thor and the recovered HotApp ar
 It binds global shortcuts to target apps, activates them quickly, and toggles them away when pressed again.
 
 Current state:
-- strong prototype scaffold
-- not yet validated on a real macOS toolchain
-- architecture and issue planning are already established
-- runtime reliability and macOS validation are higher priority than adding more speculative features
+- all originally planned issues (Tier 0–5) are resolved
+- architecture remediation complete: O(1) trigger index, hardened EventTap lifecycle, reduced MainActor coupling
+- Insights / UsageTracker feature shipped (beyond original scope)
+- CI pipeline active via GitHub Actions
+- signing and release workflow documented in `docs/signing-and-release.md`
+- end-to-end real macOS device validation is the last remaining critical gap
+- no signed/notarized distributable yet (workflow documented, Developer ID cert required to execute)
 
 ## Current priorities
 
 Follow this order unless the user explicitly asks otherwise:
 
-1. Real macOS validation
-2. Runtime reliability and architecture correctness
-3. Tests and repeatable validation
-4. Product behavior and interaction quality
-5. Packaging and product polish
-6. Release hardening and naming
+1. Real macOS device validation (end-to-end shortcut capture, toggle, permissions)
+2. Signed/notarized distributable build
+3. New feature work or behavior improvements
+4. Additional test coverage
 
-The current execution order is documented in `docs/issue-priority-plan.md`.
+The completed issue execution log is in `docs/issue-priority-plan.md`.
 
 ## Source of truth for planning
 

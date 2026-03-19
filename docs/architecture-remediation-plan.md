@@ -1,102 +1,55 @@
 # Architecture Remediation Plan
 
-This document captures the next architectural improvements needed to move Quickey from a good scaffold to a stronger macOS-native design.
+This document captures architectural improvements needed to move Quickey from a good scaffold to a stronger macOS-native design.
 
-## P0 — correctness, lifecycle, and hot-path fixes
+> **Status update (2026-03-19):** All P0 items and most P1 items are complete. See status markers.
 
-### 1. Align permissions with the actual CGEvent tap model
-**Problem**
-The current implementation checks Accessibility-style trust APIs, while the event pipeline is built around `CGEventTap`.
+## P0 — correctness, lifecycle, and hot-path fixes ✅ All done
 
-**Target**
-Use the most appropriate listen-event access APIs for the actual event-monitoring path.
+### 1. Align permissions with the actual CGEvent tap model ✅ Done (#23)
+Switched from Accessibility-style trust APIs to the correct Input Monitoring permission model for CGEventTap.
 
-**Why it matters**
-Permission semantics should match the real implementation path, especially for macOS privacy behavior.
+### 2. Replace linear shortcut scans with a precompiled O(1) lookup index ✅ Done (#27)
+`ShortcutSignature` model and prebuilt dictionary keyed by keycode + modifiers implemented.
 
-### 2. Replace linear shortcut scans with a precompiled O(1) lookup index
-**Problem**
-Hot-path matching currently scans the saved shortcuts linearly.
+### 3. Tighten event tap lifecycle ownership and cleanup ✅ Done (#25)
+Callback context allocation, retention, teardown, and run-loop removal all have a clear lifecycle contract. Lifecycle tests added.
 
-**Target**
-Create a `ShortcutSignature` model and a prebuilt dictionary keyed by keycode + modifiers.
-
-**Why it matters**
-This is the simplest and highest-value performance upgrade for shortcut triggering.
-
-### 3. Tighten event tap lifecycle ownership and cleanup
-**Problem**
-The current event tap callback context and retained box ownership should be made more explicit and auditable.
-
-**Target**
-Ensure callback context allocation, retention, teardown, and run-loop removal all have a clear lifecycle contract.
-
-**Why it matters**
-Menu bar utilities are long-lived processes. Lifecycle ambiguity becomes reliability debt.
-
-### 4. Reduce unnecessary MainActor pressure in runtime services
-**Problem**
-Too much of the runtime path currently lives under `@MainActor`.
-
-**Target**
-Keep UI-facing code on the main actor, but reduce main-thread coupling for matching, indexing, and non-UI runtime logic where safe.
-
-**Why it matters**
-This improves scalability, responsiveness, and future maintainability.
+### 4. Reduce unnecessary MainActor pressure in runtime services ✅ Done (#32)
+Sendable conformances added. MainActor coupling reduced to UI-facing paths only.
 
 ## P1 — architecture quality and product behavior
 
 ### 5. Introduce clearer state boundaries
-**Problem**
-App shell state, settings state, and runtime shortcut state are still fairly controller-centric.
+**Status:** Partially addressed via runtime state model documentation (#29).
+Controller-centric structure remains; further separation is a future improvement.
 
-**Target**
-Separate app shell orchestration from persistent settings state and live runtime state.
+### 6. Upgrade toggle behavior beyond a single global previous-app memory ✅ Done (#34)
+Toggle semantics improved: activate → restore previous app → hide fallback. Per-shortcut history stacks remain a potential future enhancement.
 
-### 6. Upgrade toggle behavior beyond a single global previous-app memory
-**Problem**
-Current toggle behavior is best-effort and tracks only one previous non-target app.
+### 7. Promote the recorder into a more native-feeling shortcut capture component ✅ Done (#37)
+Unsupported-key handling improved, recorder UX polished.
 
-**Target**
-Move toward per-shortcut or richer restoration heuristics.
-
-### 7. Promote the recorder into a more native-feeling shortcut capture component
-**Problem**
-The current recorder is functional but still basic.
-
-**Target**
-Improve unsupported-key handling, capture clarity, and shortcut presentation.
-
-### 8. Add test seams around event-independent core logic
-**Problem**
-Core matching and toggle logic should be easier to test without requiring the full macOS event environment.
-
-**Target**
-Introduce boundaries or protocols where needed so core logic can be validated with focused tests.
+### 8. Add test seams around event-independent core logic ✅ Done (#30)
+Comprehensive tests for key mapping, conflict logic, and lifecycle behavior added.
 
 ## P2 — productization and modern macOS integration
 
-### 9. Re-evaluate whether MenuBarExtra should own more of the menu bar UI
-**Note**
-This is optional, not mandatory. The current AppKit-led path is valid, but a future refactor can assess whether newer SwiftUI menu bar patterns are worth adopting.
+### 9. Re-evaluate MenuBarExtra ownership
+**Status:** Explicitly decided — AppKit-first retained. See `docs/plans/app-structure-direction.md` (#24). MenuBarExtra not adopted due to hard AppKit constraints.
 
-### 10. Add launch-at-login architecture using modern ServiceManagement APIs
-**Target**
-Adopt `SMAppService` when the app is ready for real daily use.
+### 10. Add launch-at-login via modern ServiceManagement APIs ✅ Done (#31)
+`SMAppService.mainApp` integration implemented.
 
-### 11. Turn packaging from scaffold into a real release flow
-**Target**
-Reduce manual app-bundle steps and make packaging reproducible.
+### 11. Turn packaging from scaffold into a real release flow ✅ Done (#38)
+`scripts/package-app.sh` automates the full packaging flow.
 
-### 12. Define the signing and notarization path early
-**Target**
-Avoid late-stage release friction by planning bundle identity, signing, and notarization clearly.
+### 12. Define the signing and notarization path ✅ Done (#49)
+Full signing, notarization, and release workflow documented in `docs/signing-and-release.md`.
 
-## Recommended execution order
-1. Permission model alignment
-2. O(1) shortcut index
-3. Event tap lifecycle cleanup
-4. Test seams and focused tests
-5. Toggle behavior upgrade
-6. Recorder polish
-7. Launch-at-login and release hardening
+## What remains
+
+- End-to-end real macOS device validation
+- Signed/notarized distributable build (requires Developer ID cert)
+- Per-shortcut toggle history stacks (beyond current best-effort single-memory approach)
+- Private SkyLight low-latency activation path (intentionally deferred)

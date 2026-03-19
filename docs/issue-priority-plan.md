@@ -1,75 +1,57 @@
 # Issue Priority Plan
 
-This plan groups the existing GitHub issues into a practical execution order.
+This plan groups the GitHub issues into a practical execution order with completion status.
 
-## Tier 0 — prove the project is real on macOS
-These issues should go first because they convert the current scaffold into a validated macOS app.
+## Tier 0 — prove the project is real on macOS ✅ Done
+These issues converted the scaffold into a compilable, testable app.
 
-1. **#1 Compile and validate Quickey on macOS**
-2. **#2 Fix compile/runtime issues discovered during first macOS build**
+1. ✅ **#1 Compile and validate Quickey on macOS** — Swift 6 strict concurrency fixed (#21), CI passing (#39)
+2. ✅ **#2 Fix compile/runtime issues discovered during first macOS build** — EventTap memory leak, silent failure, and deprecation warnings fixed (#22)
 
-Why first:
-Without real macOS validation, architecture and UX improvements remain partially theoretical.
+Remaining: End-to-end validation on a real macOS device (shortcut capture, toggle, permissions) is still pending.
 
-## Tier 1 — highest-value architecture and runtime reliability upgrades
-These issues align the implementation with the actual runtime model and improve long-term stability.
+## Tier 1 — highest-value architecture and runtime reliability upgrades ✅ Done
 
-3. **#10 Align permission model with CGEvent tap listen-event access APIs**
-4. **#12 Tighten EventTap lifecycle ownership and cleanup**
-5. **#16 Handle CGEvent tap disabled/timeout recovery**
-6. **#17 Recover shortcut monitoring after permission changes without relaunch**
-7. **#11 Replace linear shortcut scans with a precompiled trigger index**
-8. **#13 Reduce MainActor pressure in runtime shortcut services**
+3. ✅ **#10 Align permission model with CGEvent tap listen-event access APIs** — Switched to Input Monitoring model (#23)
+4. ✅ **#12 Tighten EventTap lifecycle ownership and cleanup** — Stricter lifecycle + lifecycle tests added (#25)
+5. ✅ **#16 Handle CGEvent tap disabled/timeout recovery** — Auto re-enable on disable/timeout (#26)
+6. ✅ **#17 Recover shortcut monitoring after permission changes without relaunch** — Monitoring recovery without relaunch (#28)
+7. ✅ **#11 Replace linear shortcut scans with a precompiled trigger index** — O(1) trigger index (#27)
+8. ✅ **#13 Reduce MainActor pressure in runtime shortcut services** — Sendable conformances, MainActor coupling reduced (#32); runtime state model documented (#29)
 
-Why second:
-These are the strongest improvements for platform alignment, hot-path correctness, runtime resilience, and long-term reliability.
+## Tier 2 — tests and repeatable validation ✅ Done
 
-## Tier 2 — tests should move earlier than before
-These issues now move up because runtime-core changes should be protected by focused verification.
+9. ✅ **#7 Add tests for key mapping, conflicts, and toggle logic** — Comprehensive tests for key mapping, conflicts, lifecycle (#30)
+10. ✅ **#19 Add macOS CI or repeatable build validation path** — GitHub Actions CI for macOS build validation (#39)
 
-9. **#7 Add tests for key mapping, conflicts, and toggle logic**
-10. **#19 Add macOS CI or repeatable build validation path**
+## Tier 3 — product behavior and interaction quality ✅ Done
 
-Why here:
-Codex review highlighted that tests and repeatable validation should not wait until the very end once runtime changes begin.
+11. ✅ **#3 Polish shortcut recorder UX and unsupported-key handling** — Recorder UX polished (#37)
+12. ✅ **#4 Improve toggle semantics for minimized/full-screen/multi-window apps** — Toggle semantics improved (#34)
+13. ✅ **#5 Add stronger Hyper-style shortcut support and validation** — Hyper Key UI and validation (#33, #36)
+14. ✅ **#18 Decide app structure direction: SwiftUI scene-based vs deliberate AppKit-first** — AppKit-first decision documented (#24)
 
-## Tier 3 — product behavior and interaction quality
-These issues improve the actual user experience once the project is validated and the runtime core is safer.
+## Tier 4 — packaging and daily-utility readiness ✅ Done
 
-11. **#3 Polish shortcut recorder UX and unsupported-key handling**
-12. **#4 Improve toggle semantics for minimized/full-screen/multi-window apps**
-13. **#5 Add stronger Hyper-style shortcut support and validation**
-14. **#18 Decide app structure direction: SwiftUI scene-based vs deliberate AppKit-first**
+15. ✅ **#6 Automate .app packaging end to end** — Packaging script automated (#38)
+16. ✅ **#14 Add launch-at-login support with modern ServiceManagement APIs** — SMAppService integration (#31)
+17. ✅ **#15 Add app icon, bundle polish, and release metadata** — Bundle metadata, menu bar icon, version display polished (#48)
 
-Why here:
-They matter a lot, but they should rest on a more trustworthy macOS-validated and architecturally tightened baseline.
+## Tier 5 — release hardening and identity ✅ Done
 
-## Tier 4 — packaging and daily-utility readiness
-These issues move the project closer to something people can run regularly.
+18. ✅ **#8 Document signing/notarization and release workflow** — Full workflow documented in `docs/signing-and-release.md` (#49)
+19. ✅ **#9 Rename project from HotAppClone to Quickey** — Product display name (#50) and internal rename (#51) complete
 
-15. **#6 Automate .app packaging end to end**
-16. **#14 Add launch-at-login support with modern ServiceManagement APIs**
-17. **#15 Add app icon, bundle polish, and release metadata**
+## Beyond original plan — additional features shipped
 
-Why here:
-These improve daily use and product quality once core functionality is sound.
+- ✅ **UsageTracker service** with SQLite daily aggregation (#44)
+- ✅ **SettingsView tabbed layout** (Shortcuts / General / Insights) (#45)
+- ✅ **Inline usage stats** in Shortcuts tab (#46)
+- ✅ **Insights tab** with trend chart and app ranking (#47)
 
-## Tier 5 — release hardening and identity
-These issues remain important but should follow a stronger product baseline.
+## What remains
 
-18. **#8 Document signing/notarization and release workflow**
-19. **#9 Rename project from HotAppClone to Quickey**
-
-Why here:
-These matter, but renaming or release-hardening too early increases churn before the architecture and runtime are stable.
-
-## Recommended execution path
-If choosing only the most important next eight issues, do them in this order:
-1. #1
-2. #2
-3. #10
-4. #12
-5. #16
-6. #17
-7. #11
-8. #7
+- Real macOS device validation (end-to-end shortcut capture, toggle, permissions)
+- Signed/notarized distributable (Developer ID cert required)
+- Private SkyLight activation path (intentionally deferred)
+- Toggle edge cases: fullscreen / multi-window / multi-display

@@ -70,16 +70,22 @@ Responsibilities:
 
 ### Settings and user interaction
 - `SettingsWindowController`
-- `SettingsView`
+- `SettingsView` (tabbed: Shortcuts / General / Insights)
 - `SettingsViewModel`
 - `ShortcutRecorderView`
+- `ShortcutsTabView`
+- `GeneralTabView`
+- `InsightsTabView`
+- `InsightsViewModel`
+- `BarChartView`
 
 Responsibilities:
 - choose target applications
 - record shortcuts
-- display saved bindings
-- surface permission state
+- display saved bindings with inline usage stats
+- surface permission state and launch-at-login toggle
 - show conflicts before saving
+- display usage trends and app ranking via Insights tab
 
 ### Shortcut domain
 - `AppShortcut`
@@ -117,15 +123,26 @@ Responsibilities:
 - hide target app as fallback
 - reveal selected application in Finder when needed
 
+### Usage tracking
+- `UsageTracker`
+
+Responsibilities:
+- record shortcut activations with SQLite daily aggregation
+- provide usage counts per shortcut for Insights UI
+- run off the main actor via Swift actor isolation
+
 ### Permissions and packaging
 - `AccessibilityPermissionService`
+- `LaunchAtLoginService`
 - `scripts/package-app.sh`
 - `Sources/Quickey/Resources/Info.plist`
 
 Responsibilities:
-- request/check Accessibility trust
+- request/check Input Monitoring permission for CGEvent tap
+- recover monitoring after permission changes without relaunch
+- manage launch-at-login state via SMAppService
 - provide LSUIElement app bundle scaffold
-- establish the baseline packaging path
+- automate `.app` packaging via script
 
 ## Runtime event flow
 
@@ -165,14 +182,17 @@ Global keyDown event
 
 ## Current design choices
 - **SPM-first**: simple repo layout and source organization
-- **SwiftUI + AppKit hybrid**: SwiftUI for settings, AppKit where window/control behavior needs it
-- **Public API baseline first**: avoid private SkyLight dependency in the first deliverable
-- **Best-effort toggle semantics**: restore previous app when possible, otherwise hide target app
-- **Linux-authored, macOS-targeted**: architecture is prepared here, but final validation must happen on macOS
+- **AppKit-first with selective SwiftUI**: deliberate architectural decision documented in `docs/plans/app-structure-direction.md`; hard AppKit requirements (`.accessory` policy, raw key capture, CGEvent tap, NSWorkspace) prevent a pure SwiftUI scene-based approach
+- **Input Monitoring permission**: aligned with the real CGEvent tap monitoring path (not Accessibility trust)
+- **O(1) trigger index**: `ShortcutSignature` dictionary replaces linear scans in the hot path
+- **Hardened EventTap lifecycle**: explicit ownership, auto-recovery on disable/timeout, run-loop cleanup
+- **Public API baseline**: no private SkyLight dependency; low-latency private activation path intentionally deferred
+- **Best-effort toggle semantics**: activate → restore previous app → hide fallback
+- **UsageTracker**: SQLite-backed daily usage aggregation off the main actor
 
 ## Known architectural gaps
-- Recorder control is functional but basic
-- No dedicated abstraction for per-shortcut trigger history yet
-- No test seam around event-tap capture
-- No signed release pipeline yet
-- No private low-latency activation tier yet
+- No dedicated per-shortcut toggle history stack (single global previous-app memory is current approach)
+- No test seam around event-tap capture itself (core logic is testable; tap infrastructure requires real macOS)
+- Signed/notarized release build not yet produced (workflow documented in `docs/signing-and-release.md`)
+- No private low-latency SkyLight activation tier (intentionally deferred)
+- End-to-end device validation still pending on real macOS hardware

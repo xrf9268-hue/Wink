@@ -15,91 +15,71 @@ Delivered:
 - initial Thor-like toggle behavior
 - packaging scaffold and validation docs
 
-## Phase 1 — macOS validation
-Status: **next critical milestone**
+## Phase 1 — macOS validation and runtime reliability
+Status: **done** (CI passes; real device end-to-end validation still pending)
 
-Goal:
-Compile and run on a real macOS machine.
+Delivered:
+- Swift 6 strict concurrency compile errors fixed (#21)
+- EventTap memory leak and silent failure fixed (#22)
+- Permission model aligned with Input Monitoring APIs (#23)
+- EventTap lifecycle hardened with auto-recovery (#25, #26)
+- O(1) precompiled trigger index replacing linear scans (#27)
+- Shortcut monitoring recovery after permission changes without relaunch (#28)
+- MainActor coupling reduced; Sendable conformances added (#32)
+- Comprehensive tests for key mapping, conflicts, and lifecycle (#30)
+- GitHub Actions CI for macOS build validation (#39)
+- AppKit-first architecture decision documented (#24)
 
-Tasks:
-- build with `swift build`
-- run `swift test`
-- package the `.app`
-- validate LSUIElement behavior
-- validate accessibility prompt and permission persistence
-- validate one or more real shortcuts end to end
-- fix compile/runtime gaps discovered on macOS
+Remaining:
+- End-to-end validation on a real macOS device (shortcut capture, toggle, permissions)
 
-Exit criteria:
-- app compiles on macOS
-- app launches successfully as a menu bar utility
-- at least one app shortcut works end to end
+## Phase 2 — Recorder and settings polish
+Status: **done**
 
-## Phase 2 — recorder and settings polish
-Status: **planned**
-
-Goal:
-Make shortcut entry and settings interaction feel reliable and pleasant.
-
-Tasks:
-- improve recorder control visuals and unsupported-key handling
-- add clearer validation and inline help
-- improve shortcut display formatting
-- improve settings window ergonomics
-- optionally add search/filter for mappings
-
-Exit criteria:
-- recorder flow is smooth enough for repeated daily use
-- common user mistakes are clearly explained
+Delivered:
+- Shortcut recorder UX polished, unsupported-key handling improved (#37)
+- Hyper Key UI support with symbol display and badge (#36)
+- Hyper-style shortcut validation and edge cases (#33)
+- SettingsView refactored into tabbed layout: Shortcuts / General / Insights (#45)
+- Toggle semantics improved for hidden and minimized apps (#34)
 
 ## Phase 3 — Thor/HotApp parity improvements
-Status: **planned**
+Status: **substantially done**
 
-Goal:
-Close the behavioral gap with Thor and the visible HotApp design.
+Delivered:
+- Toggle behavior: activate → restore previous app → hide fallback (#34)
+- Hyper-style combination support validated (#33, #36)
+- UsageTracker service with SQLite daily aggregation (#44)
+- Insights tab with trend chart and app ranking (#47)
+- Inline usage stats in Shortcuts tab (#46)
 
-Tasks:
-- improve previous-app restoration heuristics
-- introduce per-shortcut history tracking
-- improve minimized/full-screen/multi-window handling
-- better Hyper-style combination support
-- add stale-app detection and running-app indicators
-- optionally explore a private low-latency activation path behind an explicit feature flag
+Remaining:
+- Per-shortcut history stacks (single global previous-app memory is current approach)
+- Stale-app detection and running-app indicators
+- Private low-latency SkyLight activation path (intentionally deferred)
 
-Exit criteria:
-- toggle behavior feels dependable in normal daily workflows
-- edge cases are substantially reduced
+## Phase 4 — Packaging and release hardening
+Status: **done**
 
-## Phase 4 — packaging and release hardening
-Status: **planned**
+Delivered:
+- Automated `.app` packaging end to end (#38)
+- Launch-at-login via SMAppService (#31)
+- App icon and polished bundle metadata (#48)
+- Signing and notarization workflow documented (#49)
+- GitHub Actions CI baseline (#39)
+- Product renamed to Quickey (#50, #51)
 
-Goal:
-Make the app easier to package, share, and maintain.
+Remaining:
+- Signed/notarized distributable build (requires Developer ID cert)
 
-Tasks:
-- add app icon and polished bundle metadata
-- automate release packaging end to end
-- document signing and notarization workflow
-- define versioning and changelog baseline
-- consider macOS CI for builds/tests
+## Phase 5 — Quality and maintenance
+Status: **in progress**
 
-Exit criteria:
-- reproducible release packaging flow exists
-- signing/notarization path is documented or implemented
+Delivered:
+- Key mapping, conflict, and lifecycle tests (#30)
+- Architecture and runtime state model documentation (#24, #29)
 
-## Phase 5 — quality and maintenance
-Status: **planned**
-
-Goal:
-Improve confidence and handoff quality.
-
-Tasks:
-- add tests for key mapping
-- add tests for conflict logic
-- add tests for toggle behavior logic
-- add screenshots / demo material
-- keep docs aligned with implementation
-
-Exit criteria:
-- key logic has meaningful test coverage
-- repo is easy for another contributor or agent to continue
+Remaining:
+- Real macOS device validation and fixes
+- Docs aligned with implementation (ongoing)
+- Screenshots / demo material
