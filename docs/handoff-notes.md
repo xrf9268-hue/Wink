@@ -5,7 +5,7 @@ Quickey has progressed from a prototype scaffold to a feature-complete applicati
 
 ### What is in place
 - SPM-only Swift 6 project structure
-- Menu bar app (AppKit-first, selective SwiftUI — architecture decision documented in `docs/plans/app-structure-direction.md`)
+- Menu bar app (AppKit-first, selective SwiftUI — architecture decision documented in `docs/archive/app-structure-direction.md`)
 - Tabbed settings window: Shortcuts, General, Insights
 - Persistent shortcut storage + SQLite usage tracking
 - Global key capture via CGEvent tap (Input Monitoring permission)

@@ -1,25 +1,25 @@
 # Docs Index
 
-This directory contains the design, validation, architecture, and continuation notes for Quickey.
+This directory contains design, validation, architecture, and continuation notes for Quickey.
 
 ## Start here
-- [`../AGENTS.md`](../AGENTS.md) — agent-facing project guidance, priorities, constraints, and editing rules
-- [`architecture.md`](./architecture.md) — current system overview, module boundaries, and runtime flows
-- [`issue-priority-plan.md`](./issue-priority-plan.md) — the main execution order for current work
+- [`../AGENTS.md`](../AGENTS.md) — agent-facing project guidance, priorities, constraints
+- [`architecture.md`](./architecture.md) — current system overview, module boundaries, runtime flows
+- [`issue-priority-plan.md`](./issue-priority-plan.md) — execution order and completion log
 - [`macos-validation-checklist.md`](./macos-validation-checklist.md) — shortest path to real macOS verification
 
 ## Core supporting docs
-- [`architecture-remediation-plan.md`](./architecture-remediation-plan.md) — architectural hardening plan
 - [`roadmap.md`](./roadmap.md) — phase-level product direction
-- [`handoff-notes.md`](./handoff-notes.md) — short current-state handoff summary
+- [`handoff-notes.md`](./handoff-notes.md) — current-state handoff summary
 - [`../TODO.md`](../TODO.md) — high-level execution board
 
 ## Additional references
-- [`clone-scope.md`](./clone-scope.md) — what this clone is trying to deliver now
 - [`toggle-semantics.md`](./toggle-semantics.md) — intended app-switching and toggle-away behavior
 - [`packaging-and-permissions.md`](./packaging-and-permissions.md) — app bundle baseline and permission notes
-- [`codex-review-summary.md`](./codex-review-summary.md) — review findings on architecture, Apple alignment, performance, and issue coverage
-- [`issues-backlog.md`](./issues-backlog.md) — lightweight backlog-theme summary
+- [`signing-and-release.md`](./signing-and-release.md) — signing, notarization, and release workflow
+
+## Archive
+Completed development-era docs are preserved in [`archive/`](./archive/) for historical reference.
 
 ## Suggested reading order for a new contributor
 1. `../AGENTS.md`
