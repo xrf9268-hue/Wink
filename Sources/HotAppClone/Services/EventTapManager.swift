@@ -65,9 +65,9 @@ final class EventTapManager {
     }
 
     private func handle(event: CGEvent) {
-        let flags = NSEvent.ModifierFlags(cgEventFlags: event.flags)
+        let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-        onKeyPress?(KeyPress(keyCode: keyCode, modifiers: flags.intersection(.deviceIndependentFlagsMask)))
+        onKeyPress?(KeyPress(keyCode: keyCode, modifiers: flags.intersection(NSEvent.ModifierFlags.deviceIndependentFlagsMask)))
     }
 }
 
