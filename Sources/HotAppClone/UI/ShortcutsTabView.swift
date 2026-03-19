@@ -86,6 +86,9 @@ struct ShortcutsTabView: View {
                             Text(shortcut.bundleIdentifier)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            Text("\(viewModel.usageCounts[shortcut.id, default: 0])× past 7 days")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
                         }
                         Spacer()
                         HStack(spacing: 4) {

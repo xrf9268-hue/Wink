@@ -11,6 +11,7 @@ final class SettingsViewModel: ObservableObject {
     @Published var accessibilityGranted: Bool = false
     @Published var conflictMessage: String?
     @Published var launchAtLoginEnabled: Bool = false
+    @Published var usageCounts: [UUID: Int] = [:]
 
     private let shortcutStore: ShortcutStore
     private let shortcutManager: ShortcutManager
@@ -26,6 +27,7 @@ final class SettingsViewModel: ObservableObject {
         self.shortcuts = shortcutStore.shortcuts
         self.accessibilityGranted = shortcutManager.hasAccessibilityAccess()
         self.launchAtLoginEnabled = launchAtLoginService.isEnabled
+        Task { await refreshUsageCounts() }
     }
 
     func addShortcut() {
@@ -53,6 +55,7 @@ final class SettingsViewModel: ObservableObject {
         shortcutManager.save(shortcuts: updated)
         conflictMessage = nil
         resetDraft()
+        Task { await refreshUsageCounts() }
     }
 
     func removeShortcut(id: UUID) {
@@ -60,7 +63,10 @@ final class SettingsViewModel: ObservableObject {
         shortcuts = updated
         shortcutManager.save(shortcuts: updated)
         if let usageTracker {
-            Task { await usageTracker.deleteUsage(shortcutId: id) }
+            Task {
+                await usageTracker.deleteUsage(shortcutId: id)
+                await refreshUsageCounts()
+            }
         }
     }
 
@@ -96,6 +102,11 @@ final class SettingsViewModel: ObservableObject {
     func setLaunchAtLogin(_ enabled: Bool) {
         launchAtLoginService.setEnabled(enabled)
         launchAtLoginEnabled = launchAtLoginService.isEnabled
+    }
+
+    func refreshUsageCounts() async {
+        guard let usageTracker else { return }
+        usageCounts = await usageTracker.usageCounts(days: 7)
     }
 
     func clearRecordedShortcut() {
