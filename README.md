@@ -12,6 +12,7 @@ A macOS menu bar utility inspired by Thor and the recovered HotApp article. It b
 - Accessibility permission check/request flow
 - Basic shortcut conflict detection
 - Recorder-style shortcut capture UI
+- Thor-like toggle semantics baseline
 - Packaging scaffold for `.app`
 
 ## Project layout
@@ -21,6 +22,7 @@ A macOS menu bar utility inspired by Thor and the recovered HotApp article. It b
 - `Tests/HotAppCloneTests/`
 - `docs/clone-scope.md`
 - `docs/packaging-and-permissions.md`
+- `docs/toggle-semantics.md`
 - `scripts/package-app.sh`
 
 ## Run and build
@@ -54,6 +56,7 @@ The app needs Accessibility permission to observe global key events.
 - No SkyLight/private activation path yet
 - No signed/notarized release flow yet
 - Not compiled on this Linux host; final verification must happen on macOS
+- Toggle behavior is best-effort and still needs macOS edge-case validation
 
 ## Notes
 This project is an independent clone implementation target, not a workspace snapshot.

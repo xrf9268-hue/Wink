@@ -20,7 +20,8 @@
 ## Core behavior validation
 - [ ] Add one shortcut for a target app
 - [ ] Trigger shortcut and bring app frontmost
-- [ ] Trigger the same shortcut again and hide/toggle away
+- [ ] Trigger the same shortcut again and restore the previous app when possible
+- [ ] Validate hide fallback when no previous app is restorable
 - [ ] Validate at least one Hyper-style modifier combination
 - [ ] Validate duplicate shortcut conflict warning
 
