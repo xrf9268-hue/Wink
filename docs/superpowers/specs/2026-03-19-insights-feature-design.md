@@ -28,22 +28,43 @@ CREATE TABLE daily_usage (
 
 Daily aggregation only — no raw event storage. This keeps the database tiny (years of data under 1MB) while fully supporting all planned queries.
 
+### Database Initialization
+
+On first launch, `UsageTracker.init` will:
+1. Ensure `~/Library/Application Support/HotAppClone/` directory exists (via `FileManager.createDirectory`)
+2. Open (or create) `usage.db`
+3. Run `CREATE TABLE IF NOT EXISTS daily_usage (...)`
+
+No migration system needed for MVP — the schema is simple and stable. If future changes are needed, a `schema_version` pragma can be added later.
+
 ### UsageTracker Service
 
-New service with the following interface:
+Declared as `actor UsageTracker` to run SQLite operations off the main thread. The key event handler in `ShortcutManager` must not block on disk I/O.
 
-- `recordUsage(shortcutId:)` — UPSERT: increment today's count for the given shortcut. Called from `ShortcutManager` when a shortcut triggers successfully.
-- `dailyCounts(shortcutId:, days:) -> [(date: String, count: Int)]` — Returns per-day counts for the trend chart.
-- `totalCount(shortcutId:, days:) -> Int` — Total usage in the given period. Used for inline stats on the Shortcuts list.
-- `topShortcuts(days:, limit:) -> [(shortcutId: String, count: Int)]` — Sorted by usage count descending. Used for the Insights ranking list.
+Interface:
+
+- `recordUsage(shortcutId: UUID)` — UPSERT: increment today's count. Called only when `AppSwitcher.toggleApplication()` returns `true` (successful switch).
+- `dailyCounts(days:) -> [String: [(date: String, count: Int)]]` — Returns per-day counts for all shortcuts in a single query. The chart view and ranking list both need this data, so a batched query avoids N+1.
+- `usageCounts(days:) -> [UUID: Int]` — Returns total count per shortcut in one query. Used for inline stats on the Shortcuts list (avoids per-row async calls).
 - `totalSwitches(days:) -> Int` — Sum of all shortcut usage in the period. Used for the headline number.
-- `deleteUsage(shortcutId:)` — Remove all records for a shortcut. Called when a shortcut is deleted.
+- `deleteUsage(shortcutId: UUID)` — Remove all records for a shortcut. Fire-and-forget on deletion (orphan stats are harmless if the async delete races).
 
 ### Integration Point
 
-In `ShortcutManager`, after a shortcut match triggers `AppSwitcher`, call `UsageTracker.recordUsage(shortcutId:)`.
+In `ShortcutManager`, after `AppSwitcher.toggleApplication()` returns `true`, call `Task { await usageTracker.recordUsage(shortcutId:) }`. Only record on successful switches to avoid inflating counts.
 
-When a shortcut is deleted via `SettingsViewModel`, call `UsageTracker.deleteUsage(shortcutId:)`.
+When a shortcut is deleted via `SettingsViewModel`, call `Task { await usageTracker.deleteUsage(shortcutId:) }`.
+
+### Injection Chain
+
+`AppController` creates `UsageTracker` and passes it to:
+- `ShortcutManager.init(usageTracker:)` — for recording usage on key events
+- `SettingsWindowController.init(usageTracker:)` → `SettingsViewModel.init(usageTracker:)` — for inline stats and deletion cleanup
+- `InsightsViewModel.init(usageTracker:)` — for the Insights tab data
+
+### Zero-Fill for Chart Data
+
+`dailyCounts` returns only days with non-zero usage. The chart renderer must fill in missing days with count=0 to produce a complete date range for the selected period (7 or 30 days).
 
 ## UI Design
 
@@ -98,7 +119,7 @@ Design follows Apple Screen Time's visual language: one headline number, one cha
    - No numbered ranking — the visual order and progress bars are sufficient
 
 **Time period options:**
-- **D (Day)**: Today's usage, bars could show hourly breakdown (optional, can start with just a total)
+- **D (Day)**: Today's total usage count only (no hourly bars — current schema only stores daily aggregates, hourly breakdown would require a schema change)
 - **W (Week)**: Past 7 days, bars show each day
 - **M (Month)**: Past 30 days, bars show each day
 
@@ -120,39 +141,44 @@ Design follows Apple Screen Time's visual language: one headline number, one cha
 | File | Change |
 |------|--------|
 | `SettingsView.swift` | Add tab picker, delegate to tab views |
-| `SettingsViewModel.swift` | Add usage count data for inline stats; call deleteUsage on shortcut removal |
-| `ShortcutManager.swift` | Call `UsageTracker.recordUsage()` on successful shortcut trigger |
-| `AppController.swift` | Initialize UsageTracker, inject into dependencies |
+| `SettingsViewModel.swift` | Add `usageTracker` dependency; load batched usage counts; call deleteUsage on shortcut removal |
+| `ShortcutManager.swift` | Add `usageTracker` parameter; call `recordUsage()` gated on successful `toggleApplication()` return |
+| `AppController.swift` | Initialize UsageTracker, inject into ShortcutManager and SettingsWindowController |
+| `SettingsWindowController.swift` | Accept `usageTracker`, pass to SettingsViewModel and InsightsViewModel |
+| `Package.swift` | Add `linkerSettings: [.linkedLibrary("sqlite3")]` to executable target |
 
 ### SQLite Access
 
 Use the system SQLite C API directly (`import SQLite3`). No third-party ORM needed — the queries are simple enough that raw SQL is cleaner and avoids adding dependencies.
+
+Requires adding `linkerSettings: [.linkedLibrary("sqlite3")]` to the executable target in `Package.swift`.
 
 ### Data Flow
 
 ```
 Shortcut triggered
   → ShortcutManager matches key
-  → AppSwitcher.toggleApplication()
-  → UsageTracker.recordUsage(shortcutId)  // fire-and-forget
-  → SQLite UPSERT on daily_usage
+  → let success = AppSwitcher.toggleApplication()
+  → if success: Task { await usageTracker.recordUsage(shortcutId) }
+  → UsageTracker (actor): SQLite UPSERT on daily_usage (off main thread)
 
 Insights tab opened
   → InsightsViewModel.refresh()
-  → UsageTracker.totalSwitches(days:)     → headline number
-  → UsageTracker.dailyCounts(days:)       → bar chart data
-  → UsageTracker.topShortcuts(days:)      → ranking list
+  → await usageTracker.totalSwitches(days:)  → headline number
+  → await usageTracker.dailyCounts(days:)    → bar chart data (zero-filled)
   → SwiftUI view updates
 
 Shortcuts list displayed
   → SettingsViewModel loads shortcuts
-  → For each: UsageTracker.totalCount(shortcutId:, days: 7)
+  → await usageTracker.usageCounts(days: 7)  → [UUID: Int] dictionary
+  → Each row looks up its count from the dictionary
   → Inline "N× past 7 days" text
 ```
 
 ## Out of Scope
 
 - "Time saved" estimation — unreliable metric, excluded intentionally
-- Hourly breakdown for Day view — can be added later if needed
+- Hourly breakdown for Day view — would require schema change to store sub-daily data
+- App icon loading in ranking list — MVP uses placeholder; real icons can be added later via `NSWorkspace.shared.icon(forFile:)` + `AppBundleLocator`
 - Data export — not needed for MVP
 - CloudKit sync for usage data — local only
