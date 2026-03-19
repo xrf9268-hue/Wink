@@ -19,8 +19,10 @@ final class FrontmostApplicationTracker {
     func restorePreviousAppIfPossible() -> Bool {
         guard let bundleIdentifier = lastNonTargetBundleIdentifier,
               let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first else {
+            lastNonTargetBundleIdentifier = nil
             return false
         }
+        lastNonTargetBundleIdentifier = nil
         return app.activate()
     }
 }
