@@ -125,6 +125,7 @@ struct ShortcutsTabView: View {
 - SettingsViewModel 的 `permissionTimer` 删除
 - AppPreferences.refreshPermissions() 直接调 `shortcutManager.hasAccessibilityAccess()`
 - View 层的 Refresh 按钮仍然可用
+- **UX 变化：** Settings UI 的权限指示灯不再每 3 秒自动更新，改为在 View 出现时 + 用户点击 Refresh 时更新。这是可接受的：用户不会长时间盯着权限灯等待变化，且 ShortcutManager 的后台轮询仍会在权限变化时自动启停 EventTap。
 
 ### View 层适配
 
@@ -183,6 +184,22 @@ struct InsightsTabView: View {
 
 为 AppSwitcher 和 EventTapManager 提取协议，让 ShortcutManager 的测试不依赖真实的 CGEvent tap 和窗口操作。
 
+### KeyPress 提升为独立类型
+
+当前 `KeyPress` 是 `EventTapManager` 的嵌套类型。提取协议后，如果协议方法仍引用 `EventTapManager.KeyPress`，则协议与具体类型耦合，mock 实现也被迫依赖 `EventTapManager`。
+
+解决：将 `KeyPress` 提升为独立顶层 struct，放在 `Models/KeyPress.swift`：
+
+```swift
+// Models/KeyPress.swift
+struct KeyPress: Equatable, Hashable, Sendable {
+    let keyCode: CGKeyCode
+    let modifiers: NSEvent.ModifierFlags
+}
+```
+
+`EventTapManager` 中删除嵌套 `KeyPress` 定义，改为使用顶层 `KeyPress`。所有引用 `EventTapManager.KeyPress` 的地方改为 `KeyPress`（涉及 `EventTapManager`、`ShortcutManager`、`KeyMatcher`）。
+
 ### 协议定义
 
 ```swift
@@ -196,11 +213,10 @@ protocol AppSwitching {
 // Protocols/EventTapManaging.swift
 @MainActor
 protocol EventTapManaging {
-    typealias ShortcutHandler = (EventTapManager.KeyPress) -> Bool
     var isRunning: Bool { get }
-    func start(onKeyPress: @escaping ShortcutHandler)
+    func start(onKeyPress: @escaping (KeyPress) -> Bool)
     func stop()
-    func updateRegisteredShortcuts(_ keyPresses: Set<EventTapManager.KeyPress>)
+    func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>)
     func setHyperKeyEnabled(_ enabled: Bool)
 }
 ```
@@ -209,20 +225,27 @@ protocol EventTapManaging {
 
 - `AppSwitcher` 添加 `: AppSwitching` 遵循
 - `EventTapManager` 添加 `: EventTapManaging` 遵循
-- `ShortcutManager` 的 init 参数类型改为协议：
+- `ShortcutManager` 内部用 `any` 存储协议类型：
 
 ```swift
-init(
-    shortcutStore: ShortcutStore,
-    persistenceService: PersistenceService,
-    appSwitcher: some AppSwitching,
-    eventTapManager: some EventTapManaging = EventTapManager(),
-    permissionService: AccessibilityPermissionService = AccessibilityPermissionService(),
-    usageTracker: UsageTracker? = nil
-)
+@MainActor
+final class ShortcutManager {
+    private let appSwitcher: any AppSwitching
+    private let eventTapManager: any EventTapManaging
+    // ...
+
+    init(
+        shortcutStore: ShortcutStore,
+        persistenceService: PersistenceService,
+        appSwitcher: any AppSwitching,
+        eventTapManager: any EventTapManaging = EventTapManager(),
+        permissionService: AccessibilityPermissionService = AccessibilityPermissionService(),
+        usageTracker: UsageTracker? = nil
+    )
+}
 ```
 
-注意：用 `some` 而非 `any`，保持零开销抽象。ShortcutManager 变成泛型类型，但由于 AppController 是唯一创建者且总是传入具体类型，这不会产生泛型蔓延。
+用 `any` 而非 `some`：`some` 会让 ShortcutManager 变成泛型类，导致所有存储 ShortcutManager 的地方（AppController、SettingsWindowController、AppPreferences）都必须携带类型参数。`any` 的运行时开销仅在方法调用时有一次间接寻址，对 init 注入场景完全可忽略。
 
 ### AccessibilityPermissionService
 
@@ -232,11 +255,13 @@ init(
 
 | 操作 | 文件 |
 |------|------|
+| 新建 | `Models/KeyPress.swift`（从 EventTapManager 提升） |
 | 新建 | `Protocols/AppSwitching.swift` |
 | 新建 | `Protocols/EventTapManaging.swift` |
 | 修改 | `Services/AppSwitcher.swift`（添加协议遵循） |
-| 修改 | `Services/EventTapManager.swift`（添加协议遵循） |
-| 修改 | `Services/ShortcutManager.swift`（参数类型改为协议） |
+| 修改 | `Services/EventTapManager.swift`（删除嵌套 KeyPress，添加协议遵循） |
+| 修改 | `Services/ShortcutManager.swift`（参数类型改为 `any` 协议，`EventTapManager.KeyPress` → `KeyPress`） |
+| 修改 | `Services/KeyMatcher.swift`（`EventTapManager.KeyPress` → `KeyPress`） |
 
 ---
 
@@ -261,7 +286,8 @@ init(
 |------|------|------|
 | @Observable 迁移后 View 不更新 | 中 | @Observable 的追踪是自动的，但需确认 @Bindable 用法正确；运行时验证 |
 | ViewModel 拆分后 ShortcutsTabView 同时依赖两个对象 | 低 | 职责边界清晰：editor 管编辑状态，preferences 管权限/偏好 |
-| ShortcutManager 泛型化后编译问题 | 低 | 用 `some` 避免 `any` 的性能开销和类型擦除复杂性 |
+| ShortcutManager 协议注入后编译问题 | 低 | 用 `any` 避免泛型蔓延，运行时开销可忽略 |
+| KeyPress 提升为独立类型后遗漏引用 | 低 | 编译器会报错所有 `EventTapManager.KeyPress` 引用 |
 | 权限轮询去重后 UI 不及时更新 | 低 | AppPreferences.refreshPermissions() 是同步调用，View 的 Refresh 按钮仍可用 |
 
 ## Testing Plan
