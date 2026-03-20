@@ -67,13 +67,14 @@ final class HyperKeyService {
         process.arguments = arguments
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-            process.waitUntilExit()
+        process.terminationHandler = { process in
             if process.terminationStatus != 0 {
                 logger.error("hidutil exited with status \(process.terminationStatus)")
                 DiagnosticLog.log("hidutil exited with status \(process.terminationStatus)")
             }
+        }
+        do {
+            try process.run()
         } catch {
             logger.error("hidutil failed: \(error.localizedDescription)")
             DiagnosticLog.log("hidutil failed: \(error.localizedDescription)")

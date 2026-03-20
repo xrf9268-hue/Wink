@@ -102,12 +102,11 @@ final class EventTapManager {
                     modifiers: flags.intersection(.deviceIndependentFlagsMask)
                 )
 
-                // Dispatch to main thread for handling (AX calls, SkyLight, etc.)
-                DispatchQueue.main.async {
-                    box.onKeyPress?(keyPress)
-                }
-
                 if swallow {
+                    // Only dispatch to main thread for matched shortcuts
+                    DispatchQueue.main.async {
+                        box.onKeyPress?(keyPress)
+                    }
                     return nil  // swallow the event
                 }
                 return Unmanaged.passUnretained(event)

@@ -52,11 +52,12 @@ final class AppSwitcher {
         if runningApp.isHidden {
             runningApp.unhide()
         }
-        unminimizeWindows(of: runningApp)
-        let activated = activateViaWindowServer(runningApp)
+        let windows = fetchWindows(of: runningApp)
+        unminimizeWindows(of: runningApp, windows: windows)
+        let activated = activateViaWindowServer(runningApp, windows: windows)
 
         // If app has no visible windows after activation, try to get one
-        if activated && !hasVisibleWindows(of: runningApp) {
+        if activated && !hasVisibleWindows(of: runningApp, windows: windows) {
             logger.info("TOGGLE[\(shortcut.appName)]: no visible windows after activation")
             DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: no visible windows, attempting recovery")
             recoverWindowlessApp(runningApp, shortcut: shortcut)
@@ -70,7 +71,7 @@ final class AppSwitcher {
     /// 1. _SLPSSetFrontProcessWithOptions — activate the process (with windowID for Space switching)
     /// 2. SLPSPostEventRecordTo — make the window the key window
     /// 3. AXUIElementPerformAction(kAXRaiseAction) — ensure correct Z-order
-    private func activateViaWindowServer(_ app: NSRunningApplication) -> Bool {
+    private func activateViaWindowServer(_ app: NSRunningApplication, windows: [AXUIElement]?) -> Bool {
         let pid = app.processIdentifier
         var psn = ProcessSerialNumber()
         let status = GetProcessForPID(pid, &psn)
@@ -81,7 +82,7 @@ final class AppSwitcher {
         }
 
         // Get the first window's CGWindowID for Space-aware activation
-        let windowID = firstWindowID(of: app)
+        let windowID = firstWindowID(from: windows)
 
         // Layer 1: Activate the process via SkyLight
         // Passing a real windowID causes macOS to auto-switch to that window's Space
@@ -98,7 +99,7 @@ final class AppSwitcher {
         }
 
         // Layer 3: Raise the first window via Accessibility to ensure correct Z-order
-        raiseFirstWindow(of: app)
+        raiseFirstWindow(from: windows)
 
         return true
     }
@@ -126,31 +127,19 @@ final class AppSwitcher {
         }
     }
 
-    /// Raise the first window of an app via AX kAXRaiseAction.
-    private func raiseFirstWindow(of app: NSRunningApplication) {
-        let axApp = AXUIElementCreateApplication(app.processIdentifier)
-        var windowsRef: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef)
-        guard result == .success, let windows = windowsRef as? [AXUIElement], let firstWindow = windows.first else {
-            return
-        }
+    /// Raise the first window via AX kAXRaiseAction using pre-fetched windows.
+    private func raiseFirstWindow(from windows: [AXUIElement]?) {
+        guard let firstWindow = windows?.first else { return }
         AXUIElementPerformAction(firstWindow, kAXRaiseAction as CFString)
     }
 
     /// Get the CGWindowID of the first window via _AXUIElementGetWindow private API.
     /// This ID is needed for Space-aware activation and makeKeyWindow.
-    private func firstWindowID(of app: NSRunningApplication) -> CGWindowID? {
-        let axApp = AXUIElementCreateApplication(app.processIdentifier)
-        var windowsRef: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef)
-        guard result == .success, let windows = windowsRef as? [AXUIElement], let firstWindow = windows.first else {
-            return nil
-        }
+    private func firstWindowID(from windows: [AXUIElement]?) -> CGWindowID? {
+        guard let firstWindow = windows?.first else { return nil }
         var windowID: CGWindowID = 0
         let axResult = _AXUIElementGetWindow(firstWindow, &windowID)
-        guard axResult == .success, windowID != 0 else {
-            return nil
-        }
+        guard axResult == .success, windowID != 0 else { return nil }
         return windowID
     }
 
@@ -170,7 +159,7 @@ final class AppSwitcher {
         // Check after a short delay if a window appeared
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
-            if self.hasVisibleWindows(of: app) {
+            if self.hasVisibleWindows(of: app, windows: self.fetchWindows(of: app)) {
                 logger.info("TOGGLE[\(shortcut.appName)]: window recovered via AX raise")
                 DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: window recovered via AX raise")
                 return
@@ -188,7 +177,7 @@ final class AppSwitcher {
                 // Check after another delay
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                     guard let self else { return }
-                    if self.hasVisibleWindows(of: app) {
+                    if self.hasVisibleWindows(of: app, windows: self.fetchWindows(of: app)) {
                         logger.info("TOGGLE[\(shortcut.appName)]: window recovered via NSWorkspace.open")
                         DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: window recovered via NSWorkspace.open")
                         return
@@ -210,19 +199,28 @@ final class AppSwitcher {
 
     // MARK: - Window helpers
 
-    /// Unminimize all minimized windows of the given app via Accessibility API.
-    private func unminimizeWindows(of app: NSRunningApplication) {
-        let pid = app.processIdentifier
-        let axApp = AXUIElementCreateApplication(pid)
+    /// Fetch all AX windows for the given app (single IPC roundtrip).
+    private func fetchWindows(of app: NSRunningApplication) -> [AXUIElement]? {
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
         var windowsRef: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef)
         guard result == .success, let windows = windowsRef as? [AXUIElement] else {
-            logger.error("unminimize: AXWindows failed for pid \(pid), result=\(result.rawValue)")
-            DiagnosticLog.log("unminimize: AXWindows failed for pid \(pid), result=\(result.rawValue)")
+            logger.error("fetchWindows: AXWindows failed for pid \(app.processIdentifier), result=\(result.rawValue)")
+            DiagnosticLog.log("fetchWindows: AXWindows failed for pid \(app.processIdentifier), result=\(result.rawValue)")
+            return nil
+        }
+        return windows
+    }
+
+    /// Unminimize all minimized windows using pre-fetched window list.
+    private func unminimizeWindows(of app: NSRunningApplication, windows: [AXUIElement]?) {
+        guard let windows else {
+            logger.error("unminimize: no windows for pid \(app.processIdentifier)")
+            DiagnosticLog.log("unminimize: no windows for pid \(app.processIdentifier)")
             return
         }
         #if DEBUG
-        logger.debug("unminimize: found \(windows.count) windows for pid \(pid)")
+        logger.debug("unminimize: found \(windows.count) windows for pid \(app.processIdentifier)")
         #endif
         for (i, window) in windows.enumerated() {
             var minimizedRef: CFTypeRef?
@@ -236,12 +234,9 @@ final class AppSwitcher {
         }
     }
 
-    /// Check if app has any visible (non-minimized) windows.
-    private func hasVisibleWindows(of app: NSRunningApplication) -> Bool {
-        let axApp = AXUIElementCreateApplication(app.processIdentifier)
-        var windowsRef: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef)
-        guard result == .success, let windows = windowsRef as? [AXUIElement] else { return false }
+    /// Check if app has any visible (non-minimized) windows using pre-fetched window list.
+    private func hasVisibleWindows(of app: NSRunningApplication, windows: [AXUIElement]?) -> Bool {
+        guard let windows else { return false }
         for window in windows {
             var minimizedRef: CFTypeRef?
             let minResult = AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimizedRef)

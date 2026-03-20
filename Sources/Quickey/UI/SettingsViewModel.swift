@@ -21,7 +21,7 @@ final class SettingsViewModel: ObservableObject {
     private let appBundleLocator = AppBundleLocator()
     private let shortcutValidator = ShortcutValidator()
     private let launchAtLoginService = LaunchAtLoginService()
-    private var permissionTimer: Timer?
+    nonisolated(unsafe) private var permissionTimer: Timer?
 
     init(shortcutStore: ShortcutStore, shortcutManager: ShortcutManager, usageTracker: UsageTracker? = nil, hyperKeyService: HyperKeyService? = nil) {
         self.shortcutStore = shortcutStore
@@ -137,6 +137,10 @@ final class SettingsViewModel: ObservableObject {
     func clearRecordedShortcut() {
         recordedShortcut = nil
         isRecordingShortcut = false
+    }
+
+    deinit {
+        permissionTimer?.invalidate()
     }
 
     private func resetDraft() {
