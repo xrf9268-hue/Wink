@@ -294,6 +294,15 @@ struct KeyMatcherTests {
         let enterShortcut = AppShortcut(appName: "E", bundleIdentifier: "com.e", keyEquivalent: "enter", modifierFlags: ["command"])
         #expect(matcher.trigger(for: returnShortcut).keyCode == matcher.trigger(for: enterShortcut).keyCode)
     }
+
+    @Test
+    func buildIndexExcludesDisabledShortcuts() {
+        let enabled = AppShortcut(appName: "A", bundleIdentifier: "com.a", keyEquivalent: "a", modifierFlags: ["command"], isEnabled: true)
+        let disabled = AppShortcut(appName: "B", bundleIdentifier: "com.b", keyEquivalent: "b", modifierFlags: ["option"], isEnabled: false)
+        let index = matcher.buildIndex(for: [enabled, disabled])
+        #expect(index.count == 1)
+        #expect(index.values.first?.bundleIdentifier == "com.a")
+    }
 }
 
 // MARK: - ShortcutValidator

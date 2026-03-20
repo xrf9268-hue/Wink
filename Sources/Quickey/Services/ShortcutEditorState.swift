@@ -67,6 +67,23 @@ final class ShortcutEditorState {
         }
     }
 
+    var allEnabled: Bool {
+        shortcuts.contains { $0.isEnabled }
+    }
+
+    func toggleShortcutEnabled(id: UUID) {
+        guard let index = shortcuts.firstIndex(where: { $0.id == id }) else { return }
+        shortcuts[index].isEnabled.toggle()
+        shortcutManager.save(shortcuts: shortcuts)
+    }
+
+    func setAllEnabled(_ enabled: Bool) {
+        for index in shortcuts.indices {
+            shortcuts[index].isEnabled = enabled
+        }
+        shortcutManager.save(shortcuts: shortcuts)
+    }
+
     func chooseApplication() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.application]
