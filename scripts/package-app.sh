@@ -54,5 +54,10 @@ else
 PLIST
 fi
 
+echo "==> Resetting TCC permissions (ad-hoc signing changes hash on each build)..."
+tccutil reset Accessibility "$BUNDLE_ID" 2>/dev/null || true
+tccutil reset ListenEvent "$BUNDLE_ID" 2>/dev/null || true
+echo "    Permissions reset. App will re-request on launch."
+
 echo "==> Done: $APP_DIR"
 echo "    Run with: open $APP_DIR"
