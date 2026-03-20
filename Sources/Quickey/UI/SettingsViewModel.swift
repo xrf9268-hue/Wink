@@ -21,6 +21,7 @@ final class SettingsViewModel: ObservableObject {
     private let appBundleLocator = AppBundleLocator()
     private let shortcutValidator = ShortcutValidator()
     private let launchAtLoginService = LaunchAtLoginService()
+    private var permissionTimer: Timer?
 
     init(shortcutStore: ShortcutStore, shortcutManager: ShortcutManager, usageTracker: UsageTracker? = nil, hyperKeyService: HyperKeyService? = nil) {
         self.shortcutStore = shortcutStore
@@ -32,6 +33,15 @@ final class SettingsViewModel: ObservableObject {
         self.launchAtLoginEnabled = launchAtLoginService.isEnabled
         self.hyperKeyEnabled = hyperKeyService?.isEnabled ?? false
         Task { await refreshUsageCounts() }
+        startPermissionPolling()
+    }
+
+    private func startPermissionPolling() {
+        permissionTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshPermissions()
+            }
+        }
     }
 
     func addShortcut() {
