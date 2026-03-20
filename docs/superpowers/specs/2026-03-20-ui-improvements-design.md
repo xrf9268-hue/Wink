@@ -44,7 +44,7 @@ A comprehensive UI overhaul for the Settings window, covering all three tabs (Sh
 - Wrap in a card with "SHORTCUTS" section title
 - **Alternating row backgrounds:** even rows `#262626`, odd rows `#2a2a2a` (dark mode); adapt for light mode using system alternating content background
 - Each row layout:
-  - App icon (via `NSWorkspace.shared.icon(forFile:)`, 28x28, rounded corners)
+  - App icon (28x28, rounded corners) — resolved via `AppBundleLocator` → `NSWorkspace.shared.icon(forFile:)`, with generic app icon fallback
   - App name (primary text, medium weight)
   - Bundle ID (caption, secondary color) — moved here from the editor form
   - Usage count (caption, tertiary color): "N× past 7 days"
@@ -92,9 +92,10 @@ A comprehensive UI overhaul for the Settings window, covering all three tabs (Sh
 
 ### 2.3 Data Sources
 
-- **Recently Used:** `NSWorkspace.shared.runningApplications` combined with the app's own `FrontmostApplicationTracker` history. Deduplicated, limited to ~10 most recent.
+- **Recently Used:** `AppListProvider` maintains a persistent recents list (JSON array of bundle IDs, stored alongside shortcuts data). Updated each time `AppSwitcher` activates an app. On popover open, resolve to display entries. `NSWorkspace.shared.runningApplications` supplements this to include currently-running apps even if not yet tracked. Deduplicated, limited to ~10 most recent.
 - **All Apps:** Scan `/Applications`, `~/Applications`, `/System/Applications` recursively for `.app` bundles. Cache the list; refresh on popover open if stale (> 60s).
-- Each entry: app icon (32x32 via `NSWorkspace.shared.icon(forFile:)`), display name, bundle identifier.
+- Each entry: app icon (32x32), display name, bundle identifier.
+- **Icon resolution:** Call `NSWorkspace.shared.urlForApplication(withBundleIdentifier:)` (via `AppBundleLocator`) to get the file URL, then `NSWorkspace.shared.icon(forFile: url.path)`. If the app is not installed (URL is nil), use `NSWorkspace.shared.icon(for: .application)` as a generic fallback icon.
 
 ### 2.4 Search
 
@@ -158,7 +159,7 @@ Three grouped cards replacing the current flat layout:
 - **Alternating row backgrounds** (same pattern as Shortcuts list)
 - Each row layout:
   - Rank circle badge: circular background, bold number. #1 gets gold tint (`rgba(255,214,10,0.15)` bg, `#ffd60a` text), others get gray
-  - App icon (via NSWorkspace, 20x20)
+  - App icon (20x20) — same resolution + fallback as Shortcuts list
   - App name
   - Mini progress bar (60pt wide, 4pt tall) showing relative usage vs. the top-ranked app
   - Count label (monospaced, secondary color)
@@ -193,9 +194,10 @@ Three grouped cards replacing the current flat layout:
 
 ### 5.3 Alternating Row Colors
 
+- Replace `List` with `LazyVStack` inside a `ScrollView` for both Shortcuts and Insights ranking lists. This gives full control over row backgrounds, spacing, and styling without fighting SwiftUI `List`'s opaque background rendering on macOS.
 - Even rows: card background (no extra tint)
 - Odd rows: slightly lighter/darker variant
-- Implementation: use row index modulo 2 to apply conditional background
+- Implementation: use `enumerated()` with index modulo 2 to apply conditional `.background()` modifier
 
 ## 6. Data Model Changes
 
@@ -204,42 +206,62 @@ Three grouped cards replacing the current flat layout:
 Add `isEnabled` property:
 
 ```swift
-struct AppShortcut: Codable, Identifiable {
+struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
     let id: UUID
     var appName: String
     var bundleIdentifier: String
     var keyEquivalent: String
     var modifierFlags: [String]
-    var isEnabled: Bool = true  // NEW
+    var isEnabled: Bool  // NEW
+
+    init(
+        id: UUID = UUID(),
+        appName: String,
+        bundleIdentifier: String,
+        keyEquivalent: String,
+        modifierFlags: [String],
+        isEnabled: Bool = true  // NEW, defaults to true
+    ) {
+        self.id = id
+        self.appName = appName
+        self.bundleIdentifier = bundleIdentifier
+        self.keyEquivalent = keyEquivalent
+        self.modifierFlags = modifierFlags
+        self.isEnabled = isEnabled
+    }
 }
 ```
+
+**Backward compatibility:** Existing JSON files without `isEnabled` will decode with `true` via a custom `init(from decoder:)` that falls back to `true` when the key is absent. This is a one-way migration — older binaries cannot read the new field.
 
 ### 6.2 ShortcutEditorState
 
 - Add `toggleShortcutEnabled(id: UUID)` method
 - Add `setAllEnabled(_ enabled: Bool)` method
 - Add `allEnabled: Bool` computed property (true if any enabled)
+- **Critical:** Both `toggleShortcutEnabled` and `setAllEnabled` must call `shortcutManager.save(shortcuts:)` after mutation to update the `ShortcutStore` and trigger `rebuildIndex()`. Without this, the event tap will continue to fire disabled shortcuts because `ShortcutManager` reads from `ShortcutStore`, not from `ShortcutEditorState.shortcuts`.
 
 ### 6.3 ShortcutManager
 
-- Filter out `isEnabled == false` shortcuts when building trigger index
-- Rebuild index when any shortcut's `isEnabled` changes
+- Filter out `isEnabled == false` shortcuts when building trigger index in `rebuildIndex()`
+- Index rebuild is triggered automatically when `save(shortcuts:)` is called
 
 ## 7. New Files
 
 | File | Purpose |
 |------|---------|
 | `Sources/Quickey/UI/AppPickerPopover.swift` | Popover view with search, sections, keyboard nav |
-| `Sources/Quickey/Services/AppListProvider.swift` | Scans installed apps, caches results, provides recent + all |
+| `Sources/Quickey/UI/SharedComponents.swift` | Extract `ShortcutLabel` (currently `private` in ShortcutsTabView) + new shared card/section title view modifiers |
+| `Sources/Quickey/Services/AppListProvider.swift` | Scans installed apps, maintains persistent recents, caches results |
 
 ## 8. Modified Files
 
 | File | Changes |
 |------|---------|
 | `ShortcutsTabView.swift` | Card layout, status banner, inline Add, alternating rows, per-row Toggle, app icon |
-| `GeneralTabView.swift` | Card grouping, master enable toggle |
+| `GeneralTabView.swift` | Card grouping, master enable toggle; **add `editor: ShortcutEditorState` parameter** for access to `setAllEnabled`/`allEnabled` |
+| `SettingsView.swift` | Pass `editor` to `GeneralTabView` in addition to `preferences` |
 | `InsightsTabView.swift` | Card wrapper, alternating rows, rank circles, app icons, mini bars |
 | `AppShortcut.swift` | Add `isEnabled: Bool` field |
 | `ShortcutEditorState.swift` | Remove `chooseApplication()` (replaced by popover), add toggle/enable-all methods |
 | `ShortcutManager.swift` | Filter disabled shortcuts from trigger index |
-| `SettingsView.swift` | Pass additional dependencies if needed |
