@@ -11,22 +11,26 @@ final class SettingsViewModel: ObservableObject {
     @Published var accessibilityGranted: Bool = false
     @Published var conflictMessage: String?
     @Published var launchAtLoginEnabled: Bool = false
+    @Published var hyperKeyEnabled: Bool = false
     @Published var usageCounts: [UUID: Int] = [:]
 
     private let shortcutStore: ShortcutStore
     private let shortcutManager: ShortcutManager
     private let usageTracker: UsageTracker?
+    private let hyperKeyService: HyperKeyService?
     private let appBundleLocator = AppBundleLocator()
     private let shortcutValidator = ShortcutValidator()
     private let launchAtLoginService = LaunchAtLoginService()
 
-    init(shortcutStore: ShortcutStore, shortcutManager: ShortcutManager, usageTracker: UsageTracker? = nil) {
+    init(shortcutStore: ShortcutStore, shortcutManager: ShortcutManager, usageTracker: UsageTracker? = nil, hyperKeyService: HyperKeyService? = nil) {
         self.shortcutStore = shortcutStore
         self.shortcutManager = shortcutManager
         self.usageTracker = usageTracker
+        self.hyperKeyService = hyperKeyService
         self.shortcuts = shortcutStore.shortcuts
         self.accessibilityGranted = shortcutManager.hasAccessibilityAccess()
         self.launchAtLoginEnabled = launchAtLoginService.isEnabled
+        self.hyperKeyEnabled = hyperKeyService?.isEnabled ?? false
         Task { await refreshUsageCounts() }
     }
 
@@ -102,6 +106,17 @@ final class SettingsViewModel: ObservableObject {
     func setLaunchAtLogin(_ enabled: Bool) {
         launchAtLoginService.setEnabled(enabled)
         launchAtLoginEnabled = launchAtLoginService.isEnabled
+    }
+
+    func setHyperKeyEnabled(_ enabled: Bool) {
+        guard let hyperKeyService else { return }
+        if enabled {
+            hyperKeyService.enable()
+        } else {
+            hyperKeyService.disable()
+        }
+        hyperKeyEnabled = hyperKeyService.isEnabled
+        shortcutManager.setHyperKeyEnabled(hyperKeyEnabled)
     }
 
     func refreshUsageCounts() async {

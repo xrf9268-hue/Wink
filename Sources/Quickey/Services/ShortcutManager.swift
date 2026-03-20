@@ -68,6 +68,10 @@ final class ShortcutManager {
         permissionService.isTrusted()
     }
 
+    func setHyperKeyEnabled(_ enabled: Bool) {
+        eventTapManager.setHyperKeyEnabled(enabled)
+    }
+
     // MARK: - Permission monitoring
 
     private func startPermissionMonitoring() {

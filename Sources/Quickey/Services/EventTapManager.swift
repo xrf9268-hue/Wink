@@ -42,6 +42,8 @@ final class EventTapManager {
         backgroundThread = thread
 
         let mask = (1 << CGEventType.keyDown.rawValue)
+                  | (1 << CGEventType.keyUp.rawValue)
+                  | (1 << CGEventType.flagsChanged.rawValue)
         let callback: CGEventTapCallBack = { proxy, type, event, userInfo in
             let box = Unmanaged<EventTapBox>.fromOpaque(userInfo!).takeUnretainedValue()
 
@@ -59,8 +61,20 @@ final class EventTapManager {
                 if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
                     return Unmanaged.passUnretained(event)
                 }
-                let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
                 let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+
+                // Hyper Key: intercept F19 keyDown → mark held, swallow event
+                if box.hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
+                    box.isHyperHeld = true
+                    return nil
+                }
+
+                // Hyper Key: inject ⌃⌥⇧⌘ into the event when Hyper is held
+                if box.isHyperHeld {
+                    event.flags = event.flags.union([.maskControl, .maskAlternate, .maskShift, .maskCommand])
+                }
+
+                let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
                 let keyPress = KeyPress(
                     keyCode: keyCode,
                     modifiers: flags.intersection(.deviceIndependentFlagsMask)
@@ -77,6 +91,20 @@ final class EventTapManager {
                 if box.registeredShortcuts.contains(keyPress) {
                     return nil  // swallow the event
                 }
+                return Unmanaged.passUnretained(event)
+
+            case .keyUp:
+                // Hyper Key: intercept F19 keyUp → clear held state, swallow event
+                if box.hyperKeyEnabled {
+                    let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+                    if keyCode == HyperKeyService.f19KeyCode {
+                        box.isHyperHeld = false
+                        return nil
+                    }
+                }
+                return Unmanaged.passUnretained(event)
+
+            case .flagsChanged:
                 return Unmanaged.passUnretained(event)
 
             default:
@@ -172,6 +200,14 @@ final class EventTapManager {
 
     private var registeredKeyPresses: Set<KeyPress> = []
 
+    /// Enable or disable Hyper Key (F19) interception in the event tap callback.
+    func setHyperKeyEnabled(_ enabled: Bool) {
+        if let box = retainedBox?.takeUnretainedValue() {
+            box.hyperKeyEnabled = enabled
+            if !enabled { box.isHyperHeld = false }
+        }
+    }
+
     /// Called on main thread from async dispatch. Applies debounce then calls handler.
     private func handleAsync(_ keyPress: KeyPress) {
         let now = CFAbsoluteTimeGetCurrent()
@@ -248,6 +284,10 @@ private final class EventTapBox {
     var tap: CFMachPort?
     /// Set of registered key presses for synchronous swallow decisions in the callback.
     var registeredShortcuts: Set<EventTapManager.KeyPress> = []
+    /// Whether Hyper Key (Caps Lock → F19) interception is active.
+    var hyperKeyEnabled: Bool = false
+    /// Whether the Hyper Key (F19) is currently held down.
+    var isHyperHeld: Bool = false
 
     init(manager: EventTapManager) {
         self.manager = manager

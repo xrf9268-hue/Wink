@@ -6,6 +6,7 @@ final class AppController {
     private let shortcutStore = ShortcutStore()
     private let persistenceService = PersistenceService()
     private let usageTracker = UsageTracker()
+    private let hyperKeyService = HyperKeyService()
     private lazy var appSwitcher = AppSwitcher()
     private lazy var shortcutManager = ShortcutManager(
         shortcutStore: shortcutStore,
@@ -20,7 +21,8 @@ final class AppController {
     private lazy var settingsWindowController = SettingsWindowController(
         shortcutStore: shortcutStore,
         shortcutManager: shortcutManager,
-        usageTracker: usageTracker
+        usageTracker: usageTracker,
+        hyperKeyService: hyperKeyService
     )
 
     func start() {
@@ -33,11 +35,14 @@ final class AppController {
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1.0)
 
         shortcutStore.replaceAll(with: persistenceService.load())
+        hyperKeyService.reapplyIfNeeded()
         shortcutManager.start()
+        shortcutManager.setHyperKeyEnabled(hyperKeyService.isEnabled)
         menuBarController.install()
     }
 
     func stop() {
+        hyperKeyService.clearMappingIfEnabled()
         shortcutManager.stop()
     }
 
