@@ -103,7 +103,7 @@ struct ShortcutsTabView: View {
                                     .background(.purple.opacity(0.2))
                                     .foregroundStyle(.purple)
                                     .clipShape(RoundedRectangle(cornerRadius: 3))
-                                }
+                            }
                         }
                         Button(role: .destructive) {
                             editor.removeShortcut(id: shortcut.id)
