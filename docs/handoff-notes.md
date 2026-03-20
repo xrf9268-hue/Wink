@@ -33,11 +33,13 @@ Quickey has completed real-device validation on macOS 15.3.1 (2026-03-20). Core 
 - **Fullscreen**: Switching works across Spaces and dual monitors ✅
 - **Insights**: D/W/M views, trend chart, ranking, persistence across restart all work ✅
 
+### Resolved since validation
+- **Toggle stability** (#57): Systematic refactor — async event tap, three-layer activation, windowless recovery
+- **Hyper Key** (#56): Built-in Caps Lock → Hyper mapping via hidutil + CGEvent tap
+- **Logging** (#55): Redesigned with DiagnosticLog + os.log per Apple best practices
+
 ### What remains unresolved
 - **Launch at Login**: Not yet verified on real device (#58)
-- **Toggle stability research**: Fast consecutive presses still produce multiple triggers; need to study best practices from alt-tab-macos/Raycast (#57)
-- **Hyper Key documentation**: Users may expect built-in Caps Lock → Hyper mapping; need to document Karabiner-Elements requirement (#56)
-- **Debug logging cleanup**: Remove NSLog and temp file logging before release (#55)
 - **Signed/notarized distributable**: workflow documented in `docs/signing-and-release.md`; Developer ID certificate required
 - **Private SkyLight activation path**: Works but is private API; may block App Store submission
 
@@ -52,13 +54,5 @@ Quickey has completed real-device validation on macOS 15.3.1 (2026-03-20). Core 
 
 ## Immediate next actions
 1. Verify Launch at Login on real device (#58)
-2. Research toggle best practices and refactor (#57)
-3. Clean up debug logging (#55)
-4. Produce a signed/notarized `.app` once a Developer ID cert is available
-
-## If continuing implementation
-Prefer work in this order:
-1. Toggle stability refactor (#57)
-2. Debug logging cleanup (#55)
-3. Signed distributable build
-4. New feature work or UX improvements
+2. Produce a signed/notarized `.app` once a Developer ID cert is available
+3. New feature work or UX improvements

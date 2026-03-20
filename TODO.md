@@ -1,7 +1,7 @@
 # TODO
 
 This file is the high-level execution board.
-For detailed tasks, use the GitHub issues and `docs/issue-priority-plan.md`.
+For detailed tasks, use GitHub Issues. Historical completion log: `docs/archive/issue-priority-plan.md`.
 
 ## Tier 0 — validate the app on real macOS
 - [x] Compile on macOS (Swift 6 strict concurrency fixed in #21)
@@ -43,10 +43,10 @@ For detailed tasks, use the GitHub issues and `docs/issue-priority-plan.md`.
 - [x] SettingsView refactored into tabbed layout (Shortcuts / General / Insights) (#45, #46)
 
 ## Remaining
-- [x] Real macOS device validation — core flows verified 2026-03-20 (build, permissions, shortcut recording, toggle, Hyper Key, special keys, Insights, fullscreen)
+- [x] Real macOS device validation — core flows verified 2026-03-20
+- [x] Toggle stability refactor: async event tap, three-layer activation, windowless recovery (#57)
+- [x] Hyper Key: built-in Caps Lock mapping via hidutil + CGEvent tap (#56)
+- [x] Logging redesign: DiagnosticLog + os.log per Apple best practices (#55)
 - [ ] Launch at Login real device verification (#58)
-- [ ] Toggle stability research and refactor (#57)
-- [ ] Hyper Key — document external mapping requirement (#56)
-- [ ] Clean up debug NSLog and temp file logging (#55)
 - [ ] Signed/notarized distributable build (workflow documented in #49, execution pending)
 - [ ] Private SkyLight activation path (deferred, out of scope for now)
