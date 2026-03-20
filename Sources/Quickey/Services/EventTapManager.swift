@@ -64,14 +64,35 @@ final class EventTapManager {
                 }
                 let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
 
-                // Hyper Key: intercept F19 keyDown → mark held, swallow event
-                if box.hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
-                    box.isHyperHeld = true
-                    return nil
+                // Single lock region for all shared-state reads/writes (avoids TOCTOU)
+                let (swallow, injectHyper) = box.withLock { () -> (Bool, Bool) in
+                    // Hyper Key: intercept F19 keyDown → mark held, swallow event
+                    if box._hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
+                        box._isHyperHeld = true
+                        return (true, false)
+                    }
+                    let hyper = box._isHyperHeld
+
+                    // Build key press with (possibly) injected hyper modifiers
+                    var currentFlags = event.flags
+                    if hyper {
+                        currentFlags = currentFlags.union([.maskControl, .maskAlternate, .maskShift, .maskCommand])
+                    }
+                    let flags = NSEvent.ModifierFlags(rawValue: UInt(currentFlags.rawValue))
+                    let kp = KeyPress(
+                        keyCode: keyCode,
+                        modifiers: flags.intersection(.deviceIndependentFlagsMask)
+                    )
+                    let shouldSwallow = box._registeredShortcuts.contains(kp)
+                    return (shouldSwallow, hyper)
+                }
+
+                if swallow && keyCode == HyperKeyService.f19KeyCode {
+                    return nil  // F19 swallowed
                 }
 
                 // Hyper Key: inject ⌃⌥⇧⌘ into the event when Hyper is held
-                if box.isHyperHeld {
+                if injectHyper {
                     event.flags = event.flags.union([.maskControl, .maskAlternate, .maskShift, .maskCommand])
                 }
 
@@ -86,24 +107,22 @@ final class EventTapManager {
                     box.onKeyPress?(keyPress)
                 }
 
-                // For defaultTap mode: check if this key+modifier combo is registered
-                // We must decide synchronously whether to swallow the event.
-                // Use the box's registered shortcuts set for a fast O(1) lookup.
-                if box.registeredShortcuts.contains(keyPress) {
+                if swallow {
                     return nil  // swallow the event
                 }
                 return Unmanaged.passUnretained(event)
 
             case .keyUp:
                 // Hyper Key: intercept F19 keyUp → clear held state, swallow event
-                if box.hyperKeyEnabled {
-                    let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-                    if keyCode == HyperKeyService.f19KeyCode {
-                        box.isHyperHeld = false
-                        return nil
+                let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+                let swallowUp = box.withLock { () -> Bool in
+                    if box._hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
+                        box._isHyperHeld = false
+                        return true
                     }
+                    return false
                 }
-                return Unmanaged.passUnretained(event)
+                return swallowUp ? nil : Unmanaged.passUnretained(event)
 
             case .flagsChanged:
                 return Unmanaged.passUnretained(event)
@@ -208,8 +227,7 @@ final class EventTapManager {
     /// Enable or disable Hyper Key (F19) interception in the event tap callback.
     func setHyperKeyEnabled(_ enabled: Bool) {
         if let box = retainedBox?.takeUnretainedValue() {
-            box.hyperKeyEnabled = enabled
-            if !enabled { box.isHyperHeld = false }
+            box.setHyperKey(enabled: enabled)
         }
     }
 
@@ -281,17 +299,54 @@ private final class BackgroundRunLoopThread: Thread {
 }
 
 // Boxes the EventTapManager reference for the C callback's userInfo pointer.
-// Uses unowned to break the retain cycle with EventTapManager.retainedBox.
 // Lifetime is explicitly managed: retained in start(), released in stop().
 // Also holds the CFMachPort so the callback can re-enable a disabled tap.
+//
+// Thread safety: `tap` and `onKeyPress` are written before the event tap is
+// enabled and only read from the callback — no lock needed.
+// `registeredShortcuts`, `hyperKeyEnabled`, and `isHyperHeld` are read from
+// the background callback thread and written from the main thread, so they
+// are protected by an os_unfair_lock.
 private final class EventTapBox {
     var tap: CFMachPort?
     /// Closure dispatched on main thread when a key press is detected.
     var onKeyPress: ((EventTapManager.KeyPress) -> Void)?
-    /// Set of registered key presses for synchronous swallow decisions in the callback.
-    var registeredShortcuts: Set<EventTapManager.KeyPress> = []
-    /// Whether Hyper Key (Caps Lock → F19) interception is active.
-    var hyperKeyEnabled: Bool = false
-    /// Whether the Hyper Key (F19) is currently held down.
-    var isHyperHeld: Bool = false
+
+    // MARK: - Lock-protected shared state
+
+    private var lock = os_unfair_lock()
+    // fileprivate so the C callback (defined in EventTapManager.start) can
+    // access them inside withLock critical sections.
+    fileprivate var _registeredShortcuts: Set<EventTapManager.KeyPress> = []
+    fileprivate var _hyperKeyEnabled: Bool = false
+    fileprivate var _isHyperHeld: Bool = false
+
+    var registeredShortcuts: Set<EventTapManager.KeyPress> {
+        get { withLock { _registeredShortcuts } }
+        set { withLock { _registeredShortcuts = newValue } }
+    }
+    var hyperKeyEnabled: Bool {
+        get { withLock { _hyperKeyEnabled } }
+        set { withLock { _hyperKeyEnabled = newValue } }
+    }
+    var isHyperHeld: Bool {
+        get { withLock { _isHyperHeld } }
+        set { withLock { _isHyperHeld = newValue } }
+    }
+
+    /// Atomically update hyperKeyEnabled and clear isHyperHeld when disabling.
+    func setHyperKey(enabled: Bool) {
+        withLock {
+            _hyperKeyEnabled = enabled
+            if !enabled { _isHyperHeld = false }
+        }
+    }
+
+    /// Execute `body` while holding the lock. Internal so the C callback can
+    /// batch multiple reads/writes into a single critical section.
+    func withLock<T>(_ body: () -> T) -> T {
+        os_unfair_lock_lock(&lock)
+        defer { os_unfair_lock_unlock(&lock) }
+        return body()
+    }
 }
