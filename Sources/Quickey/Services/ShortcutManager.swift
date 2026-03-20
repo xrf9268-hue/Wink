@@ -180,16 +180,16 @@ final class ShortcutManager {
 
     /// Build a Set<KeyPress> from the trigger index and pass it to EventTapManager.
     private func syncRegisteredShortcuts() {
-        var keyPresses = Set<EventTapManager.KeyPress>()
+        var keyPresses = Set<KeyPress>()
         for trigger in triggerIndex.keys {
             let modifiers = NSEvent.ModifierFlags(rawValue: trigger.modifierMask)
-            keyPresses.insert(EventTapManager.KeyPress(keyCode: trigger.keyCode, modifiers: modifiers))
+            keyPresses.insert(KeyPress(keyCode: trigger.keyCode, modifiers: modifiers))
         }
         eventTapManager.updateRegisteredShortcuts(keyPresses)
     }
 
     /// Returns `true` if the key press matched a shortcut (so the event should be consumed).
-    private func handleKeyPress(_ keyPress: EventTapManager.KeyPress) -> Bool {
+    private func handleKeyPress(_ keyPress: KeyPress) -> Bool {
         let key = keyMatcher.trigger(for: keyPress)
         #if DEBUG
         if !triggerIndex.isEmpty {

@@ -10,11 +10,6 @@ final class EventTapManager {
     /// Returns `true` if the key press was handled and should be consumed (not passed to other apps).
     typealias ShortcutHandler = (KeyPress) -> Bool
 
-    struct KeyPress: Equatable, Sendable {
-        let keyCode: CGKeyCode
-        let modifiers: NSEvent.ModifierFlags
-    }
-
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var retainedBox: Unmanaged<EventTapBox>?
@@ -250,15 +245,6 @@ final class EventTapManager {
     }
 }
 
-// MARK: - KeyPress Hashable conformance for Set lookup
-
-extension EventTapManager.KeyPress: Hashable {
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(keyCode)
-        hasher.combine(modifiers.rawValue)
-    }
-}
-
 // MARK: - Background RunLoop Thread
 
 /// Dedicated thread with its own RunLoop for hosting the CGEvent tap.
@@ -309,18 +295,18 @@ private final class BackgroundRunLoopThread: Thread {
 private final class EventTapBox {
     var tap: CFMachPort?
     /// Closure dispatched on main thread when a key press is detected.
-    var onKeyPress: ((EventTapManager.KeyPress) -> Void)?
+    var onKeyPress: ((KeyPress) -> Void)?
 
     // MARK: - Lock-protected shared state
 
     private var lock = os_unfair_lock()
     // fileprivate so the C callback (defined in EventTapManager.start) can
     // access them inside withLock critical sections.
-    fileprivate var _registeredShortcuts: Set<EventTapManager.KeyPress> = []
+    fileprivate var _registeredShortcuts: Set<KeyPress> = []
     fileprivate var _hyperKeyEnabled: Bool = false
     fileprivate var _isHyperHeld: Bool = false
 
-    var registeredShortcuts: Set<EventTapManager.KeyPress> {
+    var registeredShortcuts: Set<KeyPress> {
         get { withLock { _registeredShortcuts } }
         set { withLock { _registeredShortcuts = newValue } }
     }

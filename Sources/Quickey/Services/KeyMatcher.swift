@@ -7,11 +7,11 @@ struct ShortcutTrigger: Hashable, Sendable {
 }
 
 struct KeyMatcher {
-    func matches(_ keyPress: EventTapManager.KeyPress, shortcut: AppShortcut) -> Bool {
+    func matches(_ keyPress: KeyPress, shortcut: AppShortcut) -> Bool {
         trigger(for: keyPress) == trigger(for: shortcut)
     }
 
-    func trigger(for keyPress: EventTapManager.KeyPress) -> ShortcutTrigger {
+    func trigger(for keyPress: KeyPress) -> ShortcutTrigger {
         let mask = keyPress.modifiers.intersection(NSEvent.ModifierFlags.deviceIndependentFlagsMask)
         return ShortcutTrigger(keyCode: keyPress.keyCode, modifierMask: normalizedMask(from: mask))
     }

@@ -43,9 +43,9 @@ struct EventTapManagerStateTests {
     @Test @MainActor
     func updateRegisteredShortcutsStoresKeyPresses() {
         let manager = EventTapManager()
-        let keyPresses: Set<EventTapManager.KeyPress> = [
-            EventTapManager.KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.command]),
-            EventTapManager.KeyPress(keyCode: CGKeyCode(kVK_ANSI_B), modifiers: [.option]),
+        let keyPresses: Set<KeyPress> = [
+            KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.command]),
+            KeyPress(keyCode: CGKeyCode(kVK_ANSI_B), modifiers: [.option]),
         ]
         // Should not crash when no tap is running (box is nil)
         manager.updateRegisteredShortcuts(keyPresses)
@@ -79,7 +79,7 @@ struct EventTapManagerDebounceTests {
             callCount += 1
             return true
         }
-        let keyPress = EventTapManager.KeyPress(keyCode: CGKeyCode(kVK_ANSI_S), modifiers: [.command])
+        let keyPress = KeyPress(keyCode: CGKeyCode(kVK_ANSI_S), modifiers: [.command])
 
         // First call should go through
         manager.handleAsync(keyPress)
@@ -98,8 +98,8 @@ struct EventTapManagerDebounceTests {
             callCount += 1
             return true
         }
-        let keyA = EventTapManager.KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.command])
-        let keyB = EventTapManager.KeyPress(keyCode: CGKeyCode(kVK_ANSI_B), modifiers: [.command])
+        let keyA = KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.command])
+        let keyB = KeyPress(keyCode: CGKeyCode(kVK_ANSI_B), modifiers: [.command])
 
         manager.handleAsync(keyA)
         #expect(callCount == 1)
@@ -117,8 +117,8 @@ struct EventTapManagerDebounceTests {
             callCount += 1
             return true
         }
-        let cmdA = EventTapManager.KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.command])
-        let optA = EventTapManager.KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.option])
+        let cmdA = KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.command])
+        let optA = KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.option])
 
         manager.handleAsync(cmdA)
         manager.handleAsync(optA)
@@ -155,7 +155,7 @@ struct KeyMatcherTests {
             appName: "Test", bundleIdentifier: "com.test",
             keyEquivalent: "a", modifierFlags: ["command", "option"]
         )
-        let keyPress = EventTapManager.KeyPress(
+        let keyPress = KeyPress(
             keyCode: CGKeyCode(kVK_ANSI_A),
             modifiers: [.command, .option]
         )
@@ -168,7 +168,7 @@ struct KeyMatcherTests {
             appName: "Test", bundleIdentifier: "com.test",
             keyEquivalent: "a", modifierFlags: ["command"]
         )
-        let keyPress = EventTapManager.KeyPress(
+        let keyPress = KeyPress(
             keyCode: CGKeyCode(kVK_ANSI_B),
             modifiers: [.command]
         )
@@ -181,7 +181,7 @@ struct KeyMatcherTests {
             appName: "Test", bundleIdentifier: "com.test",
             keyEquivalent: "a", modifierFlags: ["command", "shift"]
         )
-        let keyPress = EventTapManager.KeyPress(
+        let keyPress = KeyPress(
             keyCode: CGKeyCode(kVK_ANSI_A),
             modifiers: [.command]
         )
@@ -206,7 +206,7 @@ struct KeyMatcherTests {
             keyEquivalent: "t", modifierFlags: ["command", "option"]
         )
         let index = matcher.buildIndex(for: [shortcut])
-        let keyPress = EventTapManager.KeyPress(
+        let keyPress = KeyPress(
             keyCode: CGKeyCode(kVK_ANSI_T),
             modifiers: [.command, .option]
         )
@@ -220,7 +220,7 @@ struct KeyMatcherTests {
             appName: "Hyper", bundleIdentifier: "com.hyper",
             keyEquivalent: "h", modifierFlags: ["command", "option", "control", "shift"]
         )
-        let keyPress = EventTapManager.KeyPress(
+        let keyPress = KeyPress(
             keyCode: CGKeyCode(kVK_ANSI_H),
             modifiers: [.command, .option, .control, .shift]
         )
@@ -233,7 +233,7 @@ struct KeyMatcherTests {
             appName: "Hyper", bundleIdentifier: "com.hyper",
             keyEquivalent: "h", modifierFlags: ["command", "option", "control", "shift"]
         )
-        let threeModifiers = EventTapManager.KeyPress(
+        let threeModifiers = KeyPress(
             keyCode: CGKeyCode(kVK_ANSI_H),
             modifiers: [.command, .option, .control]
         )
@@ -247,7 +247,7 @@ struct KeyMatcherTests {
             keyEquivalent: "j", modifierFlags: ["command", "option", "control", "shift"]
         )
         let index = matcher.buildIndex(for: [shortcut])
-        let keyPress = EventTapManager.KeyPress(
+        let keyPress = KeyPress(
             keyCode: CGKeyCode(kVK_ANSI_J),
             modifiers: [.command, .option, .control, .shift]
         )
@@ -268,7 +268,7 @@ struct KeyMatcherTests {
             appName: "FnApp", bundleIdentifier: "com.fn",
             keyEquivalent: "f1", modifierFlags: ["function"]
         )
-        let keyPress = EventTapManager.KeyPress(
+        let keyPress = KeyPress(
             keyCode: CGKeyCode(kVK_F1),
             modifiers: [.function]
         )
