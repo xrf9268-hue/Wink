@@ -602,7 +602,7 @@ struct AppPickerPopover: View {
 
             Divider()
 
-            // Scrollable list
+            // Scrollable list with keyboard nav
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -630,6 +630,9 @@ struct AppPickerPopover: View {
                         }
                     }
                 }
+                .onKeyPress(.upArrow) { moveHighlight(-1, proxy: proxy); return .handled }
+                .onKeyPress(.downArrow) { moveHighlight(1, proxy: proxy); return .handled }
+                .onKeyPress(.return) { selectHighlighted(); return .handled }
             }
 
             Divider()
@@ -655,9 +658,7 @@ struct AppPickerPopover: View {
             appListProvider.refreshIfNeeded()
             highlightedIndex = 0
         }
-        .onKeyPress(.upArrow) { moveHighlight(-1); return .handled }
-        .onKeyPress(.downArrow) { moveHighlight(1); return .handled }
-        .onKeyPress(.return) { selectHighlighted(); return .handled }
+        .onKeyPress(.escape) { dismiss(); return .handled }
     }
 
     // MARK: - Subviews
@@ -700,11 +701,13 @@ struct AppPickerPopover: View {
 
     // MARK: - Navigation
 
-    private func moveHighlight(_ delta: Int) {
+    private func moveHighlight(_ delta: Int, proxy: ScrollViewProxy) {
         let count = flatList.count
         guard count > 0 else { return }
         let current = highlightedIndex ?? 0
-        highlightedIndex = max(0, min(count - 1, current + delta))
+        let newIndex = max(0, min(count - 1, current + delta))
+        highlightedIndex = newIndex
+        proxy.scrollTo(newIndex, anchor: .center)
     }
 
     private func selectHighlighted() {
@@ -910,11 +913,11 @@ struct ShortcutsTabView: View {
 - [ ] **Step 2: Build to verify compilation**
 
 Run: `swift build 2>&1 | tail -10`
-Expected: Build error — `ShortcutsTabView` now requires `appListProvider` parameter. This will be fixed in the wiring task (Task 10).
+Expected: Build error — `ShortcutsTabView` now requires `appListProvider` parameter. This will be fixed in Task 9 (wiring).
 
-For now, verify the view file itself compiles by checking only for syntax errors. We'll fix the call site in Task 10.
+**Note:** The build will remain broken from Task 6 through Task 8. Task 9 fixes all call sites atomically. Skip `swift build` verification until Task 9.
 
-- [ ] **Step 3: Commit (WIP — call site update pending)**
+- [ ] **Step 3: Commit (call site update in Task 9)**
 
 ```bash
 git add Sources/Quickey/UI/ShortcutsTabView.swift
@@ -1002,7 +1005,7 @@ struct GeneralTabView: View {
 }
 ```
 
-- [ ] **Step 2: Commit (call site update pending in Task 10)**
+- [ ] **Step 2: Commit (call site update in Task 9)**
 
 ```bash
 git add Sources/Quickey/UI/GeneralTabView.swift
@@ -1097,7 +1100,7 @@ struct InsightsTabView: View {
                 )
                 .clipShape(Circle())
 
-            AppIconView(bundleIdentifier: item.appName, size: 20)
+            AppIconView(bundleIdentifier: item.bundleIdentifier, size: 20)
 
             Text(item.appName)
                 .font(.system(size: 13))
@@ -1125,8 +1128,6 @@ struct InsightsTabView: View {
     }
 }
 ```
-
-**Note:** The `AppIconView` in ranking uses `item.appName` as bundleIdentifier — this is wrong. `RankedShortcut` only has `appName`, not `bundleIdentifier`. We need to add `bundleIdentifier` to `RankedShortcut`. See Step 2.
 
 - [ ] **Step 2: Add bundleIdentifier to RankedShortcut**
 
@@ -1180,12 +1181,12 @@ git commit -m "feat: rewrite InsightsTabView with card ranking, app icons, mini 
 
 ---
 
-### Task 9: Wire everything together — SettingsView, SettingsWindowController, AppController
+### Task 9: Wire everything together — SettingsView, SettingsWindowController + cleanup dead code
 
 **Files:**
 - Modify: `Sources/Quickey/UI/SettingsView.swift`
 - Modify: `Sources/Quickey/UI/SettingsWindowController.swift`
-- Modify: `Sources/Quickey/AppController.swift`
+- Modify: `Sources/Quickey/Services/ShortcutEditorState.swift` (remove `revealApplication()` — dead code after UI rewrite)
 
 - [ ] **Step 1: Update SettingsView to pass new dependencies**
 
@@ -1286,21 +1287,25 @@ final class SettingsWindowController {
 }
 ```
 
-- [ ] **Step 3: Build the full project**
+- [ ] **Step 3: Remove dead code — `revealApplication()` from ShortcutEditorState**
+
+The new `ShortcutsTabView` no longer has a "Reveal App" button. Remove the `revealApplication()` method (lines 88-93) from `Sources/Quickey/Services/ShortcutEditorState.swift`.
+
+- [ ] **Step 4: Build the full project**
 
 Run: `swift build 2>&1 | tail -20`
 Expected: Build succeeded. All call sites now pass the required parameters.
 
-- [ ] **Step 4: Run all tests**
+- [ ] **Step 5: Run all tests**
 
 Run: `swift test 2>&1 | tail -20`
 Expected: All pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add Sources/Quickey/UI/SettingsView.swift Sources/Quickey/UI/SettingsWindowController.swift
-git commit -m "feat: wire AppListProvider through SettingsView and SettingsWindowController"
+git add Sources/Quickey/UI/SettingsView.swift Sources/Quickey/UI/SettingsWindowController.swift Sources/Quickey/Services/ShortcutEditorState.swift
+git commit -m "feat: wire AppListProvider, update call sites, remove dead revealApplication()"
 ```
 
 ---
