@@ -473,6 +473,59 @@ struct ShortcutValidatorAliasTests {
     }
 }
 
+// MARK: - AppShortcut isEnabled
+
+@Suite("AppShortcut isEnabled")
+struct AppShortcutIsEnabledTests {
+    @Test
+    func defaultsToEnabled() {
+        let shortcut = AppShortcut(
+            appName: "Test", bundleIdentifier: "com.test",
+            keyEquivalent: "a", modifierFlags: ["command"]
+        )
+        #expect(shortcut.isEnabled == true)
+    }
+
+    @Test
+    func canBeCreatedDisabled() {
+        let shortcut = AppShortcut(
+            appName: "Test", bundleIdentifier: "com.test",
+            keyEquivalent: "a", modifierFlags: ["command"],
+            isEnabled: false
+        )
+        #expect(shortcut.isEnabled == false)
+    }
+
+    @Test
+    func decodesLegacyJSONWithoutIsEnabled() throws {
+        let json = """
+        {
+            "id": "12345678-1234-1234-1234-123456789012",
+            "appName": "Safari",
+            "bundleIdentifier": "com.apple.Safari",
+            "keyEquivalent": "s",
+            "modifierFlags": ["command"]
+        }
+        """.data(using: .utf8)!
+        let shortcut = try JSONDecoder().decode(AppShortcut.self, from: json)
+        #expect(shortcut.isEnabled == true)
+        #expect(shortcut.appName == "Safari")
+    }
+
+    @Test
+    func roundTripsWithIsEnabled() throws {
+        let original = AppShortcut(
+            appName: "Test", bundleIdentifier: "com.test",
+            keyEquivalent: "x", modifierFlags: ["option"],
+            isEnabled: false
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(AppShortcut.self, from: data)
+        #expect(decoded.isEnabled == false)
+        #expect(decoded.id == original.id)
+    }
+}
+
 // MARK: - UsageTracker
 
 @Suite("UsageTracker")
