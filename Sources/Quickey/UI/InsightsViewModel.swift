@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 enum InsightsPeriod: String, CaseIterable {
     case day = "D"
@@ -35,14 +36,14 @@ struct RankedShortcut: Identifiable {
     let rank: Int
 }
 
-@MainActor
-final class InsightsViewModel: ObservableObject {
-    @Published var period: InsightsPeriod = .week {
+@Observable @MainActor
+final class InsightsViewModel {
+    var period: InsightsPeriod = .week {
         didSet { Task { await refresh() } }
     }
-    @Published var totalCount: Int = 0
-    @Published var bars: [DailyBar] = []
-    @Published var ranking: [RankedShortcut] = []
+    var totalCount: Int = 0
+    var bars: [DailyBar] = []
+    var ranking: [RankedShortcut] = []
 
     private let usageTracker: UsageTracker?
     private let shortcutStore: ShortcutStore

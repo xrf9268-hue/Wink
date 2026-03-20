@@ -8,7 +8,7 @@ enum SettingsTab: String, CaseIterable {
 
 struct SettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
-    @ObservedObject var insightsViewModel: InsightsViewModel
+    var insightsViewModel: InsightsViewModel
     @State private var selectedTab: SettingsTab = .shortcuts
 
     var body: some View {

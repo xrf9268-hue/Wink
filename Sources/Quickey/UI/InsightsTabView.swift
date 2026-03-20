@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct InsightsTabView: View {
-    @ObservedObject var viewModel: InsightsViewModel
+    @Bindable var viewModel: InsightsViewModel
 
     var body: some View {
         VStack(spacing: 20) {
