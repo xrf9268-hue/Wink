@@ -2,52 +2,67 @@ import SwiftUI
 
 struct GeneralTabView: View {
     var preferences: AppPreferences
+    var editor: ShortcutEditorState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Toggle("Launch at Login", isOn: Binding(
-                get: { preferences.launchAtLoginEnabled },
-                set: { preferences.setLaunchAtLogin($0) }
-            ))
-
-            switch preferences.launchAtLoginStatus {
-            case .requiresApproval:
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Enabled in Quickey, but still needs approval in System Settings > General > Login Items.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Button("Open Login Items Settings") {
-                        preferences.openLoginItemsSettings()
-                    }
-                }
-            case .notFound:
-                Text("Quickey could not find the packaged login item. Rebuild or reinstall the app bundle and try again.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            case .enabled, .disabled:
-                EmptyView()
+        VStack(alignment: .leading, spacing: 12) {
+            // Startup card
+            CardView("Startup") {
+                Toggle("Launch at Login", isOn: Binding(
+                    get: { preferences.launchAtLoginEnabled },
+                    set: { preferences.setLaunchAtLogin($0) }
+                ))
+                .padding(14)
             }
 
-            Divider()
+            // Keyboard card
+            CardView("Keyboard") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("Enable All Shortcuts", isOn: Binding(
+                        get: { editor.allEnabled },
+                        set: { editor.setAllEnabled($0) }
+                    ))
 
-            VStack(alignment: .leading, spacing: 6) {
-                Toggle("Enable Hyper Key (Caps Lock → ⌃⌥⇧⌘)", isOn: Binding(
-                    get: { preferences.hyperKeyEnabled },
-                    set: { preferences.setHyperKeyEnabled($0) }
-                ))
-                Text("将 Caps Lock 映射为 Hyper Key。按住 Caps Lock 再按其他键，等同于 ⌃⌥⇧⌘ 组合。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Toggle("Enable Hyper Key", isOn: Binding(
+                                get: { preferences.hyperKeyEnabled },
+                                set: { preferences.setHyperKeyEnabled($0) }
+                            ))
+                            Text("Caps Lock → ⌃⌥⇧⌘")
+                                .font(.system(size: 11, design: .monospaced))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                                .foregroundStyle(.secondary)
+                        }
+                        Text("按住 Caps Lock 再按其他键，等同于 ⌃⌥⇧⌘ 组合。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 20)
+                    }
+                }
+                .padding(14)
             }
 
             Spacer()
 
-            HStack {
-                Spacer()
-                Text("Quickey v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0")")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                Spacer()
+            // About card
+            CardView {
+                HStack {
+                    Spacer()
+                    Text("Quickey")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text("v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0")")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                }
+                .padding(10)
             }
         }
     }
