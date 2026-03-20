@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.quickey.app", category: "ShortcutManager")
+private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "ShortcutManager")
 
 @MainActor
 final class ShortcutManager {
@@ -34,7 +34,8 @@ final class ShortcutManager {
 
     func start() {
         let trusted = permissionService.requestIfNeeded(prompt: true)
-        debugLog("start(): trusted=\(trusted), isTrusted=\(permissionService.isTrusted())")
+        logger.info("start(): trusted=\(trusted), isTrusted=\(self.permissionService.isTrusted())")
+        DiagnosticLog.log("start(): trusted=\(trusted), isTrusted=\(permissionService.isTrusted())")
         startPermissionMonitoring()
         attemptStartIfPermitted()
     }
@@ -77,59 +78,47 @@ final class ShortcutManager {
 
     private func checkPermissionChange() {
         let granted = permissionService.isTrusted()
-        debugLog("checkPermission: granted=\(granted) last=\(lastPermissionState) tapRunning=\(eventTapManager.isRunning)")
+        logger.info("checkPermission: granted=\(granted) last=\(self.lastPermissionState) tapRunning=\(self.eventTapManager.isRunning)")
+        DiagnosticLog.log("checkPermission: granted=\(granted) last=\(lastPermissionState) tapRunning=\(eventTapManager.isRunning)")
         guard granted != lastPermissionState else { return }
         lastPermissionState = granted
 
         if granted {
-            debugLog("Permission change detected: granted — starting event tap")
+            logger.notice("Permission change detected: granted — starting event tap")
+            DiagnosticLog.log("Permission change detected: granted — starting event tap")
             attemptStartIfPermitted()
         } else {
-            debugLog("Permission change detected: revoked — stopping event tap")
+            logger.error("Permission change detected: revoked — stopping event tap")
+            DiagnosticLog.log("Permission change detected: revoked — stopping event tap")
             eventTapManager.stop()
         }
     }
 
     private func attemptStartIfPermitted() {
         guard permissionService.isTrusted() else {
-            debugLog("attemptStart: not trusted, skipping")
+            #if DEBUG
+            logger.debug("attemptStart: not trusted, skipping")
+            #endif
             return
         }
         guard !eventTapManager.isRunning else {
-            debugLog("attemptStart: already running")
+            #if DEBUG
+            logger.debug("attemptStart: already running")
+            #endif
             return
         }
 
         rebuildIndex()
-        debugLog("attemptStart: starting event tap, shortcuts count: \(shortcutStore.shortcuts.count), triggerIndex count: \(triggerIndex.count)")
+        logger.info("attemptStart: starting event tap, shortcuts count: \(self.shortcutStore.shortcuts.count), triggerIndex count: \(self.triggerIndex.count)")
+        DiagnosticLog.log("attemptStart: starting event tap, shortcuts count: \(shortcutStore.shortcuts.count), triggerIndex count: \(triggerIndex.count)")
         eventTapManager.start { [weak self] keyPress in
-            Self.debugLog("KeyPress received: keyCode=\(keyPress.keyCode) modifiers=\(keyPress.modifiers.rawValue)")
+            #if DEBUG
+            logger.debug("KeyPress received: keyCode=\(keyPress.keyCode) modifiers=\(keyPress.modifiers.rawValue)")
+            #endif
             return self?.handleKeyPress(keyPress) ?? false
         }
-        debugLog("Event tap running: \(eventTapManager.isRunning)")
-    }
-
-    // MARK: - Debug logging
-
-    private static let debugLogPath = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".config/Quickey/debug.log").path
-
-    static func debugLog(_ message: String) {
-        let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
-        guard let data = line.data(using: .utf8) else { return }
-        let url = URL(fileURLWithPath: debugLogPath)
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let handle = FileHandle(forWritingAtPath: debugLogPath) {
-            handle.seekToEndOfFile()
-            handle.write(data)
-            handle.closeFile()
-        } else {
-            FileManager.default.createFile(atPath: debugLogPath, contents: data)
-        }
-    }
-
-    private func debugLog(_ message: String) {
-        Self.debugLog(message)
+        logger.info("Event tap running: \(self.eventTapManager.isRunning)")
+        DiagnosticLog.log("Event tap running: \(eventTapManager.isRunning)")
     }
 
     // MARK: - Key handling
@@ -141,13 +130,16 @@ final class ShortcutManager {
     /// Returns `true` if the key press matched a shortcut (so the event should be consumed).
     private func handleKeyPress(_ keyPress: EventTapManager.KeyPress) -> Bool {
         let key = keyMatcher.trigger(for: keyPress)
+        #if DEBUG
         if !triggerIndex.isEmpty {
-            debugLog("handleKeyPress: trigger=(\(key.keyCode), \(key.modifierMask)), index=\(triggerIndex.keys.map { "(\($0.keyCode),\($0.modifierMask))" }.joined(separator: ","))")
+            logger.debug("handleKeyPress: trigger=(\(key.keyCode), \(key.modifierMask)), index=\(self.triggerIndex.keys.map { "(\($0.keyCode),\($0.modifierMask))" }.joined(separator: ","))")
         }
+        #endif
         guard let match = triggerIndex[key] else {
             return false
         }
-        debugLog("MATCHED: \(match.appName) - \(match.bundleIdentifier)")
+        logger.info("MATCHED: \(match.appName) - \(match.bundleIdentifier)")
+        DiagnosticLog.log("MATCHED: \(match.appName) - \(match.bundleIdentifier)")
         _ = trigger(match)
         return true
     }

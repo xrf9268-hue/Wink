@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 import os.log
 
-private let logger = Logger(subsystem: "com.quickey.app", category: "UsageTracker")
+private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "UsageTracker")
 
 actor UsageTracker {
     // Safety: db is only accessed from actor-isolated methods and deinit.
@@ -55,7 +55,9 @@ actor UsageTracker {
         sqlite3_bind_text(stmt, 2, (todayString() as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
         if sqlite3_step(stmt) != SQLITE_DONE {
-            logger.error("Failed to record usage: \(String(cString: sqlite3_errmsg(self.db!)))")
+            let errMsg = String(cString: sqlite3_errmsg(self.db!))
+            logger.error("Failed to record usage: \(errMsg)")
+            DiagnosticLog.log("Failed to record usage: \(errMsg)")
         }
     }
 
@@ -68,7 +70,9 @@ actor UsageTracker {
         sqlite3_bind_text(stmt, 1, (idString as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
         if sqlite3_step(stmt) != SQLITE_DONE {
-            logger.error("Failed to delete usage: \(String(cString: sqlite3_errmsg(self.db!)))")
+            let errMsg = String(cString: sqlite3_errmsg(self.db!))
+            logger.error("Failed to delete usage: \(errMsg)")
+            DiagnosticLog.log("Failed to delete usage: \(errMsg)")
         }
     }
 
@@ -139,6 +143,7 @@ actor UsageTracker {
         var db: OpaquePointer?
         if sqlite3_open(path, &db) != SQLITE_OK {
             logger.error("Failed to open database at \(path)")
+            DiagnosticLog.log("Failed to open database at \(path)")
             return nil
         }
         return db
@@ -156,12 +161,15 @@ actor UsageTracker {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             logger.error("SQL prepare failed for CREATE TABLE")
+            DiagnosticLog.log("SQL prepare failed for CREATE TABLE")
             return
         }
         defer { sqlite3_finalize(stmt) }
 
         if sqlite3_step(stmt) != SQLITE_DONE {
-            logger.error("Failed to create table: \(String(cString: sqlite3_errmsg(db)))")
+            let errMsg = String(cString: sqlite3_errmsg(db))
+            logger.error("Failed to create table: \(errMsg)")
+            DiagnosticLog.log("Failed to create table: \(errMsg)")
         }
     }
 
@@ -169,7 +177,9 @@ actor UsageTracker {
         guard let db else { return nil }
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) != SQLITE_OK {
-            logger.error("SQL prepare failed: \(String(cString: sqlite3_errmsg(db)))")
+            let errMsg = String(cString: sqlite3_errmsg(db))
+            logger.error("SQL prepare failed: \(errMsg)")
+            DiagnosticLog.log("SQL prepare failed: \(errMsg)")
             return nil
         }
         return stmt

@@ -3,7 +3,7 @@ import ApplicationServices
 import Carbon.HIToolbox
 import os.log
 
-private let logger = Logger(subsystem: "com.quickey.app", category: "EventTapManager")
+private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "EventTapManager")
 
 @MainActor
 final class EventTapManager {
@@ -38,7 +38,8 @@ final class EventTapManager {
             case .tapDisabledByTimeout, .tapDisabledByUserInput:
                 // macOS disabled the tap (slow callback or user input flood).
                 // Re-enable it immediately via the stored CFMachPort.
-                ShortcutManager.debugLog("EVENT TAP DISABLED by system (reason: \(type.rawValue)), re-enabling")
+                logger.warning("EVENT TAP DISABLED by system (reason: \(type.rawValue)), re-enabling")
+                DiagnosticLog.log("EVENT TAP DISABLED by system (reason: \(type.rawValue)), re-enabling")
                 if let tap = box.tap {
                     CGEvent.tapEnable(tap: tap, enable: true)
                 }
@@ -65,7 +66,9 @@ final class EventTapManager {
         let retained = Unmanaged.passRetained(box)
         let userInfo = UnsafeMutableRawPointer(retained.toOpaque())
 
-        ShortcutManager.debugLog("tapCreate: AXIsProcessTrusted=\(AXIsProcessTrusted()), CGPreflightListenEventAccess=\(CGPreflightListenEventAccess()), trying .defaultTap")
+        #if DEBUG
+        logger.debug("tapCreate: AXIsProcessTrusted=\(AXIsProcessTrusted()), CGPreflightListenEventAccess=\(CGPreflightListenEventAccess()), trying .defaultTap")
+        #endif
         var tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
@@ -75,7 +78,8 @@ final class EventTapManager {
             userInfo: userInfo
         )
         if tap == nil {
-            ShortcutManager.debugLog("tapCreate: .defaultTap failed, trying .listenOnly")
+            logger.info("tapCreate: .defaultTap failed, trying .listenOnly")
+            DiagnosticLog.log("tapCreate: .defaultTap failed, trying .listenOnly")
             tap = CGEvent.tapCreate(
                 tap: .cgSessionEventTap,
                 place: .headInsertEventTap,
@@ -87,11 +91,12 @@ final class EventTapManager {
         }
         guard let tap else {
             retained.release()
-            ShortcutManager.debugLog("tapCreate: BOTH .defaultTap and .listenOnly failed")
-            logger.error("Failed to create CGEvent tap — ensure Accessibility permission is granted in System Settings > Privacy & Security > Accessibility")
+            logger.error("tapCreate: BOTH .defaultTap and .listenOnly failed — ensure Accessibility permission is granted in System Settings > Privacy & Security > Accessibility")
+            DiagnosticLog.log("tapCreate: BOTH .defaultTap and .listenOnly failed")
             return
         }
-        ShortcutManager.debugLog("tapCreate: SUCCESS, tap created")
+        logger.info("tapCreate: SUCCESS, tap created")
+        DiagnosticLog.log("tapCreate: SUCCESS, tap created")
 
         retainedBox = retained
         box.tap = tap
@@ -103,6 +108,7 @@ final class EventTapManager {
         eventTap = tap
         runLoopSource = source
         logger.info("Event tap started")
+        DiagnosticLog.log("Event tap started")
     }
 
     func stop() {
@@ -120,6 +126,7 @@ final class EventTapManager {
         runLoopSource = nil
         onKeyPress = nil
         logger.info("Event tap stopped")
+        DiagnosticLog.log("Event tap stopped")
     }
 
     /// Returns `true` if the key press matched a shortcut and should be consumed.

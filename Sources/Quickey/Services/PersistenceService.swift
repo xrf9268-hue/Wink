@@ -1,4 +1,7 @@
 import Foundation
+import os.log
+
+private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "PersistenceService")
 
 struct PersistenceService: Sendable {
     private let fileName = "shortcuts.json"
@@ -21,7 +24,8 @@ struct PersistenceService: Sendable {
             let data = try encoder.encode(shortcuts)
             try data.write(to: url, options: .atomic)
         } catch {
-            NSLog("Failed to save shortcuts: \(error.localizedDescription)")
+            logger.error("Failed to save shortcuts: \(error.localizedDescription)")
+            DiagnosticLog.log("Failed to save shortcuts: \(error.localizedDescription)")
         }
     }
 

@@ -1,7 +1,7 @@
 import ServiceManagement
 import os.log
 
-private let logger = Logger(subsystem: "com.quickey.app", category: "LaunchAtLogin")
+private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "LaunchAtLogin")
 
 struct LaunchAtLoginService {
     private let service = SMAppService.mainApp
@@ -21,6 +21,7 @@ struct LaunchAtLoginService {
             }
         } catch {
             logger.error("Failed to \(enabled ? "register" : "unregister") login item: \(error)")
+            DiagnosticLog.log("Failed to \(enabled ? "register" : "unregister") login item: \(error)")
         }
     }
 }

@@ -14,6 +14,9 @@ let package = Package(
             name: "Quickey",
             path: "Sources/Quickey",
             exclude: ["Resources/Info.plist"],
+            swiftSettings: [
+                .define("DEBUG", .when(configuration: .debug)),
+            ],
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
                 .unsafeFlags(["-F/System/Library/PrivateFrameworks", "-framework", "SkyLight"]),

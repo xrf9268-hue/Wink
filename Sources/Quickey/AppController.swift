@@ -23,6 +23,8 @@ final class AppController {
     )
 
     func start() {
+        DiagnosticLog.rotateIfNeeded()
+        DiagnosticLog.log("Quickey starting, version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
         shortcutStore.replaceAll(with: persistenceService.load())
         shortcutManager.start()
         menuBarController.install()

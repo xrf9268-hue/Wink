@@ -2,7 +2,7 @@ import AppKit
 import Carbon.HIToolbox
 import os.log
 
-private let logger = Logger(subsystem: "com.quickey.app", category: "AppSwitcher")
+private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "AppSwitcher")
 
 @MainActor
 final class AppSwitcher {
@@ -18,17 +18,20 @@ final class AppSwitcher {
             // App not running — launch it
             if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: shortcut.bundleIdentifier) {
                 frontmostTracker.noteCurrentFrontmostApp(excluding: shortcut.bundleIdentifier)
-                ShortcutManager.debugLog("TOGGLE[\(shortcut.appName)]: NOT RUNNING → launching, saved previous=\(frontmostTracker.lastNonTargetBundleIdentifier ?? "nil")")
+                logger.info("TOGGLE[\(shortcut.appName)]: NOT RUNNING → launching")
+                DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: NOT RUNNING → launching, saved previous=\(frontmostTracker.lastNonTargetBundleIdentifier ?? "nil")")
                 let bundleId = shortcut.bundleIdentifier
                 let configuration = NSWorkspace.OpenConfiguration()
                 NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { @Sendable app, error in
                     if let error {
                         logger.error("Failed to launch \(bundleId): \(error.localizedDescription)")
+                        DiagnosticLog.log("Failed to launch \(bundleId): \(error.localizedDescription)")
                     }
                 }
                 return true
             }
-            ShortcutManager.debugLog("TOGGLE[\(shortcut.appName)]: NOT RUNNING, no URL found — cannot launch")
+            logger.error("TOGGLE[\(shortcut.appName)]: NOT RUNNING, no URL found — cannot launch")
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: NOT RUNNING, no URL found — cannot launch")
             return false
         }
 
@@ -37,13 +40,15 @@ final class AppSwitcher {
             let previousApp = frontmostTracker.lastNonTargetBundleIdentifier
             let restored = frontmostTracker.restorePreviousAppIfPossible()
             let hidden = runningApp.hide()
-            ShortcutManager.debugLog("TOGGLE[\(shortcut.appName)]: IS ACTIVE → restored=\(restored) (prev=\(previousApp ?? "nil")), hidden=\(hidden)")
+            logger.info("TOGGLE[\(shortcut.appName)]: IS ACTIVE → restored=\(restored), hidden=\(hidden)")
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: IS ACTIVE → restored=\(restored) (prev=\(previousApp ?? "nil")), hidden=\(hidden)")
             return restored || hidden
         }
 
         // App is running but not frontmost — bring it forward.
         frontmostTracker.noteCurrentFrontmostApp(excluding: shortcut.bundleIdentifier)
-        ShortcutManager.debugLog("TOGGLE[\(shortcut.appName)]: RUNNING NOT FRONT → activating, saved previous=\(frontmostTracker.lastNonTargetBundleIdentifier ?? "nil"), isHidden=\(runningApp.isHidden)")
+        logger.info("TOGGLE[\(shortcut.appName)]: RUNNING NOT FRONT → activating, isHidden=\(runningApp.isHidden)")
+        DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: RUNNING NOT FRONT → activating, saved previous=\(frontmostTracker.lastNonTargetBundleIdentifier ?? "nil"), isHidden=\(runningApp.isHidden)")
         if runningApp.isHidden {
             runningApp.unhide()
         }
@@ -51,7 +56,8 @@ final class AppSwitcher {
         let activated = activateViaWindowServer(runningApp)
         // If app has no visible windows, open a new one via Accessibility API (⌘N)
         if activated && !hasVisibleWindows(of: runningApp) {
-            ShortcutManager.debugLog("TOGGLE[\(shortcut.appName)]: no visible windows, sending ⌘N")
+            logger.info("TOGGLE[\(shortcut.appName)]: no visible windows, sending ⌘N")
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: no visible windows, sending ⌘N")
             openNewWindow(of: runningApp)
         }
         return activated
@@ -64,16 +70,21 @@ final class AppSwitcher {
         var windowsRef: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef)
         guard result == .success, let windows = windowsRef as? [AXUIElement] else {
-            ShortcutManager.debugLog("unminimize: AXWindows failed for pid \(pid), result=\(result.rawValue)")
+            logger.error("unminimize: AXWindows failed for pid \(pid), result=\(result.rawValue)")
+            DiagnosticLog.log("unminimize: AXWindows failed for pid \(pid), result=\(result.rawValue)")
             return
         }
-        ShortcutManager.debugLog("unminimize: found \(windows.count) windows for pid \(pid)")
+        #if DEBUG
+        logger.debug("unminimize: found \(windows.count) windows for pid \(pid)")
+        #endif
         for (i, window) in windows.enumerated() {
             var minimizedRef: CFTypeRef?
             let minResult = AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimizedRef)
             if minResult == .success, let isMinimized = minimizedRef as? Bool, isMinimized {
                 let setResult = AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, false as CFTypeRef)
-                ShortcutManager.debugLog("unminimize: window[\(i)] was minimized, unminimize result=\(setResult.rawValue)")
+                #if DEBUG
+                logger.debug("unminimize: window[\(i)] was minimized, unminimize result=\(setResult.rawValue)")
+                #endif
             }
         }
     }
@@ -85,12 +96,14 @@ final class AppSwitcher {
         var psn = ProcessSerialNumber()
         let status = GetProcessForPID(pid, &psn)
         guard status == noErr else {
-            logger.warning("GetProcessForPID failed for pid \(pid): \(status)")
+            logger.error("GetProcessForPID failed for pid \(pid): \(status)")
+            DiagnosticLog.log("GetProcessForPID failed for pid \(pid): \(status)")
             return app.activate(options: .activateIgnoringOtherApps)
         }
         let result = _SLPSSetFrontProcessWithOptions(&psn, 0, SLPSMode.userGenerated.rawValue)
         if result != .success {
-            logger.warning("_SLPSSetFrontProcessWithOptions failed: \(result.rawValue), falling back")
+            logger.error("_SLPSSetFrontProcessWithOptions failed: \(result.rawValue), falling back")
+            DiagnosticLog.log("SkyLight activation failed: \(result.rawValue), falling back to NSRunningApplication.activate")
             return app.activate(options: .activateIgnoringOtherApps)
         }
         return true
