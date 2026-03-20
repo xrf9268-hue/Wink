@@ -13,7 +13,11 @@ let package = Package(
         .executableTarget(
             name: "Quickey",
             path: "Sources/Quickey",
-            linkerSettings: [.linkedLibrary("sqlite3")]
+            exclude: ["Resources/Info.plist"],
+            linkerSettings: [
+                .linkedLibrary("sqlite3"),
+                .unsafeFlags(["-F/System/Library/PrivateFrameworks", "-framework", "SkyLight"]),
+            ]
         ),
         .testTarget(
             name: "QuickeyTests",

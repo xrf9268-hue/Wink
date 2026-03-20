@@ -7,7 +7,8 @@ private let logger = Logger(subsystem: "com.quickey.app", category: "EventTapMan
 
 @MainActor
 final class EventTapManager {
-    typealias ShortcutHandler = (KeyPress) -> Void
+    /// Returns `true` if the key press was handled and should be consumed (not passed to other apps).
+    typealias ShortcutHandler = (KeyPress) -> Bool
 
     struct KeyPress: Equatable, Sendable {
         let keyCode: CGKeyCode
@@ -44,7 +45,11 @@ final class EventTapManager {
                 return Unmanaged.passUnretained(event)
 
             case .keyDown:
-                box.manager.handle(event: event)
+                let consumed = box.manager.handle(event: event)
+                if consumed {
+                    // Swallow the event so it doesn't reach the focused app
+                    return nil
+                }
                 return Unmanaged.passUnretained(event)
 
             default:
@@ -60,18 +65,33 @@ final class EventTapManager {
         let retained = Unmanaged.passRetained(box)
         let userInfo = UnsafeMutableRawPointer(retained.toOpaque())
 
-        guard let tap = CGEvent.tapCreate(
+        ShortcutManager.debugLog("tapCreate: AXIsProcessTrusted=\(AXIsProcessTrusted()), CGPreflightListenEventAccess=\(CGPreflightListenEventAccess()), trying .defaultTap")
+        var tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .listenOnly,
+            options: .defaultTap,
             eventsOfInterest: CGEventMask(mask),
             callback: callback,
             userInfo: userInfo
-        ) else {
+        )
+        if tap == nil {
+            ShortcutManager.debugLog("tapCreate: .defaultTap failed, trying .listenOnly")
+            tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .listenOnly,
+                eventsOfInterest: CGEventMask(mask),
+                callback: callback,
+                userInfo: userInfo
+            )
+        }
+        guard let tap else {
             retained.release()
-            logger.error("Failed to create CGEvent tap — ensure Input Monitoring permission is granted in System Settings > Privacy & Security")
+            ShortcutManager.debugLog("tapCreate: BOTH .defaultTap and .listenOnly failed")
+            logger.error("Failed to create CGEvent tap — ensure Accessibility permission is granted in System Settings > Privacy & Security > Accessibility")
             return
         }
+        ShortcutManager.debugLog("tapCreate: SUCCESS, tap created")
 
         retainedBox = retained
         box.tap = tap
@@ -102,10 +122,11 @@ final class EventTapManager {
         logger.info("Event tap stopped")
     }
 
-    private func handle(event: CGEvent) {
+    /// Returns `true` if the key press matched a shortcut and should be consumed.
+    private func handle(event: CGEvent) -> Bool {
         let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-        onKeyPress?(KeyPress(keyCode: keyCode, modifiers: flags.intersection(NSEvent.ModifierFlags.deviceIndependentFlagsMask)))
+        return onKeyPress?(KeyPress(keyCode: keyCode, modifiers: flags.intersection(NSEvent.ModifierFlags.deviceIndependentFlagsMask))) ?? false
     }
 }
 
