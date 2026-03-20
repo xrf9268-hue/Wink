@@ -32,6 +32,7 @@ struct DailyBar: Identifiable {
 struct RankedShortcut: Identifiable {
     let id: UUID
     let appName: String
+    let bundleIdentifier: String
     let count: Int
     let rank: Int
 }
@@ -95,11 +96,11 @@ final class InsightsViewModel {
         var ranked: [RankedShortcut] = []
         for (id, count) in counts {
             guard let shortcut = shortcutMap[id] else { continue }
-            ranked.append(RankedShortcut(id: id, appName: shortcut.appName, count: count, rank: 0))
+            ranked.append(RankedShortcut(id: id, appName: shortcut.appName, bundleIdentifier: shortcut.bundleIdentifier, count: count, rank: 0))
         }
         ranked.sort { $0.count > $1.count }
         ranking = ranked.enumerated().map {
-            RankedShortcut(id: $1.id, appName: $1.appName, count: $1.count, rank: $0 + 1)
+            RankedShortcut(id: $1.id, appName: $1.appName, bundleIdentifier: $1.bundleIdentifier, count: $1.count, rank: $0 + 1)
         }
     }
 
