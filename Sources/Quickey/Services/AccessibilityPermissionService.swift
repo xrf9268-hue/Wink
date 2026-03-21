@@ -1,7 +1,7 @@
 import ApplicationServices
 import Foundation
 
-struct AccessibilityPermissionService: Sendable {
+struct AccessibilityPermissionService: PermissionServicing {
     /// Checks if both Accessibility and Input Monitoring permissions are granted.
     /// - Accessibility: needed for AX API (app activation via SkyLight)
     /// - Input Monitoring: needed for CGEvent tap (global hotkey capture)

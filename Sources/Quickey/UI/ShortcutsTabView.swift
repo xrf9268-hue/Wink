@@ -6,16 +6,25 @@ struct ShortcutsTabView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
-                Circle()
-                    .fill(preferences.accessibilityGranted ? Color.green : Color.orange)
-                    .frame(width: 10, height: 10)
-                Text(preferences.accessibilityGranted ? "Accessibility granted" : "Accessibility required for global shortcuts")
-                    .foregroundStyle(.secondary)
-                Button("Refresh") {
-                    preferences.refreshPermissions()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(preferences.shortcutCaptureStatus.ready ? Color.green : Color.orange)
+                        .frame(width: 10, height: 10)
+                    Text(captureStatusText(for: preferences.shortcutCaptureStatus))
+                        .foregroundStyle(.secondary)
+                    Button("Refresh") {
+                        preferences.refreshPermissions()
+                    }
+                    Spacer()
                 }
-                Spacer()
+
+                HStack(spacing: 12) {
+                    PermissionBadge(title: "Accessibility", granted: preferences.shortcutCaptureStatus.accessibilityGranted)
+                    PermissionBadge(title: "Input Monitoring", granted: preferences.shortcutCaptureStatus.inputMonitoringGranted)
+                    PermissionBadge(title: "Event Tap", granted: preferences.shortcutCaptureStatus.eventTapActive)
+                    Spacer()
+                }
             }
 
             HStack(spacing: 12) {
@@ -91,6 +100,42 @@ struct ShortcutsTabView: View {
                 }
             }
         }
+    }
+}
+
+private func captureStatusText(for status: ShortcutCaptureStatus) -> String {
+    if status.ready {
+        return "Global shortcut capture ready"
+    }
+    if !status.accessibilityGranted && !status.inputMonitoringGranted {
+        return "Accessibility + Input Monitoring required for global shortcuts"
+    }
+    if !status.accessibilityGranted {
+        return "Accessibility required for global shortcuts"
+    }
+    if !status.inputMonitoringGranted {
+        return "Input Monitoring required for global shortcuts"
+    }
+    return "Permissions granted, but the active event tap failed to start"
+}
+
+private struct PermissionBadge: View {
+    let title: String
+    let granted: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(granted ? Color.green : Color.orange)
+                .frame(width: 8, height: 8)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(Capsule())
     }
 }
 

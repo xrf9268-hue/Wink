@@ -4,7 +4,7 @@ import Observation
 @MainActor
 @Observable
 final class AppPreferences {
-    private(set) var accessibilityGranted: Bool = false
+    private(set) var shortcutCaptureStatus: ShortcutCaptureStatus
     private(set) var launchAtLoginStatus: LaunchAtLoginStatus = .disabled
     var hyperKeyEnabled: Bool = false
 
@@ -24,15 +24,15 @@ final class AppPreferences {
         self.shortcutManager = shortcutManager
         self.hyperKeyService = hyperKeyService
         self.launchAtLoginService = launchAtLoginService
-        self.accessibilityGranted = shortcutManager.hasAccessibilityAccess()
+        self.shortcutCaptureStatus = shortcutManager.shortcutCaptureStatus()
         self.launchAtLoginStatus = launchAtLoginService.status
         self.hyperKeyEnabled = hyperKeyService?.isEnabled ?? false
     }
 
     func refreshPermissions() {
-        let current = shortcutManager.hasAccessibilityAccess()
-        if current != accessibilityGranted {
-            accessibilityGranted = current
+        let current = shortcutManager.shortcutCaptureStatus()
+        if current != shortcutCaptureStatus {
+            shortcutCaptureStatus = current
         }
     }
 
