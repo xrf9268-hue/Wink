@@ -4,7 +4,7 @@ import os.log
 
 private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "UsageTracker")
 
-actor UsageTracker {
+actor UsageTracker: UsageTracking {
     // Safety: db is only accessed from actor-isolated methods and deinit.
     // nonisolated(unsafe) is required because OpaquePointer is not Sendable,
     // but the actor serializes all access. Do not add nonisolated methods that touch db.
@@ -202,10 +202,6 @@ actor UsageTracker {
     }
 
     // MARK: - Date helpers
-
-    private func todayString() -> String {
-        dateString(for: Date())
-    }
 
     private func windowStartString(days: Int, relativeTo now: Date) -> String {
         let clampedDays = max(days, 1)
