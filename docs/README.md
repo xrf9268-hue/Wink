@@ -1,23 +1,25 @@
 # Docs Index
 
-This directory contains design, architecture, and continuation notes for Quickey.
+This directory maps the maintainer-facing docs for Quickey.
 
-## Start here
-- [`../AGENTS.md`](../AGENTS.md) — agent-facing project guidance, priorities, constraints
-- [`architecture.md`](./architecture.md) — current system overview, module boundaries, runtime flows
-- [`handoff-notes.md`](./handoff-notes.md) — current-state handoff summary
+## Core Docs
+- `architecture.md`
+- `signing-and-release.md`
 
-## Core references
-- [`lessons-learned.md`](./lessons-learned.md) — real-device validation lessons (permissions, SkyLight, signing, logging)
-- [`signing-and-release.md`](./signing-and-release.md) — signing, notarization, and release workflow
-- [`../TODO.md`](../TODO.md) — high-level execution board
+## Maintainer Notes
+- `../AGENTS.md`
+- `handoff-notes.md`
+- `lessons-learned.md`
 
-## Archive
-Completed development-era docs are preserved in [`archive/`](./archive/) for historical reference.
+## Historical and Process Docs
+- `archive/`
+- `superpowers/`
 
-## Suggested reading order for a new contributor
+`archive/` and `superpowers/` are historical or process-oriented references, not the current source of truth.
+
+## Suggested Reading Order
 1. `../AGENTS.md`
 2. `architecture.md`
 3. `handoff-notes.md`
 4. `lessons-learned.md`
-5. `../TODO.md`
+5. `signing-and-release.md`
