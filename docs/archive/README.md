@@ -1,4 +1,5 @@
 # Archive
 
-Completed documentation from Quickey's development. These files are preserved
-for historical reference. All items described in them have been resolved.
+Archived docs are historical records of Quickey's development.
+They may describe completed, changed, or superseded states.
+They are preserved for reference, not as the current source of truth.
