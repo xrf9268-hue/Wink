@@ -24,10 +24,10 @@ final class EventTapManager: EventTapManaging {
 
     var isRunning: Bool { eventTap != nil }
 
-    func start(onKeyPress: @escaping ShortcutHandler) {
+    func start(onKeyPress: @escaping ShortcutHandler) -> EventTapStartResult {
         if isRunning {
             self.onKeyPress = onKeyPress
-            return
+            return .started
         }
 
         self.onKeyPress = onKeyPress
@@ -139,51 +139,46 @@ final class EventTapManager: EventTapManaging {
         #if DEBUG
         logger.debug("tapCreate: AXIsProcessTrusted=\(AXIsProcessTrusted()), CGPreflightListenEventAccess=\(CGPreflightListenEventAccess()), trying .defaultTap")
         #endif
-        var tap = CGEvent.tapCreate(
+        guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: CGEventMask(mask),
             callback: callback,
             userInfo: userInfo
-        )
-        if tap == nil {
-            logger.info("tapCreate: .defaultTap failed, trying .listenOnly")
-            DiagnosticLog.log("tapCreate: .defaultTap failed, trying .listenOnly")
-            tap = CGEvent.tapCreate(
-                tap: .cgSessionEventTap,
-                place: .headInsertEventTap,
-                options: .listenOnly,
-                eventsOfInterest: CGEventMask(mask),
-                callback: callback,
-                userInfo: userInfo
-            )
-        }
-        guard let tap else {
+        ) else {
             retained.release()
             backgroundThread?.cancel()
             backgroundThread = nil
-            logger.error("tapCreate: BOTH .defaultTap and .listenOnly failed — ensure Accessibility permission is granted in System Settings > Privacy & Security > Accessibility")
-            DiagnosticLog.log("tapCreate: BOTH .defaultTap and .listenOnly failed")
-            return
+            logger.error("tapCreate: .defaultTap failed — active event tap could not be created")
+            DiagnosticLog.log("tapCreate: .defaultTap failed")
+            return .failedToCreateTap
         }
         logger.info("tapCreate: SUCCESS, tap created")
         DiagnosticLog.log("tapCreate: SUCCESS, tap created")
 
-        retainedBox = retained
         box.tap = tap
 
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+            retained.release()
+            backgroundThread?.cancel()
+            backgroundThread = nil
+            logger.error("runLoopSourceCreate: failed for active event tap")
+            DiagnosticLog.log("runLoopSourceCreate: failed for active event tap")
+            return .failedToCreateTap
+        }
 
         // Add source to background thread's RunLoop instead of main RunLoop
-        thread.addSource(source!)
+        thread.addSource(source)
 
         CGEvent.tapEnable(tap: tap, enable: true)
 
+        retainedBox = retained
         eventTap = tap
         runLoopSource = source
         logger.info("Event tap started (background thread)")
         DiagnosticLog.log("Event tap started (background thread)")
+        return .started
     }
 
     func stop() {

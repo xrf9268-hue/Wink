@@ -34,7 +34,7 @@ struct SettingsView: View {
         .frame(minWidth: 680, minHeight: 420)
         .onChange(of: selectedTab) { _, newTab in
             if newTab == .insights {
-                Task { await insightsViewModel.refresh() }
+                insightsViewModel.scheduleRefresh()
             }
         }
         .onAppear {

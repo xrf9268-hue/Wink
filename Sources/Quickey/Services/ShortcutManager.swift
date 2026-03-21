@@ -11,7 +11,7 @@ final class ShortcutManager {
     private let persistenceService: PersistenceService
     private let appSwitcher: any AppSwitching
     private let eventTapManager: any EventTapManaging
-    private let permissionService: AccessibilityPermissionService
+    private let permissionService: any PermissionServicing
     private let usageTracker: UsageTracker?
     private let keyMatcher = KeyMatcher()
     private var triggerIndex: [ShortcutTrigger: AppShortcut] = [:]
@@ -24,7 +24,7 @@ final class ShortcutManager {
         persistenceService: PersistenceService,
         appSwitcher: any AppSwitching,
         eventTapManager: any EventTapManaging = EventTapManager(),
-        permissionService: AccessibilityPermissionService = AccessibilityPermissionService(),
+        permissionService: any PermissionServicing = AccessibilityPermissionService(),
         usageTracker: UsageTracker? = nil
     ) {
         self.shortcutStore = shortcutStore
@@ -64,8 +64,12 @@ final class ShortcutManager {
         return success
     }
 
-    func hasAccessibilityAccess() -> Bool {
-        permissionService.isTrusted()
+    func shortcutCaptureStatus() -> ShortcutCaptureStatus {
+        ShortcutCaptureStatus(
+            accessibilityGranted: permissionService.isAccessibilityTrusted(),
+            inputMonitoringGranted: permissionService.isInputMonitoringTrusted(),
+            eventTapActive: eventTapManager.isRunning
+        )
     }
 
     func setHyperKeyEnabled(_ enabled: Bool) {
@@ -160,14 +164,14 @@ final class ShortcutManager {
         rebuildIndex()
         logger.info("attemptStart: starting event tap, shortcuts count: \(self.shortcutStore.shortcuts.count), triggerIndex count: \(self.triggerIndex.count)")
         DiagnosticLog.log("attemptStart: starting event tap, shortcuts count: \(shortcutStore.shortcuts.count), triggerIndex count: \(triggerIndex.count)")
-        eventTapManager.start { [weak self] keyPress in
+        let startResult = eventTapManager.start { [weak self] keyPress in
             #if DEBUG
             logger.debug("KeyPress received: keyCode=\(keyPress.keyCode) modifiers=\(keyPress.modifiers.rawValue)")
             #endif
             return self?.handleKeyPress(keyPress) ?? false
         }
-        logger.info("Event tap running: \(self.eventTapManager.isRunning)")
-        DiagnosticLog.log("Event tap running: \(eventTapManager.isRunning)")
+        logger.info("Event tap start result: \(String(describing: startResult)), running: \(self.eventTapManager.isRunning)")
+        DiagnosticLog.log("Event tap start result: \(String(describing: startResult)), running: \(eventTapManager.isRunning)")
     }
 
     // MARK: - Key handling

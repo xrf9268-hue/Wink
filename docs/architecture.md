@@ -71,7 +71,8 @@ Responsibilities:
 ### Settings and user interaction
 - `SettingsWindowController`
 - `SettingsView` (tabbed: Shortcuts / General / Insights)
-- `SettingsViewModel`
+- `ShortcutEditorState`
+- `AppPreferences`
 - `ShortcutRecorderView`
 - `ShortcutsTabView`
 - `GeneralTabView`
@@ -83,7 +84,8 @@ Responsibilities:
 - choose target applications
 - record shortcuts
 - display saved bindings with inline usage stats
-- surface permission state and launch-at-login toggle
+- surface truthful shortcut readiness via `ShortcutCaptureStatus`
+- surface launch-at-login state via `LaunchAtLoginStatus`
 - show conflicts before saving
 - display usage trends and app ranking via Insights tab
 
@@ -134,13 +136,15 @@ Responsibilities:
 ### Permissions and packaging
 - `AccessibilityPermissionService`
 - `LaunchAtLoginService`
+- `ShortcutCaptureStatus`
 - `scripts/package-app.sh`
 - `Sources/Quickey/Resources/Info.plist`
 
 Responsibilities:
-- request/check Input Monitoring permission for CGEvent tap
+- request/check Accessibility + Input Monitoring permission for global shortcuts
+- report shortcut readiness from both permissions plus active event-tap state
 - recover monitoring after permission changes without relaunch
-- manage launch-at-login state via SMAppService
+- manage launch-at-login state via `SMAppService`, including approval-needed state
 - provide LSUIElement app bundle scaffold
 - automate `.app` packaging via script
 
@@ -154,7 +158,7 @@ App launch
   -> ShortcutStore.replaceAll()
   -> ShortcutManager.start()
   -> AccessibilityPermissionService.requestIfNeeded()
-  -> EventTapManager.start()
+  -> EventTapManager.start() // active tap only, no passive listenOnly fallback
   -> MenuBarController.install()
 ```
 
@@ -183,16 +187,17 @@ Global keyDown event
 ## Current design choices
 - **SPM-first**: simple repo layout and source organization
 - **AppKit-first with selective SwiftUI**: deliberate architectural decision documented in `docs/archive/app-structure-direction.md`; hard AppKit requirements (`.accessory` policy, raw key capture, CGEvent tap, NSWorkspace) prevent a pure SwiftUI scene-based approach
-- **Input Monitoring permission**: aligned with the real CGEvent tap monitoring path (not Accessibility trust)
+- **Truthful shortcut readiness**: `ShortcutCaptureStatus` reports Accessibility, Input Monitoring, and active event-tap state separately
 - **O(1) trigger index**: `ShortcutSignature` dictionary replaces linear scans in the hot path
 - **Hardened EventTap lifecycle**: explicit ownership, auto-recovery on disable/timeout, run-loop cleanup
-- **Public API baseline**: no private SkyLight dependency; low-latency private activation path intentionally deferred
+- **Active tap only**: passive `.listenOnly` mode is not used in the normal interception path because it cannot consume shortcut events
+- **SkyLight activation path**: private API is used for reliable foreground switching from LSUIElement context
 - **Best-effort toggle semantics**: activate → restore previous app → hide fallback
 - **UsageTracker**: SQLite-backed daily usage aggregation off the main actor
+- **Launch-at-login status modeling**: `LaunchAtLoginStatus` preserves enabled / approval-needed / disabled / not-found states
 
 ## Known architectural gaps
 - No dedicated per-shortcut toggle history stack (single global previous-app memory is current approach)
 - No test seam around event-tap capture itself (core logic is testable; tap infrastructure requires real macOS)
 - Signed/notarized release build not yet produced (workflow documented in `docs/signing-and-release.md`)
-- No private low-latency SkyLight activation tier (intentionally deferred)
-- End-to-end device validation still pending on real macOS hardware
+- Targeted manual macOS validation is still recommended for the 2026-03-21 remediation changes (launch-at-login approval flow, active event-tap startup, Hyper Key failure cases)

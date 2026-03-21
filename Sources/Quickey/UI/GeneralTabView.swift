@@ -10,6 +10,24 @@ struct GeneralTabView: View {
                 set: { preferences.setLaunchAtLogin($0) }
             ))
 
+            switch preferences.launchAtLoginStatus {
+            case .requiresApproval:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Enabled in Quickey, but still needs approval in System Settings > General > Login Items.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Open Login Items Settings") {
+                        preferences.openLoginItemsSettings()
+                    }
+                }
+            case .notFound:
+                Text("Quickey could not find the packaged login item. Rebuild or reinstall the app bundle and try again.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .enabled, .disabled:
+                EmptyView()
+            }
+
             Divider()
 
             VStack(alignment: .leading, spacing: 6) {

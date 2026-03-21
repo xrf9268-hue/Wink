@@ -62,6 +62,6 @@ struct InsightsTabView: View {
                 }
             }
         }
-        .task { await viewModel.refresh() }
+        .task { viewModel.scheduleRefresh() }
     }
 }

@@ -47,6 +47,6 @@ For detailed tasks, use GitHub Issues. Historical completion log: `docs/archive/
 - [x] Toggle stability refactor: async event tap, three-layer activation, windowless recovery (#57)
 - [x] Hyper Key: built-in Caps Lock mapping via hidutil + CGEvent tap (#56)
 - [x] Logging redesign: DiagnosticLog + os.log per Apple best practices (#55)
-- [ ] Launch at Login real device verification (#58)
 - [ ] Signed/notarized distributable build (workflow documented in #49, execution pending)
-- [ ] Private SkyLight activation path (deferred, out of scope for now)
+- [ ] Re-run targeted macOS validation for the 2026-03-21 remediation set:
+  launch-at-login approval UI, active event tap readiness, Hyper Key failure handling, and Insights date/race fixes

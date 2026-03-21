@@ -29,7 +29,7 @@ final class MenuBarController {
         menu.addItem(.separator())
 
         let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
-        loginItem.state = launchAtLoginService.isEnabled ? .on : .off
+        loginItem.state = menuItemState(for: launchAtLoginService.status)
         launchAtLoginItem = loginItem
         menu.addItem(loginItem)
 
@@ -48,11 +48,22 @@ final class MenuBarController {
     private func toggleLaunchAtLogin() {
         let newState = !launchAtLoginService.isEnabled
         launchAtLoginService.setEnabled(newState)
-        launchAtLoginItem?.state = launchAtLoginService.isEnabled ? .on : .off
+        launchAtLoginItem?.state = menuItemState(for: launchAtLoginService.status)
     }
 
     @objc
     private func quit() {
         onQuit()
+    }
+
+    private func menuItemState(for status: LaunchAtLoginStatus) -> NSControl.StateValue {
+        switch status {
+        case .enabled:
+            .on
+        case .requiresApproval:
+            .mixed
+        case .disabled, .notFound:
+            .off
+        }
     }
 }

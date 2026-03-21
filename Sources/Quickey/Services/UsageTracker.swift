@@ -4,7 +4,7 @@ import os.log
 
 private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "UsageTracker")
 
-actor UsageTracker {
+actor UsageTracker: UsageTracking {
     // Safety: db is only accessed from actor-isolated methods and deinit.
     // nonisolated(unsafe) is required because OpaquePointer is not Sendable,
     // but the actor serializes all access. Do not add nonisolated methods that touch db.
@@ -42,6 +42,10 @@ actor UsageTracker {
     // MARK: - Write
 
     func recordUsage(shortcutId: UUID) {
+        recordUsage(shortcutId: shortcutId, on: Date())
+    }
+
+    func recordUsage(shortcutId: UUID, on date: Date) {
         let sql = """
             INSERT INTO daily_usage (shortcut_id, date, count)
             VALUES (?, ?, 1)
@@ -52,7 +56,7 @@ actor UsageTracker {
 
         let idString = shortcutId.uuidString
         sqlite3_bind_text(stmt, 1, (idString as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
-        sqlite3_bind_text(stmt, 2, (todayString() as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, (dateString(for: date) as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
         if sqlite3_step(stmt) != SQLITE_DONE {
             let errMsg = String(cString: sqlite3_errmsg(self.db!))
@@ -79,11 +83,15 @@ actor UsageTracker {
     // MARK: - Read
 
     func usageCounts(days: Int) -> [UUID: Int] {
+        usageCounts(days: days, relativeTo: Date())
+    }
+
+    func usageCounts(days: Int, relativeTo now: Date) -> [UUID: Int] {
         let sql = "SELECT shortcut_id, SUM(count) FROM daily_usage WHERE date >= ? GROUP BY shortcut_id"
         guard let stmt = prepare(sql) else { return [:] }
         defer { sqlite3_finalize(stmt) }
 
-        let cutoff = dateString(daysAgo: days)
+        let cutoff = windowStartString(days: days, relativeTo: now)
         sqlite3_bind_text(stmt, 1, (cutoff as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
         var result: [UUID: Int] = [:]
@@ -97,11 +105,15 @@ actor UsageTracker {
     }
 
     func dailyCounts(days: Int) -> [String: [(date: String, count: Int)]] {
+        dailyCounts(days: days, relativeTo: Date())
+    }
+
+    func dailyCounts(days: Int, relativeTo now: Date) -> [String: [(date: String, count: Int)]] {
         let sql = "SELECT shortcut_id, date, count FROM daily_usage WHERE date >= ? ORDER BY date"
         guard let stmt = prepare(sql) else { return [:] }
         defer { sqlite3_finalize(stmt) }
 
-        let cutoff = dateString(daysAgo: days)
+        let cutoff = windowStartString(days: days, relativeTo: now)
         sqlite3_bind_text(stmt, 1, (cutoff as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
         var result: [String: [(date: String, count: Int)]] = [:]
@@ -117,11 +129,15 @@ actor UsageTracker {
     }
 
     func totalSwitches(days: Int) -> Int {
+        totalSwitches(days: days, relativeTo: Date())
+    }
+
+    func totalSwitches(days: Int, relativeTo now: Date) -> Int {
         let sql = "SELECT COALESCE(SUM(count), 0) FROM daily_usage WHERE date >= ?"
         guard let stmt = prepare(sql) else { return 0 }
         defer { sqlite3_finalize(stmt) }
 
-        let cutoff = dateString(daysAgo: days)
+        let cutoff = windowStartString(days: days, relativeTo: now)
         sqlite3_bind_text(stmt, 1, (cutoff as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
         if sqlite3_step(stmt) == SQLITE_ROW {
@@ -187,12 +203,13 @@ actor UsageTracker {
 
     // MARK: - Date helpers
 
-    private func todayString() -> String {
-        dateString(daysAgo: 0)
+    private func windowStartString(days: Int, relativeTo now: Date) -> String {
+        let clampedDays = max(days, 1)
+        let start = Calendar.current.date(byAdding: .day, value: -(clampedDays - 1), to: now) ?? now
+        return dateString(for: start)
     }
 
-    private func dateString(daysAgo days: Int) -> String {
-        let date = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+    private func dateString(for date: Date) -> String {
         return Self.dateFormatter.string(from: date)
     }
 }

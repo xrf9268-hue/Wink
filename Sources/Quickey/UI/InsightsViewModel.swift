@@ -39,38 +39,58 @@ struct RankedShortcut: Identifiable {
 @Observable @MainActor
 final class InsightsViewModel {
     var period: InsightsPeriod = .week {
-        didSet { Task { await refresh() } }
+        didSet { scheduleRefresh() }
     }
     var totalCount: Int = 0
     var bars: [DailyBar] = []
     var ranking: [RankedShortcut] = []
 
-    private let usageTracker: UsageTracker?
+    private let usageTracker: (any UsageTracking)?
     private let shortcutStore: ShortcutStore
+    private var refreshTask: Task<Void, Never>?
 
-    init(usageTracker: UsageTracker?, shortcutStore: ShortcutStore) {
+    init(usageTracker: (any UsageTracking)?, shortcutStore: ShortcutStore) {
         self.usageTracker = usageTracker
         self.shortcutStore = shortcutStore
     }
 
+    func scheduleRefresh() {
+        refreshTask?.cancel()
+        let selectedPeriod = period
+        refreshTask = Task { @MainActor [weak self] in
+            await self?.refresh(for: selectedPeriod)
+        }
+    }
+
     func refresh() async {
-        guard let usageTracker else { return }
+        await refresh(for: period)
+    }
 
-        let days = period.days
-        totalCount = await usageTracker.totalSwitches(days: days)
-
-        // Build bars (zero-filled) for week/month
-        if period != .day {
-            let rawDaily = await usageTracker.dailyCounts(days: days)
-            bars = buildBars(rawDaily: rawDaily, days: days)
-        } else {
+    func refresh(for period: InsightsPeriod) async {
+        guard let usageTracker else {
+            guard self.period == period else { return }
+            totalCount = 0
             bars = []
+            ranking = []
+            return
         }
 
-        // Build ranking
-        let counts = await usageTracker.usageCounts(days: days)
+        let days = period.days
+        async let totalCountResult = usageTracker.totalSwitches(days: days)
+        async let rawDailyResult = usageTracker.dailyCounts(days: days)
+        async let countsResult = usageTracker.usageCounts(days: days)
+
+        let totalCount = await totalCountResult
+        let rawDaily = await rawDailyResult
+        let counts = await countsResult
         let shortcuts = shortcutStore.shortcuts
         let shortcutMap = Dictionary(uniqueKeysWithValues: shortcuts.map { ($0.id, $0) })
+
+        guard !Task.isCancelled else { return }
+        guard self.period == period else { return }
+
+        self.totalCount = totalCount
+        bars = period == .day ? [] : buildBars(rawDaily: rawDaily, days: days)
 
         var ranked: [RankedShortcut] = []
         for (id, count) in counts {
