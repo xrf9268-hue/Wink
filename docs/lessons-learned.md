@@ -9,7 +9,7 @@
 On macOS 15, a working event tap requires both Accessibility and Input Monitoring. Either permission alone is not enough.
 
 **Practical guidance**
-Check both `AXIsProcessTrusted()` and `CGPreflightListenEventAccess()` before treating shortcut capture as ready. When validating on a clean machine, request and confirm both permissions.
+Check both `AXIsProcessTrusted()` and `CGPreflightListenEventAccess()` as prerequisites, but treat shortcut capture as ready only after the active event tap starts successfully. When validating on a clean machine, request and confirm both permissions, then verify the tap startup path.
 
 ## Ad-hoc Signing and TCC
 
