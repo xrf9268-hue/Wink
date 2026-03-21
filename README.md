@@ -27,10 +27,10 @@ cp .build/release/Quickey build/Quickey.app/Contents/MacOS/Quickey
 ```
 
 ## Documentation
-- `AGENTS.md`
-- `docs/README.md`
-- `docs/architecture.md`
-- `docs/signing-and-release.md`
+- [`AGENTS.md`](./AGENTS.md)
+- [`docs/README.md`](./docs/README.md)
+- [`docs/architecture.md`](./docs/architecture.md)
+- [`docs/signing-and-release.md`](./docs/signing-and-release.md)
 
 ## Project Status
 Quickey is feature-complete and has been validated on macOS, including real-device shortcut, permission, and launch-at-login flows on 2026-03-20. A signed and notarized release is still pending.
