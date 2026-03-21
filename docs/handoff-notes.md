@@ -22,7 +22,7 @@ Quickey was broadly validated on macOS 15.3.1 on 2026-03-20. The 2026-03-21 reme
 - Ad-hoc signing changes can invalidate TCC state; use `tccutil reset` during development when needed
 - Launch the app with `open`, not by executing the binary directly, so TCC matches the correct app identity
 - SkyLight is a private API dependency for reliable activation from LSUIElement apps and may block App Store submission
-- Unified logging can hide useful runtime details; file-based debug logs are more reliable for diagnosis
+- Unified logging can hide useful runtime details; file-based debug logs (`~/.config/Quickey/debug.log`) are more reliable for diagnosis
 
 ## Immediate Next Actions
 1. Re-run the targeted macOS validation for the 2026-03-21 remediation changes
