@@ -6,25 +6,17 @@ Agent guidance for working on **Quickey**.
 
 Quickey is a macOS menu bar utility that binds global shortcuts to target apps with Thor-like toggle semantics.
 
-Current state (as of 2026-03-20):
-- All originally planned issues (Tier 0-5) resolved
-- Real-device validation completed on macOS 15.3.1
-- Core flows verified: build, permissions, shortcut recording, toggle, Hyper Key, Insights
-- SkyLight private API used for reliable app activation from LSUIElement background
-- Dual permission model: Accessibility + Input Monitoring (both required for CGEvent tap on macOS 15)
-
-## Current priorities
-
-1. Remaining GitHub Issues: Launch at Login verification (#58)
-2. Signed/notarized distributable build (Developer ID cert required)
-3. New feature work or behavior improvements
-4. Additional test coverage
+Use this file as a concise operating guide. Treat the detailed repository docs as the system of record:
+- `docs/architecture.md` for architecture and module responsibilities
+- `TODO.md` for current priorities
+- `docs/handoff-notes.md` for recent validation status, open follow-up work, and operational lessons
 
 ## Environment and platform constraints
 
 - macOS 14+, Swift 6, SPM-first structure
 - This workspace may be edited from Linux, but the app **cannot be fully validated there**
 - Final build, permission, event-monitoring, and runtime behavior must be tested on macOS
+- GitHub Actions can verify build/test/package on macOS, but not replace manual validation for TCC, event taps, login items, or app activation behavior
 - Do not claim macOS correctness from Linux-only inspection
 
 ## Build and test commands
@@ -46,7 +38,9 @@ The codebase is feature-complete. Key architectural decisions:
 - O(1) precompiled trigger index for hot-path matching
 - EventTap lifecycle hardened with auto-recovery
 - SkyLight private API for app activation (unreliable `NSRunningApplication.activate()` on macOS 14+)
-- Dual permission: `AXIsProcessTrusted()` + `CGPreflightListenEventAccess()`
+- Shortcut readiness is not just permission state: require `AXIsProcessTrusted()`, `CGPreflightListenEventAccess()`, and successful active event-tap startup
+- Do not reintroduce passive `.listenOnly` fallback for normal shortcut interception; it cannot consume events
+- Preserve multi-state system API semantics when behavior/UI depends on them; do not collapse `SMAppService.Status` to a single bool
 
 Before making large structural changes, read `docs/architecture.md`.
 
@@ -73,14 +67,17 @@ Highest-value test targets:
 - Trigger indexing
 - Toggle behavior logic
 - Permission/lifecycle behavior where test seams exist
+- Date-window boundary semantics for Insights/usage queries
+- Async view-model refresh ordering and cancellation ("last selection wins")
 
 If a change cannot be verified on Linux, document what must be verified on macOS.
 
 ## Investigation before implementation
 
-- **在没有深入调研、完全搞清楚问题根因之前，不允许修改代码。** 先读日志、读代码、复现问题、确认假设，形成明确结论后才能动手改。
-- 猜测性修复会引入新问题（例：PR #57 后台线程改动未考虑 @MainActor 隔离，导致 Release 模式崩溃）。
-- 如果不确定，写下假设并用日志/测试验证，而不是直接改代码看效果。
+- Do not change code before you understand the failure mode or behavior gap.
+- Read logs, inspect the relevant code, reproduce the issue where possible, and verify your assumptions before editing.
+- Avoid speculative fixes. If the root cause is still uncertain, write down the hypothesis and prove or disprove it with logs, tests, or targeted instrumentation.
+- When working with system APIs, external commands, or permission state, verify the actual platform semantics first. Do not confuse "can observe" with "can intercept", and do not confuse "permission granted" with "feature ready".
 
 ## Editing rules
 
@@ -88,6 +85,7 @@ If a change cannot be verified on Linux, document what must be verified on macOS
 - Do not silently rename the product, bundle identifiers, or repo-wide strings
 - Do not introduce private API paths by default (SkyLight usage is a documented exception)
 - Do not claim App Store safety unless actually verified
+- For user-visible state that depends on external side effects (for example `hidutil` mappings or login-item registration), persist the state only after the underlying operation succeeds
 
 ## Documentation rules
 
