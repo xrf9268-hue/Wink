@@ -10,7 +10,7 @@ struct ShortcutsTabView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             PermissionStatusBanner(
-                granted: preferences.shortcutCaptureStatus.ready,
+                ready: preferences.shortcutCaptureStatus.ready,
                 onRefresh: { preferences.refreshPermissions() }
             )
 

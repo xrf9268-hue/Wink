@@ -16,7 +16,6 @@ final class ShortcutEditorState {
     private let shortcutStore: ShortcutStore
     private let shortcutManager: ShortcutManager
     private let usageTracker: UsageTracker?
-    private let appBundleLocator = AppBundleLocator()
     private let shortcutValidator = ShortcutValidator()
 
     init(shortcutStore: ShortcutStore, shortcutManager: ShortcutManager, usageTracker: UsageTracker? = nil) {
@@ -68,7 +67,7 @@ final class ShortcutEditorState {
     }
 
     var allEnabled: Bool {
-        shortcuts.contains { $0.isEnabled }
+        !shortcuts.isEmpty && shortcuts.allSatisfy(\.isEnabled)
     }
 
     func toggleShortcutEnabled(id: UUID) {

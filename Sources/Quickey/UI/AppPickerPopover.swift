@@ -21,10 +21,15 @@ struct AppPickerPopover: View {
         appListProvider.filteredApps(query: searchText)
     }
 
+    private var nonRecentApps: [AppEntry] {
+        guard searchText.isEmpty else { return [] }
+        let recentIDs = Set(filteredRecent.map(\.bundleIdentifier))
+        return filteredAll.filter { !recentIDs.contains($0.bundleIdentifier) }
+    }
+
     private var flatList: [AppEntry] {
         if searchText.isEmpty {
-            let recentIDs = Set(filteredRecent.map(\.bundleIdentifier))
-            return filteredRecent + filteredAll.filter { !recentIDs.contains($0.bundleIdentifier) }
+            return filteredRecent + nonRecentApps
         }
         return filteredAll
     }
@@ -58,11 +63,9 @@ struct AppPickerPopover: View {
                                 }
                             }
 
-                            let recentIDs = Set(filteredRecent.map(\.bundleIdentifier))
-                            let remaining = filteredAll.filter { !recentIDs.contains($0.bundleIdentifier) }
-                            if !remaining.isEmpty {
+                            if !nonRecentApps.isEmpty {
                                 sectionHeader("All Apps")
-                                ForEach(Array(remaining.enumerated()), id: \.element.id) { i, entry in
+                                ForEach(Array(nonRecentApps.enumerated()), id: \.element.id) { i, entry in
                                     let index = filteredRecent.count + i
                                     appRow(entry, index: index, proxy: proxy)
                                 }

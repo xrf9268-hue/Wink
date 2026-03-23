@@ -48,9 +48,10 @@ struct InsightsTabView: View {
                 Spacer()
             } else {
                 CardView("Top Apps") {
+                    let maxCount = viewModel.ranking.first?.count ?? 1
                     LazyVStack(spacing: 0) {
                         ForEach(Array(viewModel.ranking.enumerated()), id: \.element.id) { index, item in
-                            rankingRow(item, index: index)
+                            rankingRow(item, index: index, maxCount: maxCount)
                         }
                     }
                 }
@@ -59,19 +60,19 @@ struct InsightsTabView: View {
         .task { viewModel.scheduleRefresh() }
     }
 
-    @ViewBuilder
-    private func rankingRow(_ item: RankedShortcut, index: Int) -> some View {
-        let maxCount = viewModel.ranking.first?.count ?? 1
+    private static let goldColor = Color(red: 1, green: 0.84, blue: 0.04)
 
+    @ViewBuilder
+    private func rankingRow(_ item: RankedShortcut, index: Int, maxCount: Int) -> some View {
         HStack(spacing: 10) {
             // Rank circle
             Text("\(item.rank)")
                 .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(item.rank == 1 ? Color(red: 1, green: 0.84, blue: 0.04) : .secondary)
+                .foregroundStyle(item.rank == 1 ? Self.goldColor : .secondary)
                 .frame(width: 24, height: 24)
                 .background(
                     item.rank == 1
-                        ? Color(red: 1, green: 0.84, blue: 0.04).opacity(0.15)
+                        ? Self.goldColor.opacity(0.15)
                         : Color.secondary.opacity(0.08)
                 )
                 .clipShape(Circle())

@@ -95,17 +95,17 @@ struct ShortcutLabel: View {
 // MARK: - Permission status banner
 
 struct PermissionStatusBanner: View {
-    let granted: Bool
+    let ready: Bool
     let onRefresh: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(granted ? Color.green : Color.orange)
+                .fill(ready ? Color.green : Color.orange)
                 .frame(width: 8, height: 8)
-            Text(granted ? "Accessibility granted" : "Accessibility required for global shortcuts")
+            Text(ready ? "Shortcut capture ready" : "Permissions required for global shortcuts")
                 .font(.system(size: 12))
-                .foregroundStyle(granted ? .green : .orange)
+                .foregroundStyle(ready ? .green : .orange)
             Spacer()
             Button("Refresh") { onRefresh() }
                 .font(.system(size: 11))
@@ -113,11 +113,11 @@ struct PermissionStatusBanner: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background((granted ? Color.green : Color.orange).opacity(0.1))
+        .background((ready ? Color.green : Color.orange).opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke((granted ? Color.green : Color.orange).opacity(0.2), lineWidth: 1)
+                .stroke((ready ? Color.green : Color.orange).opacity(0.2), lineWidth: 1)
         )
     }
 }

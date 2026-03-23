@@ -5,10 +5,11 @@ import os.log
 private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "AppListProvider")
 
 struct AppEntry: Identifiable, Hashable {
-    let id: String // bundleIdentifier
+    let id: String
     let name: String
-    let bundleIdentifier: String
     let url: URL
+
+    var bundleIdentifier: String { id }
 }
 
 @MainActor
@@ -71,7 +72,7 @@ final class AppListProvider {
                   !seen.contains(bid),
                   let url = app.bundleURL else { continue }
             let name = app.localizedName ?? url.deletingPathExtension().lastPathComponent
-            entries.append(AppEntry(id: bid, name: name, bundleIdentifier: bid, url: url))
+            entries.append(AppEntry(id: bid, name: name, url: url))
             seen.insert(bid)
         }
 
@@ -93,7 +94,7 @@ final class AppListProvider {
                     let name = (bundle.infoDictionary?["CFBundleName"] as? String)
                         ?? (bundle.infoDictionary?["CFBundleDisplayName"] as? String)
                         ?? url.deletingPathExtension().lastPathComponent
-                    entries.append(AppEntry(id: bid, name: name, bundleIdentifier: bid, url: url))
+                    entries.append(AppEntry(id: bid, name: name, url: url))
                     seen.insert(bid)
                 }
             } else {
