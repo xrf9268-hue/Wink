@@ -24,6 +24,7 @@ struct CardView<Content: View>: View {
             }
             content()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
