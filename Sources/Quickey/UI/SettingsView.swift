@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 enum SettingsTab: String, CaseIterable {
@@ -12,7 +13,25 @@ struct SettingsView: View {
     var preferences: AppPreferences
     var insightsViewModel: InsightsViewModel
     var appListProvider: AppListProvider
+    var appDidBecomeActivePublisher: AnyPublisher<Void, Never>
     @State private var selectedTab: SettingsTab = .shortcuts
+
+    init(
+        editor: ShortcutEditorState,
+        preferences: AppPreferences,
+        insightsViewModel: InsightsViewModel,
+        appListProvider: AppListProvider,
+        appDidBecomeActivePublisher: AnyPublisher<Void, Never> = NotificationCenter.default
+            .publisher(for: NSApplication.didBecomeActiveNotification)
+            .map { _ in () }
+            .eraseToAnyPublisher()
+    ) {
+        self.editor = editor
+        self.preferences = preferences
+        self.insightsViewModel = insightsViewModel
+        self.appListProvider = appListProvider
+        self.appDidBecomeActivePublisher = appDidBecomeActivePublisher
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -43,7 +62,7 @@ struct SettingsView: View {
             preferences.refreshPermissions()
             preferences.refreshLaunchAtLoginStatus()
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+        .onReceive(appDidBecomeActivePublisher) { _ in
             preferences.refreshLaunchAtLoginStatus()
         }
     }
