@@ -10,7 +10,7 @@ enum LaunchAtLoginStatus: Equatable {
     case notFound
 
     var isEnabled: Bool {
-        self == .enabled || self == .requiresApproval
+        self == .enabled
     }
 }
 

@@ -68,6 +68,8 @@ final class InsightsViewModel {
     }
 
     func refresh(for period: InsightsPeriod) async {
+        let now = Date()
+
         guard let usageTracker else {
             guard self.period == period else { return }
             totalCount = 0
@@ -77,9 +79,9 @@ final class InsightsViewModel {
         }
 
         let days = period.days
-        async let totalCountResult = usageTracker.totalSwitches(days: days)
-        async let rawDailyResult = usageTracker.dailyCounts(days: days)
-        async let countsResult = usageTracker.usageCounts(days: days)
+        async let totalCountResult = usageTracker.totalSwitches(days: days, relativeTo: now)
+        async let rawDailyResult = usageTracker.dailyCounts(days: days, relativeTo: now)
+        async let countsResult = usageTracker.usageCounts(days: days, relativeTo: now)
 
         let totalCount = await totalCountResult
         let rawDaily = await rawDailyResult
@@ -91,7 +93,7 @@ final class InsightsViewModel {
         guard self.period == period else { return }
 
         self.totalCount = totalCount
-        bars = period == .day ? [] : buildBars(rawDaily: rawDaily, days: days)
+        bars = period == .day ? [] : buildBars(rawDaily: rawDaily, days: days, relativeTo: now)
 
         var ranked: [RankedShortcut] = []
         for (id, count) in counts {
@@ -104,7 +106,11 @@ final class InsightsViewModel {
         }
     }
 
-    private func buildBars(rawDaily: [String: [(date: String, count: Int)]], days: Int) -> [DailyBar] {
+    private func buildBars(
+        rawDaily: [String: [(date: String, count: Int)]],
+        days: Int,
+        relativeTo now: Date
+    ) -> [DailyBar] {
         // Aggregate across all shortcuts per date
         var dateTotals: [String: Int] = [:]
         for (_, entries) in rawDaily {
@@ -124,9 +130,8 @@ final class InsightsViewModel {
         labelFormatter.timeZone = .current
 
         var result: [DailyBar] = []
-        let today = Date()
         for i in stride(from: days - 1, through: 0, by: -1) {
-            guard let date = calendar.date(byAdding: .day, value: -i, to: today) else { continue }
+            guard let date = calendar.date(byAdding: .day, value: -i, to: now) else { continue }
             let dateStr = formatter.string(from: date)
             let label = labelFormatter.string(from: date)
             let count = dateTotals[dateStr] ?? 0

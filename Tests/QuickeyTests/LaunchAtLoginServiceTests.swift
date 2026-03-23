@@ -15,13 +15,6 @@ func requiresApprovalMapsToApprovalNeededState() {
 }
 
 @Test
-func isEnabledIsTrueWhenApprovalIsStillPending() {
-    let service = LaunchAtLoginService(client: .init(
-        status: { .requiresApproval },
-        register: {},
-        unregister: {},
-        openSystemSettingsLoginItems: {}
-    ))
-
-    #expect(service.isEnabled)
+func requiresApprovalIsNotTreatedAsFullyEnabled() {
+    #expect(LaunchAtLoginStatus.requiresApproval.isEnabled == false)
 }
