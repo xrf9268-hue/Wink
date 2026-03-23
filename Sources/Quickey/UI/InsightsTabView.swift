@@ -47,21 +47,60 @@ struct InsightsTabView: View {
                     .foregroundStyle(.tertiary)
                 Spacer()
             } else {
-                List(viewModel.ranking) { item in
-                    HStack {
-                        Text("#\(item.rank)")
-                            .font(.system(.body, design: .rounded).bold())
-                            .foregroundStyle(.secondary)
-                            .frame(width: 32, alignment: .leading)
-                        Text(item.appName)
-                        Spacer()
-                        Text("\(item.count)×")
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                CardView("Top Apps") {
+                    let maxCount = viewModel.ranking.first?.count ?? 1
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(viewModel.ranking.enumerated()), id: \.element.id) { index, item in
+                            rankingRow(item, index: index, maxCount: maxCount)
+                        }
                     }
                 }
             }
         }
         .task { viewModel.scheduleRefresh() }
+    }
+
+    private static let goldColor = Color(red: 1, green: 0.84, blue: 0.04)
+
+    @ViewBuilder
+    private func rankingRow(_ item: RankedShortcut, index: Int, maxCount: Int) -> some View {
+        HStack(spacing: 10) {
+            // Rank circle
+            Text("\(item.rank)")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(item.rank == 1 ? Self.goldColor : .secondary)
+                .frame(width: 24, height: 24)
+                .background(
+                    item.rank == 1
+                        ? Self.goldColor.opacity(0.15)
+                        : Color.secondary.opacity(0.08)
+                )
+                .clipShape(Circle())
+
+            AppIconView(bundleIdentifier: item.bundleIdentifier, size: 20)
+
+            Text(item.appName)
+                .font(.system(size: 13))
+
+            Spacer()
+
+            // Mini progress bar
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.secondary.opacity(0.15))
+                    .frame(width: 60, height: 4)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.accentColor)
+                    .frame(width: 60 * CGFloat(item.count) / CGFloat(max(maxCount, 1)), height: 4)
+            }
+
+            Text("\(item.count)×")
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 40, alignment: .trailing)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .alternatingRowBackground(index: index)
     }
 }

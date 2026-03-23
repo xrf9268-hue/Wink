@@ -24,9 +24,10 @@ struct KeyMatcher {
     }
 
     func buildIndex(for shortcuts: [AppShortcut]) -> [ShortcutTrigger: AppShortcut] {
+        let enabled = shortcuts.filter(\.isEnabled)
         var index: [ShortcutTrigger: AppShortcut] = [:]
-        index.reserveCapacity(shortcuts.count)
-        for shortcut in shortcuts {
+        index.reserveCapacity(enabled.count)
+        for shortcut in enabled {
             index[trigger(for: shortcut)] = shortcut
         }
         return index

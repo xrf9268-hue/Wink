@@ -10,6 +10,7 @@ struct SettingsView: View {
     var editor: ShortcutEditorState
     var preferences: AppPreferences
     var insightsViewModel: InsightsViewModel
+    var appListProvider: AppListProvider
     @State private var selectedTab: SettingsTab = .shortcuts
 
     var body: some View {
@@ -23,9 +24,9 @@ struct SettingsView: View {
 
             switch selectedTab {
             case .shortcuts:
-                ShortcutsTabView(editor: editor, preferences: preferences)
+                ShortcutsTabView(editor: editor, preferences: preferences, appListProvider: appListProvider)
             case .general:
-                GeneralTabView(preferences: preferences)
+                GeneralTabView(preferences: preferences, editor: editor)
             case .insights:
                 InsightsTabView(viewModel: insightsViewModel)
             }

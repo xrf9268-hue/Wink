@@ -3,66 +3,87 @@ import SwiftUI
 struct ShortcutsTabView: View {
     @Bindable var editor: ShortcutEditorState
     var preferences: AppPreferences
+    var appListProvider: AppListProvider
+
+    @State private var showingAppPicker = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 12) {
-                    Circle()
-                        .fill(preferences.shortcutCaptureStatus.ready ? Color.green : Color.orange)
-                        .frame(width: 10, height: 10)
-                    Text(captureStatusText(for: preferences.shortcutCaptureStatus))
-                        .foregroundStyle(.secondary)
-                    Button("Refresh") {
-                        preferences.refreshPermissions()
-                    }
-                    Spacer()
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            PermissionStatusBanner(
+                ready: preferences.shortcutCaptureStatus.ready,
+                onRefresh: { preferences.refreshPermissions() }
+            )
 
-                HStack(spacing: 12) {
-                    PermissionBadge(title: "Accessibility", granted: preferences.shortcutCaptureStatus.accessibilityGranted)
-                    PermissionBadge(title: "Input Monitoring", granted: preferences.shortcutCaptureStatus.inputMonitoringGranted)
-                    PermissionBadge(title: "Event Tap", granted: preferences.shortcutCaptureStatus.eventTapActive)
-                    Spacer()
-                }
-            }
+            // New Shortcut card
+            CardView("New Shortcut") {
+                VStack(alignment: .leading, spacing: 10) {
+                    // App chooser row
+                    HStack(spacing: 10) {
+                        Button {
+                            showingAppPicker = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("Choose App")
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 9, weight: .semibold))
+                            }
+                        }
+                        .popover(isPresented: $showingAppPicker, arrowEdge: .bottom) {
+                            AppPickerPopover(
+                                appListProvider: appListProvider,
+                                onSelect: { entry in
+                                    editor.selectedAppName = entry.name
+                                    editor.selectedBundleIdentifier = entry.bundleIdentifier
+                                },
+                                onBrowse: { editor.chooseApplication() }
+                            )
+                        }
 
-            HStack(spacing: 12) {
-                Button("Choose App") {
-                    editor.chooseApplication()
-                }
-                if !editor.selectedBundleIdentifier.isEmpty {
-                    Button("Reveal App") {
-                        editor.revealApplication()
-                    }
-                }
-                Text(editor.selectedAppName.isEmpty ? "No app selected" : editor.selectedAppName)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                TextField("Bundle Identifier", text: $editor.selectedBundleIdentifier)
-
-                HStack(spacing: 12) {
-                    ShortcutRecorderView(
-                        recordedShortcut: $editor.recordedShortcut,
-                        isRecording: $editor.isRecordingShortcut
-                    )
-                    .frame(width: 240, height: 28)
-
-                    if let recordedShortcut = editor.recordedShortcut {
-                        ShortcutLabel(displayText: recordedShortcut.displayText, isHyper: recordedShortcut.isHyper)
-                    } else if editor.isRecordingShortcut {
-                        Text("Listening…")
-                            .foregroundStyle(.secondary)
+                        if !editor.selectedAppName.isEmpty {
+                            HStack(spacing: 6) {
+                                AppIconView(bundleIdentifier: editor.selectedBundleIdentifier, size: 20)
+                                Text(editor.selectedAppName)
+                                    .font(.system(size: 13, weight: .medium))
+                            }
+                        } else {
+                            Text("No app selected")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
                     }
 
-                    Button("Clear") {
-                        editor.clearRecordedShortcut()
+                    // Recorder + Clear + Add
+                    HStack(spacing: 10) {
+                        ShortcutRecorderView(
+                            recordedShortcut: $editor.recordedShortcut,
+                            isRecording: $editor.isRecordingShortcut
+                        )
+                        .frame(height: 28)
+
+                        if let recordedShortcut = editor.recordedShortcut {
+                            ShortcutLabel(displayText: recordedShortcut.displayText, isHyper: recordedShortcut.isHyper)
+                        } else if editor.isRecordingShortcut {
+                            Text("Listening…")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Button("Clear") {
+                            editor.clearRecordedShortcut()
+                        }
+                        .disabled(editor.recordedShortcut == nil && !editor.isRecordingShortcut)
+
+                        Spacer()
+
+                        Button("Add") {
+                            editor.addShortcut()
+                        }
+                        .disabled(editor.selectedBundleIdentifier.isEmpty || editor.recordedShortcut == nil)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
                     }
-                    .disabled(editor.recordedShortcut == nil && !editor.isRecordingShortcut)
                 }
+                .padding(14)
             }
 
             if let conflictMessage = editor.conflictMessage {
@@ -71,91 +92,66 @@ struct ShortcutsTabView: View {
                     .foregroundStyle(.red)
             }
 
-            Button("Add Shortcut") {
-                editor.addShortcut()
-            }
-            .disabled(editor.selectedBundleIdentifier.isEmpty || editor.recordedShortcut == nil)
-
-            List {
-                ForEach(editor.shortcuts) { shortcut in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(shortcut.appName)
-                            Text(shortcut.bundleIdentifier)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("\(editor.usageCounts[shortcut.id, default: 0])× past 7 days")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
+            // Shortcuts list card
+            CardView("Shortcuts") {
+                if editor.shortcuts.isEmpty {
+                    Text("No shortcuts configured")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, minHeight: 60)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(editor.shortcuts.enumerated()), id: \.element.id) { index, shortcut in
+                                shortcutRow(shortcut, index: index)
+                            }
                         }
-                        Spacer()
-                        ShortcutLabel(displayText: shortcut.displayText, isHyper: shortcut.isHyper)
-                        Button(role: .destructive) {
-                            editor.removeShortcut(id: shortcut.id)
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless)
                     }
                 }
             }
         }
     }
-}
 
-private func captureStatusText(for status: ShortcutCaptureStatus) -> String {
-    if status.ready {
-        return "Global shortcut capture ready"
-    }
-    if !status.accessibilityGranted && !status.inputMonitoringGranted {
-        return "Accessibility + Input Monitoring required for global shortcuts"
-    }
-    if !status.accessibilityGranted {
-        return "Accessibility required for global shortcuts"
-    }
-    if !status.inputMonitoringGranted {
-        return "Input Monitoring required for global shortcuts"
-    }
-    return "Permissions granted, but the active event tap failed to start"
-}
+    @ViewBuilder
+    private func shortcutRow(_ shortcut: AppShortcut, index: Int) -> some View {
+        HStack(spacing: 10) {
+            AppIconView(bundleIdentifier: shortcut.bundleIdentifier, size: 28)
 
-private struct PermissionBadge: View {
-    let title: String
-    let granted: Bool
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(granted ? Color.green : Color.orange)
-                .frame(width: 8, height: 8)
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Color.secondary.opacity(0.08))
-        .clipShape(Capsule())
-    }
-}
-
-private struct ShortcutLabel: View {
-    let displayText: String
-    let isHyper: Bool
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Text(displayText)
-                .font(.system(.body, design: .monospaced))
-            if isHyper {
-                Text("Hyper")
-                    .font(.caption2.bold())
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(.purple.opacity(0.2))
-                    .foregroundStyle(.purple)
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(shortcut.appName)
+                    .font(.system(size: 13, weight: .medium))
+                Text(shortcut.bundleIdentifier)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("\(editor.usageCounts[shortcut.id, default: 0])× past 7 days")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
+
+            Spacer()
+
+            ShortcutLabel(displayText: shortcut.displayText, isHyper: shortcut.isHyper)
+
+            Toggle("", isOn: Binding(
+                get: { shortcut.isEnabled },
+                set: { _ in editor.toggleShortcutEnabled(id: shortcut.id) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .labelsHidden()
+
+            Button {
+                editor.removeShortcut(id: shortcut.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .alternatingRowBackground(index: index)
+        .opacity(shortcut.isEnabled ? 1.0 : 0.5)
     }
 }

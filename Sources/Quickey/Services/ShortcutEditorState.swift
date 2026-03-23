@@ -16,7 +16,6 @@ final class ShortcutEditorState {
     private let shortcutStore: ShortcutStore
     private let shortcutManager: ShortcutManager
     private let usageTracker: UsageTracker?
-    private let appBundleLocator = AppBundleLocator()
     private let shortcutValidator = ShortcutValidator()
 
     init(shortcutStore: ShortcutStore, shortcutManager: ShortcutManager, usageTracker: UsageTracker? = nil) {
@@ -67,6 +66,23 @@ final class ShortcutEditorState {
         }
     }
 
+    var allEnabled: Bool {
+        !shortcuts.isEmpty && shortcuts.allSatisfy(\.isEnabled)
+    }
+
+    func toggleShortcutEnabled(id: UUID) {
+        guard let index = shortcuts.firstIndex(where: { $0.id == id }) else { return }
+        shortcuts[index].isEnabled.toggle()
+        shortcutManager.save(shortcuts: shortcuts)
+    }
+
+    func setAllEnabled(_ enabled: Bool) {
+        for index in shortcuts.indices {
+            shortcuts[index].isEnabled = enabled
+        }
+        shortcutManager.save(shortcuts: shortcuts)
+    }
+
     func chooseApplication() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.application]
@@ -83,13 +99,6 @@ final class ShortcutEditorState {
 
         selectedAppName = url.deletingPathExtension().lastPathComponent
         selectedBundleIdentifier = bundleIdentifier
-    }
-
-    func revealApplication() {
-        guard let url = appBundleLocator.applicationURL(for: selectedBundleIdentifier) else {
-            return
-        }
-        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     func clearRecordedShortcut() {
