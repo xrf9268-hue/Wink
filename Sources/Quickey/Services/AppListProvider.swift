@@ -24,12 +24,35 @@ final class AppListProvider {
         return recentBundleIDs.compactMap { lookup[$0] }
     }
 
+    private var isScanning = false
+
     func refreshIfNeeded() {
         if let lastScan = lastScanTime, Date().timeIntervalSince(lastScan) < 60 {
             return
         }
-        scanInstalledApps()
-        loadRecents()
+        guard !isScanning else { return }
+        isScanning = true
+        Task.detached {
+            let scanned = Self.scanInstalledApps()
+            await MainActor.run { [self] in
+                var entries = scanned
+                var seen = Set(entries.map(\.id))
+                // Running apps must be queried on main thread
+                for app in NSWorkspace.shared.runningApplications {
+                    guard let bid = app.bundleIdentifier,
+                          !seen.contains(bid),
+                          let url = app.bundleURL else { continue }
+                    let name = app.localizedName ?? url.deletingPathExtension().lastPathComponent
+                    entries.append(AppEntry(id: bid, name: name, url: url))
+                    seen.insert(bid)
+                }
+                entries.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                self.allApps = entries
+                self.lastScanTime = Date()
+                self.loadRecents()
+                self.isScanning = false
+            }
+        }
     }
 
     func noteRecentApp(bundleIdentifier: String) {
@@ -52,7 +75,7 @@ final class AppListProvider {
 
     // MARK: - Scanning
 
-    private func scanInstalledApps() {
+    nonisolated private static func scanInstalledApps() -> [AppEntry] {
         let searchDirs = [
             URL(fileURLWithPath: "/Applications"),
             URL(fileURLWithPath: "/System/Applications"),
@@ -66,22 +89,11 @@ final class AppListProvider {
             scanDirectory(dir, into: &entries, seen: &seen, depth: 0)
         }
 
-        // Also add currently running apps not found in directories
-        for app in NSWorkspace.shared.runningApplications {
-            guard let bid = app.bundleIdentifier,
-                  !seen.contains(bid),
-                  let url = app.bundleURL else { continue }
-            let name = app.localizedName ?? url.deletingPathExtension().lastPathComponent
-            entries.append(AppEntry(id: bid, name: name, url: url))
-            seen.insert(bid)
-        }
-
         entries.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        allApps = entries
-        lastScanTime = Date()
+        return entries
     }
 
-    private func scanDirectory(_ dir: URL, into entries: inout [AppEntry], seen: inout Set<String>, depth: Int) {
+    nonisolated private static func scanDirectory(_ dir: URL, into entries: inout [AppEntry], seen: inout Set<String>, depth: Int) {
         guard depth < 3 else { return }
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isDirectoryKey]) else { return }

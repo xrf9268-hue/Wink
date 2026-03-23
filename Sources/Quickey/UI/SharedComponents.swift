@@ -49,20 +49,27 @@ struct AppIconView: View {
     let bundleIdentifier: String
     let size: CGFloat
 
+    @State private var icon: NSImage?
+
     var body: some View {
-        Image(nsImage: resolveIcon())
+        Image(nsImage: icon ?? Self.fallbackIcon)
             .resizable()
             .aspectRatio(contentMode: .fit)
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: size * 0.2))
+            .onAppear { resolveIcon() }
+            .onChange(of: bundleIdentifier) { resolveIcon() }
     }
 
-    private func resolveIcon() -> NSImage {
+    private func resolveIcon() {
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
-            return NSWorkspace.shared.icon(forFile: url.path)
+            icon = NSWorkspace.shared.icon(forFile: url.path)
+        } else {
+            icon = Self.fallbackIcon
         }
-        return NSWorkspace.shared.icon(for: .application)
     }
+
+    private static let fallbackIcon = NSWorkspace.shared.icon(for: .application)
 }
 
 // MARK: - Shortcut label badge
