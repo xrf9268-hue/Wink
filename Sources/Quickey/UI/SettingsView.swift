@@ -22,14 +22,17 @@ struct SettingsView: View {
             }
             .pickerStyle(.segmented)
 
-            switch selectedTab {
-            case .shortcuts:
-                ShortcutsTabView(editor: editor, preferences: preferences, appListProvider: appListProvider)
-            case .general:
-                GeneralTabView(preferences: preferences, editor: editor)
-            case .insights:
-                InsightsTabView(viewModel: insightsViewModel)
+            Group {
+                switch selectedTab {
+                case .shortcuts:
+                    ShortcutsTabView(editor: editor, preferences: preferences, appListProvider: appListProvider)
+                case .general:
+                    GeneralTabView(preferences: preferences, editor: editor)
+                case .insights:
+                    InsightsTabView(viewModel: insightsViewModel)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .padding(20)
         .frame(minWidth: 680, minHeight: 420)

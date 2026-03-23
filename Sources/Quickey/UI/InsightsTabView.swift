@@ -49,14 +49,19 @@ struct InsightsTabView: View {
             } else {
                 CardView("Top Apps") {
                     let maxCount = viewModel.ranking.first?.count ?? 1
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(viewModel.ranking.enumerated()), id: \.element.id) { index, item in
-                            rankingRow(item, index: index, maxCount: maxCount)
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(viewModel.ranking.enumerated()), id: \.element.id) { index, item in
+                                rankingRow(item, index: index, maxCount: maxCount)
+                            }
                         }
                     }
+                    .frame(maxHeight: .infinity, alignment: .top)
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task { viewModel.scheduleRefresh() }
     }
 
