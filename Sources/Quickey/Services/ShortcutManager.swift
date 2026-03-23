@@ -88,7 +88,7 @@ final class ShortcutManager {
         }
     }
 
-    private func checkPermissionChange() {
+    func checkPermissionChange() {
         let axGranted = permissionService.isAccessibilityTrusted()
         let imGranted = permissionService.isInputMonitoringTrusted()
 

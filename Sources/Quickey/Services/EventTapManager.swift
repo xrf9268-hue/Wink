@@ -5,6 +5,105 @@ import os.log
 
 private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "EventTapManager")
 
+enum MatchedShortcutDelivery {
+    static func makeHandler(
+        _ handler: @escaping @MainActor @Sendable (KeyPress) -> Void
+    ) -> @Sendable (KeyPress) -> Void {
+        { keyPress in
+            Task { @MainActor in
+                handler(keyPress)
+            }
+        }
+    }
+}
+
+@discardableResult
+func handleEventTapEvent(
+    type: CGEventType,
+    event: CGEvent,
+    box: EventTapBox
+) -> Unmanaged<CGEvent>? {
+    switch type {
+    case .tapDisabledByTimeout, .tapDisabledByUserInput:
+        logger.warning("EVENT TAP DISABLED by system (reason: \(type.rawValue)), re-enabling")
+        DiagnosticLog.log("EVENT TAP DISABLED by system (reason: \(type.rawValue)), re-enabling")
+        if let reenableTap = box.reenableTap {
+            reenableTap()
+        } else if let tap = box.tap {
+            CGEvent.tapEnable(tap: tap, enable: true)
+        }
+        return Unmanaged.passUnretained(event)
+
+    case .keyDown:
+        if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+            return Unmanaged.passUnretained(event)
+        }
+        let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+
+        let (swallow, injectHyper) = box.withLock { () -> (Bool, Bool) in
+            if box._hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
+                box._isHyperHeld = true
+                return (true, false)
+            }
+            let hyper = box._isHyperHeld
+
+            var currentFlags = event.flags
+            if hyper {
+                currentFlags = currentFlags.union([.maskControl, .maskAlternate, .maskShift, .maskCommand])
+            }
+            let flags = NSEvent.ModifierFlags(rawValue: UInt(currentFlags.rawValue))
+            let keyPress = KeyPress(
+                keyCode: keyCode,
+                modifiers: flags.intersection(.deviceIndependentFlagsMask)
+            )
+            let shouldSwallow = box._registeredShortcuts.contains(keyPress)
+            return (shouldSwallow, hyper)
+        }
+
+        if swallow && keyCode == HyperKeyService.f19KeyCode {
+            return nil
+        }
+
+        if injectHyper {
+            event.flags = event.flags.union([.maskControl, .maskAlternate, .maskShift, .maskCommand])
+        }
+
+        let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
+        let keyPress = KeyPress(
+            keyCode: keyCode,
+            modifiers: flags.intersection(.deviceIndependentFlagsMask)
+        )
+
+        if swallow {
+            box.onKeyPress?(keyPress)
+            return nil
+        }
+        return Unmanaged.passUnretained(event)
+
+    case .keyUp:
+        let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+        let swallowUp = box.withLock { () -> Bool in
+            if box._hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
+                box._isHyperHeld = false
+                return true
+            }
+            return false
+        }
+        return swallowUp ? nil : Unmanaged.passUnretained(event)
+
+    case .flagsChanged:
+        return Unmanaged.passUnretained(event)
+
+    default:
+        return Unmanaged.passUnretained(event)
+    }
+}
+
+private let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
+    let box = Unmanaged<EventTapBox>.fromOpaque(userInfo!).takeUnretainedValue()
+    return handleEventTapEvent(type: type, event: event, box: box)
+}
+
 @MainActor
 final class EventTapManager: EventTapManaging {
     /// Returns `true` if the key press was handled and should be consumed (not passed to other apps).
@@ -40,98 +139,11 @@ final class EventTapManager: EventTapManaging {
         let mask = (1 << CGEventType.keyDown.rawValue)
                   | (1 << CGEventType.keyUp.rawValue)
                   | (1 << CGEventType.flagsChanged.rawValue)
-        let callback: CGEventTapCallBack = { proxy, type, event, userInfo in
-            let box = Unmanaged<EventTapBox>.fromOpaque(userInfo!).takeUnretainedValue()
-
-            switch type {
-            case .tapDisabledByTimeout, .tapDisabledByUserInput:
-                logger.warning("EVENT TAP DISABLED by system (reason: \(type.rawValue)), re-enabling")
-                DiagnosticLog.log("EVENT TAP DISABLED by system (reason: \(type.rawValue)), re-enabling")
-                if let tap = box.tap {
-                    CGEvent.tapEnable(tap: tap, enable: true)
-                }
-                return Unmanaged.passUnretained(event)
-
-            case .keyDown:
-                // Minimal work in callback: extract key info, filter autorepeat, then async dispatch
-                if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
-                    return Unmanaged.passUnretained(event)
-                }
-                let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-
-                // Single lock region for all shared-state reads/writes (avoids TOCTOU)
-                let (swallow, injectHyper) = box.withLock { () -> (Bool, Bool) in
-                    // Hyper Key: intercept F19 keyDown → mark held, swallow event
-                    if box._hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
-                        box._isHyperHeld = true
-                        return (true, false)
-                    }
-                    let hyper = box._isHyperHeld
-
-                    // Build key press with (possibly) injected hyper modifiers
-                    var currentFlags = event.flags
-                    if hyper {
-                        currentFlags = currentFlags.union([.maskControl, .maskAlternate, .maskShift, .maskCommand])
-                    }
-                    let flags = NSEvent.ModifierFlags(rawValue: UInt(currentFlags.rawValue))
-                    let kp = KeyPress(
-                        keyCode: keyCode,
-                        modifiers: flags.intersection(.deviceIndependentFlagsMask)
-                    )
-                    let shouldSwallow = box._registeredShortcuts.contains(kp)
-                    return (shouldSwallow, hyper)
-                }
-
-                if swallow && keyCode == HyperKeyService.f19KeyCode {
-                    return nil  // F19 swallowed
-                }
-
-                // Hyper Key: inject ⌃⌥⇧⌘ into the event when Hyper is held
-                if injectHyper {
-                    event.flags = event.flags.union([.maskControl, .maskAlternate, .maskShift, .maskCommand])
-                }
-
-                let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
-                let keyPress = KeyPress(
-                    keyCode: keyCode,
-                    modifiers: flags.intersection(.deviceIndependentFlagsMask)
-                )
-
-                if swallow {
-                    // Only dispatch to main thread for matched shortcuts
-                    DispatchQueue.main.async {
-                        box.onKeyPress?(keyPress)
-                    }
-                    return nil  // swallow the event
-                }
-                return Unmanaged.passUnretained(event)
-
-            case .keyUp:
-                // Hyper Key: intercept F19 keyUp → clear held state, swallow event
-                let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-                let swallowUp = box.withLock { () -> Bool in
-                    if box._hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
-                        box._isHyperHeld = false
-                        return true
-                    }
-                    return false
-                }
-                return swallowUp ? nil : Unmanaged.passUnretained(event)
-
-            case .flagsChanged:
-                return Unmanaged.passUnretained(event)
-
-            default:
-                return Unmanaged.passUnretained(event)
-            }
-        }
 
         let box = EventTapBox()
-        // Store handler for non-isolated access from background thread callback
-        box.onKeyPress = { [weak self] keyPress in
+        box.onKeyPress = MatchedShortcutDelivery.makeHandler { [weak self] keyPress in
             self?.handleAsync(keyPress)
         }
-        // Pre-populate registered shortcuts for synchronous swallow decision
         box.registeredShortcuts = registeredKeyPresses
         let retained = Unmanaged.passRetained(box)
         let userInfo = UnsafeMutableRawPointer(retained.toOpaque())
@@ -144,7 +156,7 @@ final class EventTapManager: EventTapManaging {
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: CGEventMask(mask),
-            callback: callback,
+            callback: eventTapCallback,
             userInfo: userInfo
         ) else {
             retained.release()
@@ -287,10 +299,11 @@ private final class BackgroundRunLoopThread: Thread {
 // `registeredShortcuts`, `hyperKeyEnabled`, and `isHyperHeld` are read from
 // the background callback thread and written from the main thread, so they
 // are protected by an os_unfair_lock.
-private final class EventTapBox {
+final class EventTapBox {
     var tap: CFMachPort?
-    /// Closure dispatched on main thread when a key press is detected.
-    var onKeyPress: ((KeyPress) -> Void)?
+    var reenableTap: (@Sendable () -> Void)?
+    /// Background-safe closure that hops to the main actor before invoking app logic.
+    var onKeyPress: (@Sendable (KeyPress) -> Void)?
 
     // MARK: - Lock-protected shared state
 

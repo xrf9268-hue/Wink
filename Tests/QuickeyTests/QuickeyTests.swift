@@ -126,6 +126,94 @@ struct EventTapManagerDebounceTests {
     }
 }
 
+// MARK: - EventTapManager delivery
+
+@Suite("EventTapManager delivery")
+struct EventTapManagerDeliveryTests {
+    @Test
+    func matchedShortcutHandlerCanBeInvokedFromBackgroundThread() async {
+        let keyPress = KeyPress(keyCode: CGKeyCode(kVK_ANSI_Q), modifiers: [.command])
+        let receivedKeyPress: KeyPress = await withCheckedContinuation { (continuation: CheckedContinuation<KeyPress, Never>) in
+            let handler = MatchedShortcutDelivery.makeHandler { deliveredKeyPress in
+                MainActor.preconditionIsolated()
+                continuation.resume(returning: deliveredKeyPress)
+            }
+
+            DispatchQueue.global().async {
+                handler(keyPress)
+            }
+        }
+
+        #expect(receivedKeyPress == keyPress)
+    }
+
+    @Test
+    func disabledTapEventRequestsReenable() {
+        let event = makeKeyEvent(CGKeyCode(kVK_ANSI_A), modifiers: [], keyDown: true)
+        let box = EventTapBox()
+        let counter = SendableCounter()
+        box.reenableTap = { counter.value += 1 }
+
+        let result = handleEventTapEvent(type: .tapDisabledByTimeout, event: event, box: box)
+
+        #expect(result != nil)
+        #expect(counter.value == 1)
+    }
+
+    @Test
+    func hyperKeyPressAndReleaseToggleHeldState() {
+        let keyDown = makeKeyEvent(HyperKeyService.f19KeyCode, modifiers: [], keyDown: true)
+        let keyUp = makeKeyEvent(HyperKeyService.f19KeyCode, modifiers: [], keyDown: false)
+        let box = EventTapBox()
+        box.setHyperKey(enabled: true)
+
+        let downResult = handleEventTapEvent(type: .keyDown, event: keyDown, box: box)
+        #expect(downResult == nil)
+        #expect(box.isHyperHeld == true)
+
+        let upResult = handleEventTapEvent(type: .keyUp, event: keyUp, box: box)
+        #expect(upResult == nil)
+        #expect(box.isHyperHeld == false)
+    }
+
+    @Test
+    func registeredShortcutSwallowsEventAndDeliversKeyPress() async {
+        let keyPress = KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.command])
+        let event = makeKeyEvent(keyPress.keyCode, modifiers: keyPress.modifiers, keyDown: true)
+        let box = EventTapBox()
+        box.registeredShortcuts = [keyPress]
+
+        let delivered: KeyPress = await withCheckedContinuation { (continuation: CheckedContinuation<KeyPress, Never>) in
+            box.onKeyPress = { deliveredKeyPress in
+                continuation.resume(returning: deliveredKeyPress)
+            }
+
+            let result = handleEventTapEvent(type: .keyDown, event: event, box: box)
+            #expect(result == nil)
+        }
+
+        #expect(delivered == keyPress)
+    }
+
+    private func makeKeyEvent(
+        _ keyCode: CGKeyCode,
+        modifiers: NSEvent.ModifierFlags,
+        keyDown: Bool
+    ) -> CGEvent {
+        let event = CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: keyCode,
+            keyDown: keyDown
+        )!
+        event.flags = CGEventFlags(rawValue: UInt64(modifiers.rawValue))
+        return event
+    }
+}
+
+private final class SendableCounter: @unchecked Sendable {
+    var value = 0
+}
+
 // MARK: - KeyMatcher
 
 @Suite("KeyMatcher")

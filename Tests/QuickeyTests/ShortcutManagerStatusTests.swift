@@ -24,16 +24,46 @@ private struct FakePermissionService: PermissionServicing {
     }
 }
 
+private final class MutablePermissionService: @unchecked Sendable, PermissionServicing {
+    var ax: Bool
+    var input: Bool
+
+    init(ax: Bool, input: Bool) {
+        self.ax = ax
+        self.input = input
+    }
+
+    func isTrusted() -> Bool {
+        ax && input
+    }
+
+    func isAccessibilityTrusted() -> Bool {
+        ax
+    }
+
+    func isInputMonitoringTrusted() -> Bool {
+        input
+    }
+
+    @discardableResult
+    func requestIfNeeded(prompt: Bool) -> Bool {
+        isTrusted()
+    }
+}
+
 @MainActor
 private final class FakeEventTapManager: EventTapManaging {
     var isRunning: Bool = false
     private let startResult: EventTapStartResult
+    private(set) var startCallCount: Int = 0
+    private(set) var stopCallCount: Int = 0
 
     init(startResult: EventTapStartResult = .started) {
         self.startResult = startResult
     }
 
     func start(onKeyPress: @escaping (KeyPress) -> Bool) -> EventTapStartResult {
+        startCallCount += 1
         if startResult == .started {
             isRunning = true
         }
@@ -41,6 +71,7 @@ private final class FakeEventTapManager: EventTapManaging {
     }
 
     func stop() {
+        stopCallCount += 1
         isRunning = false
     }
 
@@ -100,4 +131,35 @@ func failedActiveTapDoesNotReportReady() {
     #expect(status.ready == false)
 
     manager.stop()
+}
+
+@Test @MainActor
+func permissionGainStartsEventTapWhenNotRunning() {
+    let permissionService = MutablePermissionService(ax: true, input: true)
+    let eventTapManager = FakeEventTapManager()
+    let manager = makeShortcutManager(
+        permissionService: permissionService,
+        eventTapManager: eventTapManager
+    )
+
+    manager.checkPermissionChange()
+
+    #expect(eventTapManager.startCallCount == 1)
+    #expect(eventTapManager.isRunning == true)
+}
+
+@Test @MainActor
+func permissionLossStopsRunningEventTap() {
+    let permissionService = MutablePermissionService(ax: false, input: false)
+    let eventTapManager = FakeEventTapManager()
+    eventTapManager.isRunning = true
+    let manager = makeShortcutManager(
+        permissionService: permissionService,
+        eventTapManager: eventTapManager
+    )
+
+    manager.checkPermissionChange()
+
+    #expect(eventTapManager.stopCallCount == 1)
+    #expect(eventTapManager.isRunning == false)
 }
