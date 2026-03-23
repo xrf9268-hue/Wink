@@ -8,10 +8,33 @@ struct GeneralTabView: View {
         VStack(alignment: .leading, spacing: 12) {
             // Startup card
             CardView("Startup") {
-                Toggle("Launch at Login", isOn: Binding(
-                    get: { preferences.launchAtLoginEnabled },
-                    set: { preferences.setLaunchAtLogin($0) }
-                ))
+                let presentation = preferences.launchAtLoginPresentation
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("Launch at Login", isOn: Binding(
+                        get: { preferences.launchAtLoginPresentation.toggleIsOn },
+                        set: { preferences.setLaunchAtLogin($0) }
+                    ))
+                    .disabled(!presentation.toggleIsEnabled)
+
+                    if let message = presentation.message {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(message)
+                                .font(.caption)
+                                .foregroundStyle(
+                                    presentation.messageStyle == .error ? Color.red : Color.secondary
+                                )
+
+                            if presentation.showsOpenSettingsButton {
+                                Button("Open Login Items Settings") {
+                                    preferences.openLoginItemsSettings()
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                        .padding(.leading, 20)
+                    }
+                }
                 .padding(14)
             }
 

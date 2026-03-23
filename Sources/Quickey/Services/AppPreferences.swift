@@ -1,6 +1,20 @@
 import Foundation
 import Observation
 
+enum LaunchAtLoginPresentationStyle: Equatable {
+    case none
+    case informational
+    case error
+}
+
+struct LaunchAtLoginPresentation: Equatable {
+    let toggleIsOn: Bool
+    let toggleIsEnabled: Bool
+    let message: String?
+    let messageStyle: LaunchAtLoginPresentationStyle
+    let showsOpenSettingsButton: Bool
+}
+
 @MainActor
 @Observable
 final class AppPreferences {
@@ -10,6 +24,43 @@ final class AppPreferences {
 
     var launchAtLoginEnabled: Bool {
         launchAtLoginStatus.isEnabled
+    }
+
+    var launchAtLoginPresentation: LaunchAtLoginPresentation {
+        switch launchAtLoginStatus {
+        case .enabled:
+            LaunchAtLoginPresentation(
+                toggleIsOn: true,
+                toggleIsEnabled: true,
+                message: nil,
+                messageStyle: .none,
+                showsOpenSettingsButton: false
+            )
+        case .disabled:
+            LaunchAtLoginPresentation(
+                toggleIsOn: false,
+                toggleIsEnabled: true,
+                message: nil,
+                messageStyle: .none,
+                showsOpenSettingsButton: false
+            )
+        case .requiresApproval:
+            LaunchAtLoginPresentation(
+                toggleIsOn: true,
+                toggleIsEnabled: true,
+                message: "Quickey is registered to launch at login, but macOS still needs your approval in Login Items.",
+                messageStyle: .informational,
+                showsOpenSettingsButton: true
+            )
+        case .notFound:
+            LaunchAtLoginPresentation(
+                toggleIsOn: false,
+                toggleIsEnabled: false,
+                message: "Quickey couldn't find its login item configuration. This usually points to an installation or packaging problem.",
+                messageStyle: .error,
+                showsOpenSettingsButton: false
+            )
+        }
     }
 
     private let shortcutManager: ShortcutManager

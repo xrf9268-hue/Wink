@@ -66,6 +66,70 @@ func setHyperKeyEnabledTracksActualServiceStateAfterFailure() {
     #expect(preferences.hyperKeyEnabled == false)
 }
 
+@Test @MainActor
+func LaunchAtLoginPresentation_enabledMapsToInteractiveOnToggleWithoutMessage() {
+    let preferences = makePreferences(status: .enabled)
+
+    let presentation = preferences.launchAtLoginPresentation
+    #expect(presentation.toggleIsOn == true)
+    #expect(presentation.toggleIsEnabled == true)
+    #expect(presentation.messageStyle == .none)
+    #expect(presentation.message == nil)
+    #expect(presentation.showsOpenSettingsButton == false)
+}
+
+@Test @MainActor
+func LaunchAtLoginPresentation_disabledMapsFromNotRegisteredToInteractiveOffToggleWithoutMessage() {
+    let preferences = makePreferences(status: .notRegistered)
+
+    #expect(preferences.launchAtLoginStatus == .disabled)
+    let presentation = preferences.launchAtLoginPresentation
+    #expect(presentation.toggleIsOn == false)
+    #expect(presentation.toggleIsEnabled == true)
+    #expect(presentation.messageStyle == .none)
+    #expect(presentation.message == nil)
+    #expect(presentation.showsOpenSettingsButton == false)
+}
+
+@Test @MainActor
+func LaunchAtLoginPresentation_requiresApprovalMapsToInformationalStateWithOpenSettingsCTA() {
+    let preferences = makePreferences(status: .requiresApproval)
+
+    #expect(preferences.launchAtLoginStatus == .requiresApproval)
+    #expect(preferences.launchAtLoginEnabled == false)
+    let presentation = preferences.launchAtLoginPresentation
+    #expect(presentation.toggleIsOn == true)
+    #expect(presentation.toggleIsEnabled == true)
+    #expect(presentation.messageStyle == .informational)
+    #expect(presentation.message == "Quickey is registered to launch at login, but macOS still needs your approval in Login Items.")
+    #expect(presentation.showsOpenSettingsButton == true)
+}
+
+@Test @MainActor
+func LaunchAtLoginPresentation_notFoundMapsToDisabledErrorStateWithoutOpenSettingsCTA() {
+    let preferences = makePreferences(status: .notFound)
+
+    let presentation = preferences.launchAtLoginPresentation
+    #expect(presentation.toggleIsOn == false)
+    #expect(presentation.toggleIsEnabled == false)
+    #expect(presentation.messageStyle == .error)
+    #expect(presentation.message == "Quickey couldn't find its login item configuration. This usually points to an installation or packaging problem.")
+    #expect(presentation.showsOpenSettingsButton == false)
+}
+
+@Test @MainActor
+func LaunchAtLoginPresentation_openLoginItemsSettingsDelegatesToService() {
+    let recorder = OpenSettingsRecorder()
+    let preferences = makePreferences(
+        status: .enabled,
+        openSystemSettingsLoginItems: { recorder.didOpenSettings = true }
+    )
+
+    preferences.openLoginItemsSettings()
+
+    #expect(recorder.didOpenSettings == true)
+}
+
 private struct FakePermissionService: PermissionServicing {
     let ax: Bool
     let input: Bool
@@ -133,6 +197,10 @@ private enum TestError: Error {
     case unregisterFailed
 }
 
+private final class OpenSettingsRecorder: @unchecked Sendable {
+    var didOpenSettings = false
+}
+
 private final class MutableLaunchAtLoginState: @unchecked Sendable {
     var status: SMAppService.Status
     var registerError: Error?
@@ -160,6 +228,37 @@ private func makeLaunchAtLoginService(state: MutableLaunchAtLoginState) -> Launc
         },
         openSystemSettingsLoginItems: {}
     ))
+}
+
+@MainActor
+private func makePreferences(
+    status: SMAppService.Status = .notRegistered,
+    state: MutableLaunchAtLoginState? = nil,
+    openSystemSettingsLoginItems: @escaping @Sendable () -> Void = {}
+) -> AppPreferences {
+    let launchAtLoginState = state ?? MutableLaunchAtLoginState(status: status)
+    return AppPreferences(
+        shortcutManager: makeShortcutManager(
+            permissionService: FakePermissionService(ax: true, input: true),
+            eventTapManager: FakeEventTapManager()
+        ),
+        launchAtLoginService: LaunchAtLoginService(client: .init(
+            status: { launchAtLoginState.statusValue },
+            register: {
+                if let registerError = launchAtLoginState.registerError {
+                    throw registerError
+                }
+                launchAtLoginState.statusValue = .enabled
+            },
+            unregister: {
+                if let unregisterError = launchAtLoginState.unregisterError {
+                    throw unregisterError
+                }
+                launchAtLoginState.statusValue = .notRegistered
+            },
+            openSystemSettingsLoginItems: openSystemSettingsLoginItems
+        ))
+    )
 }
 
 private extension MutableLaunchAtLoginState {

@@ -1,7 +1,7 @@
 # Handoff Notes
 
 ## Current State
-Quickey was broadly validated on macOS 15.3.1 on 2026-03-20. On 2026-03-23, the runtime hardening follow-up added service-level test seams for permission, app discovery, frontmost-app restore, preferences, and activation fallback paths, and replaced the deprecated `activateIgnoringOtherApps` fallback with a modern `NSWorkspace` reopen request. Automated `swift test`, `swift test --enable-code-coverage`, `swift build`, and `swift build -c release` passed on 2026-03-23. Coverage for the newly targeted services is now measurable: `AccessibilityPermissionService` 64.29%, `AppListProvider` 40.78%, `AppPreferences` 72.50%, `FrontmostApplicationTracker` 43.64%, and `AppSwitcher` 10.55%. The changed activation/runtime paths still need a fresh targeted macOS pass before we can call them revalidated. A signed and notarized distributable is still unresolved.
+Quickey was broadly validated on macOS 15.3.1 on 2026-03-20. On 2026-03-23, the runtime hardening follow-up added service-level test seams for permission, app discovery, frontmost-app restore, preferences, and activation fallback paths, and replaced the deprecated `activateIgnoringOtherApps` fallback with a modern `NSWorkspace` reopen request. Issue #67's launch-at-login approval-state UX also landed on 2026-03-23, including Settings foreground refresh coverage for launch-at-login state changes, and `swift test`, `swift build`, `swift build -c release`, and `./scripts/package-app.sh` were rerun afterward. Coverage for the newly targeted services is now measurable: `AccessibilityPermissionService` 64.29%, `AppListProvider` 40.78%, `AppPreferences` 72.50%, `FrontmostApplicationTracker` 43.64%, and `AppSwitcher` 10.55%. The changed activation/runtime paths still need a fresh targeted macOS pass before we can call them revalidated. A signed and notarized distributable is still unresolved.
 
 ## Validated on macOS
 - Broad real-device validation completed on macOS 15.3.1 on 2026-03-20
@@ -11,7 +11,7 @@ Quickey was broadly validated on macOS 15.3.1 on 2026-03-20. On 2026-03-23, the 
 - Insights persistence and restart behavior were confirmed during the macOS pass
 
 ## Follow-up Requiring macOS Validation
-- Launch-at-login approval flow after the 2026-03-21 remediation set
+- Launch-at-login approval flow after the 2026-03-23 issue #67 approval-state UX update, especially `.requiresApproval` -> `.enabled` foreground refresh and `.notFound` behavior on real installs
 - Active event-tap startup and readiness reporting after permission or lifecycle changes
 - AppSwitcher fallback behavior after SkyLight failure now that it re-requests activation via `NSWorkspace`
 - Hyper Key failure handling, especially persistence only after `hidutil` succeeds

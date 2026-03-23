@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum SettingsTab: String, CaseIterable {
@@ -6,12 +7,30 @@ enum SettingsTab: String, CaseIterable {
     case insights = "Insights"
 }
 
+@MainActor
+struct SettingsViewLifecycleHandler {
+    let preferences: AppPreferences
+
+    func handleAppear() {
+        preferences.refreshPermissions()
+        preferences.refreshLaunchAtLoginStatus()
+    }
+
+    func handleAppDidBecomeActive() {
+        preferences.refreshLaunchAtLoginStatus()
+    }
+}
+
 struct SettingsView: View {
     var editor: ShortcutEditorState
     var preferences: AppPreferences
     var insightsViewModel: InsightsViewModel
     var appListProvider: AppListProvider
     @State private var selectedTab: SettingsTab = .shortcuts
+
+    private var lifecycleHandler: SettingsViewLifecycleHandler {
+        SettingsViewLifecycleHandler(preferences: preferences)
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -42,7 +61,10 @@ struct SettingsView: View {
             }
         }
         .onAppear {
-            preferences.refreshPermissions()
+            lifecycleHandler.handleAppear()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            lifecycleHandler.handleAppDidBecomeActive()
         }
     }
 }
