@@ -112,6 +112,7 @@ final class AppSwitcher: AppSwitching {
     private let activationClient: ActivationClient
     private let fallbackActivationClient: FallbackActivationClient
     private let confirmationClient: ConfirmationClient
+    private let sessionCoordinator: ToggleSessionCoordinator
     private var nextPendingGeneration = 0
     private(set) var pendingActivationState: PendingActivationState?
     private(set) var stableActivationState: StableActivationState?
@@ -121,13 +122,16 @@ final class AppSwitcher: AppSwitching {
         applicationObservation: ApplicationObservation = .live,
         activationClient: ActivationClient = .live,
         fallbackActivationClient: FallbackActivationClient = .live,
-        confirmationClient: ConfirmationClient = .live
+        confirmationClient: ConfirmationClient = .live,
+        sessionCoordinator: ToggleSessionCoordinator = ToggleSessionCoordinator()
     ) {
         self.frontmostTracker = frontmostTracker
         self.applicationObservation = applicationObservation
         self.activationClient = activationClient
         self.fallbackActivationClient = fallbackActivationClient
         self.confirmationClient = confirmationClient
+        self.sessionCoordinator = sessionCoordinator
+        sessionCoordinator.startObservingWorkspaceNotifications()
     }
 
     @discardableResult
@@ -147,6 +151,7 @@ final class AppSwitcher: AppSwitching {
         if stableActivationState?.bundleIdentifier == bundleIdentifier {
             stableActivationState = nil
         }
+        sessionCoordinator.beginActivation(for: bundleIdentifier, previousBundle: previousBundleIdentifier)
         return state
     }
 
@@ -174,6 +179,11 @@ final class AppSwitcher: AppSwitching {
         guard pendingActivationState?.bundleIdentifier != bundleIdentifier else {
             return false
         }
+        // Coordinator may have invalidated the session via notification
+        guard sessionCoordinator.session(for: bundleIdentifier)?.phase == .activeStable else {
+            self.stableActivationState = nil
+            return false
+        }
         return true
     }
 
@@ -198,6 +208,7 @@ final class AppSwitcher: AppSwitching {
             confirmedAt: confirmationClient.now()
         )
         self.pendingActivationState = nil
+        sessionCoordinator.markStable(for: bundleIdentifier)
         return true
     }
 
@@ -294,6 +305,7 @@ final class AppSwitcher: AppSwitching {
         if resetPreviousTracking {
             frontmostTracker.resetPreviousAppTracking()
         }
+        sessionCoordinator.resetSession(for: bundleIdentifier)
     }
 
     @discardableResult
@@ -341,7 +353,10 @@ final class AppSwitcher: AppSwitching {
         if shouldToggleOff(bundleIdentifier: shortcut.bundleIdentifier, runningAppIsActive: runningApp.isActive),
            preActionSnapshot.isStableActivation {
             // App is stably frontmost — hide it and restore the previous app
-            let previousApp = stableActivationState?.previousBundleIdentifier ?? frontmostTracker.lastNonTargetBundleIdentifier
+            let previousApp = sessionCoordinator.previousBundle(for: shortcut.bundleIdentifier)
+                ?? stableActivationState?.previousBundleIdentifier
+                ?? frontmostTracker.lastNonTargetBundleIdentifier
+            sessionCoordinator.beginDeactivation(for: shortcut.bundleIdentifier)
             logToggleLifecycle(
                 for: shortcut,
                 lifecycle: "TOGGLE_RESTORE_ATTEMPT",
