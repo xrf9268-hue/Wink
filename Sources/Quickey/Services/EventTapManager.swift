@@ -44,13 +44,20 @@ func handleEventTapEvent(
 ) -> Unmanaged<CGEvent>? {
     switch type {
     case .tapDisabledByTimeout, .tapDisabledByUserInput:
-        let snapshot = box.captureDisableSnapshot(reason: type)
-        logger.warning("EVENT TAP DISABLED by system (reason: \(type.rawValue), count: \(snapshot.disableCount)), re-enabling")
-        box.onTapDisabled?(snapshot)
-        if let reenableTap = box.reenableTap {
-            reenableTap()
-        } else if let tap = box.tap {
-            CGEvent.tapEnable(tap: tap, enable: true)
+        let diagnosticSnapshot = box.captureDisableSnapshot(reason: type)
+        logger.warning("EVENT TAP DISABLED by system (reason: \(type.rawValue), count: \(diagnosticSnapshot.disableCount)), re-enabling")
+        box.onTapDisabled?(diagnosticSnapshot)
+
+        box.reenableTapIfNeeded()
+
+        if type == .tapDisabledByTimeout {
+            let threadName = Thread.current.name ?? "bg-runloop"
+            let now = CFAbsoluteTimeGetCurrent()
+            let (action, lifecycleSnapshot) = box.recordTimeoutAndDecide(at: now, threadIdentity: threadName)
+
+            if action == .fullRecreation || action == .markDegraded {
+                box.onRecoveryNeeded?(action, lifecycleSnapshot)
+            }
         }
         return Unmanaged.passUnretained(event)
 
@@ -200,6 +207,11 @@ final class EventTapManager: EventTapManaging {
                 DiagnosticLog.log(snapshot.logMessage)
             }
         }
+        box.onRecoveryNeeded = { [weak self] action, lifecycleSnapshot in
+            Task { @MainActor in
+                self?.handleRecoveryAction(action, snapshot: lifecycleSnapshot)
+            }
+        }
         box.registeredShortcuts = registeredKeyPresses
         let retained = Unmanaged.passRetained(box)
         let userInfo = UnsafeMutableRawPointer(retained.toOpaque())
@@ -244,6 +256,7 @@ final class EventTapManager: EventTapManaging {
         retainedBox = retained
         eventTap = tap
         runLoopSource = source
+        emitLifecycleLog("EVENT_TAP_STARTED")
         logger.info("Event tap started (background thread)")
         DiagnosticLog.log("Event tap started (background thread)")
         return .started
@@ -306,19 +319,125 @@ final class EventTapManager: EventTapManaging {
 
         _ = onKeyPress?(keyPress)
     }
+
+    // MARK: - Lifecycle recovery
+
+    private func handleRecoveryAction(_ action: EventTapRecoveryAction, snapshot: EventTapLifecycleSnapshot) {
+        switch action {
+        case .reenableInPlace:
+            emitLifecycleLog("EVENT_TAP_REENABLED", snapshot: snapshot)
+        case .fullRecreation:
+            recreateEventTap()
+        case .markDegraded:
+            // The decision was already recorded by the box's tracker in the
+            // callback; just emit the log with the snapshot that was captured.
+            emitLifecycleLog("EVENT_TAP_DEGRADED", snapshot: snapshot)
+        }
+    }
+
+    /// Record a recreation failure through the box, emit logs, and escalate to
+    /// degraded if the threshold is reached.
+    private func recordRecreationFailure() {
+        guard let box = retainedBox?.takeUnretainedValue() else { return }
+        let now = CFAbsoluteTimeGetCurrent()
+        let (action, snapshot) = box.recordRecreationFailureAndSnapshot(at: now, threadIdentity: "main")
+        emitLifecycleLog("EVENT_TAP_RECREATION_FAILED", snapshot: snapshot)
+        if action == .markDegraded {
+            emitLifecycleLog("EVENT_TAP_DEGRADED", snapshot: snapshot)
+        }
+    }
+
+    /// Tear down and recreate the event tap on the existing background thread.
+    /// Follows ordered sequence: remove source → disable/invalidate → release
+    /// → create new tap → create new source → add source → enable.
+    private func recreateEventTap() {
+        guard let thread = backgroundThread else { return }
+
+        if let source = runLoopSource {
+            thread.removeSource(source)
+        }
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+        }
+        runLoopSource = nil
+        eventTap = nil
+        // retainedBox is kept alive — the box is reused across recreation
+
+        let mask = (1 << CGEventType.keyDown.rawValue)
+                  | (1 << CGEventType.keyUp.rawValue)
+                  | (1 << CGEventType.flagsChanged.rawValue)
+
+        guard let box = retainedBox?.takeUnretainedValue() else {
+            recordRecreationFailure()
+            return
+        }
+        let userInfo = UnsafeMutableRawPointer(Unmanaged.passUnretained(box).toOpaque())
+
+        guard let newTap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(mask),
+            callback: eventTapCallback,
+            userInfo: userInfo
+        ) else {
+            recordRecreationFailure()
+            return
+        }
+
+        box.tap = newTap
+
+        guard let newSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, newTap, 0) else {
+            recordRecreationFailure()
+            return
+        }
+
+        thread.addSource(newSource)
+        CGEvent.tapEnable(tap: newTap, enable: true)
+
+        eventTap = newTap
+        runLoopSource = newSource
+
+        let now = CFAbsoluteTimeGetCurrent()
+        let snapshot = box.recordRecreationSuccessAndSnapshot(at: now, threadIdentity: "bg-runloop")
+        emitLifecycleLog("EVENT_TAP_RECREATED", snapshot: snapshot)
+    }
+
+    private func emitLifecycleLog(_ event: String, snapshot: EventTapLifecycleSnapshot? = nil) {
+        let resolvedSnapshot: EventTapLifecycleSnapshot
+        if let snapshot = snapshot {
+            resolvedSnapshot = snapshot
+        } else if let box = retainedBox?.takeUnretainedValue() {
+            resolvedSnapshot = box.captureLifecycleSnapshot(at: CFAbsoluteTimeGetCurrent(), threadIdentity: "main")
+        } else {
+            return
+        }
+        let entry = EventTapLifecycleLogEntry(event: event, snapshot: resolvedSnapshot)
+        logger.info("\(entry.logMessage)")
+        DispatchQueue.global(qos: .utility).async {
+            DiagnosticLog.log(entry.logMessage)
+        }
+    }
 }
 
 // MARK: - Background RunLoop Thread
 
 /// Dedicated thread with its own RunLoop for hosting the CGEvent tap.
 /// Keeps the tap responsive even if the main thread is busy with UI work.
+/// Uses an NSCondition-based readiness mechanism instead of a one-shot semaphore
+/// so that the same thread supports repeated add/remove/recreate cycles.
 private final class BackgroundRunLoopThread: Thread {
     private var threadRunLoop: CFRunLoop?
-    private let runLoopReady = DispatchSemaphore(value: 0)
+    private let readyCondition = NSCondition()
+    private var isReady = false
 
     override func main() {
+        readyCondition.lock()
         threadRunLoop = CFRunLoopGetCurrent()
-        runLoopReady.signal()
+        isReady = true
+        readyCondition.broadcast()
+        readyCondition.unlock()
         // Keep the run loop alive with a dummy source
         let context = CFRunLoopSourceContext()
         var mutableContext = context
@@ -327,22 +446,170 @@ private final class BackgroundRunLoopThread: Thread {
         CFRunLoopRun()
     }
 
+    /// Wait for the run loop to become ready and return it.
+    /// Safe to call repeatedly — returns immediately after the first readiness signal.
+    var runLoop: CFRunLoop? {
+        readyCondition.lock()
+        defer { readyCondition.unlock() }
+        while !isReady {
+            readyCondition.wait()
+        }
+        return threadRunLoop
+    }
+
     func addSource(_ source: CFRunLoopSource) {
-        runLoopReady.wait()
-        CFRunLoopAddSource(threadRunLoop, source, .commonModes)
-        CFRunLoopWakeUp(threadRunLoop!)
+        guard let rl = runLoop else { return }
+        CFRunLoopAddSource(rl, source, .commonModes)
+        CFRunLoopWakeUp(rl)
     }
 
     func removeSource(_ source: CFRunLoopSource) {
-        guard let rl = threadRunLoop else { return }
+        guard let rl = runLoop else { return }
         CFRunLoopRemoveSource(rl, source, .commonModes)
     }
 
     override func cancel() {
         super.cancel()
-        if let rl = threadRunLoop {
+        readyCondition.lock()
+        let rl = threadRunLoop
+        readyCondition.unlock()
+        if let rl = rl {
             CFRunLoopStop(rl)
         }
+    }
+}
+
+// MARK: - Event Tap Lifecycle Tracker
+
+enum EventTapLifecycleState: Equatable, Sendable {
+    case stopped
+    case starting
+    case running
+    case disabledBySystem
+    case recovering
+    case degraded
+}
+
+enum EventTapRecoveryAction: Equatable, Sendable {
+    case reenableInPlace
+    case fullRecreation
+    case markDegraded
+}
+
+struct EventTapLifecycleSnapshot: Equatable, Sendable {
+    let rollingTimeoutCount: Int
+    let recreationFailureCount: Int
+    let timeSinceLastTimeout: CFAbsoluteTime?
+    let lifecycleState: EventTapLifecycleState
+    let recoveryMode: String
+    let threadIdentity: String
+    let readinessState: String
+}
+
+struct EventTapLifecycleLogEntry: Equatable, Sendable {
+    let event: String
+    let snapshot: EventTapLifecycleSnapshot
+
+    var logMessage: String {
+        var parts = [event]
+        parts.append("rollingTimeoutCount=\(snapshot.rollingTimeoutCount)")
+        if let elapsed = snapshot.timeSinceLastTimeout {
+            parts.append("timeSinceLastTimeout=\(String(format: "%.3f", elapsed))s")
+        } else {
+            parts.append("timeSinceLastTimeout=nil")
+        }
+        parts.append("recoveryMode=\(snapshot.recoveryMode)")
+        parts.append("threadIdentity=\(snapshot.threadIdentity)")
+        parts.append("readinessState=\(snapshot.readinessState)")
+        return parts.joined(separator: " ")
+    }
+}
+
+struct EventTapLifecycleTracker: Sendable {
+    private(set) var lifecycleState: EventTapLifecycleState = .running
+    private(set) var rollingTimeoutCount: Int = 0
+    private(set) var recreationFailureCount: Int = 0
+
+    private var firstTimeoutInWindow: CFAbsoluteTime?
+    private var lastTimeoutTime: CFAbsoluteTime?
+    private var firstRecreationFailureInWindow: CFAbsoluteTime?
+    private var lastRecoveryMode: String = "none"
+
+    static let timeoutsBeforeRecreation = 3
+    static let timeoutWindowSeconds: CFAbsoluteTime = 30
+    static let recreationFailuresBeforeDegraded = 2
+    static let recreationWindowSeconds: CFAbsoluteTime = 120
+
+    mutating func recordTimeout(at now: CFAbsoluteTime) -> EventTapRecoveryAction {
+        // Reset window if expired
+        if let firstTime = firstTimeoutInWindow, now - firstTime > Self.timeoutWindowSeconds {
+            rollingTimeoutCount = 0
+            firstTimeoutInWindow = nil
+        }
+
+        rollingTimeoutCount += 1
+        lastTimeoutTime = now
+        if firstTimeoutInWindow == nil { firstTimeoutInWindow = now }
+
+        if rollingTimeoutCount >= Self.timeoutsBeforeRecreation {
+            lifecycleState = .recovering
+            lastRecoveryMode = "recreated"
+            return .fullRecreation
+        }
+
+        lifecycleState = .disabledBySystem
+        lastRecoveryMode = "in_place"
+        return .reenableInPlace
+    }
+
+    mutating func recordRecreationSuccess(at now: CFAbsoluteTime) {
+        rollingTimeoutCount = 0
+        firstTimeoutInWindow = nil
+        recreationFailureCount = 0
+        firstRecreationFailureInWindow = nil
+        lifecycleState = .running
+        lastRecoveryMode = "recreated"
+    }
+
+    @discardableResult
+    mutating func recordRecreationFailure(at now: CFAbsoluteTime) -> EventTapRecoveryAction {
+        // Reset failure window if expired
+        if let firstTime = firstRecreationFailureInWindow, now - firstTime > Self.recreationWindowSeconds {
+            recreationFailureCount = 0
+            firstRecreationFailureInWindow = nil
+        }
+
+        recreationFailureCount += 1
+        if firstRecreationFailureInWindow == nil { firstRecreationFailureInWindow = now }
+
+        if recreationFailureCount >= Self.recreationFailuresBeforeDegraded {
+            lifecycleState = .degraded
+            return .markDegraded
+        }
+
+        return .fullRecreation
+    }
+
+    func captureSnapshot(at now: CFAbsoluteTime, threadIdentity: String) -> EventTapLifecycleSnapshot {
+        let timeSince: CFAbsoluteTime? = lastTimeoutTime.map { now - $0 }
+        let readiness: String
+        switch lifecycleState {
+        case .running: readiness = "ready"
+        case .degraded: readiness = "degraded"
+        case .recovering: readiness = "recovering"
+        case .disabledBySystem: readiness = "disabled"
+        case .stopped: readiness = "stopped"
+        case .starting: readiness = "starting"
+        }
+        return EventTapLifecycleSnapshot(
+            rollingTimeoutCount: rollingTimeoutCount,
+            recreationFailureCount: recreationFailureCount,
+            timeSinceLastTimeout: timeSince,
+            lifecycleState: lifecycleState,
+            recoveryMode: lastRecoveryMode,
+            threadIdentity: threadIdentity,
+            readinessState: readiness
+        )
     }
 }
 
@@ -362,6 +629,9 @@ final class EventTapBox {
     var onKeyPress: (@Sendable (KeyPress) -> Void)?
     /// Background-safe closure for asynchronous timeout diagnostics.
     var onTapDisabled: (@Sendable (EventTapDiagnosticsSnapshot) -> Void)?
+    /// Background-safe closure dispatched when the lifecycle tracker decides
+    /// recreation or degraded handling is needed. Must not block the callback.
+    var onRecoveryNeeded: (@Sendable (EventTapRecoveryAction, EventTapLifecycleSnapshot) -> Void)?
 
     // MARK: - Lock-protected shared state
 
@@ -377,6 +647,7 @@ final class EventTapBox {
     fileprivate var _lastModifierFlags: UInt = 0
     fileprivate var _lastShortcutWasSwallowed: Bool = false
     fileprivate var _lastHyperInjected: Bool = false
+    fileprivate var _lifecycleTracker = EventTapLifecycleTracker()
 
     var registeredShortcuts: Set<KeyPress> {
         get { withLock { _registeredShortcuts } }
@@ -430,6 +701,49 @@ final class EventTapBox {
                 hyperKeyEnabled: _hyperKeyEnabled,
                 hyperKeyHeld: _isHyperHeld
             )
+        }
+    }
+
+    /// Re-enable the tap using the custom closure or the tap reference directly.
+    func reenableTapIfNeeded() {
+        if let reenableTap = reenableTap {
+            reenableTap()
+        } else if let tap = tap {
+            CGEvent.tapEnable(tap: tap, enable: true)
+        }
+    }
+
+    /// Record a timeout event and return the recovery action decided by the
+    /// lifecycle tracker. Safe to call from the callback thread under the lock.
+    func recordTimeoutAndDecide(at now: CFAbsoluteTime, threadIdentity: String) -> (EventTapRecoveryAction, EventTapLifecycleSnapshot) {
+        withLock {
+            let action = _lifecycleTracker.recordTimeout(at: now)
+            let snapshot = _lifecycleTracker.captureSnapshot(at: now, threadIdentity: threadIdentity)
+            return (action, snapshot)
+        }
+    }
+
+    /// Record a recreation failure and return a snapshot. Thread-safe.
+    func recordRecreationFailureAndSnapshot(at now: CFAbsoluteTime, threadIdentity: String) -> (EventTapRecoveryAction, EventTapLifecycleSnapshot) {
+        withLock {
+            let action = _lifecycleTracker.recordRecreationFailure(at: now)
+            let snapshot = _lifecycleTracker.captureSnapshot(at: now, threadIdentity: threadIdentity)
+            return (action, snapshot)
+        }
+    }
+
+    /// Record a successful recreation. Thread-safe.
+    func recordRecreationSuccessAndSnapshot(at now: CFAbsoluteTime, threadIdentity: String) -> EventTapLifecycleSnapshot {
+        withLock {
+            _lifecycleTracker.recordRecreationSuccess(at: now)
+            return _lifecycleTracker.captureSnapshot(at: now, threadIdentity: threadIdentity)
+        }
+    }
+
+    /// Capture a lifecycle snapshot without mutating state. Thread-safe.
+    func captureLifecycleSnapshot(at now: CFAbsoluteTime, threadIdentity: String) -> EventTapLifecycleSnapshot {
+        withLock {
+            _lifecycleTracker.captureSnapshot(at: now, threadIdentity: threadIdentity)
         }
     }
 

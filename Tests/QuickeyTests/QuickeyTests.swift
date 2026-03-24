@@ -245,7 +245,7 @@ private final class SendableCounter: @unchecked Sendable {
     var value = 0
 }
 
-private final class LockedValue<T>: @unchecked Sendable {
+final class LockedValue<T>: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: T
 
