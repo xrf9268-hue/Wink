@@ -117,6 +117,13 @@ final class AppSwitcher: AppSwitching {
     private(set) var pendingActivationState: PendingActivationState?
     private(set) var stableActivationState: StableActivationState?
 
+    /// Re-entry guard: prevents nested calls to toggleApplication on the same run loop turn.
+    private var isToggling = false
+    /// Per-bundle cooldown: tracks when each bundle was last toggled to prevent rapid re-triggers.
+    private var lastToggleTimeByBundle: [String: CFAbsoluteTime] = [:]
+    /// Minimum interval (seconds) between toggles of the same bundle.
+    private let toggleCooldown: TimeInterval = 0.8
+
     init(
         frontmostTracker: FrontmostApplicationTracker = FrontmostApplicationTracker(),
         applicationObservation: ApplicationObservation = .live,
@@ -311,6 +318,26 @@ final class AppSwitcher: AppSwitching {
     @discardableResult
     func toggleApplication(for shortcut: AppShortcut) -> Bool {
         let attemptStartedAt = confirmationClient.now()
+
+        // Re-entry guard
+        guard !isToggling else {
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: BLOCKED re-entry guard")
+            return false
+        }
+
+        // Per-bundle cooldown
+        if let lastTime = lastToggleTimeByBundle[shortcut.bundleIdentifier],
+           attemptStartedAt - lastTime < toggleCooldown {
+            let elapsed = Int((attemptStartedAt - lastTime) * 1000)
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: BLOCKED cooldown elapsedMs=\(elapsed) limit=\(Int(toggleCooldown * 1000))ms")
+            return false
+        }
+
+        isToggling = true
+        defer {
+            isToggling = false
+            lastToggleTimeByBundle[shortcut.bundleIdentifier] = confirmationClient.now()
+        }
 
         guard let runningApp = NSRunningApplication.runningApplications(withBundleIdentifier: shortcut.bundleIdentifier).first else {
             // App not running — launch it

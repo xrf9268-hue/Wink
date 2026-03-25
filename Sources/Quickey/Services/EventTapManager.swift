@@ -62,10 +62,12 @@ func handleEventTapEvent(
         return Unmanaged.passUnretained(event)
 
     case .keyDown:
-        if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+        let isAutorepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        if isAutorepeat {
             return Unmanaged.passUnretained(event)
         }
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+        let eventTimestamp = event.timestamp
 
         let (swallow, injectHyper) = box.withLock { () -> (Bool, Bool) in
             if box._hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
@@ -117,6 +119,10 @@ func handleEventTapEvent(
         )
 
         if swallow {
+            let seq = box.incrementAndGetSwallowSequence()
+            DispatchQueue.global(qos: .utility).async {
+                DiagnosticLog.log("EVENT_TAP_SWALLOW: seq=\(seq) keyCode=\(keyCode) modifiers=\(keyPress.modifiers.rawValue) eventTimestamp=\(eventTimestamp)")
+            }
             box.onKeyPress?(keyPress)
             return nil
         }
@@ -175,7 +181,7 @@ final class EventTapManager: EventTapManaging {
     private var backgroundThread: BackgroundRunLoopThread?
 
     /// Debounce: minimum interval between triggers for the same shortcut (seconds).
-    private let debounceInterval: TimeInterval = 0.2  // 200ms
+    private let debounceInterval: TimeInterval = 0.5  // 500ms (raised from 200ms to prevent toggle loops)
     private var lastTriggerTime: CFAbsoluteTime = 0
     private var lastTriggerKeyPress: KeyPress?
 
@@ -308,11 +314,13 @@ final class EventTapManager: EventTapManaging {
         // Debounce: skip if same key press within debounceInterval
         if keyPress == lastTriggerKeyPress,
            now - lastTriggerTime < debounceInterval {
-            #if DEBUG
-            logger.debug("Debounce: skipping duplicate keyPress within \(self.debounceInterval)s")
-            #endif
+            let elapsed = Int((now - lastTriggerTime) * 1000)
+            DiagnosticLog.log("DEBOUNCE_BLOCKED: keyCode=\(keyPress.keyCode) elapsedMs=\(elapsed) limit=\(Int(debounceInterval * 1000))ms")
             return
         }
+
+        let elapsed = lastTriggerTime > 0 ? Int((now - lastTriggerTime) * 1000) : -1
+        DiagnosticLog.log("DEBOUNCE_PASSED: keyCode=\(keyPress.keyCode) elapsedMs=\(elapsed) sameKey=\(keyPress == lastTriggerKeyPress)")
 
         lastTriggerTime = now
         lastTriggerKeyPress = keyPress
@@ -744,6 +752,16 @@ final class EventTapBox {
     func captureLifecycleSnapshot(at now: CFAbsoluteTime, threadIdentity: String) -> EventTapLifecycleSnapshot {
         withLock {
             _lifecycleTracker.captureSnapshot(at: now, threadIdentity: threadIdentity)
+        }
+    }
+
+    fileprivate var _swallowSequence: Int = 0
+
+    /// Atomically increment and return a swallow sequence number for diagnostics.
+    func incrementAndGetSwallowSequence() -> Int {
+        withLock {
+            _swallowSequence += 1
+            return _swallowSequence
         }
     }
 
