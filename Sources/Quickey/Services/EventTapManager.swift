@@ -13,8 +13,8 @@ private extension CGEventFlags {
 }
 
 /// Caps Lock hardware may fire keyDown+keyUp within this window on a single
-/// physical press (toggle quirk). Mach absolute ticks, ~1 ns/tick on Apple silicon.
-private let hyperKeyToggleQuirkThresholdTicks: UInt64 = 80_000_000
+/// physical press (toggle quirk). Nanoseconds (CGEvent.timestamp unit, per CGEventTypes.h).
+private let hyperKeyToggleQuirkThresholdNs: UInt64 = 80_000_000
 
 struct EventTapDiagnosticsSnapshot: Equatable, Sendable {
     let reason: CGEventType
@@ -84,6 +84,7 @@ func handleEventTapEvent(
             if box._hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
                 box._isHyperHeld = true
                 box._hyperKeyDownTimestamp = eventTimestamp
+                box._f19ReceivedViaKeyDown = true
                 return (true, false)
             }
             let hyper = box._isHyperHeld
@@ -98,10 +99,10 @@ func handleEventTapEvent(
                 modifiers: flags.intersection(.deviceIndependentFlagsMask)
             )
             let shouldSwallow = box._registeredShortcuts.contains(keyPress)
-            // Only clear the deferred keyUp when the Hyper combo was actually
-            // consumed; otherwise an unregistered key would eat the held state
-            // and inject Hyper flags into a normal keystroke.
-            if hyper && box._hyperKeyUpDeferred && shouldSwallow {
+            // Clear deferred keyUp state on any non-F19 keyDown. The current
+            // keystroke still sees hyper=true (captured above), but subsequent
+            // keystrokes will not have Hyper injected.
+            if hyper && box._hyperKeyUpDeferred {
                 box._isHyperHeld = false
                 box._hyperKeyUpDeferred = false
             }
@@ -157,7 +158,7 @@ func handleEventTapEvent(
                 // keyDown, keep _isHyperHeld true — it will be cleared when the next
                 // non-F19 keyDown is processed or by a later "real" keyUp.
                 let elapsed = event.timestamp - box._hyperKeyDownTimestamp
-                if elapsed > hyperKeyToggleQuirkThresholdTicks {
+                if elapsed > hyperKeyToggleQuirkThresholdNs {
                     box._isHyperHeld = false
                     box._hyperKeyUpDeferred = false
                 } else {
@@ -188,6 +189,11 @@ func handleEventTapEvent(
         let swallowFlags = box.withLock { () -> Bool in
             guard box._hyperKeyEnabled && flagsKeyCode == HyperKeyService.f19KeyCode else {
                 return false
+            }
+            // If the keyDown/keyUp path has already handled F19, defer to that
+            // path to avoid double-toggling _isHyperHeld.
+            if box._f19ReceivedViaKeyDown {
+                return true
             }
             // Detect press vs release by observing the capsLock flag TRANSITION,
             // not its absolute value. This handles the case where Caps Lock was
@@ -713,12 +719,15 @@ final class EventTapBox {
     fileprivate var _registeredShortcuts: Set<KeyPress> = []
     fileprivate var _hyperKeyEnabled: Bool = false
     fileprivate var _isHyperHeld: Bool = false
-    /// Mach absolute timestamp of the most recent F19 keyDown, used to detect
-    /// Caps Lock's instant keyDown+keyUp toggle quirk.
+    /// CGEvent.timestamp (nanoseconds since startup) of the most recent F19
+    /// keyDown, used to detect Caps Lock's instant keyDown+keyUp toggle quirk.
     fileprivate var _hyperKeyDownTimestamp: UInt64 = 0
     /// When true, an instant F19 keyUp was ignored; the next non-F19 keyDown
-    /// that consumes the Hyper combo should clear _isHyperHeld.
+    /// should clear _isHyperHeld regardless of whether the combo is registered.
     fileprivate var _hyperKeyUpDeferred: Bool = false
+    /// True once F19 has been received via keyDown; prevents the flagsChanged
+    /// handler from double-toggling _isHyperHeld.
+    fileprivate var _f19ReceivedViaKeyDown: Bool = false
     /// Tracks the last observed capsLock flag state so the flagsChanged handler
     /// can detect transitions (edge) rather than relying on absolute level.
     fileprivate var _prevCapsLockFlag: Bool = false
@@ -750,6 +759,8 @@ final class EventTapBox {
             if !enabled {
                 _isHyperHeld = false
                 _hyperKeyUpDeferred = false
+                _hyperKeyDownTimestamp = 0
+                _f19ReceivedViaKeyDown = false
             }
             _prevCapsLockFlag = false
         }
