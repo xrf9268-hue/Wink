@@ -60,7 +60,7 @@ Before making large structural changes, read `docs/architecture.md`.
 - The `ACTIVE_UNTRACKED` path handles apps that are active+frontmost but have no `stableActivationState` or `pendingActivationState`. It hides the app and lets macOS choose the next foreground app. This is the correct fallback when tracking state is missing.
 - `previousApp` (the app to restore on toggle-off) can self-reference the target bundle. Always guard `previousApp != shortcut.bundleIdentifier` before recording or using it.
 - Session-owned `previousBundle` in `ToggleSessionCoordinator` is the durable source of truth for restore targets. `FrontmostApplicationTracker` captures snapshots; the coordinator owns the value across activation/deactivation phases.
-- Toggle cooldown (400ms per-bundle) and debounce (200ms) are safety nets behind the primary Layer 1 autorepeat filter (`kCGKeyboardEventAutorepeat`). Changes to these values require verification via `scripts/e2e-toggle-test.sh` and physical key repeat testing.
+- Toggle cooldown (400ms per-bundle) and debounce (200ms) are safety nets behind the primary Layer 1 autorepeat filter (`kCGKeyboardEventAutorepeat`). Changes to these values require verification via `scripts/e2e-full-test.sh` and physical key repeat testing.
 
 ## Concurrency and actor boundaries
 

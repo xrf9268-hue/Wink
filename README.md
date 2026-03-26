@@ -21,9 +21,8 @@ Quickey is a macOS menu bar app that binds global shortcuts to target apps, with
 ```bash
 swift build
 swift test
-swift build -c release
-./scripts/package-app.sh
-cp .build/release/Quickey build/Quickey.app/Contents/MacOS/Quickey
+./scripts/package-app.sh        # release build + .app bundle
+./scripts/e2e-full-test.sh      # end-to-end test suite (requires Accessibility + Input Monitoring)
 ```
 
 ## Documentation

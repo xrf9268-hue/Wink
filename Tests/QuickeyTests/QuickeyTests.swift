@@ -805,7 +805,7 @@ struct AppShortcutIsEnabledTests {
     }
 
     @Test
-    func decodesLegacyJSONWithoutIsEnabled() throws {
+    func decodingRequiresIsEnabledField() throws {
         let json = """
         {
             "id": "12345678-1234-1234-1234-123456789012",
@@ -815,9 +815,9 @@ struct AppShortcutIsEnabledTests {
             "modifierFlags": ["command"]
         }
         """.data(using: .utf8)!
-        let shortcut = try JSONDecoder().decode(AppShortcut.self, from: json)
-        #expect(shortcut.isEnabled == true)
-        #expect(shortcut.appName == "Safari")
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(AppShortcut.self, from: json)
+        }
     }
 
     @Test
