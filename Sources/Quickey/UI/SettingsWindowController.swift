@@ -31,7 +31,7 @@ final class SettingsWindowController {
 
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Quickey"
-        window.setContentSize(NSSize(width: 720, height: 480))
+        window.setContentSize(NSSize(width: 720, height: 560))
         window.styleMask.insert(.titled)
         window.styleMask.insert(.closable)
         window.styleMask.insert(.miniaturizable)

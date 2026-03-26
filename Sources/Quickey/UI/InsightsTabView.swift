@@ -4,7 +4,7 @@ struct InsightsTabView: View {
     @Bindable var viewModel: InsightsViewModel
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 14) {
             // Period picker
             Picker("", selection: $viewModel.period) {
                 ForEach(InsightsPeriod.allCases, id: \.self) { period in
@@ -32,10 +32,10 @@ struct InsightsTabView: View {
                     Text("No usage data yet")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
-                        .frame(height: 120)
+                        .frame(height: 100)
                 } else {
                     BarChartView(bars: viewModel.bars)
-                        .frame(height: 120)
+                        .frame(height: 100)
                 }
             }
 
