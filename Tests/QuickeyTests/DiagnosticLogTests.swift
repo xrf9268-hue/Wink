@@ -19,6 +19,7 @@ func concurrentWritesProduceOneLinePerMessage() async throws {
             }
         }
     }
+    writer.flush()
 
     let contents = try String(contentsOf: fileURL, encoding: .utf8)
     let lines = contents.split(separator: "\n")

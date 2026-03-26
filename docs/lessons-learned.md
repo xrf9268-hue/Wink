@@ -128,6 +128,72 @@ Some system utilities use nonstandard scene, hide/unhide, or window activation b
 **Practical guidance**
 Do not force all apps through one generic "front app with visible window means success" rule. Keep a degraded-success path for system or window-weird apps, log why the app is degraded, and avoid counting degraded activation as safe toggle-off state.
 
+## Cross-App Restore Breaks Toggle-Off Tracking
+
+**Issue**
+When App A's toggle-off restores App B to the foreground, pressing App B's shortcut fails to toggle it off — instead it re-activates or silently does nothing.
+
+**Cause**
+`stableActivationState` for App B was cleared when App A was toggled on (because `acceptPendingActivation` clears stable state for the new target's bundle, and `clearActivationTracking` clears the old target). When App B returns to the foreground via another app's restore, no code recreates its `stableActivationState`. Without stable state, `shouldToggleOff()` returns false, and the code falls through to the activate path. Additionally, `frontmostTracker.noteCurrentFrontmostApp(excluding: B)` sees B as the frontmost app and skips it, leaving `lastNonTargetBundleIdentifier` as B itself — a self-reference.
+
+**Practical guidance**
+When the target app is already active and frontmost but has no tracking state, treat it as an untracked toggle-off: hide the app and let macOS bring the next app forward. Guard against self-referencing `previousApp` (target == previous) by explicitly clearing it. Log the `ACTIVE_UNTRACKED` path with coordinator phase and tracker state for post-hoc analysis.
+
+## Previous App Self-Reference in Tracker
+
+**Issue**
+`previousApp` resolves to the target app's own bundle identifier, causing toggle-off to attempt restoring the same app it just hid.
+
+**Cause**
+When App A is frontmost and App B is toggled on, `noteCurrentFrontmostApp(excluding: B)` correctly records A. But `lastNonTargetBundleIdentifier` is not cleared when App B's toggle-off restores App A. If the user then toggles App A, `noteCurrentFrontmostApp(excluding: A)` sees A as frontmost, skips the update, and the stale value (which happens to be A from the previous cycle) persists.
+
+**Practical guidance**
+Always check `previousApp != shortcut.bundleIdentifier` before recording it. If a self-reference is detected, treat `previousApp` as nil and log the anomaly.
+
+## Toggle State Machine Must Handle External Activation
+
+**Issue**
+Apps can become frontmost through paths Quickey doesn't control (Dock click, Cmd-Tab, another app's restore). These externally-activated apps have no `stableActivationState` or coordinator session.
+
+**Practical guidance**
+Do not assume that every frontmost app was activated by Quickey. Add a catch-all path for apps that are active+frontmost but untracked. The `ACTIVE_UNTRACKED` path serves this purpose — it hides the app without attempting to restore a specific previous app, since the previous app info is unreliable in this state.
+
+## DiagnosticLog.log() Uses queue.async to Avoid Blocking
+
+**Issue**
+`DiagnosticLogWriter.log()` originally used `queue.sync` which blocked the calling thread until file I/O completed. When called from `toggleApplication` on the main actor, each call blocked the main thread for a FileHandle open/seek/write/close cycle.
+
+**Cause**
+The `queue.sync` pattern was chosen for ordered log output, but the cost was blocking I/O on the calling thread.
+
+**Resolution**
+Switched to `queue.async`. The serial queue still guarantees ordered output. Timestamp is captured before dispatch to preserve accurate timing. A `flush()` method is available for tests that need to read logs immediately after writing.
+
+## Reference: alt-tab-macos Activation Strategy (2026-03-25)
+
+**Context**
+Compared Quickey's toggle implementation with alt-tab-macos (https://github.com/lwouis/alt-tab-macos), the most mature macOS window switcher.
+
+**Key findings**
+- alt-tab uses a "show-select-focus" model, not toggle. No stableActivationState equivalent — just a `appIsBeingUsed` boolean.
+- Three-layer activation (SkyLight + makeKeyWindow 0xf8 + AXRaise) is identical to Quickey's approach.
+- alt-tab runs SkyLight/AX calls on a background queue (`BackgroundWork.accessibilityCommandsQueue`), not the main thread. Quickey runs them on the main actor.
+- alt-tab tracks frontmost app via AX notifications (`kAXApplicationActivatedNotification`) rather than NSWorkspace notifications. More real-time but more complex.
+- alt-tab maintains full MRU window ordering (`lastFocusOrder`), not just a single previous app.
+- alt-tab has `redundantSafetyMeasures()` that polls hardware modifier state after each key event to detect lost keyUp events.
+- alt-tab has no debounce/cooldown — its show-select-focus model doesn't need it.
+
+**Hammerspoon 对比 (https://github.com/Hammerspoon/hammerspoon):**
+- 激活方案更保守：NSRunningApplication + Carbon PSN 双层（无 SkyLight）
+- 窗口焦点：纯 AXUIElement (becomeMain + raise)，无 SkyLight makeKeyWindow
+- 前台监控：NSWorkspace 通知（与 Quickey 一致）
+- Event tap 在**主线程**运行（Quickey 在后台线程更好）
+- 专门为 Finder 写了 0.3s 延迟 workaround — 说明纯 AX 方案不够可靠
+- Hotkey 用 Carbon RegisterEventHotKey 而非 CGEventTap（更轻量但功能受限）
+
+**Practical guidance**
+Quickey 的三层激活方案（SkyLight + 0xf8 makeKeyWindow + AXRaise）是三个参考项目中最完整的，与 alt-tab 一致，优于 Hammerspoon 的双层方案。toggle 状态机（pending/stable/degraded）是 Quickey 独有的需求（alt-tab 和 Hammerspoon 都不做 toggle），设计合理。后台线程 event tap 优于 Hammerspoon 的主线程方案。可优化方向：SkyLight/AX 调用可考虑移至后台队列（alt-tab 做法），但需评估 @MainActor 约束。
+
 ## Event Tap Timeout Recovery Needs Escalation
 
 **Issue**

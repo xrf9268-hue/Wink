@@ -22,8 +22,9 @@ final class DiagnosticLogWriter: @unchecked Sendable {
     }
 
     func log(_ message: String) {
-        queue.sync {
-            let line = "\(formatter.string(from: Date())) \(message)\n"
+        let timestamp = Date()
+        queue.async { [self] in
+            let line = "\(formatter.string(from: timestamp)) \(message)\n"
             guard let data = line.data(using: .utf8) else { return }
             if !directoryEnsured {
                 try? FileManager.default.createDirectory(
@@ -38,6 +39,11 @@ final class DiagnosticLogWriter: @unchecked Sendable {
                 FileManager.default.createFile(atPath: logPath, contents: data)
             }
         }
+    }
+
+    /// Block until all pending writes are flushed.
+    func flush() {
+        queue.sync {}
     }
 
     func rotateIfNeeded() {

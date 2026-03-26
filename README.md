@@ -12,7 +12,7 @@ Quickey is a macOS menu bar app that binds global shortcuts to target apps, with
 - Swift 6, AppKit-first, and SPM-first by design
 
 ## Requirements and Constraints
-- macOS 14+
+- macOS 15+
 - Swift 6 / SPM-first
 - macOS runtime behavior must be validated on macOS
 - SkyLight is a private API dependency for activation reliability

@@ -94,6 +94,30 @@ final class AppSwitcher: AppSwitching {
         case fallback(Bool)
     }
 
+    enum PostActionPhase: String {
+        case postActivateState = "POST_ACTIVATE_STATE"
+        case postRestoreState = "POST_RESTORE_STATE"
+    }
+
+    enum ActivationPath: String {
+        case launch
+        case restorePrevious = "restore_previous"
+        case hideUntracked = "hide_untracked"
+        case activate
+        case unhideActivate = "unhide_activate"
+    }
+
+    enum ToggleLifecycle: String {
+        case attempt = "TOGGLE_ATTEMPT"
+        case restoreAttempt = "TOGGLE_RESTORE_ATTEMPT"
+        case hideUntracked = "TOGGLE_HIDE_UNTRACKED"
+        case confirmation = "TOGGLE_CONFIRMATION"
+        case stable = "TOGGLE_STABLE"
+        case degraded = "TOGGLE_DEGRADED"
+        case restoreConfirmed = "TOGGLE_RESTORE_CONFIRMED"
+        case restoreDegraded = "TOGGLE_RESTORE_DEGRADED"
+    }
+
     struct ActivationClient {
         let activateFrontProcess: (pid_t, CGWindowID?) -> FrontProcessActivationResult
     }
@@ -123,6 +147,8 @@ final class AppSwitcher: AppSwitching {
     private var lastToggleTimeByBundle: [String: CFAbsoluteTime] = [:]
     /// Minimum interval (seconds) between toggles of the same bundle.
     private let toggleCooldown: TimeInterval = 0.8
+    private let cooldownCacheLimit = 20
+    private let cooldownEvictionWindow: CFAbsoluteTime = 60
 
     init(
         frontmostTracker: FrontmostApplicationTracker = FrontmostApplicationTracker(),
@@ -187,7 +213,9 @@ final class AppSwitcher: AppSwitching {
             return false
         }
         // Coordinator may have invalidated the session via notification
-        guard sessionCoordinator.session(for: bundleIdentifier)?.phase == .activeStable else {
+        let coordinatorPhase = sessionCoordinator.session(for: bundleIdentifier)?.phase
+        guard coordinatorPhase == .activeStable else {
+            DiagnosticLog.log("TOGGLE[\(stableActivationState.bundleIdentifier)]: stableState invalidated by coordinator, phase=\(coordinatorPhase?.rawValue ?? "no_session")")
             self.stableActivationState = nil
             return false
         }
@@ -222,7 +250,7 @@ final class AppSwitcher: AppSwitching {
     func schedulePendingConfirmation(
         state: PendingActivationState,
         shortcut: AppShortcut,
-        activationPath: String,
+        activationPath: ActivationPath,
         observe: @escaping @MainActor () -> ActivationObservationSnapshot,
         recoverIfNeeded: @escaping @MainActor (WindowRecoveryStage, @escaping @MainActor () -> Void) -> Void
     ) {
@@ -240,7 +268,7 @@ final class AppSwitcher: AppSwitching {
     private func schedulePendingConfirmation(
         state: PendingActivationState,
         shortcut: AppShortcut,
-        activationPath: String,
+        activationPath: ActivationPath,
         delay: TimeInterval,
         nextRecoveryStage: WindowRecoveryStage?,
         observe: @escaping @MainActor () -> ActivationObservationSnapshot,
@@ -258,7 +286,7 @@ final class AppSwitcher: AppSwitching {
             let effectiveStable = self.canPromoteToStable(with: snapshot)
             self.logPostActionState(
                 shortcut: shortcut,
-                phase: "POST_ACTIVATE_STATE",
+                phase: .postActivateState,
                 snapshot: snapshot,
                 previousBundle: pendingActivationState.previousBundleIdentifier,
                 activationPath: activationPath,
@@ -336,7 +364,11 @@ final class AppSwitcher: AppSwitching {
         isToggling = true
         defer {
             isToggling = false
-            lastToggleTimeByBundle[shortcut.bundleIdentifier] = confirmationClient.now()
+            let now = confirmationClient.now()
+            lastToggleTimeByBundle[shortcut.bundleIdentifier] = now
+            if lastToggleTimeByBundle.count > cooldownCacheLimit {
+                lastToggleTimeByBundle = lastToggleTimeByBundle.filter { now - $0.value < cooldownEvictionWindow }
+            }
         }
 
         guard let runningApp = NSRunningApplication.runningApplications(withBundleIdentifier: shortcut.bundleIdentifier).first else {
@@ -347,9 +379,9 @@ final class AppSwitcher: AppSwitching {
                 DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: NOT RUNNING → launching, saved previous=\(frontmostTracker.lastNonTargetBundleIdentifier ?? "nil")")
                 logToggleLifecycle(
                     for: shortcut,
-                    lifecycle: "TOGGLE_ATTEMPT",
+                    lifecycle: .attempt,
                     previousBundle: frontmostTracker.lastNonTargetBundleIdentifier,
-                    activationPath: "launch",
+                    activationPath: .launch,
                     elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
                 )
                 let bundleId = shortcut.bundleIdentifier
@@ -379,19 +411,21 @@ final class AppSwitcher: AppSwitching {
 
         if shouldToggleOff(bundleIdentifier: shortcut.bundleIdentifier, runningAppIsActive: runningApp.isActive),
            preActionSnapshot.isStableActivation {
-            // App is stably frontmost — hide it and restore the previous app
             let previousApp = sessionCoordinator.previousBundle(for: shortcut.bundleIdentifier)
                 ?? stableActivationState?.previousBundleIdentifier
                 ?? frontmostTracker.lastNonTargetBundleIdentifier
             sessionCoordinator.beginDeactivation(for: shortcut.bundleIdentifier)
             logToggleLifecycle(
                 for: shortcut,
-                lifecycle: "TOGGLE_RESTORE_ATTEMPT",
+                lifecycle: .restoreAttempt,
                 previousBundle: previousApp,
-                activationPath: "restore_previous",
+                activationPath: .restorePrevious,
                 snapshot: preActionSnapshot,
                 elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
             )
+            if let trackerPrevious = frontmostTracker.lastNonTargetBundleIdentifier, trackerPrevious != previousApp {
+                DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: RESTORE_DIVERGENCE resolvedPrevious=\(previousApp ?? "nil") trackerPrevious=\(trackerPrevious)")
+            }
             let restoreAttempt = frontmostTracker.restorePreviousAppIfPossible()
             let hidden = runningApp.hide()
             let restored = restoreAttempt.restoreAccepted
@@ -408,13 +442,33 @@ final class AppSwitcher: AppSwitching {
             clearActivationTracking(for: shortcut.bundleIdentifier, resetPreviousTracking: false)
             logPostActionState(
                 shortcut: shortcut,
-                phase: "POST_RESTORE_STATE",
+                phase: .postRestoreState,
                 snapshot: postRestoreSnapshot,
                 previousBundle: restoreAttempt.bundleIdentifier ?? previousApp,
-                activationPath: "restore_previous",
+                activationPath: .restorePrevious,
                 elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
             )
             return restored || hidden
+        }
+
+        // Target is already active and stable but wasn't tracked by us (e.g. restored
+        // by another app's toggle-off, or activated externally via Dock/Cmd-Tab).
+        // Treat this as a toggle-off: hide the app and let macOS bring up the next one.
+        if runningApp.isActive, preActionSnapshot.isStableActivation,
+           stableActivationState?.bundleIdentifier != shortcut.bundleIdentifier,
+           pendingActivationState?.bundleIdentifier != shortcut.bundleIdentifier {
+            let hidden = runningApp.hide()
+            logger.info("TOGGLE[\(shortcut.appName)]: ACTIVE_UNTRACKED → hiding, hidden=\(hidden)")
+            logToggleLifecycle(
+                for: shortcut,
+                lifecycle: .hideUntracked,
+                previousBundle: nil,
+                activationPath: .hideUntracked,
+                snapshot: preActionSnapshot,
+                elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
+            )
+            clearActivationTracking(for: shortcut.bundleIdentifier, resetPreviousTracking: true)
+            return hidden
         }
 
         if let pendingActivationState, pendingActivationState.bundleIdentifier != shortcut.bundleIdentifier {
@@ -427,18 +481,29 @@ final class AppSwitcher: AppSwitching {
         if !continuingPendingActivation {
             frontmostTracker.noteCurrentFrontmostApp(excluding: shortcut.bundleIdentifier)
         }
-        let previousApp = continuingPendingActivation
+        var previousApp = continuingPendingActivation
             ? pendingActivationState?.previousBundleIdentifier
             : frontmostTracker.lastNonTargetBundleIdentifier
+        // Guard against self-referencing previous app (can happen when target was
+        // restored by another app's toggle-off — the tracker still holds the old value)
+        if previousApp == shortcut.bundleIdentifier {
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: previousApp self-reference detected, clearing")
+            previousApp = nil
+        }
         let pendingStartedAt = continuingPendingActivation
             ? pendingActivationState?.startedAt ?? attemptStartedAt
             : attemptStartedAt
-        let activationPath = runningApp.isHidden ? "unhide_activate" : "activate"
+        let activationPath: ActivationPath = runningApp.isHidden ? .unhideActivate : .activate
+        if runningApp.isActive {
+            // Should not normally reach here — ACTIVE_UNTRACKED should have caught it.
+            // Log a warning for diagnostics if it happens (e.g. isStableActivation was false).
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: WARNING activate path reached with isActive=true, isStable=\(preActionSnapshot.isStableActivation), stableState=\(stableActivationState?.bundleIdentifier ?? "nil"), pendingState=\(pendingActivationState?.bundleIdentifier ?? "nil")")
+        }
         logger.info("TOGGLE[\(shortcut.appName)]: RUNNING NOT FRONT → activating, isHidden=\(runningApp.isHidden)")
         DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: RUNNING NOT FRONT → activating, saved previous=\(previousApp ?? "nil"), isHidden=\(runningApp.isHidden)")
         logToggleLifecycle(
             for: shortcut,
-            lifecycle: "TOGGLE_ATTEMPT",
+            lifecycle: .attempt,
             previousBundle: previousApp,
             activationPath: activationPath,
             snapshot: preActionSnapshot,
@@ -725,10 +790,10 @@ final class AppSwitcher: AppSwitching {
 
     private func logPostActionState(
         shortcut: AppShortcut,
-        phase: String,
+        phase: PostActionPhase,
         snapshot: ActivationObservationSnapshot,
         previousBundle: String?,
-        activationPath: String,
+        activationPath: ActivationPath,
         elapsedMilliseconds: Int,
         effectiveStable: Bool? = nil
     ) {
@@ -741,8 +806,8 @@ final class AppSwitcher: AppSwitching {
         logger.info("\(message)")
         DiagnosticLog.log(message)
 
-        if phase == "POST_RESTORE_STATE" {
-            let lifecycle = snapshot.targetIsObservedFrontmost ? "TOGGLE_RESTORE_DEGRADED" : "TOGGLE_RESTORE_CONFIRMED"
+        if phase == .postRestoreState {
+            let lifecycle: ToggleLifecycle = snapshot.targetIsObservedFrontmost ? .restoreDegraded : .restoreConfirmed
             logToggleLifecycle(
                 for: shortcut,
                 lifecycle: lifecycle,
@@ -756,7 +821,7 @@ final class AppSwitcher: AppSwitching {
 
         logToggleLifecycle(
             for: shortcut,
-            lifecycle: "TOGGLE_CONFIRMATION",
+            lifecycle: .confirmation,
             previousBundle: previousBundle,
             activationPath: activationPath,
             snapshot: snapshot,
@@ -765,7 +830,7 @@ final class AppSwitcher: AppSwitching {
         )
         logToggleLifecycle(
             for: shortcut,
-            lifecycle: (effectiveStable ?? snapshot.isStableActivation) ? "TOGGLE_STABLE" : "TOGGLE_DEGRADED",
+            lifecycle: (effectiveStable ?? snapshot.isStableActivation) ? .stable : .degraded,
             previousBundle: previousBundle,
             activationPath: activationPath,
             snapshot: snapshot,
@@ -776,19 +841,19 @@ final class AppSwitcher: AppSwitching {
 
     func postActionLogMessage(
         for shortcut: AppShortcut,
-        phase: String,
+        phase: PostActionPhase,
         snapshot: ActivationObservationSnapshot,
         effectiveStable: Bool? = nil
     ) -> String {
         let state = TogglePostActionState(snapshot: snapshot)
-        return "TOGGLE[\(shortcut.appName)]: \(phase) \(state.logDetails) \(snapshot.structuredLogFields(stableOverride: effectiveStable))"
+        return "TOGGLE[\(shortcut.appName)]: \(phase.rawValue) \(state.logDetails) \(snapshot.structuredLogFields(stableOverride: effectiveStable))"
     }
 
     func toggleLifecycleLogMessage(
         for shortcut: AppShortcut,
-        lifecycle: String,
+        lifecycle: ToggleLifecycle,
         previousBundle: String?,
-        activationPath: String,
+        activationPath: ActivationPath,
         snapshot: ActivationObservationSnapshot? = nil,
         elapsedMilliseconds: Int,
         effectiveStable: Bool? = nil
@@ -796,7 +861,7 @@ final class AppSwitcher: AppSwitching {
         var fields = [
             "target=\(shortcut.bundleIdentifier)",
             "previous=\(previousBundle ?? "nil")",
-            "activationPath=\(activationPath)",
+            "activationPath=\(activationPath.rawValue)",
             "elapsedMs=\(elapsedMilliseconds)"
         ]
 
@@ -806,14 +871,14 @@ final class AppSwitcher: AppSwitching {
             fields.append(ActivationObservationSnapshot.quotedField("frontmost", frontmostTracker.currentFrontmostBundleIdentifier()))
         }
 
-        return "TOGGLE[\(shortcut.appName)]: \(lifecycle) \(fields.joined(separator: " "))"
+        return "TOGGLE[\(shortcut.appName)]: \(lifecycle.rawValue) \(fields.joined(separator: " "))"
     }
 
     private func logToggleLifecycle(
         for shortcut: AppShortcut,
-        lifecycle: String,
+        lifecycle: ToggleLifecycle,
         previousBundle: String?,
-        activationPath: String,
+        activationPath: ActivationPath,
         snapshot: ActivationObservationSnapshot? = nil,
         elapsedMilliseconds: Int,
         effectiveStable: Bool? = nil

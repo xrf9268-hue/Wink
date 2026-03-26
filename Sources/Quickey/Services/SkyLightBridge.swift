@@ -7,7 +7,7 @@ func GetProcessForPID(_ pid: pid_t, _ psn: UnsafeMutablePointer<ProcessSerialNum
 
 // MARK: - SkyLight private API declarations
 // Used for reliable app activation from LSUIElement background apps.
-// NSRunningApplication.activate() is unreliable on macOS 14+ due to cooperative activation.
+// NSRunningApplication.activate() is unreliable on macOS 15 due to cooperative activation.
 // _SLPSSetFrontProcessWithOptions communicates directly with WindowServer, bypassing AppKit.
 // Reference: alt-tab-macos, sorrycc/HotApp blog
 

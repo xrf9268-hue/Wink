@@ -171,7 +171,7 @@ func postActionLogMessageUsesObservationSnapshotForFrontmostState() {
 
     let message = switcher.postActionLogMessage(
         for: shortcut,
-        phase: "POST_ACTIVATE_STATE",
+        phase: .postActivateState,
         snapshot: snapshot
     )
 
@@ -204,7 +204,7 @@ func postActionLogMessageUsesEffectiveStableOverride() {
 
     let message = switcher.postActionLogMessage(
         for: shortcut,
-        phase: "POST_ACTIVATE_STATE",
+        phase: .postActivateState,
         snapshot: snapshot,
         effectiveStable: false
     )
@@ -237,9 +237,9 @@ func toggleLifecycleLogMessageIncludesStructuredObservationFields() {
 
     let message = switcher.toggleLifecycleLogMessage(
         for: shortcut,
-        lifecycle: "TOGGLE_CONFIRMATION",
+        lifecycle: .confirmation,
         previousBundle: "com.openai.codex",
-        activationPath: "activate",
+        activationPath: .activate,
         snapshot: snapshot,
         elapsedMilliseconds: 75
     )
@@ -417,7 +417,7 @@ func recoverWindowlessAppStageCompletionHappensBeforeNextConfirmation() {
     switcher.schedulePendingConfirmation(
         state: state,
         shortcut: shortcut,
-        activationPath: "activate",
+        activationPath: .activate,
         observe: {
             let snapshot = snapshots.removeFirst()
             events.append("confirm:\(snapshot.visibleWindowCount)")

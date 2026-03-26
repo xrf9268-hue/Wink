@@ -48,6 +48,6 @@ final class AppController {
 
     private func openSettings() {
         settingsWindowController.show()
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        NSApp.activate()
     }
 }

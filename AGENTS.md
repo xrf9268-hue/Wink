@@ -14,7 +14,7 @@ Use this file as a concise operating guide. Treat the detailed repository docs a
 
 ## Environment and platform constraints
 
-- macOS 14+, Swift 6, SPM-first structure
+- macOS 15+, Swift 6, SPM-first structure
 - This workspace may be edited from Linux, but the app **cannot be fully validated there**
 - Final build, permission, event-monitoring, and runtime behavior must be tested on macOS
 - GitHub Actions can verify build/test/package on macOS, but not replace manual validation for TCC, event taps, login items, or app activation behavior
@@ -38,17 +38,35 @@ The codebase is feature-complete. Key architectural decisions:
 - AppKit-first, selective SwiftUI (documented in `docs/archive/app-structure-direction.md`); for new app-shell work, evaluate `MenuBarExtra`/`Settings`/`openSettings` first
 - O(1) precompiled trigger index for hot-path matching
 - EventTap lifecycle hardened with auto-recovery
-- SkyLight private API for app activation (unreliable `NSRunningApplication.activate()` on macOS 14+)
+- SkyLight private API (`_SLPSSetFrontProcessWithOptions`) for app activation: on macOS 15, the `NSApplicationActivateIgnoringOtherApps` option flag is deprecated since macOS 14.0 with **no effect** (Apple SDK: `API_DEPRECATED("ignoringOtherApps is deprecated in macOS 14 and will have no effect.", macos(10.6, 14.0))`). The cooperative model (`yieldActivation(to:)` + `activate(from:options:)`, both `API_AVAILABLE(macos(14.0))`) requires the currently active app to explicitly yield, which is impossible for an accessory utility like Quickey that doesn't control other apps. `NSRunningApplication.activate(options:)` without the flag is a cooperative request that the system may decline. SkyLight is the only reliable way for an `LSUIElement` app to force-activate arbitrary targets.
+- For self-activation (e.g., showing the settings window), use `NSApp.activate()` (`API_AVAILABLE(macos(14.0))`). Do not use the soft-deprecated `activateIgnoringOtherApps:` (`API_DEPRECATED("This method will be deprecated in a future release. Use NSApp.activate instead.")`)
 - Shortcut readiness is not just permission state: require `AXIsProcessTrusted()`, `CGPreflightListenEventAccess()`, and successful active event-tap startup
-- Do not reintroduce passive `.listenOnly` fallback for normal shortcut interception; it cannot consume events
+- Do not reintroduce passive `.listenOnly` fallback for normal shortcut interception; it cannot consume events (Apple SDK: `kCGEventTapOptionListenOnly = 0x00000001` is a passive listener)
 - Preserve multi-state system API semantics when behavior/UI depends on them; do not collapse `SMAppService.Status` to a single bool
 
 Before making large structural changes, read `docs/architecture.md`.
+
+## App activation semantics (Apple SDK verified)
+
+- `NSRunningApplication.activate(options:)` and `hide()` are **asynchronous requests**, not immediate state changes (Apple SDK on `activateFromApplication:options:`: "You shouldn't assume the app will be active immediately after sending this message. The framework also does not guarantee that the app will be activated at all."). Always confirm the result via observation, not assumption.
+- `NSRunningApplication` properties (`isActive`, `isHidden`, etc.) are consistent **within** the current main run loop turn (Apple SDK: "properties persist until the next turn of the main run loop in a common mode"). `NSRunningApplication` is thread safe (properties returned atomically), but time-varying properties follow the main run loop policy. This justifies `@MainActor` for `AppSwitcher`.
+- `isActive` = "Indicates whether the application is currently frontmost" (Apple SDK). `NSWorkspace.shared.frontmostApplication` is the workspace-level source of truth. Use `isActive`/`isHidden` as supporting signals, not sole toggle-off gates.
+- macOS 15 cooperative activation (`yieldActivation(to:)` + `activate(from:options:)`) requires the **currently active app** to explicitly yield. An accessory/LSUIElement app cannot force other apps to yield. SkyLight `_SLPSSetFrontProcessWithOptions` is the only reliable forced-activation path.
+- `SetFrontProcessWithOptions` and `GetProcessForPID` (Carbon/HIServices) are deprecated since macOS 10.9 (`AVAILABLE_MAC_OS_X_VERSION_10_0_AND_LATER_BUT_DEPRECATED_IN_MAC_OS_X_VERSION_10_9`). SkyLight requires PSN from `GetProcessForPID`; there is no modern replacement for obtaining a PSN. This is a necessary trade-off for reliable activation.
+
+## Toggle state management
+
+- Apps can become frontmost through paths Quickey does not control (Dock click, Cmd-Tab, another app's restore). Do not assume every frontmost app was activated by Quickey.
+- The `ACTIVE_UNTRACKED` path handles apps that are active+frontmost but have no `stableActivationState` or `pendingActivationState`. It hides the app and lets macOS choose the next foreground app. This is the correct fallback when tracking state is missing.
+- `previousApp` (the app to restore on toggle-off) can self-reference the target bundle. Always guard `previousApp != shortcut.bundleIdentifier` before recording or using it.
+- Session-owned `previousBundle` in `ToggleSessionCoordinator` is the durable source of truth for restore targets. `FrontmostApplicationTracker` captures snapshots; the coordinator owns the value across activation/deactivation phases.
+- Toggle cooldown (800ms per-bundle) and debounce (500ms) prevent key-repeat-induced toggle loops. Do not reduce these without verifying against physical key repeat rates.
 
 ## Concurrency and actor boundaries
 
 - Do not use `@MainActor` as the default for non-UI code
 - Keep UI/window/SwiftUI state on the main actor
+- `AppSwitcher` is `@MainActor` because `NSRunningApplication` property consistency is tied to the main run loop (see "App activation semantics" above)
 - Runtime logic (matching, indexing, event-processing) should justify any main-actor coupling
 - Completion handlers from system APIs (e.g., `NSWorkspace.openApplication`) call back on background queues; extract values and mark `@Sendable`
 
@@ -72,6 +90,8 @@ Highest-value test targets:
 - Async view-model refresh ordering and cancellation ("last selection wins")
 
 If a change cannot be verified on Linux, document what must be verified on macOS.
+- End-to-end shortcut testing on macOS: `osascript` key events penetrate session-level event taps; `cliclick` does not. Use `osascript -e 'tell application "System Events" to key code ...'` for E2E validation of the full event tap → match → toggle pipeline.
+- `kCGKeyboardEventAutorepeat` (Apple SDK: "non-zero when this is an autorepeat of a key-down") must be filtered in the event tap callback to prevent held-key loops.
 
 ## Investigation before implementation
 
