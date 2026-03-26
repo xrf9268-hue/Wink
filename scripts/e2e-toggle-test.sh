@@ -3,7 +3,6 @@
 # Usage: ./scripts/e2e-toggle-test.sh
 #
 # Prerequisites:
-# - cliclick installed (brew install cliclick)
 # - Quickey.app built (./scripts/package-app.sh)
 # - Accessibility + Input Monitoring permissions granted to Quickey.app
 #
@@ -11,7 +10,7 @@
 # 1. Clears the debug log
 # 2. Launches Quickey
 # 3. Waits for event tap to start
-# 4. Sends a shortcut key via cliclick
+# 4. Sends a shortcut key via osascript (System Events)
 # 5. Monitors the log for toggle loop patterns
 # 6. Kills Quickey
 # 7. Analyzes the results
@@ -34,11 +33,6 @@ echo "=== Quickey E2E Toggle Loop Test (Issue #80) ==="
 echo ""
 
 # Check prerequisites
-if ! command -v cliclick &>/dev/null; then
-    echo -e "${RED}ERROR: cliclick not installed. Run: brew install cliclick${NC}"
-    exit 1
-fi
-
 if [ ! -d "$APP_PATH" ]; then
     echo -e "${RED}ERROR: Quickey.app not found at $APP_PATH. Run: ./scripts/package-app.sh${NC}"
     exit 1
