@@ -5,6 +5,17 @@ import os.log
 
 private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "EventTapManager")
 
+private extension CGEventFlags {
+    /// Strips the Caps Lock toggle bit that leaks through hidutil remapping.
+    var strippingCapsLock: CGEventFlags {
+        var f = self; f.remove(.maskAlphaShift); return f
+    }
+}
+
+/// Caps Lock hardware may fire keyDown+keyUp within this window on a single
+/// physical press (toggle quirk). Nanoseconds (CGEvent.timestamp unit, per CGEventTypes.h).
+private let hyperKeyToggleQuirkThresholdNs: UInt64 = 80_000_000
+
 struct EventTapDiagnosticsSnapshot: Equatable, Sendable {
     let reason: CGEventType
     let disableCount: Int
@@ -72,11 +83,13 @@ func handleEventTapEvent(
         let (swallow, injectHyper) = box.withLock { () -> (Bool, Bool) in
             if box._hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
                 box._isHyperHeld = true
+                box._hyperKeyDownTimestamp = eventTimestamp
+                box._f19ReceivedViaKeyDown = true
                 return (true, false)
             }
             let hyper = box._isHyperHeld
 
-            var currentFlags = event.flags
+            var currentFlags = event.flags.strippingCapsLock
             if hyper {
                 currentFlags = currentFlags.union([.maskControl, .maskAlternate, .maskShift, .maskCommand])
             }
@@ -86,6 +99,13 @@ func handleEventTapEvent(
                 modifiers: flags.intersection(.deviceIndependentFlagsMask)
             )
             let shouldSwallow = box._registeredShortcuts.contains(keyPress)
+            // Clear deferred keyUp state on any non-F19 keyDown. The current
+            // keystroke still sees hyper=true (captured above), but subsequent
+            // keystrokes will not have Hyper injected.
+            if hyper && box._hyperKeyUpDeferred {
+                box._isHyperHeld = false
+                box._hyperKeyUpDeferred = false
+            }
             return (shouldSwallow, hyper)
         }
 
@@ -102,7 +122,8 @@ func handleEventTapEvent(
         }
 
         if injectHyper {
-            event.flags = event.flags.union([.maskControl, .maskAlternate, .maskShift, .maskCommand])
+            event.flags = event.flags.strippingCapsLock
+                .union([.maskControl, .maskAlternate, .maskShift, .maskCommand])
         }
 
         let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
@@ -132,7 +153,17 @@ func handleEventTapEvent(
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
         let swallowUp = box.withLock { () -> Bool in
             if box._hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
-                box._isHyperHeld = false
+                // Caps Lock hardware may generate instant keyDown+keyUp on a single
+                // physical press (toggle quirk). If keyUp arrives within 80ms of
+                // keyDown, keep _isHyperHeld true — it will be cleared when the next
+                // non-F19 keyDown is processed or by a later "real" keyUp.
+                let elapsed = event.timestamp - box._hyperKeyDownTimestamp
+                if elapsed > hyperKeyToggleQuirkThresholdNs {
+                    box._isHyperHeld = false
+                    box._hyperKeyUpDeferred = false
+                } else {
+                    box._hyperKeyUpDeferred = true
+                }
                 return true
             }
             return false
@@ -148,11 +179,50 @@ func handleEventTapEvent(
         return swallowUp ? nil : Unmanaged.passUnretained(event)
 
     case .flagsChanged:
-        let modifierFlags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
+        // Caps Lock remapped to F19 via hidutil may still generate flagsChanged
+        // instead of keyDown/keyUp on some macOS versions. Handle it here so the
+        // Hyper key works regardless of which event type the system produces.
+        let flagsKeyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+        let flagsRaw = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
+            .intersection(.deviceIndependentFlagsMask)
+        let hasCapsLock = event.flags.contains(.maskAlphaShift)
+        let swallowFlags = box.withLock { () -> Bool in
+            guard box._hyperKeyEnabled && flagsKeyCode == HyperKeyService.f19KeyCode else {
+                return false
+            }
+            // If the keyDown/keyUp path has already handled F19, defer to that
+            // path to avoid double-toggling _isHyperHeld.
+            if box._f19ReceivedViaKeyDown {
+                return true
+            }
+            // Detect press vs release by observing the capsLock flag TRANSITION,
+            // not its absolute value. This handles the case where Caps Lock was
+            // already toggled ON before Hyper was enabled (which would invert
+            // the absolute flag semantics).
+            let changed = hasCapsLock != box._prevCapsLockFlag
+            box._prevCapsLockFlag = hasCapsLock
+            if changed {
+                box._isHyperHeld = !box._isHyperHeld
+            }
+            return true
+        }
+        if swallowFlags {
+            box.recordObservedEvent(
+                type: .flagsChanged,
+                keyCode: flagsKeyCode,
+                modifierFlags: flagsRaw,
+                swallowed: true,
+                injectedHyper: false
+            )
+            DispatchQueue.global(qos: .utility).async {
+                DiagnosticLog.log("HYPER_FLAGS_CHANGED: keyCode=\(flagsKeyCode) held=\(hasCapsLock)")
+            }
+            return nil
+        }
         box.recordObservedEvent(
             type: .flagsChanged,
-            keyCode: nil,
-            modifierFlags: modifierFlags.intersection(.deviceIndependentFlagsMask),
+            keyCode: flagsKeyCode,
+            modifierFlags: flagsRaw,
             swallowed: false,
             injectedHyper: false
         )
@@ -649,6 +719,18 @@ final class EventTapBox {
     fileprivate var _registeredShortcuts: Set<KeyPress> = []
     fileprivate var _hyperKeyEnabled: Bool = false
     fileprivate var _isHyperHeld: Bool = false
+    /// CGEvent.timestamp (nanoseconds since startup) of the most recent F19
+    /// keyDown, used to detect Caps Lock's instant keyDown+keyUp toggle quirk.
+    fileprivate var _hyperKeyDownTimestamp: UInt64 = 0
+    /// When true, an instant F19 keyUp was ignored; the next non-F19 keyDown
+    /// should clear _isHyperHeld regardless of whether the combo is registered.
+    fileprivate var _hyperKeyUpDeferred: Bool = false
+    /// True once F19 has been received via keyDown; prevents the flagsChanged
+    /// handler from double-toggling _isHyperHeld.
+    fileprivate var _f19ReceivedViaKeyDown: Bool = false
+    /// Tracks the last observed capsLock flag state so the flagsChanged handler
+    /// can detect transitions (edge) rather than relying on absolute level.
+    fileprivate var _prevCapsLockFlag: Bool = false
     fileprivate var _disableCount: Int = 0
     fileprivate var _lastEventType: CGEventType?
     fileprivate var _lastKeyCode: CGKeyCode?
@@ -674,7 +756,13 @@ final class EventTapBox {
     func setHyperKey(enabled: Bool) {
         withLock {
             _hyperKeyEnabled = enabled
-            if !enabled { _isHyperHeld = false }
+            if !enabled {
+                _isHyperHeld = false
+                _hyperKeyUpDeferred = false
+                _hyperKeyDownTimestamp = 0
+                _f19ReceivedViaKeyDown = false
+            }
+            _prevCapsLockFlag = false
         }
     }
 

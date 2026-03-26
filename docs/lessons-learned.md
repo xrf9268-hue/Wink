@@ -194,6 +194,28 @@ Compared Quickey's toggle implementation with alt-tab-macos (https://github.com/
 **Practical guidance**
 Quickey 的三层激活方案（SkyLight + 0xf8 makeKeyWindow + AXRaise）是三个参考项目中最完整的，与 alt-tab 一致，优于 Hammerspoon 的双层方案。toggle 状态机（pending/stable/degraded）是 Quickey 独有的需求（alt-tab 和 Hammerspoon 都不做 toggle），设计合理。后台线程 event tap 优于 Hammerspoon 的主线程方案。可优化方向：SkyLight/AX 调用可考虑移至后台队列（alt-tab 做法），但需评估 @MainActor 约束。
 
+## CGEvent.timestamp Is Nanoseconds, Not Mach Ticks
+
+**Issue**
+Code comments or variable names may refer to `CGEvent.timestamp` as "Mach absolute ticks", leading to incorrect unit assumptions.
+
+**Cause**
+Apple's `CGEventTypes.h` defines `CGEventTimestamp` as "roughly, nanoseconds since startup." On Apple Silicon, raw `mach_absolute_time()` ticks are ~41.67 ns/tick (24 MHz clock, per QA1398), which is a different unit. `CGEvent.timestamp` is pre-converted to nanoseconds by the system.
+
+**Practical guidance**
+Always treat `CGEvent.timestamp` values as nanoseconds. When computing elapsed time between events (e.g., for the 80ms Caps Lock toggle quirk threshold), use `80_000_000` (80M nanoseconds), not Mach ticks. Note that test-created CGEvents via `CGEvent(keyboardEventSource:virtualKey:keyDown:)` may have a timestamp of 0, so do not use timestamp `> 0` as a sentinel for "has been set."
+
+## Dual Event Paths for Remapped Keys Need Mutual Exclusion
+
+**Issue**
+When Caps Lock is remapped to F19 via `hidutil`, the system may generate both `keyDown`/`keyUp` and `flagsChanged` events for the same physical key press.
+
+**Cause**
+`hidutil` remapping changes the key code but does not fully suppress the modifier-flag machinery. On some macOS versions, the remapped key produces `keyDown`/`keyUp` (primary path), while the underlying Caps Lock toggle still fires `flagsChanged` events.
+
+**Practical guidance**
+If both event types are handled in a CGEvent tap callback, the two code paths must be mutually exclusive for the same key code. Use a flag (e.g., `_f19ReceivedViaKeyDown`) to detect which path is active and skip the other. The `flagsChanged` path should still swallow the event (return nil) to prevent it from reaching applications, but must not modify shared state that the `keyDown`/`keyUp` path owns. Reset the mutual-exclusion flag when the feature is disabled so the fallback path remains available after re-enable.
+
 ## Event Tap Timeout Recovery Needs Escalation
 
 **Issue**

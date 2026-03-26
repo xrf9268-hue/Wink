@@ -93,13 +93,18 @@ final class HyperKeyService {
     // MARK: - hidutil
 
     private func applyMapping() -> Bool {
+        // CapsLockDelayOverride=0 removes the ~100ms press-duration threshold
+        // that macOS 15+ requires before a Caps Lock press registers.
+        // (Undocumented hidutil property; see CapsLockNoDelay, Karabiner-Elements #3949.)
         let json = """
-        {"UserKeyMapping":[{"HIDKeyboardModifierMappingSrc":\(Self.capsLockUsage),"HIDKeyboardModifierMappingDst":\(Self.f19Usage)}]}
+        {"UserKeyMapping":[{"HIDKeyboardModifierMappingSrc":\(Self.capsLockUsage),"HIDKeyboardModifierMappingDst":\(Self.f19Usage)}],"CapsLockDelayOverride":0}
         """
         return runner(["property", "--set", json])
     }
 
     private func clearMapping() -> Bool {
+        // CapsLockDelayOverride is not explicitly reset here. hidutil properties
+        // do not survive reboot (Apple TN2450), so the override clears naturally.
         return runner(["property", "--set", "{\"UserKeyMapping\":[]}"])
     }
 }
