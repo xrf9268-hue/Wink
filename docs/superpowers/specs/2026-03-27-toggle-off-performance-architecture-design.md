@@ -260,6 +260,8 @@ Cache fields：
 - `TapContextCache` 本体留在 `@MainActor`
 - `ToggleRuntime` 是 cache 的唯一写入协调者；`ObservationBroker` 只在主 actor 上提供用于失效或降级判断的证据
 - `ActivationPipeline` 不直接持有或读取 cache；主 actor 必须先把所需字段提取为不可变 `RestoreContext` value type 后再传入后台执行器
+- `ToggleSessionCoordinator.previousBundle` 继续是 restore target 的 durable source of truth
+- `TapContextCache.previousBundleIdentifier` 只是为 fast lane 服务的 read-optimized mirror；一旦两者不一致，必须以 coordinator 为准并刷新或清空 cache
 - `PSN` 和 `windowID` 都只能视为 hint，而不是永久真值
 - 任何 cached process identity 都必须在使用前验证 pid/bundle 仍然匹配
 - 任何 cached `windowID` 都必须在使用前验证仍归属于同一 pid / bundle 的可用窗口
@@ -468,6 +470,13 @@ Prepare 策略：
 
 这一步不做完整 AX window 枚举。
 
+Cheap confirmation 不是“只读一次立即结束”，而是一个有界短窗口：
+
+- 命令返回后立即做第一次读取
+- 若第一次读取不够确认，则在 fast-lane confirmation window 内继续等待最多 `75ms`
+- 这 `75ms` 可由通知驱动提前结束；若需要回退检查，则使用短间隔重读 `frontmostApplication`
+- 若 `75ms` 结束时仍无法确认，则进入 escalated confirmation 或 compatibility lane，而不是继续等待
+
 #### Escalated Confirmation
 
 只有在以下情况才做昂贵 observation：
@@ -492,7 +501,7 @@ Prepare 策略：
 确认机制的首选方案不是无限轮询，而是“通知优先，短窗口回退轮询”：
 
 - 主方案：在 `@MainActor` 上消费 `NSWorkspace.didActivateApplicationNotification`，因为仓库现有 runtime 已经依赖该通知做 session invalidation
-- 辅助方案：在有限确认窗口内，对 `frontmostApplication` 做短间隔回退检查，用来覆盖通知延迟或时序缺口
+- 辅助方案：在 `75ms` cheap-confirmation window 内，对 `frontmostApplication` 做短间隔回退检查，用来覆盖通知延迟或时序缺口
 - 不使用无界轮询；回退检查必须绑定 attempt budget 和 confirmation window
 
 这使确认延迟既能受控，又不必把所有成功路径都变成持续轮询。
@@ -508,7 +517,8 @@ Prepare 策略：
 1. `contextPreparationLane`
    - 只做只读预热或 hint 计算
    - 例如：预取 previous app 的 `PSN` / candidate `windowID`
-   - 可以并发，但不得修改全局前台状态
+   - 使用有界并发，初版设计为低并发队列（建议 `maxConcurrentOperationCount = 2`），避免预热任务在压力下无限堆积
+   - 不得修改全局前台状态
 
 2. `activationCommandLane`
    - 只承载会改变前台状态或窗口状态的命令
