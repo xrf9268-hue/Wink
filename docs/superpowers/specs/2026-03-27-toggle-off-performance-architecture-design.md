@@ -290,6 +290,21 @@ Result set：
 - `degraded(reason)`
 - `cancelledByNewerGeneration`
 
+Timeout budget：
+
+- `prepareRestoreContext`: `<= 40ms`
+  - 超时后不直接判失败；仅降低 fast-lane 资格，允许继续走 compatibility lane
+- `restorePreviousFast`: `<= 120ms`
+  - 超时后返回 `needsFallback(timeout_restore_fast)`
+- `hideTarget`: `<= 80ms`
+  - 超时后返回 `needsFallback(timeout_hide_target)`
+- `restorePreviousCompatible`: `<= 180ms`
+  - 超时后若已用尽 attempt budget，则返回 `degraded(timeout_restore_compatible)`；否则由 `ToggleRuntime` 决定是否进入最后一次兼容补救
+- `raiseWindow`: `<= 80ms`
+  - 超时后不做额外第三轮 mutating retry，直接进入确认或 degraded
+
+这些预算是设计预算，M1 建立真实基线后可以调整，但 implementation plan 必须为每类命令定义明确 timeout 行为，不能让命令无限挂起。
+
 #### `ObservationBroker`
 
 职责：
@@ -499,6 +514,16 @@ Prepare 策略：
    - 如果 `B` 的恢复结果已被确认，`ToggleRuntime` 优先尝试恢复或重建 `B` 的 stable runtime
    - 如果 `B` 的上下文无法可靠恢复，则退回 `ACTIVE_UNTRACKED` 风格的保守处理，不猜测 `B` 的 previous app
 
+#### Runtime Invariants
+
+以下 invariant 不允许被性能优化破坏：
+
+- 不允许在 pending / activating 状态下直接 toggle-off
+- `previousBundle` 绝不能等于 target bundle；若检测到自引用，必须清空并记录诊断
+- `ACTIVE_UNTRACKED` 路径必须继续保留，作为外部激活或恢复后缺失 tracking state 的兜底
+- 没有 `frontmostApplication` 真值确认时，不允许 promotion 到稳定激活
+- generation 被新请求抢占后，旧 generation 不允许再推进 session phase
+
 #### Failure Ladder
 
 建议失败回退分三级：
@@ -595,6 +620,8 @@ Prepare 策略：
 - `three fast-lane misses for one bundle -> temporary compatibility quarantine`
 - `cheap confirmation succeeds without escalated AX observation`
 - `cheap confirmation contradicts -> escalated confirmation`
+- `shadow mode logs fast-lane decision without executing mutating command`
+- `command timeout maps to fallback or degraded exactly as designed`
 
 #### macOS Manual Validation
 
@@ -638,6 +665,20 @@ Linux 或 CI 只能验证逻辑与编译，不能宣称最终体感或系统 API
 - prepare context、restore command、confirm result 已能通过新模型串起来
 - kill switch 可把默认行为退回 compatibility-first 或 legacy path
 
+### Milestone 2.5: Shadow Mode
+
+目标：
+
+- 保持 legacy path 继续承担真实切换
+- 新 runtime 在不执行 mutating command 的前提下，计算 lane 决策、预算消耗、确认升级路径
+- 对比“legacy 实际发生了什么”与“new runtime 本应怎么做”
+
+退出标准：
+
+- shadow mode 的决策与 legacy 结果能够稳定对齐
+- 已能识别哪些 bundle 会稳定命中 fast lane，哪些 bundle 应长期留在 compatibility lane
+- 关键竞态场景在 shadow mode 日志中可复盘
+
 ### Milestone 3: Fast Lane Default For Normal Apps
 
 目标：
@@ -652,6 +693,7 @@ Linux 或 CI 只能验证逻辑与编译，不能宣称最终体感或系统 API
 - 正常 app toggle-off 默认不再依赖 hide-first
 - fast lane 命中率、升级率、成功率可测
 - `regularWindowed` app 的中位延迟与 P95 达到或接近性能预算
+- 命名的 macOS 验证通过：Safari、Finder、Terminal 无回归，Home 与 System Settings 保持兼容路径正确性
 
 ### Milestone 4: Threshold Retuning And Cleanup
 
@@ -677,6 +719,9 @@ Linux 或 CI 只能验证逻辑与编译，不能宣称最终体感或系统 API
 - bundle 级 temporary compatibility quarantine 生效，且不跨重启持久化
 - 单次 attempt 遵守 `fast -> compatibility -> degraded` 的升级预算，不允许无限补救
 - 路线图包含 kill switch，可在迁移期快速退回 compatibility-first 或 legacy path
+- shadow mode 作为默认切换前的中间阶段存在，并能证明 lane 决策与 legacy 结果基本一致
+- 每类 command 都有明确 timeout budget 和 timeout 后语义
+- runtime invariants 在实现与测试层都有对应保护
 - 阈值调优建立在新 pipeline 和真实度量数据之上，而不是拍脑袋改数字
 - 最终体验结论通过 macOS 真机验证获得，而不是 Linux-only 推断
 
@@ -715,12 +760,22 @@ Linux 或 CI 只能验证逻辑与编译，不能宣称最终体感或系统 API
 - 只有矛盾或兼容路径才升级到昂贵 observation
 - 把 escalated confirmation 的命中率纳入结构化指标
 
+### 风险：新 runtime 决策与 legacy 行为偏离
+
+缓解：
+
+- 在默认切换前增加 shadow mode
+- 用 shadow mode 比较 lane 决策、fallback 触发点和最终确认结果
+- 只在对齐度足够后才让 fast lane 成为默认
+
 ## Implementation Notes For Planning
 
 - 不要把整个 `AppSwitcher` 一次性重写；优先把职责剥离，再逐步切默认路径
 - `ToggleRuntime` 与 `ObservationBroker` 应继续尊重 `@MainActor` 约束
 - `ActivationPipeline` 的第一版就应设计成结构化命令接口，而不是散落的 helper methods
+- `ActivationPipeline` 的第一版就应把 timeout budget 和 timeout 语义一起落地
 - `TapContextCache` 要从一开始就明确“hint 不是 truth”
 - M1 的埋点是后续一切性能判断的前提，不应跳过
 - Implementation plan 应按里程碑顺序推进，并在每个 milestone 结束后设置 review checkpoint；不要把整个路线图当成一次性落地任务
 - 实现阶段应优先让 kill switch 与指标先落地，再切换默认 fast lane
+- implementation plan 应把 runtime invariants 单列成一个检查清单，并给每条 invariant 对应测试
