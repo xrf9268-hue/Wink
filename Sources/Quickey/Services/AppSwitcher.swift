@@ -426,11 +426,37 @@ final class AppSwitcher: AppSwitching {
             if let trackerPrevious = frontmostTracker.lastNonTargetBundleIdentifier, trackerPrevious != previousApp {
                 DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: RESTORE_DIVERGENCE resolvedPrevious=\(previousApp ?? "nil") trackerPrevious=\(trackerPrevious)")
             }
-            let restoreAttempt = frontmostTracker.restorePreviousAppIfPossible()
-            let hidden = runningApp.hide()
-            let restored = restoreAttempt.restoreAccepted
+            // 1. Hide the current app via AX first.  NSRunningApplication.hide()
+            //    returns false from an LSUIElement/accessory app on macOS 15, so we
+            //    use the Accessibility API (kAXHiddenAttribute) which works with
+            //    the existing Accessibility permission.  Hiding first forces macOS
+            //    to activate another app, making the subsequent SkyLight activation
+            //    of the specific previous app immediate.
+            let axTarget = AXUIElementCreateApplication(runningApp.processIdentifier)
+            let axHideResult = AXUIElementSetAttributeValue(
+                axTarget,
+                kAXHiddenAttribute as CFString,
+                kCFBooleanTrue as CFTypeRef
+            )
+            let hidden = (axHideResult == .success)
+
+            // 2. Activate the previous app via full three-layer SkyLight (same as
+            //    forward activation) so the correct app comes to front.
+            let restored: Bool
+            let restoredBundle: String?
+            if let prevBundle = previousApp,
+               let prevApp = NSRunningApplication.runningApplications(withBundleIdentifier: prevBundle).first {
+                restoredBundle = prevBundle
+                if prevApp.isHidden { prevApp.unhide() }
+                let prevWindows = applicationObservation.windowObservation(for: prevApp)
+                restored = activateViaWindowServer(prevApp, windows: prevWindows.windows)
+            } else {
+                let restoreAttempt = frontmostTracker.restorePreviousAppIfPossible()
+                restored = restoreAttempt.restoreAccepted
+                restoredBundle = restoreAttempt.bundleIdentifier
+            }
             logger.info("TOGGLE[\(shortcut.appName)]: IS ACTIVE → restored=\(restored), hidden=\(hidden)")
-            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: IS ACTIVE → restored=\(restored) (prev=\(restoreAttempt.bundleIdentifier ?? previousApp ?? "nil")), hidden=\(hidden)")
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: IS ACTIVE → restored=\(restored) (prev=\(restoredBundle ?? previousApp ?? "nil")), hidden=\(hidden)")
             let postRestoreWindowObservation = applicationObservation.windowObservation(for: runningApp)
             let postRestoreSnapshot = applicationObservation.snapshot(
                 for: runningApp,
@@ -444,7 +470,7 @@ final class AppSwitcher: AppSwitching {
                 shortcut: shortcut,
                 phase: .postRestoreState,
                 snapshot: postRestoreSnapshot,
-                previousBundle: restoreAttempt.bundleIdentifier ?? previousApp,
+                previousBundle: restoredBundle ?? previousApp,
                 activationPath: .restorePrevious,
                 elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
             )
@@ -457,7 +483,13 @@ final class AppSwitcher: AppSwitching {
         if runningApp.isActive, preActionSnapshot.isStableActivation,
            stableActivationState?.bundleIdentifier != shortcut.bundleIdentifier,
            pendingActivationState?.bundleIdentifier != shortcut.bundleIdentifier {
-            let hidden = runningApp.hide()
+            let axUntrackedTarget = AXUIElementCreateApplication(runningApp.processIdentifier)
+            let axUntrackedResult = AXUIElementSetAttributeValue(
+                axUntrackedTarget,
+                kAXHiddenAttribute as CFString,
+                kCFBooleanTrue as CFTypeRef
+            )
+            let hidden = (axUntrackedResult == .success)
             logger.info("TOGGLE[\(shortcut.appName)]: ACTIVE_UNTRACKED → hiding, hidden=\(hidden)")
             logToggleLifecycle(
                 for: shortcut,

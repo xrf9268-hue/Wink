@@ -96,7 +96,7 @@ func handleEventTapEvent(
             let flags = NSEvent.ModifierFlags(rawValue: UInt(currentFlags.rawValue))
             let keyPress = KeyPress(
                 keyCode: keyCode,
-                modifiers: flags.intersection(.deviceIndependentFlagsMask)
+                modifiers: KeyMatcher.normalizedFlags(from: flags)
             )
             let shouldSwallow = box._registeredShortcuts.contains(keyPress)
             // Clear deferred keyUp state on any non-F19 keyDown. The current
@@ -109,12 +109,32 @@ func handleEventTapEvent(
             return (shouldSwallow, hyper)
         }
 
+        #if DEBUG
+        // Near-miss diagnostic: log when keyCode matches a registered shortcut
+        // but modifiers differ (e.g. spurious numericPad/help/undocumented bits).
+        if !swallow && !injectHyper {
+            let rawFlags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
+            let rawDeviceIndep = rawFlags.intersection(.deviceIndependentFlagsMask).rawValue
+            let normalized = KeyMatcher.normalizedFlags(from: rawFlags).rawValue
+            if rawDeviceIndep != normalized {
+                let hasKeyCodeMatch = box.withLock {
+                    box._registeredShortcuts.contains { $0.keyCode == keyCode }
+                }
+                if hasKeyCodeMatch {
+                    DispatchQueue.global(qos: .utility).async {
+                        DiagnosticLog.log("NEAR_MISS: keyCode=\(keyCode) rawDeviceIndep=\(rawDeviceIndep) normalized=\(normalized) delta=\(rawDeviceIndep ^ normalized)")
+                    }
+                }
+            }
+        }
+        #endif
+
         if swallow && keyCode == HyperKeyService.f19KeyCode {
             let modifierFlags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
             box.recordObservedEvent(
                 type: .keyDown,
                 keyCode: keyCode,
-                modifierFlags: modifierFlags.intersection(.deviceIndependentFlagsMask),
+                modifierFlags: KeyMatcher.normalizedFlags(from: modifierFlags),
                 swallowed: true,
                 injectedHyper: false
             )
@@ -136,7 +156,7 @@ func handleEventTapEvent(
         let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
         let keyPress = KeyPress(
             keyCode: keyCode,
-            modifiers: flags.intersection(.deviceIndependentFlagsMask)
+            modifiers: KeyMatcher.normalizedFlags(from: flags)
         )
         box.recordObservedEvent(
             type: .keyDown,
@@ -186,7 +206,7 @@ func handleEventTapEvent(
         box.recordObservedEvent(
             type: .keyUp,
             keyCode: keyCode,
-            modifierFlags: modifierFlags.intersection(.deviceIndependentFlagsMask),
+            modifierFlags: KeyMatcher.normalizedFlags(from: modifierFlags),
             swallowed: swallowUp,
             injectedHyper: false
         )
@@ -197,8 +217,9 @@ func handleEventTapEvent(
         // instead of keyDown/keyUp on some macOS versions. Handle it here so the
         // Hyper key works regardless of which event type the system produces.
         let flagsKeyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-        let flagsRaw = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
-            .intersection(.deviceIndependentFlagsMask)
+        let flagsRaw = KeyMatcher.normalizedFlags(
+            from: NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
+        )
         let hasCapsLock = event.flags.contains(.maskAlphaShift)
         let swallowFlags = box.withLock { () -> Bool in
             guard box._hyperKeyEnabled && flagsKeyCode == HyperKeyService.f19KeyCode else {
