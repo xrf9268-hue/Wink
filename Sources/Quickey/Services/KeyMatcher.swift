@@ -12,8 +12,7 @@ struct KeyMatcher {
     }
 
     func trigger(for keyPress: KeyPress) -> ShortcutTrigger {
-        let mask = keyPress.modifiers.intersection(NSEvent.ModifierFlags.deviceIndependentFlagsMask)
-        return ShortcutTrigger(keyCode: keyPress.keyCode, modifierMask: normalizedMask(from: mask))
+        ShortcutTrigger(keyCode: keyPress.keyCode, modifierMask: Self.normalizedMask(from: keyPress.modifiers))
     }
 
     func trigger(for shortcut: AppShortcut) -> ShortcutTrigger {
@@ -78,7 +77,16 @@ struct KeyMatcher {
         Self.keyEquivalentToCode[keyEquivalent.lowercased()] ?? CGKeyCode(UInt16.max)
     }
 
-    private func normalizedMask(from flags: NSEvent.ModifierFlags) -> UInt {
+    /// Extract only the five recognised modifier bits (command, option, control,
+    /// shift, function), discarding numericPad, help, capsLock, and any
+    /// undocumented device-independent bits that macOS may set.
+    ///
+    /// Industry best practice (skhd, Hammerspoon, KeyboardShortcuts) – never
+    /// compare raw `deviceIndependentFlagsMask` for hotkey matching because it
+    /// includes bits that are set automatically by the OS (e.g. numericPad on
+    /// arrow keys, function on F-keys) and can vary across focus/input-source
+    /// changes.
+    static func normalizedMask(from flags: NSEvent.ModifierFlags) -> UInt {
         var mask: UInt = 0
         if flags.contains(.command) { mask |= NSEvent.ModifierFlags.command.rawValue }
         if flags.contains(.option) { mask |= NSEvent.ModifierFlags.option.rawValue }
@@ -86,6 +94,11 @@ struct KeyMatcher {
         if flags.contains(.shift) { mask |= NSEvent.ModifierFlags.shift.rawValue }
         if flags.contains(.function) { mask |= NSEvent.ModifierFlags.function.rawValue }
         return mask
+    }
+
+    /// Convenience returning `NSEvent.ModifierFlags` for use in EventTapManager.
+    static func normalizedFlags(from flags: NSEvent.ModifierFlags) -> NSEvent.ModifierFlags {
+        NSEvent.ModifierFlags(rawValue: normalizedMask(from: flags))
     }
 
     private func normalizedMask(from modifiers: [String]) -> UInt {

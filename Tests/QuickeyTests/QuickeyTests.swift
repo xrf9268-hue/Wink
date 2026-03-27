@@ -399,6 +399,107 @@ struct EventTapManagerDeliveryTests {
     }
 }
 
+// MARK: - Modifier normalization
+
+@Suite("KeyMatcher modifier normalization")
+struct KeyMatcherNormalizationTests {
+    @Test
+    func normalizedFlagsStripsExtraBits() {
+        // numericPad (0x200000) and help (0x400000) should be stripped
+        let dirty = NSEvent.ModifierFlags([.command, .shift, .numericPad])
+        let normalized = KeyMatcher.normalizedFlags(from: dirty)
+        #expect(normalized == NSEvent.ModifierFlags([.command, .shift]))
+    }
+
+    @Test
+    func normalizedFlagsPreservesFiveKnownBits() {
+        let allFive = NSEvent.ModifierFlags([.command, .option, .control, .shift, .function])
+        let normalized = KeyMatcher.normalizedFlags(from: allFive)
+        #expect(normalized == allFive)
+    }
+
+    @Test
+    func normalizedFlagsStripsHelpAndUndocumentedBits() {
+        // help (0x400000) + undocumented bit 24 (0x1000000)
+        let flags = NSEvent.ModifierFlags(rawValue: NSEvent.ModifierFlags.command.rawValue | 0x00400000 | 0x01000000)
+        let normalized = KeyMatcher.normalizedFlags(from: flags)
+        #expect(normalized == NSEvent.ModifierFlags([.command]))
+    }
+}
+
+// MARK: - Extra modifier bits regression
+
+@Suite("EventTapManager extra modifier bits")
+struct EventTapManagerExtraBitsTests {
+    @Test
+    func extraModifierBitsDoNotBreakMatching() {
+        // Regression test: event has numericPad bit (0x200000) in addition to
+        // command+shift. Before the fix, this would fail to match because
+        // deviceIndependentFlagsMask passed numericPad through but the
+        // registered shortcut's normalizedMask did not include it.
+        let shortcut = KeyPress(
+            keyCode: CGKeyCode(kVK_ANSI_S),
+            modifiers: [.command, .shift]
+        )
+        let event = CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: CGKeyCode(kVK_ANSI_S),
+            keyDown: true
+        )!
+        // command + shift + numericPad (extra bit that can leak on some keyboards/input sources)
+        event.flags = CGEventFlags(rawValue: UInt64(
+            NSEvent.ModifierFlags([.command, .shift, .numericPad]).rawValue
+        ))
+
+        let box = EventTapBox()
+        box.registeredShortcuts = [shortcut]
+
+        let result = handleEventTapEvent(type: .keyDown, event: event, box: box)
+        #expect(result == nil, "Extra numericPad bit should not prevent shortcut matching")
+    }
+
+    @Test
+    func functionModifierIsPreservedInMatching() {
+        // function is one of the 5 known bits and SHOULD participate in matching
+        let shortcutWithFn = KeyPress(
+            keyCode: CGKeyCode(kVK_ANSI_A),
+            modifiers: [.command, .function]
+        )
+        let shortcutWithoutFn = KeyPress(
+            keyCode: CGKeyCode(kVK_ANSI_A),
+            modifiers: [.command]
+        )
+        let eventWithFn = CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: CGKeyCode(kVK_ANSI_A),
+            keyDown: true
+        )!
+        eventWithFn.flags = CGEventFlags(rawValue: UInt64(
+            NSEvent.ModifierFlags([.command, .function]).rawValue
+        ))
+
+        // Should match Cmd+Fn+A
+        let box1 = EventTapBox()
+        box1.registeredShortcuts = [shortcutWithFn]
+        let result1 = handleEventTapEvent(type: .keyDown, event: eventWithFn, box: box1)
+        #expect(result1 == nil, "Cmd+Fn+A should match registered Cmd+Fn+A")
+
+        // Should NOT match Cmd+A (function bit matters)
+        let box2 = EventTapBox()
+        box2.registeredShortcuts = [shortcutWithoutFn]
+        let eventWithFn2 = CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: CGKeyCode(kVK_ANSI_A),
+            keyDown: true
+        )!
+        eventWithFn2.flags = CGEventFlags(rawValue: UInt64(
+            NSEvent.ModifierFlags([.command, .function]).rawValue
+        ))
+        let result2 = handleEventTapEvent(type: .keyDown, event: eventWithFn2, box: box2)
+        #expect(result2 != nil, "Cmd+Fn+A should NOT match registered Cmd+A")
+    }
+}
+
 private final class SendableCounter: @unchecked Sendable {
     var value = 0
 }
