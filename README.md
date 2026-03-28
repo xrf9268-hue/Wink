@@ -25,6 +25,16 @@ swift test
 ./scripts/e2e-full-test.sh      # end-to-end test suite (requires Accessibility + Input Monitoring)
 ```
 
+## Loop Job
+
+Run automated Claude Code sessions to process issues and PRs:
+
+```
+/loop 30m Follow the instructions in docs/loop-prompt.md
+```
+
+See [`docs/loop-job-guide.md`](./docs/loop-job-guide.md) for details.
+
 ## Documentation
 - [`docs/README.md`](./docs/README.md)
 - [`docs/architecture.md`](./docs/architecture.md)

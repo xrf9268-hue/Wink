@@ -1,6 +1,6 @@
 # Loop Job Guide
 
-How to run automated Claude Code sessions for recurring project work using `/loop`.
+How to run automated Claude Code sessions for recurring project work using `/loop`. See also [Wiki: Loop Job Configuration](https://github.com/xrf9268-hue/Quickey/wiki/Loop-Job-Configuration).
 
 ## Quick Start
 
