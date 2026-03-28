@@ -9,3 +9,4 @@ build/
 scripts/cgevent-helper
 .claude/
 .worktrees/
+logs/
