@@ -256,6 +256,21 @@ HID usage code 和 Carbon virtual key code 是两套完全不同的编码系统�
 - HID Keyboard page: F13=0x68, F14=0x69, F15=0x6A, F16=0x6B, F17=0x6C, F18=0x6D, F19=0x6E, F20=0x6F
 - Carbon: kVK_F13=0x69(105), kVK_F19=0x50(80)
 
+## Do NOT Use Headless Mode (claude -p) for Loop Jobs
+
+**Issue**
+The original loop job used `claude -p` (headless mode) with `--output-format stream-json --verbose`, producing unreadable JSON noise in terminal output.
+
+**Cause**
+Headless mode (`-p`) disables all interactive features: skills (`/review`, `/simplify`), clean output formatting, and session-level capabilities. The `stream-json` format dumps raw JSON with session_id, token statistics, and cost metadata on every line. Adding `--verbose` (required by `stream-json`) makes it worse. There is no output format option in `-p` mode that provides both real-time visibility and human readability.
+
+**Practical guidance**
+Always use `/loop` for recurring automated work. `/loop` runs in interactive mode where skills work natively, output is clean, and no shell scripting infrastructure (tmux, stdbuf, tee, signal traps, circuit breakers) is needed. Example:
+
+```
+/loop 30m Follow the instructions in docs/loop-prompt.md
+```
+
 ## Event Tap Timeout Recovery Needs Escalation
 
 **Issue**

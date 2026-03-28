@@ -38,7 +38,8 @@ Check open PRs first. For each PR:
 ### Step 4: Verify and submit
 
 - Run build and tests, fix failures
+- Run /simplify to review code quality before committing
 - Create PR with "Closes #N" in the description
-- Run /simplify for code review before submitting
+- Run /review to review the PR you just created. Fix any issues found and push updates before moving on.
 
 One issue per iteration. Keep PRs small and focused.
