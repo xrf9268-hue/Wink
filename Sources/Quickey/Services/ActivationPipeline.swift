@@ -44,6 +44,10 @@ final class ActivationPipeline: @unchecked Sendable {
 
     private let contextPreparationQueue: OperationQueue
     private let activationCommandQueue: OperationQueue
+    /// Hard concurrency gate for context preparation.
+    /// OperationQueue.maxConcurrentOperationCount is advisory; semaphore provides
+    /// a strict bound since actual work dispatches to timeoutWorkQueue.
+    private let preparationConcurrencyGate: DispatchSemaphore
     // Shared work queue for timeout execution to avoid per-call allocation overhead.
     private let timeoutWorkQueue = DispatchQueue(
         label: "com.quickey.pipeline.work",
@@ -53,13 +57,18 @@ final class ActivationPipeline: @unchecked Sendable {
 
     // MARK: - Init
 
-    init(timeouts: ActivationTimeoutBudget, client: Client) {
+    init(
+        timeouts: ActivationTimeoutBudget,
+        client: Client,
+        maxPreparationConcurrency: Int = 2
+    ) {
         self.timeouts = timeouts
         self.client = client
+        self.preparationConcurrencyGate = DispatchSemaphore(value: maxPreparationConcurrency)
 
         self.contextPreparationQueue = OperationQueue()
         contextPreparationQueue.name = "com.quickey.pipeline.contextPreparation"
-        contextPreparationQueue.maxConcurrentOperationCount = 2
+        contextPreparationQueue.maxConcurrentOperationCount = maxPreparationConcurrency
         contextPreparationQueue.qualityOfService = .userInteractive
 
         self.activationCommandQueue = OperationQueue()
@@ -79,6 +88,9 @@ final class ActivationPipeline: @unchecked Sendable {
         let timeout = timeouts.prepareRestoreContext
 
         contextPreparationQueue.addOperation {
+            self.preparationConcurrencyGate.wait()
+            defer { self.preparationConcurrencyGate.signal() }
+
             let result = self.executeWithTimeout(timeout: timeout) {
                 client.prepareRestoreContext(command)
             }
