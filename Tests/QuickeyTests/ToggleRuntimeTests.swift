@@ -44,6 +44,87 @@ func toggleRuntimeConfigurationDefaultsToLegacyMode() {
 }
 
 @Test @MainActor
+func shadowModeReturnsShadowDecisionWithLaneInfo() {
+    let runtime = ToggleRuntime(
+        configuration: ToggleRuntimeConfiguration(executionMode: .shadowMode)
+    )
+
+    let decision = runtime.decision(
+        targetBundleIdentifier: "com.apple.Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        classification: .regularWindowed,
+        attemptStartedAt: 100.0
+    )
+
+    if case .shadow(let shadowDecision) = decision {
+        #expect(shadowDecision.selectedLane == "fast")
+        #expect(shadowDecision.wouldUseHideTarget == false)
+        #expect(shadowDecision.previousBundleIdentifier == "com.apple.Terminal")
+    } else {
+        Issue.record("Expected shadow decision, got \(decision)")
+    }
+}
+
+@Test @MainActor
+func shadowModeSelectsCompatibilityLaneWhenNoPreviousBundle() {
+    let runtime = ToggleRuntime(
+        configuration: ToggleRuntimeConfiguration(executionMode: .shadowMode)
+    )
+
+    let decision = runtime.decision(
+        targetBundleIdentifier: "com.apple.Safari",
+        previousBundleIdentifier: nil,
+        classification: .regularWindowed,
+        attemptStartedAt: 100.0
+    )
+
+    if case .shadow(let shadowDecision) = decision {
+        #expect(shadowDecision.selectedLane == "compatibility")
+        #expect(shadowDecision.wouldUseHideTarget == true)
+        #expect(shadowDecision.previousBundleIdentifier == nil)
+    } else {
+        Issue.record("Expected shadow decision, got \(decision)")
+    }
+}
+
+@Test @MainActor
+func shadowModeSelectsCompatibilityLaneForNonRegularApp() {
+    let runtime = ToggleRuntime(
+        configuration: ToggleRuntimeConfiguration(executionMode: .shadowMode)
+    )
+
+    let decision = runtime.decision(
+        targetBundleIdentifier: "com.apple.systempreferences",
+        previousBundleIdentifier: "com.apple.Terminal",
+        classification: .windowlessOrAccessory,
+        attemptStartedAt: 100.0
+    )
+
+    if case .shadow(let shadowDecision) = decision {
+        #expect(shadowDecision.selectedLane == "compatibility")
+        #expect(shadowDecision.wouldUseHideTarget == true)
+    } else {
+        Issue.record("Expected shadow decision, got \(decision)")
+    }
+}
+
+@Test @MainActor
+func legacyModeReturnsUseLegacy() {
+    let runtime = ToggleRuntime(
+        configuration: ToggleRuntimeConfiguration(executionMode: .legacyOnly)
+    )
+
+    let decision = runtime.decision(
+        targetBundleIdentifier: "com.apple.Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        classification: .regularWindowed,
+        attemptStartedAt: 100.0
+    )
+
+    #expect(decision == .useLegacy)
+}
+
+@Test @MainActor
 func runtimeInvariantsRejectSelfReferencingPreviousBundle() {
     #expect(
         normalizedPreviousBundle(

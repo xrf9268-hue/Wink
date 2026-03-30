@@ -137,6 +137,8 @@ final class AppSwitcher: AppSwitching {
     private let fallbackActivationClient: FallbackActivationClient
     private let confirmationClient: ConfirmationClient
     private let sessionCoordinator: ToggleSessionCoordinator
+    private let toggleRuntime: ToggleRuntime
+    private let latestGenerationStore: LatestGenerationStore
     private var nextPendingGeneration = 0
     private(set) var pendingActivationState: PendingActivationState?
     private(set) var stableActivationState: StableActivationState?
@@ -156,7 +158,9 @@ final class AppSwitcher: AppSwitching {
         activationClient: ActivationClient = .live,
         fallbackActivationClient: FallbackActivationClient = .live,
         confirmationClient: ConfirmationClient = .live,
-        sessionCoordinator: ToggleSessionCoordinator = ToggleSessionCoordinator()
+        sessionCoordinator: ToggleSessionCoordinator = ToggleSessionCoordinator(),
+        toggleRuntime: ToggleRuntime = ToggleRuntime(),
+        latestGenerationStore: LatestGenerationStore = LatestGenerationStore()
     ) {
         self.frontmostTracker = frontmostTracker
         self.applicationObservation = applicationObservation
@@ -164,6 +168,8 @@ final class AppSwitcher: AppSwitching {
         self.fallbackActivationClient = fallbackActivationClient
         self.confirmationClient = confirmationClient
         self.sessionCoordinator = sessionCoordinator
+        self.toggleRuntime = toggleRuntime
+        self.latestGenerationStore = latestGenerationStore
         sessionCoordinator.startObservingWorkspaceNotifications()
     }
 
@@ -185,6 +191,7 @@ final class AppSwitcher: AppSwitching {
             stableActivationState = nil
         }
         sessionCoordinator.beginActivation(for: bundleIdentifier, previousBundle: previousBundleIdentifier)
+        latestGenerationStore.write(state.generation)
         return state
     }
 
@@ -411,6 +418,16 @@ final class AppSwitcher: AppSwitching {
 
         if shouldToggleOff(bundleIdentifier: shortcut.bundleIdentifier, runningAppIsActive: runningApp.isActive),
            preActionSnapshot.isStableActivation {
+            let runtimeDecision = toggleRuntime.decision(
+                targetBundleIdentifier: shortcut.bundleIdentifier,
+                previousBundleIdentifier: stableActivationState?.previousBundleIdentifier
+                    ?? sessionCoordinator.previousBundle(for: shortcut.bundleIdentifier),
+                classification: preActionSnapshot.classification,
+                attemptStartedAt: attemptStartedAt
+            )
+            if case .shadow(let shadowDecision) = runtimeDecision {
+                DiagnosticLog.log("TOGGLE_SHADOW[\(shortcut.appName)]: lane=\(shadowDecision.selectedLane) wouldHide=\(shadowDecision.wouldUseHideTarget) previous=\(shadowDecision.previousBundleIdentifier ?? "nil")")
+            }
             let previousApp = sessionCoordinator.previousBundle(for: shortcut.bundleIdentifier)
                 ?? stableActivationState?.previousBundleIdentifier
                 ?? frontmostTracker.lastNonTargetBundleIdentifier
