@@ -48,7 +48,8 @@ final class InsightsViewModel {
 
     private let usageTracker: (any UsageTracking)?
     private let shortcutStore: ShortcutStore
-    private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshGeneration: UInt64 = 0
 
     init(usageTracker: (any UsageTracking)?, shortcutStore: ShortcutStore) {
         self.usageTracker = usageTracker
@@ -57,21 +58,29 @@ final class InsightsViewModel {
 
     func scheduleRefresh() {
         refreshTask?.cancel()
+        refreshGeneration &+= 1
+        let generation = refreshGeneration
         let selectedPeriod = period
         refreshTask = Task { @MainActor [weak self] in
-            await self?.refresh(for: selectedPeriod)
+            await self?.doRefresh(for: selectedPeriod, generation: generation)
         }
     }
 
     func refresh() async {
-        await refresh(for: period)
+        refreshGeneration &+= 1
+        await doRefresh(for: period, generation: refreshGeneration)
     }
 
     func refresh(for period: InsightsPeriod) async {
+        refreshGeneration &+= 1
+        await doRefresh(for: period, generation: refreshGeneration)
+    }
+
+    private func doRefresh(for period: InsightsPeriod, generation: UInt64) async {
         let now = Date()
 
         guard let usageTracker else {
-            guard self.period == period else { return }
+            guard generation == refreshGeneration else { return }
             totalCount = 0
             bars = []
             ranking = []
@@ -90,7 +99,7 @@ final class InsightsViewModel {
         let shortcutMap = Dictionary(uniqueKeysWithValues: shortcuts.map { ($0.id, $0) })
 
         guard !Task.isCancelled else { return }
-        guard self.period == period else { return }
+        guard generation == refreshGeneration else { return }
 
         self.totalCount = totalCount
         bars = period == .day ? [] : buildBars(rawDaily: rawDaily, days: days, relativeTo: now)
