@@ -91,8 +91,9 @@ func restoreFastTimeoutMapsToNeedsFallback() async {
         client: .init(
             prepareRestoreContext: { _ in .completed("prepared") },
             runMutatingCommand: { _ in
-                // Simulate slow command that exceeds timeout
-                Thread.sleep(forTimeInterval: 0.05)
+                // Simulate slow command that exceeds timeout — 300ms
+                // is well above 10ms timeout to avoid CI flakiness
+                Thread.sleep(forTimeInterval: 0.3)
                 return .completed("done")
             }
         )
@@ -184,7 +185,7 @@ func hideTargetTimeoutMapsToNeedsFallback() async {
         client: .init(
             prepareRestoreContext: { _ in .completed("prepared") },
             runMutatingCommand: { _ in
-                Thread.sleep(forTimeInterval: 0.05)
+                Thread.sleep(forTimeInterval: 0.3)
                 return .completed("done")
             }
         )
@@ -212,7 +213,7 @@ func restoreCompatibleTimeoutMapsToDegraded() async {
         client: .init(
             prepareRestoreContext: { _ in .completed("prepared") },
             runMutatingCommand: { _ in
-                Thread.sleep(forTimeInterval: 0.05)
+                Thread.sleep(forTimeInterval: 0.3)
                 return .completed("done")
             }
         )
@@ -251,7 +252,7 @@ func raiseWindowTimeoutMapsToDegraded() async {
         client: .init(
             prepareRestoreContext: { _ in .completed("prepared") },
             runMutatingCommand: { _ in
-                Thread.sleep(forTimeInterval: 0.05)
+                Thread.sleep(forTimeInterval: 0.3)
                 return .completed("done")
             }
         )
@@ -278,7 +279,7 @@ func prepareRestoreContextTimeoutMapsToDegraded() async {
         timeouts: ActivationTimeoutBudget(prepareRestoreContext: 0.01),
         client: .init(
             prepareRestoreContext: { _ in
-                Thread.sleep(forTimeInterval: 0.05)
+                Thread.sleep(forTimeInterval: 0.3)
                 return .completed("prepared")
             },
             runMutatingCommand: { _ in .completed("done") }
