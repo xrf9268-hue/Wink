@@ -262,7 +262,7 @@ HID usage code 和 Carbon virtual key code 是两套完全不同的编码系统�
 The original loop job used `claude -p` (headless mode) with `--output-format stream-json --verbose`, producing unreadable JSON noise in terminal output.
 
 **Cause**
-Headless mode (`-p`) disables all interactive features: skills (`/review`, `/simplify`), clean output formatting, and session-level capabilities. The `stream-json` format dumps raw JSON with session_id, token statistics, and cost metadata on every line. Adding `--verbose` (required by `stream-json`) makes it worse. There is no output format option in `-p` mode that provides both real-time visibility and human readability.
+Headless mode (`-p`) disables all interactive features: skills (`/code-review`, `/simplify`), clean output formatting, and session-level capabilities. The `stream-json` format dumps raw JSON with session_id, token statistics, and cost metadata on every line. Adding `--verbose` (required by `stream-json`) makes it worse. There is no output format option in `-p` mode that provides both real-time visibility and human readability.
 
 **Practical guidance**
 Always use `/loop` for recurring automated work. `/loop` runs in interactive mode where skills work natively, output is clean, and no shell scripting infrastructure (tmux, stdbuf, tee, signal traps, circuit breakers) is needed. Example:

@@ -11,6 +11,7 @@ Use this file as a concise operating guide. Treat the detailed repository docs a
 - `docs/README.md` for maintainer navigation
 - `docs/handoff-notes.md` for recent validation status and open follow-up work
 - `docs/lessons-learned.md` for operational and troubleshooting lessons
+- `docs/loop-prompt.md` and `docs/loop-job-guide.md` for review gates and automation workflow
 
 ## Environment and platform constraints
 
