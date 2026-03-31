@@ -33,7 +33,7 @@ Run automated Claude Code sessions to process issues and PRs:
 /loop 30m Follow the instructions in docs/loop-prompt.md
 ```
 
-Each iteration uses `/code-review` ([code-review plugin](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/code-review)) and bot reviews as PR-posted quality gates, plus `/codex:review` ([Codex Plugin CC](https://github.com/openai/codex-plugin-cc)) for session-local supplementary review. See [`docs/loop-job-guide.md`](./docs/loop-job-guide.md) for details.
+This loop is for session-local polling, not durable unattended automation. The v2 prompt performs per-iteration preflight checks, creates issue branches explicitly, records missing review tooling instead of assuming it ran, and defers merge until CI plus async bot reviews have settled. Quickey currently treats macOS runtime validation as a release-readiness gate rather than a per-PR merge blocker, so runtime-sensitive changes may merge during development but must carry `macOS runtime validation pending` until validated on macOS. See [`docs/loop-job-guide.md`](./docs/loop-job-guide.md) for details.
 
 ## Documentation
 - [`docs/README.md`](./docs/README.md)
