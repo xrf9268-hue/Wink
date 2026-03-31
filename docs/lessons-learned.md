@@ -271,19 +271,21 @@ Always use `/loop` for recurring automated work. `/loop` runs in interactive mod
 /loop 30m Follow the instructions in docs/loop-prompt.md
 ```
 
-## `/codex:review` in Loop Jobs Is Session-Local, Not PR-Visible
+## Review Tool Behavior Differences in Loop Jobs
 
 **Issue**
-`/codex:review` findings do not appear as PR comments. Treating them like bot review findings (readable via `gh pr view --comments`) leads to empty checks and missed issues across iterations.
+The three review tools have different output destinations. Treating them uniformly leads to missed findings or empty checks.
 
 **Cause**
-`/codex:review` ([Codex Plugin CC](https://github.com/openai/codex-plugin-cc)) outputs results only within the Claude Code session. Unlike `@chatgpt-codex-connector[bot]` (which posts PR comments with P0/P1/P2 tags), `/codex:review` results live in session memory. `/review` behaves the same way — session-local, not PR-posted.
+- `/code-review` ([code-review plugin](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/code-review)) **posts PR comments** via `gh pr comment`. Findings use confidence scoring (≥80 threshold). Readable across iterations via `gh pr view --comments`.
+- `@chatgpt-codex-connector[bot]` (Codex Review) **posts PR comments** with P0/P1/P2 priority tags. Also readable via `gh pr view --comments`.
+- `/codex:review` ([Codex Plugin CC](https://github.com/openai/codex-plugin-cc)) outputs results **only within the Claude Code session**. Results live in session memory, not on the PR.
 
 **Practical guidance**
-- After pushing code, the working tree is clean. Use `--base main` to review the branch diff: `/codex:review --base main --background`.
-- Use `--background` by default (plugin README: "generally recommended to run it in the background"). Retrieve results with `/codex:status` + `/codex:result`.
-- Session context persists across `/loop` iterations, so findings from iteration N are visible in iteration N+1. But they are not durable beyond the session.
-- In auto-merge checks, verify `/codex:review` findings via session memory, not PR comments. Only bot review findings (`@chatgpt-codex-connector[bot]`) can be checked on the PR itself.
+- `/code-review` and bot reviews: check via `gh pr view <number> --comments` — works across iterations.
+- `/codex:review`: check session memory only. Session context persists across `/loop` iterations, but findings are not durable beyond the session.
+- After pushing code, the working tree is clean. Use `--base main` to review the branch diff: `/codex:review --base main --background`. Retrieve results with `/codex:status` + `/codex:result`.
+- Note: `/review` is **deprecated**. Use `/code-review` (requires plugin install: `claude plugin install code-review@claude-plugins-official`).
 
 ## Event Tap Timeout Recovery Needs Escalation
 

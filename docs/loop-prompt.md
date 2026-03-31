@@ -48,29 +48,30 @@ For each open PR, process in order: **1b → 1c → 1a** (fix CI first, then add
 #### 1c. PRs with review feedback
 
 PRs may have feedback from three sources:
+- **`/code-review` comments** ([code-review plugin](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/code-review)) — posts PR comments with confidence-scored findings (≥80 threshold); readable via `gh pr view <number> --comments`
 - **Bot reviews** (e.g., `@chatgpt-codex-connector[bot]` Codex Review) — these post PR comments with priority-tagged findings like `P0`, `P1`, `P2`
-- **`/review` findings** — session-local self-review (results live in session memory, not on the PR)
 - **`/codex:review` findings** ([Codex Plugin CC](https://github.com/openai/codex-plugin-cc)) — session-local delegated review via OpenAI Codex (results live in session memory, not on the PR)
 
 Handling rules:
-- Read PR comments for bot review findings: `gh pr view <number> --comments`
-- For `/review` and `/codex:review`: check session memory for findings from prior iterations (session context persists across `/loop` firings).
+- Read PR comments for `/code-review` and bot review findings: `gh pr view <number> --comments`
+- For `/codex:review`: check session memory for findings from prior iterations (session context persists across `/loop` firings).
 - To run `/codex:review` on an existing PR: checkout the branch first, then run `/codex:review --base main --background`. Use `/codex:status` to check progress and `/codex:result` to retrieve findings.
-- **P0/P1 bot findings**, **high-confidence `/review` findings**, and **critical `/codex:review` findings**: treat as must-fix. Address them and push fixes.
+- **High-confidence `/code-review` findings (≥80)**, **P0/P1 bot findings**, and **critical `/codex:review` findings**: treat as must-fix. Address them and push fixes.
 - **P2+ bot findings** and **minor `/codex:review` findings**: evaluate — fix if straightforward, otherwise note in a reply comment explaining why it was skipped (e.g., false positive, out of scope).
-- After fixing, run `/review` and `/codex:review --base main --background` once more. If new high-confidence issues appear that you cannot resolve in **2 attempts**:
+- After fixing, run `/code-review` and `/codex:review --base main --background` once more. If new high-confidence issues appear that you cannot resolve in **2 attempts**:
   - Add label `needs-human-review`.
   - Comment describing unresolved findings.
   - Move on.
-- Maximum of **2 invocations per review tool** (`/review`, `/codex:review`) **per PR per iteration**.
+- Maximum of **2 invocations per review tool** (`/code-review`, `/codex:review`) **per PR per iteration**.
 - Do NOT merge PRs that have `needs-human-review` or `arch-decision` labels.
 
 #### 1a. PRs ready to auto-merge
 
 A PR is eligible for auto-merge when ALL of these are true:
 - CI status checks pass (all checks in `statusCheckRollup` are `SUCCESS` or `NEUTRAL`)
+- No unresolved high-confidence `/code-review` findings (≥80) on the PR
 - No unresolved P0/P1 bot review findings (e.g., Codex Review) on the PR
-- No unresolved high-confidence `/review` or critical `/codex:review` findings in session memory
+- No unresolved critical `/codex:review` findings in session memory
 - The PR does NOT have label `needs-human-review` or `arch-decision`
 
 If eligible: merge with `gh pr merge <number> --squash --delete-branch` and proceed to the next PR.
@@ -132,25 +133,26 @@ gh pr create \
 
 #### 4d. Review gate (bounded)
 
-Run **two review passes** on the PR you just created (bot reviews arrive asynchronously and will be handled in Step 1c of a future iteration):
+Run **three review passes** on the PR you just created:
 
-1. `/review` — session-local self-review
-2. `/codex:review --base main --background` — [Codex Plugin CC](https://github.com/openai/codex-plugin-cc) delegated review against main (runs in background; check `/codex:status`, retrieve with `/codex:result`)
+1. `/code-review` — [code-review plugin](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/code-review) (posts findings as PR comments; confidence ≥80 threshold)
+2. `/codex:review --base main --background` — [Codex Plugin CC](https://github.com/openai/codex-plugin-cc) delegated review against main (session-local; check `/codex:status`, retrieve with `/codex:result`)
+3. Bot reviews (`@chatgpt-codex-connector[bot]`) may arrive asynchronously — if not yet available, they will be handled in Step 1c of a future iteration
 
 Then:
 
-- **Round 1**: If either tool reports high-confidence / critical issues, fix them and push. Re-run `/review` and `/codex:review --base main --background`.
+- **Round 1**: If `/code-review` or `/codex:review` reports high-confidence / critical issues, fix them and push. Re-run `/code-review` and `/codex:review --base main --background`.
 - **Round 2**: If issues persist after fixes:
   - If you can resolve them in 1-2 more changes, do so and push. Do NOT run a third round.
   - If the issues are architectural or unclear, add label `needs-human-review` and comment on the PR with the unresolved findings.
 
-Maximum of **2 invocations per review tool** (`/review`, `/codex:review`) **per PR per iteration**. No exceptions.
+Maximum of **2 invocations per review tool** (`/code-review`, `/codex:review`) **per PR per iteration**. No exceptions.
 
 #### 4e. Auto-merge gate
 
 After the review gate, evaluate whether to merge:
 
-- **Merge now** if: CI passes AND no unresolved high-confidence issues from `/review` or `/codex:review` in session memory. (Bot review findings are not yet available on a newly created PR — they will be checked in Step 1a of a future iteration.)
+- **Merge now** if: CI passes AND no unresolved high-confidence `/code-review` findings on the PR AND no unresolved critical `/codex:review` findings in session memory. (Bot review findings may not yet be available on a newly created PR — they will be checked in Step 1a of a future iteration.)
   ```
   gh pr merge <number> --squash --delete-branch
   ```

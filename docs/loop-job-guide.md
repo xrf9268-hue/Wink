@@ -19,7 +19,7 @@ This schedules a recurring task that fires every 30 minutes. Each iteration foll
 | Property | Value |
 |----------|-------|
 | Runs in | Current Claude Code session (interactive mode) |
-| Skills support | Full — `/review`, `/simplify`, etc. are available |
+| Skills support | Full — `/code-review`, `/simplify`, `/codex:review`, etc. are available |
 | Minimum interval | 1 minute |
 | Priority | Low — runs between your turns, never interrupts |
 | Persistence | Session-scoped — gone when you exit |
@@ -41,11 +41,11 @@ Supported units: `s` (seconds, rounded to nearest minute), `m` (minutes), `h` (h
 `/loop` runs prompts in interactive mode, so all skills work natively:
 
 ```
-/loop 20m /review               # review PRs every 20 minutes
+/loop 20m /code-review          # review PRs every 20 minutes
 /loop 1h /simplify              # simplify code every hour
 ```
 
-The prompt in `docs/loop-prompt.md` uses `/simplify` (pre-commit code review), `/review` (post-PR self-review), and `/codex:review --base main --background` ([Codex Plugin CC](https://github.com/openai/codex-plugin-cc)) (delegated review via OpenAI Codex; runs in background, retrieve with `/codex:status` + `/codex:result`).
+The prompt in `docs/loop-prompt.md` uses `/simplify` (pre-commit code quality), `/code-review` ([code-review plugin](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/code-review); posts findings as PR comments), and `/codex:review --base main --background` ([Codex Plugin CC](https://github.com/openai/codex-plugin-cc); session-local, retrieve with `/codex:status` + `/codex:result`).
 
 ## Managing Tasks
 
@@ -62,7 +62,7 @@ The task prompt (`docs/loop-prompt.md`) defines:
 
 1. **Safety constraints** — NEVER rules for dangerous operations
 2. **Workflow steps** — what to do each iteration (process PRs → select issue → implement → verify)
-3. **Review gates** — `/simplify` before commit, `/review` and `/codex:review --base main --background` after PR creation
+3. **Review gates** — `/simplify` before commit, `/code-review` and `/codex:review --base main --background` after PR creation
 
 Keep prompts generic. Project-specific context belongs in `CLAUDE.md` / `AGENTS.md`.
 
