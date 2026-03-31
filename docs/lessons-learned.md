@@ -271,6 +271,20 @@ Always use `/loop` for recurring automated work. `/loop` runs in interactive mod
 /loop 30m Follow the instructions in docs/loop-prompt.md
 ```
 
+## `/codex:review` in Loop Jobs Is Session-Local, Not PR-Visible
+
+**Issue**
+`/codex:review` findings do not appear as PR comments. Treating them like bot review findings (readable via `gh pr view --comments`) leads to empty checks and missed issues across iterations.
+
+**Cause**
+`/codex:review` ([Codex Plugin CC](https://github.com/openai/codex-plugin-cc)) outputs results only within the Claude Code session. Unlike `@chatgpt-codex-connector[bot]` (which posts PR comments with P0/P1/P2 tags), `/codex:review` results live in session memory. `/review` behaves the same way — session-local, not PR-posted.
+
+**Practical guidance**
+- After pushing code, the working tree is clean. Use `--base main` to review the branch diff: `/codex:review --base main --background`.
+- Use `--background` by default (plugin README: "generally recommended to run it in the background"). Retrieve results with `/codex:status` + `/codex:result`.
+- Session context persists across `/loop` iterations, so findings from iteration N are visible in iteration N+1. But they are not durable beyond the session.
+- In auto-merge checks, verify `/codex:review` findings via session memory, not PR comments. Only bot review findings (`@chatgpt-codex-connector[bot]`) can be checked on the PR itself.
+
 ## Event Tap Timeout Recovery Needs Escalation
 
 **Issue**
