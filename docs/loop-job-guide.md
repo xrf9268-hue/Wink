@@ -45,7 +45,7 @@ Supported units: `s` (seconds, rounded to nearest minute), `m` (minutes), `h` (h
 /loop 1h /simplify              # simplify code every hour
 ```
 
-The prompt in `docs/loop-prompt.md` uses `/simplify` (pre-commit code review) and `/review` (post-PR review).
+The prompt in `docs/loop-prompt.md` uses `/simplify` (pre-commit code review), `/review` (post-PR review), and `/codex:review` ([Codex Plugin CC](https://github.com/openai/codex-plugin-cc)) (delegated review via OpenAI Codex).
 
 ## Managing Tasks
 
@@ -62,7 +62,7 @@ The task prompt (`docs/loop-prompt.md`) defines:
 
 1. **Safety constraints** — NEVER rules for dangerous operations
 2. **Workflow steps** — what to do each iteration (process PRs → select issue → implement → verify)
-3. **Review gates** — `/simplify` before commit, `/review` after PR creation
+3. **Review gates** — `/simplify` before commit, `/review` and `/codex:review` after PR creation
 
 Keep prompts generic. Project-specific context belongs in `CLAUDE.md` / `AGENTS.md`.
 
