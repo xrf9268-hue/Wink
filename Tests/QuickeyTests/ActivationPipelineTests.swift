@@ -91,8 +91,9 @@ func restoreFastTimeoutMapsToNeedsFallback() async {
         client: .init(
             prepareRestoreContext: { _ in .completed("prepared") },
             runMutatingCommand: { _ in
-                // Simulate slow command that exceeds timeout
-                Thread.sleep(forTimeInterval: 0.05)
+                // Simulate slow command that exceeds timeout — 300ms
+                // is well above 10ms timeout to avoid CI flakiness
+                Thread.sleep(forTimeInterval: 0.3)
                 return .completed("done")
             }
         )
@@ -128,10 +129,9 @@ func restoreFastTimeoutMapsToNeedsFallback() async {
 func contextPreparationUsesBoundedConcurrency() async {
     let concurrentCount = OSAllocatedUnfairLock(initialState: 0)
     let maxObserved = OSAllocatedUnfairLock(initialState: 0)
-    let allStarted = DispatchSemaphore(value: 0)
 
     let pipeline = ActivationPipeline(
-        timeouts: ActivationTimeoutBudget(prepareRestoreContext: 1.0),
+        timeouts: ActivationTimeoutBudget(prepareRestoreContext: 5.0),
         client: .init(
             prepareRestoreContext: { _ in
                 let current = concurrentCount.withLock { val -> Int in
@@ -141,9 +141,10 @@ func contextPreparationUsesBoundedConcurrency() async {
                 maxObserved.withLock { val in
                     if current > val { val = current }
                 }
-                allStarted.signal()
-                // Hold to allow overlap — must be shorter than prepareRestoreContext timeout
-                Thread.sleep(forTimeInterval: 0.05)
+                // Hold long enough to guarantee overlap in CI — must be shorter
+                // than prepareRestoreContext timeout (5s). Previous 50ms was too
+                // tight under CI load, causing false concurrency overshoot (#105).
+                Thread.sleep(forTimeInterval: 0.3)
                 concurrentCount.withLock { val in val -= 1 }
                 return .completed("prepared")
             },
@@ -156,7 +157,7 @@ func contextPreparationUsesBoundedConcurrency() async {
 
     // Submit 3 prepare commands concurrently
     await withTaskGroup(of: ActivationCommandResult.self) { group in
-        for i in 1...3 {
+        for _ in 1...3 {
             group.addTask {
                 await withCheckedContinuation { continuation in
                     pipeline.submitPrepare(
@@ -184,7 +185,7 @@ func hideTargetTimeoutMapsToNeedsFallback() async {
         client: .init(
             prepareRestoreContext: { _ in .completed("prepared") },
             runMutatingCommand: { _ in
-                Thread.sleep(forTimeInterval: 0.05)
+                Thread.sleep(forTimeInterval: 0.3)
                 return .completed("done")
             }
         )
@@ -212,7 +213,7 @@ func restoreCompatibleTimeoutMapsToDegraded() async {
         client: .init(
             prepareRestoreContext: { _ in .completed("prepared") },
             runMutatingCommand: { _ in
-                Thread.sleep(forTimeInterval: 0.05)
+                Thread.sleep(forTimeInterval: 0.3)
                 return .completed("done")
             }
         )
@@ -251,7 +252,7 @@ func raiseWindowTimeoutMapsToDegraded() async {
         client: .init(
             prepareRestoreContext: { _ in .completed("prepared") },
             runMutatingCommand: { _ in
-                Thread.sleep(forTimeInterval: 0.05)
+                Thread.sleep(forTimeInterval: 0.3)
                 return .completed("done")
             }
         )
@@ -278,7 +279,7 @@ func prepareRestoreContextTimeoutMapsToDegraded() async {
         timeouts: ActivationTimeoutBudget(prepareRestoreContext: 0.01),
         client: .init(
             prepareRestoreContext: { _ in
-                Thread.sleep(forTimeInterval: 0.05)
+                Thread.sleep(forTimeInterval: 0.3)
                 return .completed("prepared")
             },
             runMutatingCommand: { _ in .completed("done") }

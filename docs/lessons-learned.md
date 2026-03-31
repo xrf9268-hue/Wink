@@ -287,6 +287,19 @@ The three review tools have different output destinations. Treating them uniform
 - After pushing code, the working tree is clean. Use `--base main` to review the branch diff: `/codex:review --base main --background`. Retrieve results with `/codex:status` + `/codex:result`.
 - Note: `/review` is **deprecated**. Use `/code-review` (requires plugin install: `claude plugin install code-review@claude-plugins-official`).
 
+## Loop Job Prompt Deduplication
+
+**Issue**
+CronCreate loop job 在单次 fire 中将 prompt 重复发送了 5 次，导致同一迭代收到 5 份相同的指令。
+
+**Cause**
+Loop prompt 内容过长（完整的 docs/loop-prompt.md），可能触发了 CronCreate 的重复投递。此外 loop fire 可能在当前迭代的 review gate 过程中再次触发，打断正在进行的 /review → merge 流程。
+
+**Practical guidance**
+- 监控 loop fire 是否重复投递，如出现重复应检查 prompt 长度和 cron 配置
+- Loop prompt 应考虑添加幂等性检查：在迭代开始时检查是否有未完成的上一迭代工作
+- Review gate 和 merge 操作可能耗时较长，10 分钟间隔在复杂 PR 时可能不够
+
 ## Event Tap Timeout Recovery Needs Escalation
 
 **Issue**
