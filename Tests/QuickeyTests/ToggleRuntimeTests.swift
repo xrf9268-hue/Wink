@@ -124,6 +124,154 @@ func legacyModeReturnsUseLegacy() {
     #expect(decision == .useLegacy)
 }
 
+// MARK: - Pipeline mode
+
+@Test @MainActor
+func pipelineEnabledSelectsFastLaneForEligibleRegularApp() {
+    let runtime = ToggleRuntime(
+        configuration: ToggleRuntimeConfiguration(executionMode: .pipelineEnabled)
+    )
+
+    let decision = runtime.decision(
+        targetBundleIdentifier: "com.apple.Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        classification: .regularWindowed,
+        attemptStartedAt: 100.0
+    )
+
+    if case .execute(.fastLane(let context)) = decision {
+        #expect(context.targetBundleIdentifier == "com.apple.Safari")
+        #expect(context.previousBundleIdentifier == "com.apple.Terminal")
+    } else {
+        Issue.record("Expected fastLane decision, got \(decision)")
+    }
+}
+
+@Test @MainActor
+func pipelineEnabledSelectsCompatibilityLaneWhenNoPreviousBundle() {
+    let runtime = ToggleRuntime(
+        configuration: ToggleRuntimeConfiguration(executionMode: .pipelineEnabled)
+    )
+
+    let decision = runtime.decision(
+        targetBundleIdentifier: "com.apple.Safari",
+        previousBundleIdentifier: nil,
+        classification: .regularWindowed,
+        attemptStartedAt: 100.0
+    )
+
+    if case .execute(.compatibilityLane) = decision {
+        // expected
+    } else {
+        Issue.record("Expected compatibilityLane decision, got \(decision)")
+    }
+}
+
+@Test @MainActor
+func pipelineEnabledSelectsCompatibilityLaneForNonRegularApp() {
+    let runtime = ToggleRuntime(
+        configuration: ToggleRuntimeConfiguration(executionMode: .pipelineEnabled)
+    )
+
+    let decision = runtime.decision(
+        targetBundleIdentifier: "com.apple.systempreferences",
+        previousBundleIdentifier: "com.apple.Terminal",
+        classification: .systemUtility,
+        attemptStartedAt: 100.0
+    )
+
+    if case .execute(.compatibilityLane) = decision {
+        // expected
+    } else {
+        Issue.record("Expected compatibilityLane decision, got \(decision)")
+    }
+}
+
+@Test @MainActor
+func pipelineEnabledRespectsQuarantinedCacheEntry() {
+    let cache = TapContextCache()
+    let runtime = ToggleRuntime(
+        configuration: ToggleRuntimeConfiguration(executionMode: .pipelineEnabled),
+        tapContextCache: cache
+    )
+
+    // Set up a cache entry then quarantine it
+    let restoreContext = RestoreContext(
+        targetBundleIdentifier: "com.apple.Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        previousPID: 42,
+        previousPSNHint: nil,
+        previousWindowIDHint: nil,
+        previousBundleURL: nil,
+        capturedAt: 100,
+        generation: 1
+    )
+    cache.upsert(
+        targetBundleIdentifier: "com.apple.Safari",
+        coordinatorPreviousBundle: "com.apple.Terminal",
+        restoreContext: restoreContext
+    )
+    // 3 misses → quarantine
+    for t in stride(from: 100.0, through: 140.0, by: 20.0) {
+        cache.markFastLaneMiss(for: "com.apple.Safari", now: t, threshold: 3, window: 600, quarantine: 300)
+    }
+
+    let decision = runtime.decision(
+        targetBundleIdentifier: "com.apple.Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        classification: .regularWindowed,
+        attemptStartedAt: 141.0
+    )
+
+    if case .execute(.compatibilityLane) = decision {
+        // expected: quarantined, so not fast-lane eligible
+    } else {
+        Issue.record("Expected compatibilityLane for quarantined app, got \(decision)")
+    }
+}
+
+@Test @MainActor
+func pipelineEnabledRecoversFastLaneAfterQuarantineExpires() {
+    let cache = TapContextCache()
+    let runtime = ToggleRuntime(
+        configuration: ToggleRuntimeConfiguration(executionMode: .pipelineEnabled),
+        tapContextCache: cache
+    )
+
+    let restoreContext = RestoreContext(
+        targetBundleIdentifier: "com.apple.Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        previousPID: 42,
+        previousPSNHint: nil,
+        previousWindowIDHint: nil,
+        previousBundleURL: nil,
+        capturedAt: 100,
+        generation: 1
+    )
+    cache.upsert(
+        targetBundleIdentifier: "com.apple.Safari",
+        coordinatorPreviousBundle: "com.apple.Terminal",
+        restoreContext: restoreContext
+    )
+    for t in stride(from: 100.0, through: 140.0, by: 20.0) {
+        cache.markFastLaneMiss(for: "com.apple.Safari", now: t, threshold: 3, window: 600, quarantine: 300)
+    }
+
+    // After quarantine expires (140 + 300 = 440)
+    let decision = runtime.decision(
+        targetBundleIdentifier: "com.apple.Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        classification: .regularWindowed,
+        attemptStartedAt: 441.0
+    )
+
+    if case .execute(.fastLane) = decision {
+        // expected: quarantine expired, fast lane recovered
+    } else {
+        Issue.record("Expected fastLane after quarantine expired, got \(decision)")
+    }
+}
+
 @Test @MainActor
 func runtimeInvariantsRejectSelfReferencingPreviousBundle() {
     #expect(

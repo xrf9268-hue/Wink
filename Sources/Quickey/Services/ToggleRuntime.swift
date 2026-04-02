@@ -73,8 +73,31 @@ final class ToggleRuntime {
             ))
 
         case .pipelineEnabled:
-            // Pipeline execution is not implemented in this task.
-            return .useLegacy
+            let normalizedPrevious = normalizedPreviousBundle(
+                targetBundleIdentifier: targetBundleIdentifier,
+                previousBundleIdentifier: previousBundleIdentifier
+            )
+            let cacheEntry = tapContextCache.entry(for: targetBundleIdentifier, now: attemptStartedAt)
+            let fastLaneEligible = cacheEntry?.fastLaneEligible ?? true
+
+            let context = RestoreContext(
+                targetBundleIdentifier: targetBundleIdentifier,
+                previousBundleIdentifier: normalizedPrevious,
+                previousPID: cacheEntry?.restoreContext.previousPID,
+                previousPSNHint: cacheEntry?.restoreContext.previousPSNHint,
+                previousWindowIDHint: cacheEntry?.restoreContext.previousWindowIDHint,
+                previousBundleURL: cacheEntry?.restoreContext.previousBundleURL,
+                capturedAt: attemptStartedAt,
+                generation: cacheEntry?.restoreContext.generation ?? 0
+            )
+
+            if fastLaneEligible,
+               normalizedPrevious != nil,
+               classification == .regularWindowed {
+                return .execute(.fastLane(context))
+            } else {
+                return .execute(.compatibilityLane(context))
+            }
         }
     }
 }
