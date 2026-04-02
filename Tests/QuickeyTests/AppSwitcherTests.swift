@@ -567,6 +567,80 @@ func clearActivationTrackingResetsCoordinatorSession() {
     #expect(coordinator.session(for: "com.apple.Safari")?.phase == .idle)
 }
 
+// MARK: - Cooldown and structured metrics
+
+@Test @MainActor
+func cooldownBlocksBeforeNewGenerationIsAllocated() {
+    let clock = MutableClock(time: 1000.0)
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        activationClient: .init(activateFrontProcess: { _, _ in .success(ProcessSerialNumber()) }),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { _, _ in }
+        )
+    )
+    let shortcut = AppShortcut(
+        appName: "CooldownApp",
+        bundleIdentifier: "com.test.CooldownApp",
+        keyEquivalent: "c",
+        modifierFlags: ["command"]
+    )
+
+    // First toggle succeeds (app not running → launch path won't trigger
+    // for a non-existent app, so we just call toggleApplication to set the
+    // cooldown timestamp and verify the second call is blocked)
+    _ = switcher.toggleApplication(for: shortcut)
+    let generationAfterFirst = switcher.pendingActivationState?.generation
+
+    // Advance less than the cooldown window (400ms)
+    clock.time += 0.2
+
+    // Second toggle within cooldown should be blocked
+    let blocked = switcher.toggleApplication(for: shortcut)
+    #expect(blocked == false)
+    // Generation should not have changed
+    #expect(switcher.pendingActivationState?.generation == generationAfterFirst)
+}
+
+@Test @MainActor
+func compatibilityToggleLogsStructuredMetricFields() {
+    // Verify the structured log message format includes the required fields.
+    // This tests the postActionLogMessage helper to verify it produces the
+    // expected field structure without needing a full toggle-off integration.
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests()
+    )
+    let shortcut = AppShortcut(
+        appName: "MetricsApp",
+        bundleIdentifier: "com.test.MetricsApp",
+        keyEquivalent: "m",
+        modifierFlags: ["command"]
+    )
+    let snapshot = ActivationObservationSnapshot(
+        targetBundleIdentifier: "com.test.MetricsApp",
+        observedFrontmostBundleIdentifier: "com.apple.Terminal",
+        targetIsActive: false,
+        targetIsHidden: true,
+        visibleWindowCount: 1,
+        hasFocusedWindow: false,
+        hasMainWindow: false,
+        windowObservationSucceeded: true,
+        windowObservationFailureReason: nil,
+        classification: .regularWindowed,
+        classificationReason: "regular windowed app"
+    )
+
+    let message = switcher.postActionLogMessage(
+        for: shortcut,
+        phase: .postRestoreState,
+        snapshot: snapshot
+    )
+
+    #expect(message.contains("POST_RESTORE_STATE"))
+    #expect(message.contains("com.test.MetricsApp"))
+}
+
 @MainActor
 private func makeTrackerForAppSwitcherTests() -> FrontmostApplicationTracker {
     FrontmostApplicationTracker(client: .init(

@@ -636,7 +636,7 @@ final class AppSwitcher: AppSwitching {
         let restoreResult = restorePreviousApp(bundle: previousApp)
         guard let result = restoreResult, result.restored else {
             let reason = restoreResult == nil ? "no previous app" : "restore failed"
-            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: FAST_LANE \(reason), falling back to compatibility")
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: FAST_LANE \(reason), falling back to compatibility restoreErrorCode=\(restoreResult == nil ? "noTarget" : "activationFailed")")
             return performCompatibilityToggle(
                 shortcut: shortcut,
                 runningApp: runningApp,
@@ -688,7 +688,8 @@ final class AppSwitcher: AppSwitching {
             previousBundleIdentifier: previousApp
         )
 
-        DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: FAST_LANE confirmed=\(confirmation.confirmed) escalated=\(confirmation.usedEscalatedObservation) frontmost=\(confirmation.frontmostBundleAfterRestore ?? "nil") elapsedMs=\(elapsedMilliseconds(since: attemptStartedAt))")
+        let cacheInvalidationReason = toggleRuntime.tapContextCache.lastInvalidationReason(for: shortcut.bundleIdentifier)?.rawValue
+        DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: FAST_LANE confirmed=\(confirmation.confirmed) escalated=\(confirmation.usedEscalatedObservation) frontmost=\(confirmation.frontmostBundleAfterRestore ?? "nil") elapsedMs=\(elapsedMilliseconds(since: attemptStartedAt)) cacheInvalidationReason=\(cacheInvalidationReason ?? "nil")")
 
         if confirmation.confirmed {
             frontmostTracker.confirmRestoreAttempt()
@@ -709,7 +710,7 @@ final class AppSwitcher: AppSwitching {
             return true
         }
 
-        DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: FAST_LANE_MISS → falling back to compatibility")
+        DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: FAST_LANE_MISS lane=fast fallbackCount=1 cacheInvalidationReason=\(cacheInvalidationReason ?? "nil") elapsedMs=\(elapsedMilliseconds(since: attemptStartedAt))")
         toggleRuntime.tapContextCache.markFastLaneMiss(
             for: shortcut.bundleIdentifier,
             now: confirmationClient.now(),
@@ -746,6 +747,7 @@ final class AppSwitcher: AppSwitching {
             kCFBooleanTrue as CFTypeRef
         )
         let hidden = (axHideResult == .success)
+        let axHideErrorCode: String? = hidden ? nil : String(axHideResult.rawValue)
 
         let restored: Bool
         let restoredBundle: String?
@@ -757,8 +759,10 @@ final class AppSwitcher: AppSwitching {
             restored = restoreAttempt.restoreAccepted
             restoredBundle = restoreAttempt.bundleIdentifier
         }
+        let restoreErrorCode: String? = restored ? nil : "activationFailed"
+        let compatCacheReason = toggleRuntime.tapContextCache.lastInvalidationReason(for: shortcut.bundleIdentifier)?.rawValue
         logger.info("TOGGLE[\(shortcut.appName)]: IS ACTIVE → restored=\(restored), hidden=\(hidden)")
-        DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: IS ACTIVE → restored=\(restored) (prev=\(restoredBundle ?? previousApp ?? "nil")), hidden=\(hidden)")
+        DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: IS ACTIVE lane=compatibility restored=\(restored) (prev=\(restoredBundle ?? previousApp ?? "nil")) hidden=\(hidden) axHideErrorCode=\(axHideErrorCode ?? "nil") restoreErrorCode=\(restoreErrorCode ?? "nil") cacheInvalidationReason=\(compatCacheReason ?? "nil") elapsedMs=\(elapsedMilliseconds(since: attemptStartedAt))")
         let postRestoreWindowObservation = applicationObservation.windowObservation(for: runningApp)
         let postRestoreSnapshot = applicationObservation.snapshot(
             for: runningApp,
