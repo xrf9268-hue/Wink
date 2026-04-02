@@ -251,6 +251,25 @@ final class AppSwitcher: AppSwitching {
         )
         self.pendingActivationState = nil
         sessionCoordinator.markStable(for: bundleIdentifier)
+
+        // Seed the tap context cache so future toggle-off can track fast-lane misses.
+        // Without this upsert, markFastLaneMiss is a no-op (guard on existing entry).
+        let now = confirmationClient.now()
+        toggleRuntime.tapContextCache.upsert(
+            targetBundleIdentifier: bundleIdentifier,
+            coordinatorPreviousBundle: stableActivationState?.previousBundleIdentifier,
+            restoreContext: RestoreContext(
+                targetBundleIdentifier: bundleIdentifier,
+                previousBundleIdentifier: stableActivationState?.previousBundleIdentifier,
+                previousPID: nil,
+                previousPSNHint: nil,
+                previousWindowIDHint: nil,
+                previousBundleURL: nil,
+                capturedAt: now,
+                generation: generation
+            )
+        )
+
         return true
     }
 
