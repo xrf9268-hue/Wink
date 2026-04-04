@@ -103,5 +103,6 @@ The current Quickey policy is intentionally development-stage biased:
 - **No catch-up**: Missed fires don't queue up
 - **3-day expiry**: Recreate if needed for longer runs
 - **No custom error handling**: `/loop` has no exponential backoff or circuit breaker
+- **No rate limit handling**: When API quota is exhausted, `/loop` continues firing at the configured interval. The `babysit-prs` skill includes a file-based circuit breaker (`logs/loop-circuit-breaker.json`) with exponential backoff to mitigate partial limits, and a Stop hook (`.claude/hooks/rate-limit-detector.sh`) writes cooldown state when rate-limit signals are detected. Full quota exhaustion still causes empty fires — this is a `/loop` infrastructure limitation (#118)
 
 Use `/loop` for session-local polling and light autonomous maintenance while a session stays open. For recurring work that must survive restarts or run unattended for longer periods, prefer [Desktop scheduled tasks](https://code.claude.com/docs/en/desktop#schedule-recurring-tasks), [Cloud scheduled tasks](https://code.claude.com/docs/en/web-scheduled-tasks), or GitHub Actions.

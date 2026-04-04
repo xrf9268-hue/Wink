@@ -337,3 +337,17 @@ The merge condition read "No unresolved P0/P1 bot review findings", while Step 1
 - A finding may only be skipped if it is clearly a false positive or provides no actionable value — the dismissal must be explained in a PR comment.
 - If a real issue is found, fix it regardless of priority.
 - Example: PR #113 was merged with an unresolved P2 stale-cache-hints bug, requiring a follow-up fix in PR #114.
+
+## Loop Job Rate Limit Empty Cycling (#118)
+
+**Issue**
+`/loop 30m /babysit-prs` continues firing every 30 minutes during API quota exhaustion, producing repeated "You've hit your limit" messages with no useful work.
+
+**Cause**
+`/loop` has no built-in error detection or circuit breaker. When API quota is fully exhausted, Claude cannot respond at all — skill code never executes, so no in-skill logic can prevent the next fire.
+
+**Practical guidance**
+A two-layer mitigation is in place:
+1. Skill-level circuit breaker in Iteration Guard reads `logs/loop-circuit-breaker.json` and skips iterations during cooldown (exponential backoff up to 4 hours)
+2. Stop hook (`.claude/hooks/rate-limit-detector.sh`) detects rate-limit signals in the session transcript and writes cooldown state for the next iteration
+This handles soft limits and post-recovery transitions. Full quota exhaustion still causes empty fires — this is a `/loop` infrastructure limitation that requires upstream improvement.

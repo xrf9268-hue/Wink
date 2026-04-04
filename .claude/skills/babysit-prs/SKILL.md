@@ -2,14 +2,21 @@
 name: babysit-prs
 description: >-
   Autonomous PR/issue triage and implementation loop for the current repository.
-  Use when the user sets up a /loop interval for automated PR processing,
-  issue selection, implementation, and review-gated submission.
-  Do not use for one-off PR reviews or manual issue work.
+  Processes open PRs (CI fixes, review feedback, merge), selects the next issue
+  by priority, implements it, and submits a review-gated PR.
+  Use when the user runs `/loop <interval> /babysit-prs`, says "help me
+  automatically process PRs and issues", or sets up recurring autonomous
+  development work. Do not use for one-off PR reviews, manual issue work,
+  or single code-review requests.
 ---
 
 # Babysit PRs
 
+## Purpose
+
 Autonomous iteration: process PRs → select issue → implement → review gate → submit. Each iteration is self-contained; leave clear breadcrumbs for the next one.
+
+This skill is responsible for the full autonomous development loop. It is NOT responsible for: one-off code reviews (`/code-review`), manual issue investigation, or architecture decisions (label `arch-decision` and skip).
 
 ## Terminology
 
@@ -42,6 +49,15 @@ gh pr list --search "author:@me" --state open --json updatedAt --limit 5
 ```
 
 If any PR was updated < 5 minutes ago, this may be a duplicate fire. Proceed to **NEXT ITERATION** without changes.
+
+#### Circuit Breaker (Rate Limit Protection)
+
+Read `logs/loop-circuit-breaker.json` (create with defaults if missing). For full state machine details, see `references/circuit-breaker.md`.
+
+- If `circuitState` is `"open"` and `cooldownUntil` is in the future: log and **NEXT ITERATION**.
+- If `circuitState` is `"open"` and `cooldownUntil` has passed: set `"half-open"`, continue pipeline.
+- On rate-limit or quota error at any step: increment failures; if ≥ 2, open breaker with exponential backoff (30min–4h).
+- On successful iteration: reset to `"closed"`.
 
 ### Session Init (first iteration only)
 
@@ -149,7 +165,30 @@ Proceed to **NEXT ITERATION**.
 - `/codex:review` results are **session-local only** — they do not appear as PR comments. Check session memory, not `gh pr view --comments`.
 - `/code-review` and bot reviews post durable PR comments readable via `gh pr view --comments` across iterations.
 - CronCreate can duplicate-deliver long prompts. This skill exists to avoid that — do not inline its content into `/loop`.
+- Stop hooks that return `block` on infrastructure failures cause **infinite loops** (Claude responds → hook blocks → Claude responds again). The rate-limit-detector hook must always exit 0. See `docs/lessons-learned.md` § "Codex Stop Hook Infinite Loop".
+- All bot review findings block merge regardless of priority level. A P2 finding that slips through causes follow-up fix PRs. See `docs/lessons-learned.md` § "babysit-prs Bot Review Findings Must All Block Merge".
+- When API quota is fully exhausted, neither the circuit breaker nor the Stop hook can fire — the loop will empty-fire at the configured interval. This is a `/loop` infrastructure limitation, not a bug in this skill.
+- `claude -p` (headless mode) does not support skills. Always use `/loop` for recurring work, never shell-scripted headless invocations.
 - You MAY append entries to `docs/lessons-learned.md` when discovering operational insights.
+
+## Example: Successful Simple Iteration
+
+```
+Iteration Guard  → no duplicate fires, circuit breaker closed
+Session Init     → gh auth ok, worktree clean, /code-review available
+Step 1           → PR #115 CI passes, reviews clean → merge
+Step 2           → Issue #93 (P2-medium, no linked PR) selected
+Step 3           → branch loop/issue-93-cooldown-metrics created
+Step 4           → classified Simple (single test file + metric struct)
+                 → implement with TDD
+Step 5a          → swift build ✅, swift test ✅, swift build -c release ✅
+Step 5b          → /simplify ran, no issues
+Step 5c          → commit, push, gh pr create
+Step 5d          → /code-review ran, 0 high-confidence findings
+Step 5e          → PR left open for next iteration
+Verification     → checklist all green, circuit breaker → closed
+→ NEXT ITERATION
+```
 
 ## Verification (self-check before NEXT ITERATION)
 
@@ -157,3 +196,14 @@ Proceed to **NEXT ITERATION**.
 - [ ] All PRs touched have clear status comments
 - [ ] No missing review gates went unrecorded
 - [ ] Branch is not `main`
+- [ ] Circuit breaker state updated: `circuitState` → `"closed"`, `consecutiveFailures` → `0` on success
+
+## Linked Resources
+
+| File | When to read | Purpose |
+|------|-------------|---------|
+| `references/review-gates.md` | Step 1c (review feedback) | Three-tier review tool behavior, confidence thresholds, degraded-tooling handling |
+| `references/macos-runtime-policy.md` | Step 4 (implement) | Runtime-sensitive change definition, validation tracking for non-macOS hosts |
+| `references/circuit-breaker.md` | Iteration Guard (circuit breaker) | Full state machine, backoff schedule, Stop hook integration details |
+| `docs/lessons-learned.md` | When discovering operational insights | Append new entries; check for relevant gotchas before implementing |
+| `docs/loop-job-guide.md` | Session Init (first iteration) | `/loop` behavior, interval syntax, limitations |

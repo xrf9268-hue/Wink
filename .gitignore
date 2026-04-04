@@ -9,5 +9,7 @@ build/
 scripts/cgevent-helper
 .claude/*
 !.claude/skills/
+!.claude/hooks/
+!.claude/settings.json
 .worktrees/
 logs/
