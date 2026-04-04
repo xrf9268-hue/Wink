@@ -30,7 +30,7 @@ fi
 # or as rate_limit_event entries.
 RATE_LIMITED=false
 if tail -10 "$TRANSCRIPT" | grep -qi \
-  '"hit your limit\|rate.limit\|quota.*exceeded\|"rateLimitType"'; then
+  'hit your limit\|rate.limit\|quota.*exceeded\|rateLimitType'; then
   RATE_LIMITED=true
 fi
 
