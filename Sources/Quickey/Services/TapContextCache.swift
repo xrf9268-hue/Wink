@@ -41,6 +41,11 @@ final class TapContextCache {
             capturedAt: restoreContext.capturedAt,
             generation: restoreContext.generation
         )
+        // upsert is invoked only on a successful stable activation
+        // (see AppSwitcher.promotePendingActivationIfCurrent), so a fresh
+        // success is the recovery signal that re-enables fast-lane eligibility
+        // for a bundle previously demoted by markFastLaneMiss.
+        entry.fastLaneEligible = true
         entry.lastInvalidationReason = nil
         entries[targetBundleIdentifier] = entry
         invalidationReasons.removeValue(forKey: targetBundleIdentifier)
