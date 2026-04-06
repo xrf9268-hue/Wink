@@ -43,8 +43,6 @@ final class TapContextCache {
             targetBundleIdentifier: restoreContext.targetBundleIdentifier,
             previousBundleIdentifier: normalizedPrevious,
             previousPID: restoreContext.previousPID,
-            previousPSNHint: restoreContext.previousPSNHint,
-            previousWindowIDHint: restoreContext.previousWindowIDHint,
             previousBundleURL: restoreContext.previousBundleURL,
             capturedAt: restoreContext.capturedAt,
             generation: restoreContext.generation

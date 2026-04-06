@@ -1,20 +1,13 @@
 import AppKit
-import Carbon.HIToolbox
 import Testing
 @testable import Quickey
 
 @Test @MainActor
 func restoreContextCapturesGenerationAndPreviousBundle() {
-    var psn = ProcessSerialNumber()
-    psn.highLongOfPSN = 7
-    psn.lowLongOfPSN = 9
-
     let context = RestoreContext(
         targetBundleIdentifier: "com.apple.Safari",
         previousBundleIdentifier: "com.apple.Terminal",
         previousPID: 42,
-        previousPSNHint: psn,
-        previousWindowIDHint: 314,
         previousBundleURL: URL(fileURLWithPath: "/Applications/Terminal.app"),
         capturedAt: 123.0,
         generation: 5
@@ -23,9 +16,6 @@ func restoreContextCapturesGenerationAndPreviousBundle() {
     #expect(context.targetBundleIdentifier == "com.apple.Safari")
     #expect(context.previousBundleIdentifier == "com.apple.Terminal")
     #expect(context.previousPID == 42)
-    #expect(context.previousPSNHint?.highLongOfPSN == 7)
-    #expect(context.previousPSNHint?.lowLongOfPSN == 9)
-    #expect(context.previousWindowIDHint == 314)
     #expect(context.previousBundleURL?.path == "/Applications/Terminal.app")
     #expect(context.capturedAt == 123.0)
     #expect(context.generation == 5)
@@ -200,8 +190,6 @@ func pipelineEnabledRespectsQuarantinedCacheEntry() {
         targetBundleIdentifier: "com.apple.Safari",
         previousBundleIdentifier: "com.apple.Terminal",
         previousPID: 42,
-        previousPSNHint: nil,
-        previousWindowIDHint: nil,
         previousBundleURL: nil,
         capturedAt: 100,
         generation: 1
@@ -242,8 +230,6 @@ func pipelineEnabledRecoversFastLaneAfterQuarantineExpires() {
         targetBundleIdentifier: "com.apple.Safari",
         previousBundleIdentifier: "com.apple.Terminal",
         previousPID: 42,
-        previousPSNHint: nil,
-        previousWindowIDHint: nil,
         previousBundleURL: nil,
         capturedAt: 100,
         generation: 1
@@ -280,16 +266,11 @@ func pipelineEnabledDropsStaleHintsWhenPreviousBundleChanges() {
         tapContextCache: cache
     )
 
-    // Cache entry has Terminal as previous with specific PID/PSN/window hints
-    var terminalPSN = ProcessSerialNumber()
-    terminalPSN.highLongOfPSN = 1
-    terminalPSN.lowLongOfPSN = 42
+    // Cache entry has Terminal as previous with specific PID/URL hints
     let cachedContext = RestoreContext(
         targetBundleIdentifier: "com.apple.Safari",
         previousBundleIdentifier: "com.apple.Terminal",
         previousPID: 100,
-        previousPSNHint: terminalPSN,
-        previousWindowIDHint: 999,
         previousBundleURL: URL(fileURLWithPath: "/Applications/Terminal.app"),
         capturedAt: 50,
         generation: 1
@@ -312,8 +293,6 @@ func pipelineEnabledDropsStaleHintsWhenPreviousBundleChanges() {
         #expect(context.previousBundleIdentifier == "com.apple.Finder")
         // Hints from Terminal cache entry must NOT leak into Finder context
         #expect(context.previousPID == nil)
-        #expect(context.previousPSNHint == nil)
-        #expect(context.previousWindowIDHint == nil)
         #expect(context.previousBundleURL == nil)
     } else {
         Issue.record("Expected fastLane decision, got \(decision)")
@@ -328,15 +307,10 @@ func pipelineEnabledKeepsHintsWhenPreviousBundleMatches() {
         tapContextCache: cache
     )
 
-    var terminalPSN = ProcessSerialNumber()
-    terminalPSN.highLongOfPSN = 1
-    terminalPSN.lowLongOfPSN = 42
     let cachedContext = RestoreContext(
         targetBundleIdentifier: "com.apple.Safari",
         previousBundleIdentifier: "com.apple.Terminal",
         previousPID: 100,
-        previousPSNHint: terminalPSN,
-        previousWindowIDHint: 999,
         previousBundleURL: URL(fileURLWithPath: "/Applications/Terminal.app"),
         capturedAt: 50,
         generation: 1
@@ -358,9 +332,6 @@ func pipelineEnabledKeepsHintsWhenPreviousBundleMatches() {
     if case .execute(.fastLane(let context)) = decision {
         #expect(context.previousBundleIdentifier == "com.apple.Terminal")
         #expect(context.previousPID == 100)
-        #expect(context.previousPSNHint?.highLongOfPSN == 1)
-        #expect(context.previousPSNHint?.lowLongOfPSN == 42)
-        #expect(context.previousWindowIDHint == 999)
         #expect(context.previousBundleURL?.path == "/Applications/Terminal.app")
     } else {
         Issue.record("Expected fastLane decision, got \(decision)")

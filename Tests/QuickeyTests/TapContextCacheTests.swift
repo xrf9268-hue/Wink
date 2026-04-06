@@ -13,8 +13,6 @@ func coordinatorPreviousBundleWinsWhenCacheMirrorDrifts() {
         targetBundleIdentifier: "com.apple.Safari",
         previousBundleIdentifier: "com.apple.Finder",
         previousPID: 42,
-        previousPSNHint: nil,
-        previousWindowIDHint: 314,
         previousBundleURL: URL(fileURLWithPath: "/Applications/Finder.app"),
         capturedAt: 100,
         generation: 1
@@ -41,8 +39,6 @@ func cacheInvalidatesWhenPreviousAppTerminates() {
         targetBundleIdentifier: "com.apple.Safari",
         previousBundleIdentifier: "com.apple.Terminal",
         previousPID: 42,
-        previousPSNHint: nil,
-        previousWindowIDHint: 314,
         previousBundleURL: URL(fileURLWithPath: "/Applications/Terminal.app"),
         capturedAt: 100,
         generation: 1
@@ -67,8 +63,6 @@ func frontmostChangePreservesRestoreContextButDisablesFastLane() {
         targetBundleIdentifier: "com.apple.Safari",
         previousBundleIdentifier: "com.apple.Terminal",
         previousPID: 42,
-        previousPSNHint: nil,
-        previousWindowIDHint: 314,
         previousBundleURL: URL(fileURLWithPath: "/Applications/Terminal.app"),
         capturedAt: 100,
         generation: 1
@@ -96,8 +90,6 @@ func threeFastLaneMissesEnterTemporaryCompatibilityWindow() {
         targetBundleIdentifier: "com.apple.Safari",
         previousBundleIdentifier: "com.apple.Terminal",
         previousPID: 42,
-        previousPSNHint: nil,
-        previousWindowIDHint: 314,
         previousBundleURL: URL(fileURLWithPath: "/Applications/Terminal.app"),
         capturedAt: 100,
         generation: 1

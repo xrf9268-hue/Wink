@@ -86,8 +86,6 @@ final class ToggleRuntime {
                 targetBundleIdentifier: targetBundleIdentifier,
                 previousBundleIdentifier: normalizedPrevious,
                 previousPID: hintsMatch ? cacheEntry?.restoreContext.previousPID : nil,
-                previousPSNHint: hintsMatch ? cacheEntry?.restoreContext.previousPSNHint : nil,
-                previousWindowIDHint: hintsMatch ? cacheEntry?.restoreContext.previousWindowIDHint : nil,
                 previousBundleURL: hintsMatch ? cacheEntry?.restoreContext.previousBundleURL : nil,
                 capturedAt: attemptStartedAt,
                 generation: cacheEntry?.restoreContext.generation ?? 0

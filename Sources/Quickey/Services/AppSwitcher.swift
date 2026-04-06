@@ -262,8 +262,6 @@ final class AppSwitcher: AppSwitching {
                 targetBundleIdentifier: bundleIdentifier,
                 previousBundleIdentifier: stableActivationState?.previousBundleIdentifier,
                 previousPID: nil,
-                previousPSNHint: nil,
-                previousWindowIDHint: nil,
                 previousBundleURL: nil,
                 capturedAt: now,
                 generation: generation

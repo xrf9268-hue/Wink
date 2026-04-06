@@ -34,8 +34,6 @@ func latestGenerationDropsQueuedMutatingCommandsBeforeExecution() async {
         targetBundleIdentifier: "com.apple.Safari",
         previousBundleIdentifier: "com.apple.Terminal",
         previousPID: 42,
-        previousPSNHint: nil,
-        previousWindowIDHint: nil,
         previousBundleURL: nil,
         capturedAt: 100,
         generation: 1
@@ -46,8 +44,6 @@ func latestGenerationDropsQueuedMutatingCommandsBeforeExecution() async {
         targetBundleIdentifier: "com.apple.Safari",
         previousBundleIdentifier: "com.apple.Terminal",
         previousPID: 42,
-        previousPSNHint: nil,
-        previousWindowIDHint: nil,
         previousBundleURL: nil,
         capturedAt: 101,
         generation: 2
@@ -106,8 +102,6 @@ func restoreFastTimeoutMapsToNeedsFallback() async {
         targetBundleIdentifier: "com.apple.Safari",
         previousBundleIdentifier: "com.apple.Terminal",
         previousPID: 42,
-        previousPSNHint: nil,
-        previousWindowIDHint: nil,
         previousBundleURL: nil,
         capturedAt: 100,
         generation: 1
@@ -226,8 +220,6 @@ func restoreCompatibleTimeoutMapsToDegraded() async {
         targetBundleIdentifier: "com.apple.Safari",
         previousBundleIdentifier: "com.apple.Terminal",
         previousPID: 42,
-        previousPSNHint: nil,
-        previousWindowIDHint: nil,
         previousBundleURL: nil,
         capturedAt: 100,
         generation: 1
