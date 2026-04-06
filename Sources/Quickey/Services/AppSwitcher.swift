@@ -771,6 +771,16 @@ final class AppSwitcher: AppSwitching {
         if !postRestoreSnapshot.targetIsObservedFrontmost {
             frontmostTracker.confirmRestoreAttempt()
         }
+
+        // Degraded recovery: SkyLight restore reported success but produced no
+        // visual change (e.g. previous app is windowless Finder).  Fall back to
+        // NSRunningApplication.hide() so macOS picks the next foreground app
+        // naturally — matching Thor's "hide then let macOS decide" strategy.
+        if postRestoreSnapshot.targetIsObservedFrontmost {
+            let nsHideResult = runningApp.hide()
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: DEGRADED_RECOVERY nsHide=\(nsHideResult) elapsedMs=\(elapsedMilliseconds(since: attemptStartedAt))")
+        }
+
         clearActivationTracking(for: shortcut.bundleIdentifier, resetPreviousTracking: false)
         logPostActionState(
             shortcut: shortcut,
@@ -1028,6 +1038,9 @@ final class AppSwitcher: AppSwitching {
 
         if phase == .postRestoreState {
             let lifecycle: ToggleLifecycle = snapshot.targetIsObservedFrontmost ? .restoreDegraded : .restoreConfirmed
+            if lifecycle == .restoreDegraded, let prevBundle = previousBundle {
+                DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: RESTORE_DEGRADED_DETAIL previousBundle=\(prevBundle) targetHidden=\(snapshot.targetIsHidden)")
+            }
             logToggleLifecycle(
                 for: shortcut,
                 lifecycle: lifecycle,
