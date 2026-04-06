@@ -86,8 +86,20 @@ final class ObservationBroker {
 
     private func escalateToObservation() -> ConfirmationResult {
         let snapshot = client.escalatedSnapshot()
+        // Without a resolved frontmost we have no positive evidence the restore
+        // succeeded — NSWorkspace can transiently return nil. Treat as
+        // unconfirmed so callers fall through to the compatibility lane and
+        // miss quarantine remains effective. Otherwise rely on the existing
+        // composite predicate that ALSO checks targetIsActive / targetIsHidden /
+        // window evidence, not just the frontmost bundle id.
+        let confirmed: Bool
+        if snapshot.observedFrontmostBundleIdentifier == nil {
+            confirmed = false
+        } else {
+            confirmed = !snapshot.isStableActivation
+        }
         return ConfirmationResult(
-            confirmed: !snapshot.targetIsObservedFrontmost,
+            confirmed: confirmed,
             usedEscalatedObservation: true,
             frontmostBundleAfterRestore: snapshot.observedFrontmostBundleIdentifier
         )
