@@ -194,6 +194,81 @@ func compatibilityLaneAlwaysUsesEscalatedObservation() {
     #expect(result.frontmostBundleAfterRestore == "com.apple.Terminal")
 }
 
+// MARK: - Nil frontmost during escalation (issue #129)
+
+@Test @MainActor
+func escalationWithNilFrontmostReportsUnconfirmed() {
+    // Regression: NSWorkspace can transiently return nil for frontmostApplication.
+    // When the escalated snapshot has no frontmost evidence we cannot claim the
+    // restore succeeded — fall through to compatibility lane instead of falsely
+    // reporting success and skipping miss quarantine.
+    var time: CFAbsoluteTime = 100.0
+    let escalatedSnapshot = ActivationObservationSnapshot(
+        targetBundleIdentifier: "com.apple.Safari",
+        observedFrontmostBundleIdentifier: nil,
+        targetIsActive: true,
+        targetIsHidden: false,
+        visibleWindowCount: 1,
+        hasFocusedWindow: true,
+        hasMainWindow: true,
+        windowObservationSucceeded: true,
+        windowObservationFailureReason: nil,
+        classification: .regularWindowed,
+        classificationReason: "visible focused main window"
+    )
+
+    let broker = ObservationBroker(client: .init(
+        frontmostBundleIdentifier: { "com.apple.Safari" },
+        targetClassification: { .regularWindowed },
+        escalatedSnapshot: { escalatedSnapshot },
+        now: { time },
+        pollOnce: { interval in time += interval }
+    ))
+
+    let result = broker.confirmFastRestore(
+        targetBundleIdentifier: "com.apple.Safari",
+        previousBundleIdentifier: "com.apple.Terminal"
+    )
+
+    #expect(result.confirmed == false)
+    #expect(result.usedEscalatedObservation == true)
+    #expect(result.frontmostBundleAfterRestore == nil)
+}
+
+@Test @MainActor
+func systemUtilityEscalationWithNilFrontmostReportsUnconfirmed() {
+    // Same regression on the immediate-escalation path for non-regular classifications.
+    let escalatedSnapshot = ActivationObservationSnapshot(
+        targetBundleIdentifier: "com.apple.systempreferences",
+        observedFrontmostBundleIdentifier: nil,
+        targetIsActive: true,
+        targetIsHidden: false,
+        visibleWindowCount: 0,
+        hasFocusedWindow: false,
+        hasMainWindow: false,
+        windowObservationSucceeded: true,
+        windowObservationFailureReason: nil,
+        classification: .systemUtility,
+        classificationReason: "activation policy is accessory"
+    )
+
+    let broker = ObservationBroker(client: .init(
+        frontmostBundleIdentifier: { nil },
+        targetClassification: { .systemUtility },
+        escalatedSnapshot: { escalatedSnapshot },
+        now: { 100 },
+        pollOnce: { _ in fatalError("should not poll") }
+    ))
+
+    let result = broker.confirmFastRestore(
+        targetBundleIdentifier: "com.apple.systempreferences",
+        previousBundleIdentifier: "com.apple.Terminal"
+    )
+
+    #expect(result.confirmed == false)
+    #expect(result.usedEscalatedObservation == true)
+}
+
 // MARK: - Nil previous bundle
 
 @Test @MainActor
