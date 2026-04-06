@@ -10,8 +10,6 @@ final class ObservationBroker {
 
     struct Client {
         let frontmostBundleIdentifier: () -> String?
-        let targetIsHidden: () -> Bool
-        let targetIsActive: () -> Bool
         let targetClassification: () -> ApplicationClassification
         let escalatedSnapshot: () -> ActivationObservationSnapshot
         let now: () -> CFAbsoluteTime
@@ -60,31 +58,19 @@ final class ObservationBroker {
             client.pollOnce(pollInterval)
 
             let currentFrontmost = client.frontmostBundleIdentifier()
-            let frontmostIsTarget = currentFrontmost == nil || currentFrontmost == targetBundleIdentifier
 
             // Clear confirmation: target is no longer frontmost
-            if !frontmostIsTarget {
+            if currentFrontmost != nil, currentFrontmost != targetBundleIdentifier {
                 return ConfirmationResult(
                     confirmed: true,
                     usedEscalatedObservation: false,
                     frontmostBundleAfterRestore: currentFrontmost
                 )
             }
-
-            // Only fetch hidden/active when frontmost is ambiguous (avoids redundant IPC on happy path)
-            let targetHidden = client.targetIsHidden()
-            let targetActive = client.targetIsActive()
-            if isContradictory(frontmostIsTarget: true, targetHidden: targetHidden, targetActive: targetActive) {
-                return escalateToObservation()
-            }
         }
 
-        // 4. Timeout: not confirmed
-        return ConfirmationResult(
-            confirmed: false,
-            usedEscalatedObservation: false,
-            frontmostBundleAfterRestore: client.frontmostBundleIdentifier()
-        )
+        // 4. Timeout: escalate to full observation
+        return escalateToObservation()
     }
 
     // MARK: - Compatibility lane confirmation
@@ -105,17 +91,5 @@ final class ObservationBroker {
             usedEscalatedObservation: true,
             frontmostBundleAfterRestore: snapshot.observedFrontmostBundleIdentifier
         )
-    }
-
-    private func isContradictory(
-        frontmostIsTarget: Bool,
-        targetHidden: Bool,
-        targetActive: Bool
-    ) -> Bool {
-        // Target reports hidden but is still frontmost
-        if frontmostIsTarget && targetHidden { return true }
-        // Target is not frontmost but still reports active and not hidden
-        if !frontmostIsTarget && targetActive && !targetHidden { return true }
-        return false
     }
 }

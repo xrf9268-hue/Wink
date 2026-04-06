@@ -8,8 +8,6 @@ import Testing
 func cheapConfirmationSucceedsFromFrontmostChangeWithoutEscalation() {
     let broker = ObservationBroker(client: .init(
         frontmostBundleIdentifier: { "com.apple.Terminal" },
-        targetIsHidden: { false },
-        targetIsActive: { false },
         targetClassification: { .regularWindowed },
         escalatedSnapshot: { fatalError("should not escalate") },
         now: { 100 },
@@ -27,14 +25,26 @@ func cheapConfirmationSucceedsFromFrontmostChangeWithoutEscalation() {
 }
 
 @Test @MainActor
-func cheapConfirmationTimesOutWhenTargetRemainsFrontmost() {
+func cheapConfirmationTimesOutAndEscalates() {
     var time: CFAbsoluteTime = 100.0
+    let escalatedSnapshot = ActivationObservationSnapshot(
+        targetBundleIdentifier: "com.apple.Safari",
+        observedFrontmostBundleIdentifier: "com.apple.Safari",
+        targetIsActive: true,
+        targetIsHidden: false,
+        visibleWindowCount: 1,
+        hasFocusedWindow: true,
+        hasMainWindow: true,
+        windowObservationSucceeded: true,
+        windowObservationFailureReason: nil,
+        classification: .regularWindowed,
+        classificationReason: "visible focused main window"
+    )
+
     let broker = ObservationBroker(client: .init(
         frontmostBundleIdentifier: { "com.apple.Safari" },
-        targetIsHidden: { false },
-        targetIsActive: { true },
         targetClassification: { .regularWindowed },
-        escalatedSnapshot: { fatalError("should not escalate") },
+        escalatedSnapshot: { escalatedSnapshot },
         now: { time },
         pollOnce: { interval in time += interval }
     ))
@@ -44,8 +54,9 @@ func cheapConfirmationTimesOutWhenTargetRemainsFrontmost() {
         previousBundleIdentifier: "com.apple.Terminal"
     )
 
+    // Timeout now escalates to observation instead of returning unconfirmed
     #expect(result.confirmed == false)
-    #expect(result.usedEscalatedObservation == false)
+    #expect(result.usedEscalatedObservation == true)
     #expect(result.frontmostBundleAfterRestore == "com.apple.Safari")
 }
 
@@ -58,8 +69,6 @@ func cheapConfirmationSucceedsDuringPollingWindow() {
             // After 3 polls, frontmost changes
             pollCount > 3 ? "com.apple.Terminal" : "com.apple.Safari"
         },
-        targetIsHidden: { false },
-        targetIsActive: { pollCount <= 3 },
         targetClassification: { .regularWindowed },
         escalatedSnapshot: { fatalError("should not escalate") },
         now: { time },
@@ -78,45 +87,6 @@ func cheapConfirmationSucceedsDuringPollingWindow() {
     #expect(result.usedEscalatedObservation == false)
     #expect(result.frontmostBundleAfterRestore == "com.apple.Terminal")
     #expect(pollCount == 4)
-}
-
-// MARK: - Contradiction escalation
-
-@Test @MainActor
-func contradictoryStateEscalatesToWindowObservation() {
-    var time: CFAbsoluteTime = 100.0
-    let escalatedSnapshot = ActivationObservationSnapshot(
-        targetBundleIdentifier: "com.apple.Safari",
-        observedFrontmostBundleIdentifier: "com.apple.Terminal",
-        targetIsActive: false,
-        targetIsHidden: true,
-        visibleWindowCount: 0,
-        hasFocusedWindow: false,
-        hasMainWindow: false,
-        windowObservationSucceeded: true,
-        windowObservationFailureReason: nil,
-        classification: .regularWindowed,
-        classificationReason: "visible focused main window"
-    )
-
-    let broker = ObservationBroker(client: .init(
-        frontmostBundleIdentifier: { "com.apple.Safari" },
-        targetIsHidden: { true },
-        targetIsActive: { true },
-        targetClassification: { .regularWindowed },
-        escalatedSnapshot: { escalatedSnapshot },
-        now: { time },
-        pollOnce: { interval in time += interval }
-    ))
-
-    let result = broker.confirmFastRestore(
-        targetBundleIdentifier: "com.apple.Safari",
-        previousBundleIdentifier: "com.apple.Terminal"
-    )
-
-    #expect(result.confirmed == true)
-    #expect(result.usedEscalatedObservation == true)
-    #expect(result.frontmostBundleAfterRestore == "com.apple.Terminal")
 }
 
 // MARK: - Classification-based escalation
@@ -139,8 +109,6 @@ func systemUtilitySkipsCheapConfirmationAndEscalates() {
 
     let broker = ObservationBroker(client: .init(
         frontmostBundleIdentifier: { "com.apple.systempreferences" },
-        targetIsHidden: { false },
-        targetIsActive: { true },
         targetClassification: { .systemUtility },
         escalatedSnapshot: { escalatedSnapshot },
         now: { 100 },
@@ -174,8 +142,6 @@ func windowlessOrAccessoryEscalatesImmediately() {
 
     let broker = ObservationBroker(client: .init(
         frontmostBundleIdentifier: { "com.apple.Home" },
-        targetIsHidden: { false },
-        targetIsActive: { true },
         targetClassification: { .windowlessOrAccessory },
         escalatedSnapshot: { escalatedSnapshot },
         now: { 100 },
@@ -212,8 +178,6 @@ func compatibilityLaneAlwaysUsesEscalatedObservation() {
 
     let broker = ObservationBroker(client: .init(
         frontmostBundleIdentifier: { "com.apple.Terminal" },
-        targetIsHidden: { true },
-        targetIsActive: { false },
         targetClassification: { .regularWindowed },
         escalatedSnapshot: { escalatedSnapshot },
         now: { 100 },
@@ -236,8 +200,6 @@ func compatibilityLaneAlwaysUsesEscalatedObservation() {
 func nilPreviousBundleHandledGracefully() {
     let broker = ObservationBroker(client: .init(
         frontmostBundleIdentifier: { "com.apple.Finder" },
-        targetIsHidden: { false },
-        targetIsActive: { false },
         targetClassification: { .regularWindowed },
         escalatedSnapshot: { fatalError("should not escalate") },
         now: { 100 },

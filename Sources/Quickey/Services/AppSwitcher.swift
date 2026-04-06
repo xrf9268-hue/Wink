@@ -649,8 +649,6 @@ final class AppSwitcher: AppSwitching {
                 frontmostBundleIdentifier: { [weak self] in
                     self?.frontmostTracker.currentFrontmostBundleIdentifier()
                 },
-                targetIsHidden: { runningApp.isHidden },
-                targetIsActive: { runningApp.isActive },
                 targetClassification: { preActionSnapshot.classification },
                 escalatedSnapshot: { [weak self] in
                     guard let self else {
