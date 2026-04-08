@@ -4,8 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    tags-ignore:
-      - "**"
+    branches: [main]
   workflow_dispatch:
 
 permissions:

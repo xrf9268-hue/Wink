@@ -18,15 +18,17 @@ jobs:
     name: Build, Notarize, and Publish DMG
     runs-on: macos-15
     timeout-minutes: 45
-    env:
-      KEYCHAIN_PATH: ${{ runner.temp }}/quickey-release.keychain-db
-      CERT_PATH: ${{ runner.temp }}/quickey-developer-id.p12
-      NOTARY_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+
+      - name: Set temporary paths
+        run: |
+          echo "KEYCHAIN_PATH=$RUNNER_TEMP/quickey-release.keychain-db" >> "$GITHUB_ENV"
+          echo "CERT_PATH=$RUNNER_TEMP/quickey-developer-id.p12" >> "$GITHUB_ENV"
+          echo "NOTARY_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
 
       - name: Resolve release metadata
         run: |
