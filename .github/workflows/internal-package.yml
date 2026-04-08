@@ -156,6 +156,7 @@ jobs:
               --verify-tag \
               --draft=false \
               --prerelease \
+              --target "$PACKAGE_SHA" \
               --title "Internal Downloads" \
               --notes-file "$NOTES_FILE"
           else
@@ -163,6 +164,7 @@ jobs:
               --verify-tag \
               --prerelease \
               --latest=false \
+              --target "$PACKAGE_SHA" \
               --title "Internal Downloads" \
               --notes-file "$NOTES_FILE"
           fi
