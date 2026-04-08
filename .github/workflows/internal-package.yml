@@ -60,12 +60,14 @@ jobs:
           fi
 
           INTERNAL_RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/internal-downloads"
+          INTERNAL_DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/internal-downloads/Quickey-${VERSION}.dmg"
 
           echo "DMG_PATH=build/Quickey-${VERSION}.dmg" >> "$GITHUB_ENV"
           echo "ARTIFACT_NAME=Quickey-${VERSION}-internal-${SAFE_REF}" >> "$GITHUB_ENV"
           echo "SOURCE_REF=$SOURCE_REF" >> "$GITHUB_ENV"
           echo "PACKAGE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "INTERNAL_RELEASE_URL=$INTERNAL_RELEASE_URL" >> "$GITHUB_ENV"
+          echo "INTERNAL_DOWNLOAD_URL=$INTERNAL_DOWNLOAD_URL" >> "$GITHUB_ENV"
 
       - name: Verify internal DMG
         run: test -f "$DMG_PATH"
@@ -86,16 +88,40 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           NOTES_FILE="$RUNNER_TEMP/internal-downloads-notes.md"
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/internal-downloads/$(basename "$DMG_PATH")"
 
           cat > "$NOTES_FILE" <<EOF
-          Internal-only Quickey build for trusted testers.
+          Latest internal Quickey build for trusted testers.
+
+          ## Who should use this
+
+          Use this package when you need the newest Quickey build for team testing before a Developer ID signed release is available.
+          If you are looking for a public-ready build, use the normal GitHub Releases page instead of this prerelease.
+
+          ## What to expect
+
+          - This DMG is built from \`$SOURCE_REF\` at commit \`$PACKAGE_SHA\`
+          - It is intended for trusted internal testing only
+          - It is not Developer ID signed
+          - It is not notarized
+          - macOS may warn the first time you open it
+
+          ## Install notes
+
+          1. Download \`$(basename "$DMG_PATH")\`
+          2. Open the DMG and drag \`Quickey.app\` into \`Applications\`
+          3. Launch Quickey from \`/Applications\`
+          4. If macOS blocks the first launch, use the standard Finder "Open" flow on a trusted internal machine
+
+          ## Build details
 
           - Source ref: \`$SOURCE_REF\`
           - Commit: \`$PACKAGE_SHA\`
           - Artifact: \`$ARTIFACT_NAME\`
           - DMG: \`$(basename "$DMG_PATH")\`
+          - Direct download: $DOWNLOAD_URL
 
-          This prerelease is unsigned for Developer ID distribution and is not notarized. Use it only for trusted internal testing.
+          This prerelease exists to provide a stable internal download URL. It is not a substitute for a signed and notarized release.
           EOF
 
           if gh release view internal-downloads >/dev/null 2>&1; then
@@ -115,10 +141,13 @@ jobs:
           {
             echo "## Internal package ready"
             echo
+            echo "Best download page: [Open internal-downloads]($INTERNAL_RELEASE_URL)"
+            echo "Direct DMG: [Download $(basename "$DMG_PATH")]($INTERNAL_DOWNLOAD_URL)"
+            echo
             echo "Artifact: \`$ARTIFACT_NAME\`"
             echo "DMG path: \`$DMG_PATH\`"
             echo "Download: [Open artifact](${{ steps.upload.outputs.artifact-url }})"
             echo "Internal prerelease: [Open internal-downloads]($INTERNAL_RELEASE_URL)"
             echo
-            echo "This artifact is intended for internal testing only. It is not Developer ID signed or notarized."
+            echo "This package is intended for trusted internal testing only. It is not Developer ID signed or notarized, so macOS may warn on first launch."
           } >> "$GITHUB_STEP_SUMMARY"

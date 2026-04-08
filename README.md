@@ -30,6 +30,7 @@ swift test
 `Launch at Login` should be validated from a packaged app installed in `/Applications` or `~/Applications`. Running `build/Quickey.app` directly from the repo can surface an install-location warning instead of a real login-item configuration state.
 
 Tagged releases use `v<CFBundleShortVersionString>` and publish `Quickey-<version>.dmg` through the release workflow described in [`docs/signing-and-release.md`](./docs/signing-and-release.md).
+While Developer ID credentials are unavailable, trusted testers can use the rolling internal prerelease at [internal-downloads](https://github.com/xrf9268-hue/Quickey/releases/tag/internal-downloads). That package is intentionally unsigned and not notarized, so macOS may warn on first launch.
 
 ## Loop Job
 

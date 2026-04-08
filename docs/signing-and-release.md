@@ -150,6 +150,11 @@ For teams that do not yet have a `Developer ID Application` certificate, Quickey
 
 The internal package path is for trusted testers only. It does not perform Developer ID signing, notarization, stapling, or GitHub Release publication.
 Use the prerelease page when you want a stable download URL that behaves more like a GitHub Release than an Actions artifact.
+The prerelease notes are written for testers, not maintainers: they explain who should download the build, how to install it, why macOS may warn on first launch, and when to wait for a signed public release instead.
+
+Stable internal prerelease URL:
+
+- [internal-downloads](https://github.com/xrf9268-hue/Quickey/releases/tag/internal-downloads)
 
 ## Manual Release Checklist
 
