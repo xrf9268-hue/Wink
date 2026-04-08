@@ -87,6 +87,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          API_VERSION="2026-03-10"
+          REF_ENDPOINT="repos/${GITHUB_REPOSITORY}/git/refs/tags/internal-downloads"
+          RELEASE_BY_TAG_ENDPOINT="repos/${GITHUB_REPOSITORY}/releases/tags/internal-downloads"
           NOTES_FILE="$RUNNER_TEMP/internal-downloads-notes.md"
           DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/internal-downloads/$(basename "$DMG_PATH")"
 
@@ -124,17 +127,63 @@ jobs:
           This prerelease exists to provide a stable internal download URL. It is not a substitute for a signed and notarized release.
           EOF
 
-          if gh release view internal-downloads >/dev/null 2>&1; then
-            gh release delete internal-downloads --cleanup-tag --yes
+          if gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: $API_VERSION" \
+            "$REF_ENDPOINT" >/dev/null 2>&1; then
+            gh api \
+              --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: $API_VERSION" \
+              "$REF_ENDPOINT" \
+              -f sha="$PACKAGE_SHA" \
+              -F force=true >/dev/null
+          else
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: $API_VERSION" \
+              "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/internal-downloads" \
+              -f sha="$PACKAGE_SHA" >/dev/null
           fi
 
-          gh release create internal-downloads \
+          if gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: $API_VERSION" \
+            "$RELEASE_BY_TAG_ENDPOINT" >/dev/null 2>&1; then
+            gh release edit internal-downloads \
+              --verify-tag \
+              --draft=false \
+              --prerelease \
+              --title "Internal Downloads" \
+              --notes-file "$NOTES_FILE"
+          else
+            gh release create internal-downloads \
+              --verify-tag \
+              --prerelease \
+              --latest=false \
+              --title "Internal Downloads" \
+              --notes-file "$NOTES_FILE"
+          fi
+
+          gh release upload internal-downloads \
             "$DMG_PATH#Quickey Internal DMG" \
-            --prerelease \
-            --latest=false \
-            --title "Internal Downloads" \
-            --notes-file "$NOTES_FILE" \
-            --target "$PACKAGE_SHA"
+            --clobber
+
+          ACTUAL_RELEASE_URL="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: $API_VERSION" \
+              "$RELEASE_BY_TAG_ENDPOINT" \
+              --jq '.html_url'
+          )"
+
+          if [ "$ACTUAL_RELEASE_URL" != "$INTERNAL_RELEASE_URL" ]; then
+            echo "expected release URL: $INTERNAL_RELEASE_URL" >&2
+            echo "actual release URL:   $ACTUAL_RELEASE_URL" >&2
+            exit 1
+          fi
 
       - name: Summarize internal package
         run: |
