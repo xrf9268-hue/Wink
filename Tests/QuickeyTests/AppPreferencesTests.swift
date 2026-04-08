@@ -110,13 +110,31 @@ func LaunchAtLoginPresentation_requiresApprovalMapsToInformationalStateWithOpenS
 
 @Test @MainActor
 func LaunchAtLoginPresentation_notFoundMapsToDisabledErrorStateWithoutOpenSettingsCTA() {
-    let preferences = makePreferences(status: .notFound)
+    let preferences = makePreferences(
+        status: .notFound,
+        bundleURL: URL(fileURLWithPath: "/Applications/Quickey.app")
+    )
 
     let presentation = preferences.launchAtLoginPresentation
     #expect(presentation.toggleIsOn == false)
     #expect(presentation.toggleIsEnabled == false)
     #expect(presentation.messageStyle == .error)
     #expect(presentation.message == "Quickey couldn't find its login item configuration. This usually points to an installation or packaging problem.")
+    #expect(presentation.showsOpenSettingsButton == false)
+}
+
+@Test @MainActor
+func LaunchAtLoginPresentation_notFoundOutsideApplicationsShowsInstallGuidance() {
+    let preferences = makePreferences(
+        status: .notFound,
+        bundleURL: URL(fileURLWithPath: "/Users/yvan/developer/Quickey/build/Quickey.app")
+    )
+
+    let presentation = preferences.launchAtLoginPresentation
+    #expect(presentation.toggleIsOn == false)
+    #expect(presentation.toggleIsEnabled == false)
+    #expect(presentation.messageStyle == .informational)
+    #expect(presentation.message == "Launch at Login is only available after installing Quickey.app in the Applications folder and reopening it.")
     #expect(presentation.showsOpenSettingsButton == false)
 }
 
@@ -251,7 +269,14 @@ private func makeLaunchAtLoginService(state: MutableLaunchAtLoginState) -> Launc
             }
             state.statusValue = .notRegistered
         },
-        openSystemSettingsLoginItems: {}
+        openSystemSettingsLoginItems: {},
+        bundleURL: { URL(fileURLWithPath: "/Applications/Quickey.app") },
+        applicationDirectories: {
+            [
+                URL(fileURLWithPath: "/Applications", isDirectory: true),
+                URL(fileURLWithPath: "/Users/test/Applications", isDirectory: true),
+            ]
+        }
     ))
 }
 
@@ -259,7 +284,8 @@ private func makeLaunchAtLoginService(state: MutableLaunchAtLoginState) -> Launc
 private func makePreferences(
     status: SMAppService.Status = .notRegistered,
     state: MutableLaunchAtLoginState? = nil,
-    openSystemSettingsLoginItems: @escaping @Sendable () -> Void = {}
+    openSystemSettingsLoginItems: @escaping @Sendable () -> Void = {},
+    bundleURL: URL = URL(fileURLWithPath: "/Applications/Quickey.app")
 ) -> AppPreferences {
     let launchAtLoginState = state ?? MutableLaunchAtLoginState(status: status)
     return AppPreferences(
@@ -281,7 +307,14 @@ private func makePreferences(
                 }
                 launchAtLoginState.statusValue = .notRegistered
             },
-            openSystemSettingsLoginItems: openSystemSettingsLoginItems
+            openSystemSettingsLoginItems: openSystemSettingsLoginItems,
+            bundleURL: { bundleURL },
+            applicationDirectories: {
+                [
+                    URL(fileURLWithPath: "/Applications", isDirectory: true),
+                    URL(fileURLWithPath: "/Users/test/Applications", isDirectory: true),
+                ]
+            }
         ))
     )
 }

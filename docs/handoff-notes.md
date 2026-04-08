@@ -2,6 +2,7 @@
 
 ## Current State
 Quickey was broadly validated on macOS 15.3.1 on 2026-03-20. On 2026-04-08, the shortcut-capture and toggle runtime were further refactored: standard shortcuts now use Carbon hotkeys, Hyper-dependent shortcuts remain on the active event tap, activation now defaults to front-process-only before escalating observation-driven window recovery, and toggle-off now uses `NSRunningApplication.hide()` with asynchronous confirmation. On 2026-04-08, targeted macOS re-validation was completed for the redesigned Safari/Hyper paths: Safari toggle-on/toggle-off now works again, Hyper-routed shortcuts survive fresh relaunches, and the post-fix runtime window shows `TOGGLE_HIDE_CONFIRMED` without new `TOGGLE_DEGRADED`, `hide_untracked`, event-tap-disable, or shortcut-capture resync-storm signatures. Broader app-matrix validation is still pending. A signed and notarized distributable is still unresolved.
+On 2026-04-08, launch-at-login presentation was hardened so `SMAppService.Status.notFound` is no longer always treated as a packaging failure: when Quickey is running outside `/Applications` or `~/Applications`, the General tab now shows install-location guidance instead of the red bundle-misconfiguration warning.
 
 ## Automated Verification (2026-04-08)
 - `swift test` passed after the capture/activation/hide refactor and subsequent Hyper-startup fix; the suite reported 170 tests passed
@@ -59,6 +60,7 @@ Quickey was broadly validated on macOS 15.3.1 on 2026-03-20. On 2026-04-08, the 
 - Shortcut transport split
   Validate that standard shortcuts keep working without Input Monitoring, while Hyper shortcuts correctly require it and recover when the permission is granted later
 - Launch-at-login approval flow after the 2026-03-23 issue #67 approval-state UX update, especially `.requiresApproval` -> `.enabled` foreground refresh and `.notFound` behavior on real installs
+- Launch-at-login validation should use a packaged app installed in `/Applications` or `~/Applications`; repo-local `build/Quickey.app` runs now surface install-location guidance instead of masquerading as a broken bundle
 - Active event-tap startup and readiness reporting after permission or lifecycle changes
 - AppSwitcher fallback behavior after SkyLight failure now that it re-requests activation via `NSWorkspace`
 - Hyper Key failure handling, especially persistence only after `hidutil` succeeds

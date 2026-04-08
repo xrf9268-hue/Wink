@@ -26,6 +26,8 @@ swift test
 ./scripts/e2e-full-test.sh      # end-to-end test suite (Accessibility required; Input Monitoring needed for Hyper coverage)
 ```
 
+`Launch at Login` should be validated from a packaged app installed in `/Applications` or `~/Applications`. Running `build/Quickey.app` directly from the repo can surface an install-location warning instead of a real login-item configuration state.
+
 ## Loop Job
 
 Run automated Claude Code sessions to process issues and PRs:

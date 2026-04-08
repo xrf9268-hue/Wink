@@ -189,6 +189,7 @@ Responsibilities:
 - report shortcut readiness from both permissions plus live Carbon/event-tap state
 - recover monitoring after permission changes without relaunch
 - manage launch-at-login state via `SMAppService`, including approval-needed state
+- distinguish `SMAppService.Status.notFound` caused by install location from a real bundle-configuration miss before surfacing launch-at-login guidance
 - provide LSUIElement app bundle scaffold
 - automate `.app` packaging via script
 

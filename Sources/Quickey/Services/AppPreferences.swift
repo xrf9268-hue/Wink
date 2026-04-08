@@ -20,6 +20,7 @@ struct LaunchAtLoginPresentation: Equatable {
 final class AppPreferences {
     private(set) var shortcutCaptureStatus: ShortcutCaptureStatus
     private(set) var launchAtLoginStatus: LaunchAtLoginStatus = .disabled
+    private(set) var launchAtLoginAvailability: LaunchAtLoginAvailability = .available
     var hyperKeyEnabled: Bool = false
 
     var launchAtLoginEnabled: Bool {
@@ -53,13 +54,24 @@ final class AppPreferences {
                 showsOpenSettingsButton: true
             )
         case .notFound:
-            LaunchAtLoginPresentation(
-                toggleIsOn: false,
-                toggleIsEnabled: false,
-                message: "Quickey couldn't find its login item configuration. This usually points to an installation or packaging problem.",
-                messageStyle: .error,
-                showsOpenSettingsButton: false
-            )
+            switch launchAtLoginAvailability {
+            case .requiresAppInApplicationsFolder:
+                LaunchAtLoginPresentation(
+                    toggleIsOn: false,
+                    toggleIsEnabled: false,
+                    message: "Launch at Login is only available after installing Quickey.app in the Applications folder and reopening it.",
+                    messageStyle: .informational,
+                    showsOpenSettingsButton: false
+                )
+            case .available, .missingConfiguration:
+                LaunchAtLoginPresentation(
+                    toggleIsOn: false,
+                    toggleIsEnabled: false,
+                    message: "Quickey couldn't find its login item configuration. This usually points to an installation or packaging problem.",
+                    messageStyle: .error,
+                    showsOpenSettingsButton: false
+                )
+            }
         }
     }
 
@@ -76,7 +88,9 @@ final class AppPreferences {
         self.hyperKeyService = hyperKeyService
         self.launchAtLoginService = launchAtLoginService
         self.shortcutCaptureStatus = shortcutManager.shortcutCaptureStatus()
-        self.launchAtLoginStatus = launchAtLoginService.status
+        let launchAtLoginSnapshot = launchAtLoginService.snapshot
+        self.launchAtLoginStatus = launchAtLoginSnapshot.status
+        self.launchAtLoginAvailability = launchAtLoginSnapshot.availability
         self.hyperKeyEnabled = hyperKeyService?.isEnabled ?? false
     }
 
@@ -93,7 +107,9 @@ final class AppPreferences {
     }
 
     func refreshLaunchAtLoginStatus() {
-        launchAtLoginStatus = launchAtLoginService.status
+        let launchAtLoginSnapshot = launchAtLoginService.snapshot
+        launchAtLoginStatus = launchAtLoginSnapshot.status
+        launchAtLoginAvailability = launchAtLoginSnapshot.availability
     }
 
     func openLoginItemsSettings() {
