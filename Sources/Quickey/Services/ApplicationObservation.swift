@@ -36,8 +36,10 @@ struct ActivationObservationSnapshot: Sendable, Equatable {
         }
 
         switch classification {
-        case .regularWindowed, .nonStandardWindowed:
+        case .regularWindowed:
             return targetHasVisibleWindows || hasFocusedWindow || hasMainWindow
+        case .nonStandardWindowed:
+            return targetHasVisibleWindows && hasFocusedWindow && hasMainWindow
         case .windowlessOrAccessory, .systemUtility:
             return true
         }

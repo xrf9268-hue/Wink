@@ -55,6 +55,44 @@ func observationReevaluatesClassificationPerAttempt() {
 }
 
 @Test
+func nonStandardFrontmostWindowWithoutFocusIsNotStable() {
+    let snapshot = ActivationObservationSnapshot(
+        targetBundleIdentifier: "dev.zed.Zed",
+        observedFrontmostBundleIdentifier: "dev.zed.Zed",
+        targetIsActive: true,
+        targetIsHidden: false,
+        visibleWindowCount: 1,
+        hasFocusedWindow: false,
+        hasMainWindow: false,
+        windowObservationSucceeded: true,
+        windowObservationFailureReason: nil,
+        classification: .nonStandardWindowed,
+        classificationReason: "window evidence is incomplete for dev.zed.Zed"
+    )
+
+    #expect(snapshot.isStableActivation == false)
+}
+
+@Test
+func nonStandardFrontmostWindowWithFocusAndMainWindowCanBeStable() {
+    let snapshot = ActivationObservationSnapshot(
+        targetBundleIdentifier: "dev.zed.Zed",
+        observedFrontmostBundleIdentifier: "dev.zed.Zed",
+        targetIsActive: true,
+        targetIsHidden: false,
+        visibleWindowCount: 1,
+        hasFocusedWindow: true,
+        hasMainWindow: true,
+        windowObservationSucceeded: true,
+        windowObservationFailureReason: nil,
+        classification: .nonStandardWindowed,
+        classificationReason: "window became focused after recovery"
+    )
+
+    #expect(snapshot.isStableActivation == true)
+}
+
+@Test
 func observationCanRepresentCurrentTogglePostActionFields() {
     let snapshot = ActivationObservationSnapshot(
         targetBundleIdentifier: "com.apple.Safari",
