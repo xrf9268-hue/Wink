@@ -47,6 +47,15 @@ final class AppSwitcher: AppSwitching {
         let startedAt: CFAbsoluteTime
     }
 
+    struct PendingDeactivationState: Equatable, Sendable {
+        let bundleIdentifier: String
+        let appName: String
+        let previousBundleIdentifier: String?
+        let activationPath: ActivationPath
+        let generation: Int
+        let startedAt: CFAbsoluteTime
+    }
+
     struct StableActivationState: Equatable, Sendable {
         let bundleIdentifier: String
         let previousBundleIdentifier: String?
@@ -56,12 +65,15 @@ final class AppSwitcher: AppSwitching {
     }
 
     enum WindowRecoveryStage: String, Sendable {
+        case makeKeyWindow
         case axRaise
         case reopen
         case commandN
 
         var nextStage: Self? {
             switch self {
+            case .makeKeyWindow:
+                .axRaise
             case .axRaise:
                 .reopen
             case .reopen:
@@ -73,6 +85,8 @@ final class AppSwitcher: AppSwitching {
 
         var settlingDelay: TimeInterval {
             switch self {
+            case .makeKeyWindow:
+                0.05
             case .axRaise:
                 0.05
             case .reopen:
@@ -96,26 +110,34 @@ final class AppSwitcher: AppSwitching {
 
     enum PostActionPhase: String {
         case postActivateState = "POST_ACTIVATE_STATE"
-        case postRestoreState = "POST_RESTORE_STATE"
+        case postHideState = "POST_HIDE_STATE"
     }
 
     enum ActivationPath: String {
         case launch
-        case restorePrevious = "restore_previous"
         case hideUntracked = "hide_untracked"
+        case hide
         case activate
         case unhideActivate = "unhide_activate"
     }
 
+    enum HideTransport: String, Sendable {
+        case runningApplicationHide = "running_application_hide"
+    }
+
+    enum WindowServerActivationMode: String, Sendable {
+        case frontProcessOnly = "front_process_only"
+    }
+
     enum ToggleLifecycle: String {
         case attempt = "TOGGLE_ATTEMPT"
-        case restoreAttempt = "TOGGLE_RESTORE_ATTEMPT"
         case hideUntracked = "TOGGLE_HIDE_UNTRACKED"
+        case hideAttempt = "TOGGLE_HIDE_ATTEMPT"
+        case hideConfirmed = "TOGGLE_HIDE_CONFIRMED"
+        case hideDegraded = "TOGGLE_HIDE_DEGRADED"
         case confirmation = "TOGGLE_CONFIRMATION"
         case stable = "TOGGLE_STABLE"
         case degraded = "TOGGLE_DEGRADED"
-        case restoreConfirmed = "TOGGLE_RESTORE_CONFIRMED"
-        case restoreDegraded = "TOGGLE_RESTORE_DEGRADED"
     }
 
     struct ActivationClient {
@@ -124,6 +146,10 @@ final class AppSwitcher: AppSwitching {
 
     struct FallbackActivationClient {
         let openApplication: (URL, NSWorkspace.OpenConfiguration, @escaping @Sendable (Error?) -> Void) -> Void
+    }
+
+    struct HideRequestClient {
+        let hideApplication: (NSRunningApplication) -> Bool
     }
 
     struct ConfirmationClient {
@@ -135,12 +161,12 @@ final class AppSwitcher: AppSwitching {
     private let applicationObservation: ApplicationObservation
     private let activationClient: ActivationClient
     private let fallbackActivationClient: FallbackActivationClient
+    private let hideRequestClient: HideRequestClient
     private let confirmationClient: ConfirmationClient
     private let sessionCoordinator: ToggleSessionCoordinator
-    private let toggleRuntime: ToggleRuntime
-    private let latestGenerationStore: LatestGenerationStore
     private var nextPendingGeneration = 0
     private(set) var pendingActivationState: PendingActivationState?
+    private(set) var pendingDeactivationState: PendingDeactivationState?
     private(set) var stableActivationState: StableActivationState?
 
     /// Re-entry guard: prevents nested calls to toggleApplication on the same run loop turn.
@@ -151,26 +177,43 @@ final class AppSwitcher: AppSwitching {
     private let toggleCooldown: TimeInterval = 0.4
     private let cooldownCacheLimit = 20
     private let cooldownEvictionWindow: CFAbsoluteTime = 60
+    private let deactivationConfirmationInitialDelay: TimeInterval = 0.05
+    private let deactivationConfirmationPollInterval: TimeInterval = 0.05
+    private let deactivationConfirmationTimeout: TimeInterval = 0.3
+    private var workspaceHideObserver: Any?
 
     init(
         frontmostTracker: FrontmostApplicationTracker = FrontmostApplicationTracker(),
         applicationObservation: ApplicationObservation = .live,
         activationClient: ActivationClient = .live,
         fallbackActivationClient: FallbackActivationClient = .live,
+        hideRequestClient: HideRequestClient = .live,
         confirmationClient: ConfirmationClient = .live,
-        sessionCoordinator: ToggleSessionCoordinator = ToggleSessionCoordinator(),
-        toggleRuntime: ToggleRuntime = ToggleRuntime(),
-        latestGenerationStore: LatestGenerationStore = LatestGenerationStore()
+        sessionCoordinator: ToggleSessionCoordinator = ToggleSessionCoordinator()
     ) {
         self.frontmostTracker = frontmostTracker
         self.applicationObservation = applicationObservation
         self.activationClient = activationClient
         self.fallbackActivationClient = fallbackActivationClient
+        self.hideRequestClient = hideRequestClient
         self.confirmationClient = confirmationClient
         self.sessionCoordinator = sessionCoordinator
-        self.toggleRuntime = toggleRuntime
-        self.latestGenerationStore = latestGenerationStore
         sessionCoordinator.startObservingWorkspaceNotifications()
+        workspaceHideObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didHideApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let bundle = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
+            MainActor.assumeIsolated { [weak self] in
+                guard let self,
+                      let bundle,
+                      self.pendingDeactivationState?.bundleIdentifier == bundle else {
+                    return
+                }
+                _ = self.handleWorkspaceHideNotification(bundleIdentifier: bundle)
+            }
+        }
     }
 
     @discardableResult
@@ -191,7 +234,6 @@ final class AppSwitcher: AppSwitching {
             stableActivationState = nil
         }
         sessionCoordinator.beginActivation(for: bundleIdentifier, previousBundle: previousBundleIdentifier)
-        latestGenerationStore.write(state.generation)
         return state
     }
 
@@ -209,6 +251,28 @@ final class AppSwitcher: AppSwitching {
         return true
     }
 
+    @discardableResult
+    func acceptPendingDeactivation(
+        for bundleIdentifier: String,
+        appName: String,
+        previousBundleIdentifier: String?,
+        activationPath: ActivationPath,
+        startedAt: CFAbsoluteTime
+    ) -> PendingDeactivationState {
+        nextPendingGeneration += 1
+        let state = PendingDeactivationState(
+            bundleIdentifier: bundleIdentifier,
+            appName: appName,
+            previousBundleIdentifier: previousBundleIdentifier,
+            activationPath: activationPath,
+            generation: nextPendingGeneration,
+            startedAt: startedAt
+        )
+        pendingDeactivationState = state
+        sessionCoordinator.beginDeactivation(for: bundleIdentifier)
+        return state
+    }
+
     func shouldToggleOff(bundleIdentifier: String, runningAppIsActive: Bool) -> Bool {
         guard runningAppIsActive else {
             return false
@@ -219,8 +283,10 @@ final class AppSwitcher: AppSwitching {
         guard pendingActivationState?.bundleIdentifier != bundleIdentifier else {
             return false
         }
-        // Coordinator may have invalidated the session via notification
         let coordinatorPhase = sessionCoordinator.session(for: bundleIdentifier)?.phase
+        if pendingDeactivationState?.bundleIdentifier == bundleIdentifier || coordinatorPhase == .deactivating {
+            return false
+        }
         guard coordinatorPhase == .activeStable else {
             DiagnosticLog.log("TOGGLE[\(stableActivationState.bundleIdentifier)]: stableState invalidated by coordinator, phase=\(coordinatorPhase?.rawValue ?? "no_session")")
             self.stableActivationState = nil
@@ -251,23 +317,6 @@ final class AppSwitcher: AppSwitching {
         )
         self.pendingActivationState = nil
         sessionCoordinator.markStable(for: bundleIdentifier)
-
-        // Seed the tap context cache so future toggle-off can track fast-lane misses.
-        // Without this upsert, markFastLaneMiss is a no-op (guard on existing entry).
-        let now = confirmationClient.now()
-        toggleRuntime.tapContextCache.upsert(
-            targetBundleIdentifier: bundleIdentifier,
-            coordinatorPreviousBundle: stableActivationState?.previousBundleIdentifier,
-            restoreContext: RestoreContext(
-                targetBundleIdentifier: bundleIdentifier,
-                previousBundleIdentifier: stableActivationState?.previousBundleIdentifier,
-                previousPID: nil,
-                previousBundleURL: nil,
-                capturedAt: now,
-                generation: generation
-            )
-        )
-
         return true
     }
 
@@ -283,7 +332,7 @@ final class AppSwitcher: AppSwitching {
             shortcut: shortcut,
             activationPath: activationPath,
             delay: 0.075,
-            nextRecoveryStage: .axRaise,
+            nextRecoveryStage: .makeKeyWindow,
             observe: observe,
             recoverIfNeeded: recoverIfNeeded
         )
@@ -326,7 +375,7 @@ final class AppSwitcher: AppSwitching {
                 return
             }
 
-            guard self.shouldAttemptRecovery(for: snapshot), let nextRecoveryStage else {
+            guard let nextRecoveryStage = self.nextRecoveryStage(for: snapshot, candidate: nextRecoveryStage) else {
                 self.clearActivationTracking(for: state.bundleIdentifier, resetPreviousTracking: true)
                 return
             }
@@ -346,17 +395,137 @@ final class AppSwitcher: AppSwitching {
         }
     }
 
-    private func shouldAttemptRecovery(for snapshot: ActivationObservationSnapshot) -> Bool {
-        !snapshot.targetHasVisibleWindows
+    func schedulePendingDeactivation(
+        state: PendingDeactivationState,
+        shortcut: AppShortcut,
+        previousBundle: String?,
+        activationPath: ActivationPath,
+        observe: @escaping @MainActor () -> ActivationObservationSnapshot
+    ) {
+        schedulePendingDeactivation(
+            state: state,
+            shortcut: shortcut,
+            previousBundle: previousBundle,
+            activationPath: activationPath,
+            delay: deactivationConfirmationInitialDelay,
+            observe: observe
+        )
+    }
+
+    private func schedulePendingDeactivation(
+        state: PendingDeactivationState,
+        shortcut: AppShortcut,
+        previousBundle: String?,
+        activationPath: ActivationPath,
+        delay: TimeInterval,
+        observe: @escaping @MainActor () -> ActivationObservationSnapshot
+    ) {
+        confirmationClient.schedule(delay) { [weak self] in
+            guard let self,
+                  let pendingDeactivationState = self.pendingDeactivationState,
+                  pendingDeactivationState.bundleIdentifier == state.bundleIdentifier,
+                  pendingDeactivationState.generation == state.generation else {
+                return
+            }
+
+            let snapshot = observe()
+            let elapsedMilliseconds = self.elapsedMilliseconds(since: state.startedAt)
+            let confirmed = self.canConfirmDeactivation(with: snapshot)
+            let message = self.postActionLogMessage(
+                for: shortcut,
+                phase: .postHideState,
+                snapshot: snapshot
+            ) + " confirmed=\(confirmed)"
+            logger.info("\(message)")
+            DiagnosticLog.log(message)
+
+            if confirmed {
+                self.completePendingDeactivation(for: state.bundleIdentifier)
+                self.logToggleLifecycle(
+                    for: shortcut,
+                    lifecycle: .hideConfirmed,
+                    previousBundle: previousBundle,
+                    activationPath: activationPath,
+                    snapshot: snapshot,
+                    elapsedMilliseconds: elapsedMilliseconds
+                )
+                return
+            }
+
+            if self.confirmationClient.now() - state.startedAt >= self.deactivationConfirmationTimeout {
+                self.cancelPendingDeactivation(for: state.bundleIdentifier)
+                self.logToggleLifecycle(
+                    for: shortcut,
+                    lifecycle: .hideDegraded,
+                    previousBundle: previousBundle,
+                    activationPath: activationPath,
+                    snapshot: snapshot,
+                    elapsedMilliseconds: elapsedMilliseconds
+                )
+                return
+            }
+
+            self.schedulePendingDeactivation(
+                state: state,
+                shortcut: shortcut,
+                previousBundle: previousBundle,
+                activationPath: activationPath,
+                delay: self.deactivationConfirmationPollInterval,
+                observe: observe
+            )
+        }
     }
 
     private func canPromoteToStable(with snapshot: ActivationObservationSnapshot) -> Bool {
-        snapshot.isStableActivation && !shouldAttemptRecovery(for: snapshot)
+        guard snapshot.targetIsObservedFrontmost,
+              snapshot.targetIsActive,
+              !snapshot.targetIsHidden else {
+            return false
+        }
+
+        switch snapshot.classification {
+        case .regularWindowed, .nonStandardWindowed:
+            return snapshot.targetHasVisibleWindows
+                && snapshot.hasFocusedWindow
+                && snapshot.hasMainWindow
+        case .windowlessOrAccessory, .systemUtility:
+            return true
+        }
+    }
+
+    private func nextRecoveryStage(
+        for snapshot: ActivationObservationSnapshot,
+        candidate: WindowRecoveryStage?
+    ) -> WindowRecoveryStage? {
+        guard let candidate else {
+            return nil
+        }
+
+        if snapshot.targetHasVisibleWindows {
+            switch candidate {
+            case .makeKeyWindow, .axRaise:
+                return candidate
+            case .reopen, .commandN:
+                return nil
+            }
+        }
+
+        if candidate == .makeKeyWindow {
+            return .axRaise
+        }
+        return candidate
+    }
+
+    private func canConfirmDeactivation(with snapshot: ActivationObservationSnapshot) -> Bool {
+        !snapshot.targetIsObservedFrontmost && (snapshot.targetIsHidden || !snapshot.targetHasVisibleWindows)
     }
 
     private func clearActivationTracking(for bundleIdentifier: String, resetPreviousTracking: Bool) {
         if pendingActivationState?.bundleIdentifier == bundleIdentifier {
             pendingActivationState = nil
+        }
+        if pendingDeactivationState?.bundleIdentifier == bundleIdentifier {
+            pendingDeactivationState = nil
         }
         if stableActivationState?.bundleIdentifier == bundleIdentifier {
             stableActivationState = nil
@@ -365,6 +534,49 @@ final class AppSwitcher: AppSwitching {
             frontmostTracker.resetPreviousAppTracking()
         }
         sessionCoordinator.resetSession(for: bundleIdentifier)
+    }
+
+    private func completePendingDeactivation(for bundleIdentifier: String) {
+        if pendingDeactivationState?.bundleIdentifier == bundleIdentifier {
+            pendingDeactivationState = nil
+        }
+        if stableActivationState?.bundleIdentifier == bundleIdentifier {
+            stableActivationState = nil
+        }
+        sessionCoordinator.completeDeactivation(for: bundleIdentifier)
+    }
+
+    private func cancelPendingDeactivation(for bundleIdentifier: String) {
+        if pendingDeactivationState?.bundleIdentifier == bundleIdentifier {
+            pendingDeactivationState = nil
+        }
+        sessionCoordinator.cancelDeactivation(for: bundleIdentifier)
+    }
+
+    @discardableResult
+    func handleWorkspaceHideNotification(bundleIdentifier: String) -> String? {
+        guard let state = pendingDeactivationState,
+              state.bundleIdentifier == bundleIdentifier else {
+            return nil
+        }
+
+        let shortcut = AppShortcut(
+            appName: state.appName,
+            bundleIdentifier: state.bundleIdentifier,
+            keyEquivalent: "",
+            modifierFlags: []
+        )
+        let message = toggleLifecycleLogMessage(
+            for: shortcut,
+            lifecycle: .hideConfirmed,
+            previousBundle: state.previousBundleIdentifier,
+            activationPath: state.activationPath,
+            elapsedMilliseconds: elapsedMilliseconds(since: state.startedAt)
+        )
+        logger.info("\(message)")
+        DiagnosticLog.log(message)
+        completePendingDeactivation(for: bundleIdentifier)
+        return message
     }
 
     @discardableResult
@@ -429,55 +641,47 @@ final class AppSwitcher: AppSwitching {
             windowObservation: preActionWindowObservation
         )
 
-        if stableActivationState?.bundleIdentifier == shortcut.bundleIdentifier, !preActionSnapshot.isStableActivation {
+        if stableActivationState?.bundleIdentifier == shortcut.bundleIdentifier,
+           pendingDeactivationState?.bundleIdentifier != shortcut.bundleIdentifier,
+           !preActionSnapshot.isStableActivation {
             stableActivationState = nil
+        }
+
+        if let pendingDeactivationState, pendingDeactivationState.bundleIdentifier == shortcut.bundleIdentifier {
+            if canConfirmDeactivation(with: preActionSnapshot) {
+                completePendingDeactivation(for: shortcut.bundleIdentifier)
+            } else {
+                DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: DEACTIVATING pending=true elapsedMs=\(elapsedMilliseconds(since: pendingDeactivationState.startedAt))")
+            }
+            return true
         }
 
         if shouldToggleOff(bundleIdentifier: shortcut.bundleIdentifier, runningAppIsActive: runningApp.isActive),
            preActionSnapshot.isStableActivation {
-            let shadowPreviousApp = sessionCoordinator.previousBundle(for: shortcut.bundleIdentifier)
-                ?? stableActivationState?.previousBundleIdentifier
-                ?? frontmostTracker.lastNonTargetBundleIdentifier
-            let runtimeDecision = toggleRuntime.decision(
-                targetBundleIdentifier: shortcut.bundleIdentifier,
-                previousBundleIdentifier: shadowPreviousApp,
-                classification: preActionSnapshot.classification,
-                attemptStartedAt: attemptStartedAt
-            )
-            if case .shadow(let shadowDecision) = runtimeDecision {
-                DiagnosticLog.log("TOGGLE_SHADOW[\(shortcut.appName)]: lane=\(shadowDecision.selectedLane) wouldHide=\(shadowDecision.wouldUseHideTarget) previous=\(shadowDecision.previousBundleIdentifier ?? "nil")")
-            }
             let previousApp = sessionCoordinator.previousBundle(for: shortcut.bundleIdentifier)
                 ?? stableActivationState?.previousBundleIdentifier
                 ?? frontmostTracker.lastNonTargetBundleIdentifier
-            sessionCoordinator.beginDeactivation(for: shortcut.bundleIdentifier)
             logToggleLifecycle(
                 for: shortcut,
-                lifecycle: .restoreAttempt,
+                lifecycle: .hideAttempt,
                 previousBundle: previousApp,
-                activationPath: .restorePrevious,
+                activationPath: .hide,
                 snapshot: preActionSnapshot,
                 elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
             )
-            if let trackerPrevious = frontmostTracker.lastNonTargetBundleIdentifier, trackerPrevious != previousApp {
-                DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: RESTORE_DIVERGENCE resolvedPrevious=\(previousApp ?? "nil") trackerPrevious=\(trackerPrevious)")
-            }
-
-            if case .execute(.fastLane) = runtimeDecision {
-                return performFastLaneToggle(
-                    shortcut: shortcut,
-                    runningApp: runningApp,
-                    previousApp: previousApp,
-                    preActionSnapshot: preActionSnapshot,
-                    attemptStartedAt: attemptStartedAt
-                )
-            }
-
-            return performCompatibilityToggle(
+            let deactivationState = acceptPendingDeactivation(
+                for: shortcut.bundleIdentifier,
+                appName: shortcut.appName,
+                previousBundleIdentifier: previousApp,
+                activationPath: .hide,
+                startedAt: attemptStartedAt
+            )
+            return performHideToggle(
                 shortcut: shortcut,
                 runningApp: runningApp,
-                previousApp: previousApp,
-                preActionSnapshot: preActionSnapshot,
+                state: deactivationState,
+                previousBundle: previousApp,
+                activationPath: .hide,
                 attemptStartedAt: attemptStartedAt
             )
         }
@@ -488,14 +692,6 @@ final class AppSwitcher: AppSwitching {
         if runningApp.isActive, preActionSnapshot.isStableActivation,
            stableActivationState?.bundleIdentifier != shortcut.bundleIdentifier,
            pendingActivationState?.bundleIdentifier != shortcut.bundleIdentifier {
-            let axUntrackedTarget = AXUIElementCreateApplication(runningApp.processIdentifier)
-            let axUntrackedResult = AXUIElementSetAttributeValue(
-                axUntrackedTarget,
-                kAXHiddenAttribute as CFString,
-                kCFBooleanTrue as CFTypeRef
-            )
-            let hidden = (axUntrackedResult == .success)
-            logger.info("TOGGLE[\(shortcut.appName)]: ACTIVE_UNTRACKED → hiding, hidden=\(hidden)")
             logToggleLifecycle(
                 for: shortcut,
                 lifecycle: .hideUntracked,
@@ -504,8 +700,21 @@ final class AppSwitcher: AppSwitching {
                 snapshot: preActionSnapshot,
                 elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
             )
-            clearActivationTracking(for: shortcut.bundleIdentifier, resetPreviousTracking: true)
-            return hidden
+            let deactivationState = acceptPendingDeactivation(
+                for: shortcut.bundleIdentifier,
+                appName: shortcut.appName,
+                previousBundleIdentifier: nil,
+                activationPath: .hideUntracked,
+                startedAt: attemptStartedAt
+            )
+            return performHideToggle(
+                shortcut: shortcut,
+                runningApp: runningApp,
+                state: deactivationState,
+                previousBundle: nil,
+                activationPath: .hideUntracked,
+                attemptStartedAt: attemptStartedAt
+            )
         }
 
         if let pendingActivationState, pendingActivationState.bundleIdentifier != shortcut.bundleIdentifier {
@@ -589,10 +798,19 @@ final class AppSwitcher: AppSwitching {
                 )
             },
             recoverIfNeeded: { [weak self] stage, completion in
-                self?.recoverWindowlessApp(
+                self?.recoverActivation(
                     runningApp,
                     shortcut: shortcut,
                     stage: stage,
+                    fallbackActivate: {
+                        self?.requestFallbackActivation(
+                            bundleURL: runningApp.bundleURL,
+                            bundleIdentifier: runningApp.bundleIdentifier ?? "\(runningApp.processIdentifier)",
+                            plainActivate: {
+                                runningApp.activate()
+                            }
+                        ) ?? false
+                    },
                     completion: completion
                 )
             }
@@ -602,195 +820,63 @@ final class AppSwitcher: AppSwitching {
 
     // MARK: - Toggle-off lanes
 
-    private struct RestorePreviousResult {
-        let restored: Bool
-        let restoredBundle: String?
-        let resolvedApp: NSRunningApplication?
-    }
-
-    /// Lookup, unhide, and activate the previous app via three-layer SkyLight.
-    /// Returns nil only when no previous bundle identifier is available.
-    private func restorePreviousApp(bundle: String?) -> RestorePreviousResult? {
-        guard let prevBundle = bundle,
-              let prevApp = NSRunningApplication.runningApplications(withBundleIdentifier: prevBundle).first else {
-            return nil
-        }
-        if prevApp.isHidden { prevApp.unhide() }
-        let prevWindows = applicationObservation.windowObservation(for: prevApp)
-        let restored = activateViaWindowServer(prevApp, windows: prevWindows.windows)
-        return RestorePreviousResult(restored: restored, restoredBundle: prevBundle, resolvedApp: prevApp)
-    }
-
-    /// Fast lane: restore previous app via SkyLight WITHOUT hiding the target first.
-    /// Uses ObservationBroker for 75ms cheap confirmation. On miss, falls back to
-    /// compatibility lane and tracks the miss in TapContextCache for quarantine.
-    private func performFastLaneToggle(
+    private func performHideToggle(
         shortcut: AppShortcut,
         runningApp: NSRunningApplication,
-        previousApp: String?,
-        preActionSnapshot: ActivationObservationSnapshot,
+        state: PendingDeactivationState,
+        previousBundle: String?,
+        activationPath: ActivationPath,
         attemptStartedAt: CFAbsoluteTime
     ) -> Bool {
-        let restoreResult = restorePreviousApp(bundle: previousApp)
-        guard let result = restoreResult, result.restored else {
-            let reason = restoreResult == nil ? "no previous app" : "restore failed"
-            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: FAST_LANE \(reason), falling back to compatibility restoreErrorCode=\(restoreResult == nil ? "noTarget" : "activationFailed")")
-            return performCompatibilityToggle(
-                shortcut: shortcut,
-                runningApp: runningApp,
-                previousApp: previousApp,
-                preActionSnapshot: preActionSnapshot,
-                attemptStartedAt: attemptStartedAt
+        confirmationClient.schedule(Self.hideRequestDispatchDelay) { [weak self] in
+            guard let self,
+                  let pendingDeactivationState = self.pendingDeactivationState,
+                  pendingDeactivationState.bundleIdentifier == state.bundleIdentifier,
+                  pendingDeactivationState.generation == state.generation else {
+                return
+            }
+            let apiReturn = self.hideRequestClient.hideApplication(runningApp)
+            DiagnosticLog.log(
+                "TOGGLE[\(shortcut.appName)]: \(Self.hideRequestLogEvent) transport=\(Self.hideTransport.rawValue) apiReturn=\(apiReturn) pid=\(runningApp.processIdentifier) elapsedMs=\(self.elapsedMilliseconds(since: attemptStartedAt))"
             )
         }
 
-        let broker = ObservationBroker(
-            client: ObservationBroker.Client(
-                frontmostBundleIdentifier: { [weak self] in
-                    self?.frontmostTracker.currentFrontmostBundleIdentifier()
-                },
-                targetClassification: { preActionSnapshot.classification },
-                escalatedSnapshot: { [weak self] in
-                    guard let self else {
-                        return ActivationObservationSnapshot(
-                            targetBundleIdentifier: runningApp.bundleIdentifier,
-                            observedFrontmostBundleIdentifier: nil,
-                            targetIsActive: false,
-                            targetIsHidden: true,
-                            visibleWindowCount: 0,
-                            hasFocusedWindow: false,
-                            hasMainWindow: false,
-                            windowObservationSucceeded: false,
-                            windowObservationFailureReason: "appSwitcherReleased",
-                            classification: .windowlessOrAccessory,
-                            classificationReason: "app switcher released during fast lane confirmation"
-                        )
-                    }
-                    let windowObs = self.applicationObservation.windowObservation(for: runningApp)
-                    return self.applicationObservation.snapshot(for: runningApp, windowObservation: windowObs)
-                },
-                now: { [weak self] in
-                    self?.confirmationClient.now() ?? CFAbsoluteTimeGetCurrent()
-                },
-                pollOnce: { interval in
-                    RunLoop.main.run(until: Date(timeIntervalSinceNow: interval))
+        schedulePendingDeactivation(
+            state: state,
+            shortcut: shortcut,
+            previousBundle: previousBundle,
+            activationPath: activationPath,
+            observe: { [weak self] in
+                guard let self else {
+                    return ActivationObservationSnapshot(
+                        targetBundleIdentifier: runningApp.bundleIdentifier,
+                        observedFrontmostBundleIdentifier: nil,
+                        targetIsActive: false,
+                        targetIsHidden: true,
+                        visibleWindowCount: 0,
+                        hasFocusedWindow: false,
+                        hasMainWindow: false,
+                        windowObservationSucceeded: false,
+                        windowObservationFailureReason: "appSwitcherReleased",
+                        classification: .windowlessOrAccessory,
+                        classificationReason: "app switcher released during hide confirmation"
+                    )
                 }
-            ),
-            confirmationWindow: toggleRuntime.configuration.fastConfirmationWindow
+                let windowObservation = self.applicationObservation.windowObservation(for: runningApp)
+                return self.applicationObservation.snapshot(
+                    for: runningApp,
+                    windowObservation: windowObservation
+                )
+            }
         )
-
-        let confirmation = broker.confirmFastRestore(
-            targetBundleIdentifier: shortcut.bundleIdentifier,
-            previousBundleIdentifier: previousApp
-        )
-
-        let cacheInvalidationReason = toggleRuntime.tapContextCache.lastInvalidationReason(for: shortcut.bundleIdentifier)?.rawValue
-        DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: FAST_LANE confirmed=\(confirmation.confirmed) escalated=\(confirmation.usedEscalatedObservation) frontmost=\(confirmation.frontmostBundleAfterRestore ?? "nil") elapsedMs=\(elapsedMilliseconds(since: attemptStartedAt)) cacheInvalidationReason=\(cacheInvalidationReason ?? "nil")")
-
-        if confirmation.confirmed {
-            frontmostTracker.confirmRestoreAttempt()
-            clearActivationTracking(for: shortcut.bundleIdentifier, resetPreviousTracking: false)
-            let postRestoreWindowObservation = applicationObservation.windowObservation(for: runningApp)
-            let postRestoreSnapshot = applicationObservation.snapshot(
-                for: runningApp,
-                windowObservation: postRestoreWindowObservation
-            )
-            logPostActionState(
-                shortcut: shortcut,
-                phase: .postRestoreState,
-                snapshot: postRestoreSnapshot,
-                previousBundle: result.restoredBundle,
-                activationPath: .restorePrevious,
-                elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
-            )
-            return true
-        }
-
-        DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: FAST_LANE_MISS lane=fast fallbackCount=1 cacheInvalidationReason=\(cacheInvalidationReason ?? "nil") elapsedMs=\(elapsedMilliseconds(since: attemptStartedAt))")
-        toggleRuntime.tapContextCache.markFastLaneMiss(for: shortcut.bundleIdentifier)
-
-        return performCompatibilityToggle(
-            shortcut: shortcut,
-            runningApp: runningApp,
-            previousApp: previousApp,
-            preActionSnapshot: preActionSnapshot,
-            attemptStartedAt: attemptStartedAt
-        )
+        return true
     }
 
-    /// Compatibility lane: hide the target via AX first, then restore the previous app
-    /// via SkyLight three-layer activation. This is the original toggle-off behavior.
-    private func performCompatibilityToggle(
-        shortcut: AppShortcut,
-        runningApp: NSRunningApplication,
-        previousApp: String?,
-        preActionSnapshot: ActivationObservationSnapshot,
-        attemptStartedAt: CFAbsoluteTime
-    ) -> Bool {
-        // AX hide instead of NSRunningApplication.hide() — the latter returns false
-        // from LSUIElement/accessory apps on macOS 15. Hiding first forces macOS to
-        // activate another app, making SkyLight activation of the previous app immediate.
-        let axTarget = AXUIElementCreateApplication(runningApp.processIdentifier)
-        let axHideResult = AXUIElementSetAttributeValue(
-            axTarget,
-            kAXHiddenAttribute as CFString,
-            kCFBooleanTrue as CFTypeRef
-        )
-        let hidden = (axHideResult == .success)
-        let axHideErrorCode: String? = hidden ? nil : String(axHideResult.rawValue)
+    // MARK: - Activation path
 
-        let restored: Bool
-        let restoredBundle: String?
-        if let result = restorePreviousApp(bundle: previousApp) {
-            restored = result.restored
-            restoredBundle = result.restoredBundle
-        } else {
-            let restoreAttempt = frontmostTracker.restorePreviousAppIfPossible()
-            restored = restoreAttempt.restoreAccepted
-            restoredBundle = restoreAttempt.bundleIdentifier
-        }
-        let restoreErrorCode: String? = restored ? nil : "activationFailed"
-        let compatCacheReason = toggleRuntime.tapContextCache.lastInvalidationReason(for: shortcut.bundleIdentifier)?.rawValue
-        logger.info("TOGGLE[\(shortcut.appName)]: IS ACTIVE → restored=\(restored), hidden=\(hidden)")
-        DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: IS ACTIVE lane=compatibility restored=\(restored) (prev=\(restoredBundle ?? previousApp ?? "nil")) hidden=\(hidden) axHideErrorCode=\(axHideErrorCode ?? "nil") restoreErrorCode=\(restoreErrorCode ?? "nil") cacheInvalidationReason=\(compatCacheReason ?? "nil") elapsedMs=\(elapsedMilliseconds(since: attemptStartedAt))")
-        let postRestoreWindowObservation = applicationObservation.windowObservation(for: runningApp)
-        let postRestoreSnapshot = applicationObservation.snapshot(
-            for: runningApp,
-            windowObservation: postRestoreWindowObservation
-        )
-        if !postRestoreSnapshot.targetIsObservedFrontmost {
-            frontmostTracker.confirmRestoreAttempt()
-        }
-
-        // Degraded recovery: SkyLight restore reported success but produced no
-        // visual change (e.g. previous app is windowless Finder).  Fall back to
-        // NSRunningApplication.hide() so macOS picks the next foreground app
-        // naturally — matching Thor's "hide then let macOS decide" strategy.
-        if postRestoreSnapshot.targetIsObservedFrontmost {
-            let nsHideResult = runningApp.hide()
-            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: DEGRADED_RECOVERY nsHide=\(nsHideResult) elapsedMs=\(elapsedMilliseconds(since: attemptStartedAt))")
-        }
-
-        clearActivationTracking(for: shortcut.bundleIdentifier, resetPreviousTracking: false)
-        logPostActionState(
-            shortcut: shortcut,
-            phase: .postRestoreState,
-            snapshot: postRestoreSnapshot,
-            previousBundle: restoredBundle ?? previousApp,
-            activationPath: .restorePrevious,
-            elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
-        )
-        return restored || hidden
-    }
-
-    // MARK: - Three-layer activation (reference: alt-tab-macos)
-
-    /// Activate app using three-layer approach:
-    /// 1. _SLPSSetFrontProcessWithOptions — activate the process (with windowID for Space switching)
-    /// 2. SLPSPostEventRecordTo — make the window the key window
-    /// 3. AXUIElementPerformAction(kAXRaiseAction) — ensure correct Z-order
+    /// Default activation is minimal: front-process only.
+    /// Window/key-order recovery is observation-driven and escalates separately.
     private func activateViaWindowServer(_ app: NSRunningApplication, windows: [AXUIElement]?) -> Bool {
-        // Get the first window's CGWindowID for Space-aware activation
         let windowID = firstWindowID(from: windows)
         switch activateProcess(
             pid: app.processIdentifier,
@@ -805,14 +891,7 @@ final class AppSwitcher: AppSwitching {
                 )
             }
         ) {
-        case .skyLight(var psn):
-            // Layer 2: Make the target window the key window via WindowServer event
-            if let wid = windowID {
-                makeKeyWindow(psn: &psn, windowID: wid)
-            }
-
-            // Layer 3: Raise the first window via Accessibility to ensure correct Z-order
-            raiseFirstWindow(from: windows)
+        case .skyLight:
             return true
         case .fallback(let activated):
             return activated
@@ -897,30 +976,62 @@ final class AppSwitcher: AppSwitching {
         return windowID
     }
 
-    // MARK: - Windowless app recovery (reference: alt-tab + Hammerspoon)
+    // MARK: - Observation-driven activation recovery
 
-    /// Try multiple strategies to get a window for a windowless app:
-    /// 1. AX kAXRaiseAction on the app element — some apps auto-recover
-    /// 2. NSWorkspace.shared.open(url) — like clicking Dock icon
-    /// 3. ⌘N fallback — last resort
-    private func recoverWindowlessApp(
+    private func recoverActivation(
         _ app: NSRunningApplication,
         shortcut: AppShortcut,
         stage: WindowRecoveryStage,
+        fallbackActivate: () -> Bool,
         completion: @escaping @MainActor () -> Void
     ) {
         switch stage {
+        case .makeKeyWindow:
+            let windows = fetchWindows(of: app)
+            guard let windowID = firstWindowID(from: windows) else {
+                logger.info("TOGGLE[\(shortcut.appName)]: activation recovery stage=makeKeyWindow skipped (no window id)")
+                DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: activation recovery stage=makeKeyWindow skipped (no window id)")
+                completion()
+                return
+            }
+
+            switch activateProcess(
+                pid: app.processIdentifier,
+                windowID: windowID,
+                fallbackActivate: fallbackActivate
+            ) {
+            case .skyLight(var psn):
+                makeKeyWindow(psn: &psn, windowID: windowID)
+            case .fallback:
+                break
+            }
+            logger.info("TOGGLE[\(shortcut.appName)]: activation recovery stage=makeKeyWindow")
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: activation recovery stage=makeKeyWindow")
+            completion()
         case .axRaise:
-            let axApp = AXUIElementCreateApplication(app.processIdentifier)
-            AXUIElementPerformAction(axApp, kAXRaiseAction as CFString)
-            logger.info("TOGGLE[\(shortcut.appName)]: window recovery stage=axRaise")
-            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: window recovery stage=axRaise")
+            let windows = fetchWindows(of: app)
+            if hasVisibleWindows(of: app, windows: windows) {
+                raiseFirstWindow(from: windows)
+                logger.info("TOGGLE[\(shortcut.appName)]: activation recovery stage=axRaise")
+                DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: activation recovery stage=axRaise")
+            } else {
+                let axApp = AXUIElementCreateApplication(app.processIdentifier)
+                AXUIElementPerformAction(axApp, kAXRaiseAction as CFString)
+                logger.info("TOGGLE[\(shortcut.appName)]: window recovery stage=axRaise")
+                DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: window recovery stage=axRaise")
+            }
             completion()
         case .reopen:
             guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: shortcut.bundleIdentifier) else {
                 logger.info("TOGGLE[\(shortcut.appName)]: sending ⌘N (no app URL)")
                 DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: sending ⌘N (no app URL)")
-                recoverWindowlessApp(app, shortcut: shortcut, stage: .commandN, completion: completion)
+                recoverActivation(
+                    app,
+                    shortcut: shortcut,
+                    stage: .commandN,
+                    fallbackActivate: fallbackActivate,
+                    completion: completion
+                )
                 return
             }
 
@@ -1026,22 +1137,6 @@ final class AppSwitcher: AppSwitching {
         logger.info("\(message)")
         DiagnosticLog.log(message)
 
-        if phase == .postRestoreState {
-            let lifecycle: ToggleLifecycle = snapshot.targetIsObservedFrontmost ? .restoreDegraded : .restoreConfirmed
-            if lifecycle == .restoreDegraded, let prevBundle = previousBundle {
-                DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: RESTORE_DEGRADED_DETAIL previousBundle=\(prevBundle) targetHidden=\(snapshot.targetIsHidden)")
-            }
-            logToggleLifecycle(
-                for: shortcut,
-                lifecycle: lifecycle,
-                previousBundle: previousBundle,
-                activationPath: activationPath,
-                snapshot: snapshot,
-                elapsedMilliseconds: elapsedMilliseconds
-            )
-            return
-        }
-
         logToggleLifecycle(
             for: shortcut,
             lifecycle: .confirmation,
@@ -1122,6 +1217,11 @@ final class AppSwitcher: AppSwitching {
     private func elapsedMilliseconds(since startedAt: CFAbsoluteTime) -> Int {
         Int((confirmationClient.now() - startedAt) * 1000)
     }
+
+    nonisolated static let hideTransport: HideTransport = .runningApplicationHide
+    nonisolated static let hideRequestLogEvent = "HIDE_REQUEST"
+    nonisolated static let hideRequestDispatchDelay: TimeInterval = 0
+    nonisolated static let windowServerActivationMode: WindowServerActivationMode = .frontProcessOnly
 }
 
 extension AppSwitcher.ActivationClient {
@@ -1151,6 +1251,15 @@ extension AppSwitcher.FallbackActivationClient {
             NSWorkspace.shared.openApplication(at: url, configuration: configuration) { @Sendable _, error in
                 completion(error)
             }
+        }
+    )
+}
+
+extension AppSwitcher.HideRequestClient {
+    @MainActor
+    static let live = AppSwitcher.HideRequestClient(
+        hideApplication: { app in
+            app.hide()
         }
     )
 }

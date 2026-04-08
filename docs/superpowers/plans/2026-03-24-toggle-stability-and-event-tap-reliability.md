@@ -1,5 +1,7 @@
 # Toggle Stability And Event Tap Reliability Implementation Plan
 
+> Partially superseded for toggle-off: the restore-state / `POST_RESTORE_STATE` / `TOGGLE_RESTORE_*` portions of this plan were replaced on 2026-04-08 by a direct-hide-only implementation. Keep this file as historical execution context, not as current toggle-off guidance.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement the approved stable-state toggle redesign and event tap recovery hardening without regressing Quickey's app-level shortcut behavior.

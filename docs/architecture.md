@@ -31,11 +31,20 @@ Quickey is a menu bar macOS utility that stores app-shortcut bindings, captures 
      |
      v
 +--------------------+
-|  EventTapManager   |
-| CGEvent tap input  |
++ ShortcutCapture    +
+| Coordinator        |
 +---------+----------+
-          |
-          v
+     +----+----+
+     |         |
+     v         v
++--------------------+   +--------------------+
+| CarbonHotKeyProvider|   | EventTapManager   |
+| standard shortcuts  |   | Hyper-only input  |
++---------+----------+   +---------+----------+
+          |                        |
+          +-----------+------------+
+                      |
+                      v
 +--------------------+
 |    KeyMatcher      |
 | key/modifier match |
@@ -111,17 +120,28 @@ Responsibilities:
 - hold in-memory state used by the event path and UI
 
 ### Event capture and matching
+- `ShortcutCaptureCoordinator`
+- `CarbonHotKeyProvider`
 - `EventTapManager`
+- `EventTapCaptureProvider`
 - `KeyMatcher`
 - `KeySymbolMapper`
 
 Responsibilities:
-- listen for global keyDown events via `CGEvent.tapCreate`
-- host the active event tap on a dedicated background RunLoop thread
+- route standard shortcuts to Carbon `EventHotKey`
+- reserve the CGEvent tap path for Hyper-dependent shortcuts only
+- host the active Hyper event tap on a dedicated background RunLoop thread
 - normalize captured key events
 - map between key codes and human-readable shortcut symbols
 - match incoming events against stored bindings
-- keep callback work lightweight and dispatch recovery work off the callback path
+- keep provider callback work lightweight and always hop back to the main actor before app toggling
+- report capture readiness as capability-aware state instead of a single global boolean:
+  - Accessibility granted
+  - Input Monitoring granted
+  - Carbon hotkeys registered
+  - Hyper event tap active
+  - standard shortcuts ready
+  - Hyper shortcuts ready
 - track lifecycle state and escalation thresholds:
   - first timeout -> in-place re-enable
   - 3 timeouts within 30 seconds -> full recreation
@@ -145,7 +165,8 @@ Responsibilities:
 - invalidate or clear sessions from `NSWorkspace.didActivateApplicationNotification` and `NSWorkspace.didTerminateApplicationNotification` instead of polling
 - only allow toggle-off from a confirmed stable state; repeat triggers during pending or degraded activation re-confirm the session instead of restoring away
 - use `FrontmostApplicationTracker` for current-frontmost capture and restore attempts, while session-owned `previousBundle` remains the source of truth during confirmation and deactivation
-- restore previous app when toggling away, then hide the target app as a fallback if post-restore observation is still contradictory
+- keep the hot activation path to front-process activation only, then escalate to `makeKeyWindow`, `AXRaise`, and window recovery only when observation shows activation is not yet settled
+- toggle off by requesting `NSRunningApplication.hide()`, then confirm deactivation asynchronously from `NSWorkspace.didHideApplicationNotification` plus a short observation window before clearing session state
 - reveal selected application in Finder when needed
 
 ### Usage tracking
@@ -165,7 +186,7 @@ Responsibilities:
 
 Responsibilities:
 - request/check Accessibility + Input Monitoring permission for global shortcuts
-- report shortcut readiness from both permissions plus active event-tap state
+- report shortcut readiness from both permissions plus live Carbon/event-tap state
 - recover monitoring after permission changes without relaunch
 - manage launch-at-login state via `SMAppService`, including approval-needed state
 - provide LSUIElement app bundle scaffold
@@ -181,7 +202,9 @@ App launch
   -> ShortcutStore.replaceAll()
   -> ShortcutManager.start()
   -> AccessibilityPermissionService.requestIfNeeded()
-  -> EventTapManager.start() // active tap only, no passive listenOnly fallback
+  -> ShortcutCaptureCoordinator syncs providers
+  -> CarbonHotKeyProvider registers standard shortcuts
+  -> EventTapManager starts only if Hyper-routed shortcuts need it
   -> MenuBarController.install()
 ```
 
@@ -200,14 +223,14 @@ User opens settings
 ### 3. Trigger flow
 ```text
 Global keyDown event
-  -> EventTapManager emits KeyPress
+  -> CarbonHotKeyProvider or EventTapManager emits KeyPress
   -> ShortcutManager.handleKeyPress()
   -> KeyMatcher finds matching AppShortcut
   -> AppSwitcher.toggleApplication()
   -> ToggleSessionCoordinator records bundle-keyed session + previousBundle
   -> ApplicationObservation captures frontmost/window evidence
   -> activate / confirm / recover stage-by-stage
-  -> restore previous app / hide fallback only from activeStable
+  -> direct hide request only from activeStable, then async hide confirmation
 ```
 
 ### 4. Event tap recovery flow
@@ -225,16 +248,18 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 ## Current design choices
 - **SPM-first**: simple repo layout and source organization
 - **AppKit-first with selective SwiftUI**: deliberate architectural decision documented in `docs/archive/app-structure-direction.md`; hard AppKit requirements (`.accessory` policy, raw key capture, CGEvent tap, NSWorkspace) prevent a pure SwiftUI scene-based approach
-- **Truthful shortcut readiness**: `ShortcutCaptureStatus` reports Accessibility, Input Monitoring, and active event-tap state separately
+- **Capability-aware shortcut readiness**: `ShortcutCaptureStatus` separates Accessibility, Input Monitoring, Carbon registration, Hyper event-tap activity, standard-shortcut readiness, and Hyper readiness
 - **O(1) trigger index**: `ShortcutSignature` dictionary replaces linear scans in the hot path
 - **Observation-first toggle truth**: `ApplicationObservation` snapshots gate stable-state promotion from frontmost/window evidence instead of trusting `isActive` alone
 - **Session-owned previous-app memory**: `ToggleSessionCoordinator` holds the durable `previousBundle` once a toggle session is accepted; `FrontmostApplicationTracker` remains the restore executor
 - **Notification-driven invalidation**: `NSWorkspace` activation and termination notifications clear or expire stable/deactivating sessions without polling
 - **Hardened EventTap lifecycle**: explicit ownership, callback-safe timeout snapshots, threshold-based escalation, and same-thread run-loop recreation
-- **Active tap only**: passive `.listenOnly` mode is not used in the normal interception path because it cannot consume shortcut events
+- **Split capture transports**: standard shortcuts use Carbon hotkeys; Hyper-only shortcuts use the active event tap. Passive `.listenOnly` mode is not used in the interception path because it cannot consume shortcut events
 - **SkyLight primary activation path**: private API is used for reliable foreground switching from LSUIElement context
 - **Modern AppKit fallback**: when SkyLight activation fails, Quickey re-requests activation via `NSWorkspace.OpenConfiguration` (`activates = true`) and only falls back to a plain AppKit activation request if no bundle URL is available
+- **Minimal-by-default activation**: front-process activation is the only hot-path activation step; `makeKeyWindow`, `AXRaise`, and reopen/new-window recovery are bounded escalation steps driven by observation
 - **Stable-state toggle semantics**: activate immediately, confirm asynchronously, allow toggle-off only from `activeStable`, and avoid restore-away rollback on confirmation failure
+- **Official hide request path**: toggle-off uses `NSRunningApplication.hide()` plus asynchronous confirmation instead of event-synthesized hide commands
 - **Service-level test seams**: system-facing services use small injected clients or existing collaborators so runtime decision logic can be covered without live TCC or app-launch side effects
 - **UsageTracker**: SQLite-backed daily usage aggregation off the main actor
 - **Launch-at-login status modeling**: `LaunchAtLoginStatus` preserves enabled / approval-needed / disabled / not-found states
@@ -243,4 +268,4 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - No dedicated per-shortcut toggle history stack (single global previous-app memory is current approach)
 - No test seam around event-tap capture itself (core logic is testable; tap infrastructure requires real macOS)
 - Signed/notarized release build not yet produced (workflow documented in `docs/signing-and-release.md`)
-- Targeted manual macOS validation is still required for the 2026-03-24 toggle-stability and event-tap recovery redesign, especially system apps, hidden/minimized window paths, and timeout-stress behavior
+- Targeted manual macOS validation is still required for the 2026-04-08 capture/activation/hide redesign, especially Safari-only toggle-off, standard-shortcut vs Hyper parity, permission-state transitions, system apps, hidden/minimized window paths, and timeout-stress behavior

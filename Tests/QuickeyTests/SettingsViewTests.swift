@@ -15,7 +15,10 @@ func handleAppearRefreshesPermissionsAndLaunchAtLoginStatusFromLiveServiceState(
     #expect(preferences.shortcutCaptureStatus == ShortcutCaptureStatus(
         accessibilityGranted: false,
         inputMonitoringGranted: false,
-        eventTapActive: false
+        carbonHotKeysRegistered: false,
+        eventTapActive: false,
+        standardShortcutsReady: false,
+        hyperShortcutsReady: false
     ))
     #expect(preferences.launchAtLoginStatus == .disabled)
 
@@ -28,7 +31,10 @@ func handleAppearRefreshesPermissionsAndLaunchAtLoginStatusFromLiveServiceState(
     #expect(preferences.shortcutCaptureStatus == ShortcutCaptureStatus(
         accessibilityGranted: true,
         inputMonitoringGranted: true,
-        eventTapActive: false
+        carbonHotKeysRegistered: false,
+        eventTapActive: false,
+        standardShortcutsReady: true,
+        hyperShortcutsReady: true
     ))
     #expect(preferences.launchAtLoginStatus == .requiresApproval)
 }
@@ -51,7 +57,10 @@ func handleAppDidBecomeActiveRefreshesOnlyLaunchAtLoginStatus() {
     #expect(preferences.shortcutCaptureStatus == ShortcutCaptureStatus(
         accessibilityGranted: false,
         inputMonitoringGranted: false,
-        eventTapActive: false
+        carbonHotKeysRegistered: false,
+        eventTapActive: false,
+        standardShortcutsReady: false,
+        hyperShortcutsReady: false
     ))
     #expect(preferences.launchAtLoginStatus == .enabled)
 }
@@ -64,7 +73,7 @@ private func makePreferences(
     AppPreferences(
         shortcutManager: makeShortcutManager(
             permissionService: FakePermissionService(state: permissionState),
-            eventTapManager: FakeEventTapManager()
+            captureCoordinator: makeCaptureCoordinator()
         ),
         launchAtLoginService: LaunchAtLoginService(client: .init(
             status: { launchAtLoginState.statusValue },
@@ -82,14 +91,22 @@ private func makePreferences(
 @MainActor
 private func makeShortcutManager(
     permissionService: some PermissionServicing,
-    eventTapManager: some EventTapManaging
+    captureCoordinator: ShortcutCaptureCoordinator
 ) -> ShortcutManager {
     ShortcutManager(
         shortcutStore: ShortcutStore(),
         persistenceService: PersistenceService(),
         appSwitcher: FakeAppSwitcher(),
-        eventTapManager: eventTapManager,
+        captureCoordinator: captureCoordinator,
         permissionService: permissionService
+    )
+}
+
+@MainActor
+private func makeCaptureCoordinator() -> ShortcutCaptureCoordinator {
+    ShortcutCaptureCoordinator(
+        standardProvider: FakeCaptureProvider(),
+        hyperProvider: FakeHyperCaptureProvider()
     )
 }
 
@@ -125,12 +142,26 @@ private struct FakePermissionService: PermissionServicing {
 }
 
 @MainActor
-private final class FakeEventTapManager: EventTapManaging {
+private final class FakeCaptureProvider: ShortcutCaptureProvider {
     var isRunning = false
 
-    func start(onKeyPress: @escaping (Quickey.KeyPress) -> Bool) -> EventTapStartResult {
+    func start(onKeyPress: @escaping @MainActor @Sendable (Quickey.KeyPress) -> Void) {
         isRunning = true
-        return .started
+    }
+
+    func stop() {
+        isRunning = false
+    }
+
+    func updateRegisteredShortcuts(_ keyPresses: Set<Quickey.KeyPress>) {}
+}
+
+@MainActor
+private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
+    var isRunning = false
+
+    func start(onKeyPress: @escaping @MainActor @Sendable (Quickey.KeyPress) -> Void) {
+        isRunning = true
     }
 
     func stop() {

@@ -1,5 +1,7 @@
 # Toggle-off Performance Architecture Design
 
+> Superseded for implementation: on 2026-04-08 Quickey removed the restore-first / fast-lane / compatibility-lane toggle-off architecture in favor of a single direct-hide path (`privateState` + `Cmd+H` + async hide confirmation). Keep this document only as historical design context.
+
 **Date:** 2026-03-27
 **Branch:** fix/non-hyper-shortcut-toggle
 **Issue:** `#86` perf: Toggle-off 响应速度优化

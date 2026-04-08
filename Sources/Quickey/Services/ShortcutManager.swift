@@ -10,7 +10,7 @@ final class ShortcutManager {
     private let shortcutStore: ShortcutStore
     private let persistenceService: PersistenceService
     private let appSwitcher: any AppSwitching
-    private let eventTapManager: any EventTapManaging
+    private let captureCoordinator: ShortcutCaptureCoordinator
     private let permissionService: any PermissionServicing
     private let usageTracker: UsageTracker?
     private let keyMatcher = KeyMatcher()
@@ -18,19 +18,20 @@ final class ShortcutManager {
     private var permissionTimer: Timer?
     private var lastAccessibilityState: Bool = false
     private var lastInputMonitoringState: Bool = false
+    private var hyperKeyEnabled = false
 
     init(
         shortcutStore: ShortcutStore,
         persistenceService: PersistenceService,
         appSwitcher: any AppSwitching,
-        eventTapManager: any EventTapManaging = EventTapManager(),
+        captureCoordinator: ShortcutCaptureCoordinator = ShortcutCaptureCoordinator(),
         permissionService: any PermissionServicing = AccessibilityPermissionService(),
         usageTracker: UsageTracker? = nil
     ) {
         self.shortcutStore = shortcutStore
         self.persistenceService = persistenceService
         self.appSwitcher = appSwitcher
-        self.eventTapManager = eventTapManager
+        self.captureCoordinator = captureCoordinator
         self.permissionService = permissionService
         self.usageTracker = usageTracker
     }
@@ -40,13 +41,14 @@ final class ShortcutManager {
         logger.info("start(): trusted=\(trusted), isTrusted=\(self.permissionService.isTrusted())")
         DiagnosticLog.log("start(): trusted=\(trusted), isTrusted=\(permissionService.isTrusted())")
         startPermissionMonitoring()
+        rebuildIndex()
         attemptStartIfPermitted()
     }
 
     func stop() {
         permissionTimer?.invalidate()
         permissionTimer = nil
-        eventTapManager.stop()
+        captureCoordinator.stop()
     }
 
     func save(shortcuts: [AppShortcut]) {
@@ -65,15 +67,15 @@ final class ShortcutManager {
     }
 
     func shortcutCaptureStatus() -> ShortcutCaptureStatus {
-        ShortcutCaptureStatus(
+        captureCoordinator.status(
             accessibilityGranted: permissionService.isAccessibilityTrusted(),
-            inputMonitoringGranted: permissionService.isInputMonitoringTrusted(),
-            eventTapActive: eventTapManager.isRunning
+            inputMonitoringGranted: permissionService.isInputMonitoringTrusted()
         )
     }
 
     func setHyperKeyEnabled(_ enabled: Bool) {
-        eventTapManager.setHyperKeyEnabled(enabled)
+        hyperKeyEnabled = enabled
+        captureCoordinator.setHyperKeyEnabled(enabled)
     }
 
     // MARK: - Permission monitoring
@@ -91,12 +93,19 @@ final class ShortcutManager {
     func checkPermissionChange() {
         let axGranted = permissionService.isAccessibilityTrusted()
         let imGranted = permissionService.isInputMonitoringTrusted()
+        let snapshot = captureCoordinator.snapshot()
+        let accessibilityChanged = axGranted != lastAccessibilityState
+        let inputMonitoringChanged = imGranted != lastInputMonitoringState
 
-        logger.info("checkPermission: ax=\(axGranted) im=\(imGranted) tapRunning=\(self.eventTapManager.isRunning)")
-        DiagnosticLog.log("checkPermission: ax=\(axGranted) im=\(imGranted) tapRunning=\(eventTapManager.isRunning)")
+        logger.info(
+            "checkPermission: ax=\(axGranted) im=\(imGranted) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive)"
+        )
+        DiagnosticLog.log(
+            "checkPermission: ax=\(axGranted) im=\(imGranted) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive)"
+        )
 
         // Report individual permission changes
-        if axGranted != lastAccessibilityState {
+        if accessibilityChanged {
             if axGranted {
                 logger.notice("Accessibility permission: granted")
                 DiagnosticLog.log("Accessibility permission: granted")
@@ -108,7 +117,7 @@ final class ShortcutManager {
             lastAccessibilityState = axGranted
         }
 
-        if imGranted != lastInputMonitoringState {
+        if inputMonitoringChanged {
             if imGranted {
                 logger.notice("Input Monitoring permission: granted")
                 DiagnosticLog.log("Input Monitoring permission: granted")
@@ -120,18 +129,28 @@ final class ShortcutManager {
             lastInputMonitoringState = imGranted
         }
 
-        // Handle combined state transitions
-        let nowGranted = axGranted && imGranted
-
-        if nowGranted && !eventTapManager.isRunning {
-            logger.notice("All permissions granted — starting event tap")
-            DiagnosticLog.log("All permissions granted — starting event tap")
-            attemptStartIfPermitted()
-        } else if !nowGranted && eventTapManager.isRunning {
-            logger.error("Permission lost — stopping event tap")
-            DiagnosticLog.log("Permission lost — stopping event tap")
-            eventTapManager.stop()
+        guard axGranted else {
+            if snapshot.carbonHotKeysRegistered || snapshot.eventTapActive {
+                logger.error("Accessibility lost — stopping shortcut capture")
+                DiagnosticLog.log("Accessibility lost — stopping shortcut capture")
+                captureCoordinator.stop()
+            }
+            return
         }
+
+        let currentStatus = captureCoordinator.status(
+            accessibilityGranted: axGranted,
+            inputMonitoringGranted: imGranted
+        )
+        let captureNeedsResync = !currentStatus.standardShortcutsReady || !currentStatus.hyperShortcutsReady
+        guard accessibilityChanged || inputMonitoringChanged || captureNeedsResync else {
+            return
+        }
+
+        captureCoordinator.refreshInputMonitoring(granted: imGranted)
+        logger.notice("Accessibility ready — syncing shortcut capture")
+        DiagnosticLog.log("Accessibility ready — syncing shortcut capture")
+        attemptStartIfPermitted()
     }
 
     /// Send a user notification when a specific permission is revoked.
@@ -148,48 +167,36 @@ final class ShortcutManager {
     }
 
     private func attemptStartIfPermitted() {
-        guard permissionService.isTrusted() else {
+        guard permissionService.isAccessibilityTrusted() else {
             #if DEBUG
-            logger.debug("attemptStart: not trusted, skipping")
+            logger.debug("attemptStart: accessibility not granted, skipping")
             #endif
-            return
-        }
-        guard !eventTapManager.isRunning else {
-            #if DEBUG
-            logger.debug("attemptStart: already running")
-            #endif
+            captureCoordinator.stop()
             return
         }
 
-        rebuildIndex()
-        logger.info("attemptStart: starting event tap, shortcuts count: \(self.shortcutStore.shortcuts.count), triggerIndex count: \(self.triggerIndex.count)")
-        DiagnosticLog.log("attemptStart: starting event tap, shortcuts count: \(shortcutStore.shortcuts.count), triggerIndex count: \(triggerIndex.count)")
-        let startResult = eventTapManager.start { [weak self] keyPress in
+        captureCoordinator.refreshInputMonitoring(granted: permissionService.isInputMonitoringTrusted())
+        captureCoordinator.setHyperKeyEnabled(hyperKeyEnabled)
+        captureCoordinator.start(inputMonitoringGranted: permissionService.isInputMonitoringTrusted()) { [weak self] keyPress in
             #if DEBUG
             logger.debug("KeyPress received: keyCode=\(keyPress.keyCode) modifiers=\(keyPress.modifiers.rawValue)")
             #endif
-            return self?.handleKeyPress(keyPress) ?? false
+            _ = self?.handleKeyPress(keyPress)
         }
-        logger.info("Event tap start result: \(String(describing: startResult)), running: \(self.eventTapManager.isRunning)")
-        DiagnosticLog.log("Event tap start result: \(String(describing: startResult)), running: \(eventTapManager.isRunning)")
+        let snapshot = captureCoordinator.snapshot()
+        logger.info(
+            "attemptStart: shortcuts=\(self.shortcutStore.shortcuts.count) triggerIndex=\(self.triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive)"
+        )
+        DiagnosticLog.log(
+            "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive)"
+        )
     }
 
     // MARK: - Key handling
 
     private func rebuildIndex() {
         triggerIndex = keyMatcher.buildIndex(for: shortcutStore.shortcuts)
-        // Sync registered shortcuts to EventTapManager for synchronous event swallowing
-        syncRegisteredShortcuts()
-    }
-
-    /// Build a Set<KeyPress> from the trigger index and pass it to EventTapManager.
-    private func syncRegisteredShortcuts() {
-        var keyPresses = Set<KeyPress>()
-        for trigger in triggerIndex.keys {
-            let modifiers = NSEvent.ModifierFlags(rawValue: trigger.modifierMask)
-            keyPresses.insert(KeyPress(keyCode: trigger.keyCode, modifiers: modifiers))
-        }
-        eventTapManager.updateRegisteredShortcuts(keyPresses)
+        captureCoordinator.updateShortcuts(shortcutStore.shortcuts)
     }
 
     /// Returns `true` if the key press matched a shortcut (so the event should be consumed).

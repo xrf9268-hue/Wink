@@ -13,7 +13,7 @@ func initSnapshotsShortcutAndLaunchAtLoginState() {
     let preferences = AppPreferences(
         shortcutManager: makeShortcutManager(
             permissionService: FakePermissionService(ax: true, input: false),
-            eventTapManager: FakeEventTapManager()
+            captureCoordinator: makeCaptureCoordinator()
         ),
         hyperKeyService: HyperKeyService(runner: { _ in true }, defaults: defaults),
         launchAtLoginService: makeLaunchAtLoginService(state: MutableLaunchAtLoginState(status: .requiresApproval))
@@ -22,7 +22,10 @@ func initSnapshotsShortcutAndLaunchAtLoginState() {
     #expect(preferences.shortcutCaptureStatus == ShortcutCaptureStatus(
         accessibilityGranted: true,
         inputMonitoringGranted: false,
-        eventTapActive: false
+        carbonHotKeysRegistered: false,
+        eventTapActive: false,
+        standardShortcutsReady: true,
+        hyperShortcutsReady: true
     ))
     #expect(preferences.launchAtLoginStatus == .requiresApproval)
     #expect(preferences.launchAtLoginEnabled == false)
@@ -36,7 +39,7 @@ func setLaunchAtLoginDoesNotUpdateStateWhenRegistrationFails() {
     let preferences = AppPreferences(
         shortcutManager: makeShortcutManager(
             permissionService: FakePermissionService(ax: true, input: true),
-            eventTapManager: FakeEventTapManager()
+            captureCoordinator: makeCaptureCoordinator()
         ),
         launchAtLoginService: makeLaunchAtLoginService(state: state)
     )
@@ -56,7 +59,7 @@ func setHyperKeyEnabledTracksActualServiceStateAfterFailure() {
     let preferences = AppPreferences(
         shortcutManager: makeShortcutManager(
             permissionService: FakePermissionService(ax: true, input: true),
-            eventTapManager: FakeEventTapManager()
+            captureCoordinator: makeCaptureCoordinator()
         ),
         hyperKeyService: HyperKeyService(runner: { _ in false }, defaults: defaults)
     )
@@ -153,12 +156,26 @@ private struct FakePermissionService: PermissionServicing {
 }
 
 @MainActor
-private final class FakeEventTapManager: EventTapManaging {
+private final class FakeCaptureProvider: ShortcutCaptureProvider {
     var isRunning = false
 
-    func start(onKeyPress: @escaping (KeyPress) -> Bool) -> EventTapStartResult {
+    func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {
         isRunning = true
-        return .started
+    }
+
+    func stop() {
+        isRunning = false
+    }
+
+    func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {}
+}
+
+@MainActor
+private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
+    var isRunning = false
+
+    func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {
+        isRunning = true
     }
 
     func stop() {
@@ -181,14 +198,22 @@ private struct FakeAppSwitcher: AppSwitching {
 @MainActor
 private func makeShortcutManager(
     permissionService: some PermissionServicing,
-    eventTapManager: some EventTapManaging
+    captureCoordinator: ShortcutCaptureCoordinator
 ) -> ShortcutManager {
     ShortcutManager(
         shortcutStore: ShortcutStore(),
         persistenceService: PersistenceService(),
         appSwitcher: FakeAppSwitcher(),
-        eventTapManager: eventTapManager,
+        captureCoordinator: captureCoordinator,
         permissionService: permissionService
+    )
+}
+
+@MainActor
+private func makeCaptureCoordinator() -> ShortcutCaptureCoordinator {
+    ShortcutCaptureCoordinator(
+        standardProvider: FakeCaptureProvider(),
+        hyperProvider: FakeHyperCaptureProvider()
     )
 }
 
@@ -240,7 +265,7 @@ private func makePreferences(
     return AppPreferences(
         shortcutManager: makeShortcutManager(
             permissionService: FakePermissionService(ax: true, input: true),
-            eventTapManager: FakeEventTapManager()
+            captureCoordinator: makeCaptureCoordinator()
         ),
         launchAtLoginService: LaunchAtLoginService(client: .init(
             status: { launchAtLoginState.statusValue },

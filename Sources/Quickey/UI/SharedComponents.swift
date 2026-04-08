@@ -103,29 +103,68 @@ struct ShortcutLabel: View {
 // MARK: - Permission status banner
 
 struct PermissionStatusBanner: View {
-    let ready: Bool
+    let status: ShortcutCaptureStatus
     let onRefresh: () -> Void
 
+    private var tint: Color {
+        if !status.accessibilityGranted {
+            return .red
+        }
+        if status.standardShortcutsReady && status.hyperShortcutsReady {
+            return .green
+        }
+        return .orange
+    }
+
+    private var title: String {
+        if !status.accessibilityGranted {
+            return "Accessibility permission required"
+        }
+        if status.standardShortcutsReady && status.hyperShortcutsReady {
+            return "Shortcut capture ready"
+        }
+        if status.standardShortcutsReady {
+            return "Standard shortcuts ready"
+        }
+        return "Shortcut capture needs attention"
+    }
+
+    private var detail: String {
+        if let warning = status.permissionWarning {
+            return warning
+        }
+        if !status.hyperShortcutsReady {
+            return "Hyper shortcuts need Input Monitoring."
+        }
+        return "Standard and Hyper shortcuts are active."
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(ready ? Color.green : Color.orange)
-                .frame(width: 8, height: 8)
-            Text(ready ? "Shortcut capture ready" : "Permissions required for global shortcuts")
-                .font(.system(size: 12))
-                .foregroundStyle(ready ? .green : .orange)
-            Spacer()
-            Button("Refresh") { onRefresh() }
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 8, height: 8)
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(tint)
+                Spacer()
+                Button("Refresh") { onRefresh() }
+                    .font(.system(size: 11))
+                    .buttonStyle(.borderless)
+            }
+
+            Text(detail)
                 .font(.system(size: 11))
-                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background((ready ? Color.green : Color.orange).opacity(0.1))
+        .background(tint.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke((ready ? Color.green : Color.orange).opacity(0.2), lineWidth: 1)
+                .stroke(tint.opacity(0.2), lineWidth: 1)
         )
     }
 }

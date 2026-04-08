@@ -158,6 +158,19 @@ final class ToggleSessionCoordinator {
         return session
     }
 
+    @discardableResult
+    func cancelDeactivation(for bundleIdentifier: String) -> Session? {
+        guard var session = sessions[bundleIdentifier],
+              session.phase == .deactivating else {
+            return nil
+        }
+        let currentTime = now()
+        session.phase = .activeStable
+        session.lastActivityAt = currentTime
+        sessions[bundleIdentifier] = session
+        return session
+    }
+
     func completeDeactivation(for bundleIdentifier: String) {
         guard var session = sessions[bundleIdentifier],
               session.phase == .deactivating else {

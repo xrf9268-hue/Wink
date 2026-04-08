@@ -38,10 +38,11 @@ If working from a non-macOS host: state clearly that build/runtime validation is
 The codebase is feature-complete. Key architectural decisions:
 - AppKit-first, selective SwiftUI (documented in `docs/archive/app-structure-direction.md`); for new app-shell work, evaluate `MenuBarExtra`/`Settings`/`openSettings` first
 - O(1) precompiled trigger index for hot-path matching
+- Standard shortcuts use Carbon `EventHotKey`; Hyper-dependent shortcuts use the active event tap
 - EventTap lifecycle hardened with auto-recovery
 - SkyLight private API (`_SLPSSetFrontProcessWithOptions`) for app activation: on macOS 15, the `NSApplicationActivateIgnoringOtherApps` option flag is deprecated since macOS 14.0 with **no effect** (Apple SDK: `API_DEPRECATED("ignoringOtherApps is deprecated in macOS 14 and will have no effect.", macos(10.6, 14.0))`). The cooperative model (`yieldActivation(to:)` + `activate(from:options:)`, both `API_AVAILABLE(macos(14.0))`) requires the currently active app to explicitly yield, which is impossible for an accessory utility like Quickey that doesn't control other apps. `NSRunningApplication.activate(options:)` without the flag is a cooperative request that the system may decline. SkyLight is the only reliable way for an `LSUIElement` app to force-activate arbitrary targets.
 - For self-activation (e.g., showing the settings window), use `NSApp.activate()` (`API_AVAILABLE(macos(14.0))`). Do not use the soft-deprecated `activateIgnoringOtherApps:` (`API_DEPRECATED("This method will be deprecated in a future release. Use NSApp.activate instead.")`)
-- Shortcut readiness is not just permission state: require `AXIsProcessTrusted()`, `CGPreflightListenEventAccess()`, and successful active event-tap startup
+- Shortcut readiness is transport-specific, not just permission state: standard shortcuts require Accessibility plus successful Carbon registration; Hyper shortcuts additionally require `CGPreflightListenEventAccess()` and a successfully started active event tap
 - Do not reintroduce passive `.listenOnly` fallback for normal shortcut interception; it cannot consume events (Apple SDK: `kCGEventTapOptionListenOnly = 0x00000001` is a passive listener)
 - Preserve multi-state system API semantics when behavior/UI depends on them; do not collapse `SMAppService.Status` to a single bool
 
@@ -57,10 +58,10 @@ Before making large structural changes, read `docs/architecture.md`.
 
 ## Toggle state management
 
-- Apps can become frontmost through paths Quickey does not control (Dock click, Cmd-Tab, another app's restore). Do not assume every frontmost app was activated by Quickey.
+- Apps can become frontmost through paths Quickey does not control (Dock click, Cmd-Tab, macOS choosing the next app after a hide, or another app flow returning them). Do not assume every frontmost app was activated by Quickey.
 - The `ACTIVE_UNTRACKED` path handles apps that are active+frontmost but have no `stableActivationState` or `pendingActivationState`. It hides the app and lets macOS choose the next foreground app. This is the correct fallback when tracking state is missing.
-- `previousApp` (the app to restore on toggle-off) can self-reference the target bundle. Always guard `previousApp != shortcut.bundleIdentifier` before recording or using it.
-- Session-owned `previousBundle` in `ToggleSessionCoordinator` is the durable source of truth for restore targets. `FrontmostApplicationTracker` captures snapshots; the coordinator owns the value across activation/deactivation phases.
+- `previousApp` session context can self-reference the target bundle. Always guard `previousApp != shortcut.bundleIdentifier` before recording or using it.
+- Session-owned `previousBundle` in `ToggleSessionCoordinator` is durable activation/deactivation context. `FrontmostApplicationTracker` captures snapshots; the coordinator owns the value across phases.
 - Toggle cooldown (400ms per-bundle) and debounce (200ms) are safety nets behind the primary Layer 1 autorepeat filter (`kCGKeyboardEventAutorepeat`). Changes to these values require verification via `scripts/e2e-full-test.sh` and physical key repeat testing.
 
 ## Concurrency and actor boundaries
@@ -91,7 +92,7 @@ Highest-value test targets:
 - Async view-model refresh ordering and cancellation ("last selection wins")
 
 If a change cannot be verified on Linux, document what must be verified on macOS.
-- End-to-end shortcut testing on macOS: `osascript` key events penetrate session-level event taps; `cliclick` does not. Use `osascript -e 'tell application "System Events" to key code ...'` for E2E validation of the full event tap → match → toggle pipeline.
+- End-to-end shortcut testing on macOS: `osascript` key events are useful for driving the live shortcut pipeline; `cliclick` does not cover the same path reliably. Use `osascript -e 'tell application "System Events" to key code ...'` for E2E validation of shortcut capture → match → toggle, and remember that Hyper coverage still exercises the event-tap path while standard shortcuts route through Carbon.
 - `kCGKeyboardEventAutorepeat` (Apple SDK: "non-zero when this is an autorepeat of a key-down") must be filtered in the event tap callback to prevent held-key loops.
 
 ## macOS runtime validation policy

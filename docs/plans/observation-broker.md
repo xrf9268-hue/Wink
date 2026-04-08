@@ -1,5 +1,7 @@
 # Plan: ObservationBroker 与 Bounded Cheap Confirmation
 
+> Superseded for implementation: `ObservationBroker` and the associated compatibility-lane confirmation design were removed on 2026-04-08 when Quickey converged toggle-off to a single direct-hide path. Keep this plan only as historical context.
+
 **Issue:** #90
 **Status:** Draft
 **Dependencies:** #87 (closed), prefer after #89 (PR #100 open)

@@ -1,15 +1,48 @@
 # Quickey Troubleshooting Guidance
 
+## Hyper State Must Be Replayed After Event-Tap Startup
+
+**Issue**
+After splitting shortcut capture into Carbon-for-standard and event-tap-for-Hyper, Hyper shortcuts can appear "enabled" while doing nothing immediately after launch or restart.
+
+**Cause**
+The desired Hyper state may be set before the event tap has actually started. If the provider forwards `setHyperKeyEnabled(true)` before `EventTapManager.start()` creates its internal callback box, the new tap comes up without Hyper armed even though the app preference and hidutil mapping are both already enabled.
+
+**Practical guidance**
+Treat Hyper enablement as desired provider state, not just a fire-and-forget imperative call. Persist it in the event-tap-backed provider and replay it immediately after `start()` succeeds. When validating, do not stop at "eventTap=true" in logs; also confirm live Hyper behavior via `HYPER_INJECT` / `EVENT_TAP_SWALLOW` or real shortcut matches after a fresh launch.
+
+## `NSRunningApplication.hide()` Return Value Is Not the Success Signal
+
+**Issue**
+`NSRunningApplication.hide()` can log `apiReturn=false` even when the target app actually hides successfully.
+
+**Cause**
+On macOS, hide is an asynchronous request. The immediate API return does not reliably express whether the app will disappear a few milliseconds later.
+
+**Practical guidance**
+Log the direct hide request for transport visibility, but treat `TOGGLE_HIDE_CONFIRMED` as the operational success signal. Confirm hide via `NSWorkspace.didHideApplicationNotification` and workspace/frontmost plus hidden-or-windowless observation, not via the raw boolean return value.
+
+## Permission Polling Must Not Imply Capture Re-Registration
+
+**Issue**
+A healthy permission poll can still create noisy logs and unnecessary provider churn if every timer tick re-syncs shortcut capture.
+
+**Cause**
+Permission health and capture re-registration are separate questions. Polling every few seconds is acceptable for observability, but blindly calling the start/sync path on every poll couples monitoring to mutation.
+
+**Practical guidance**
+Keep the periodic permission snapshot lightweight. Only re-sync providers when Accessibility or Input Monitoring actually changed, or when the capture status shows a genuine degraded/not-ready state. In steady state, repeated `checkPermission` lines are acceptable; repeated `attemptStart` / "syncing shortcut capture" lines are not.
+
 ## CGEvent Tap Permissions
 
 **Issue**
 `AXIsProcessTrusted()` can return true while `CGEvent.tapCreate()` still fails.
 
 **Cause**
-On macOS 15, a working event tap requires both Accessibility and Input Monitoring. Either permission alone is not enough.
+On macOS 15, the active event-tap path requires both Accessibility and Input Monitoring. Either permission alone is not enough for Hyper/event-tap capture, but this does not apply to Carbon-registered standard shortcuts.
 
 **Practical guidance**
-Check both `AXIsProcessTrusted()` and `CGPreflightListenEventAccess()` as prerequisites, but treat shortcut capture as ready only after the active event tap starts successfully. When validating on a clean machine, request and confirm both permissions, then verify the tap startup path.
+Check both `AXIsProcessTrusted()` and `CGPreflightListenEventAccess()` before starting the Hyper/event-tap path, but keep readiness split by transport: standard shortcuts can still be ready with Accessibility + Carbon alone, while Hyper shortcuts are only ready after the active event tap starts successfully.
 
 ## Ad-hoc Signing and TCC
 
@@ -93,18 +126,18 @@ Repeated shortcut presses can flap between "activate" and "toggle off" if Quicke
 The first trigger may only have started activation, while the second trigger arrives before the app has reached a stable frontmost state with a usable window.
 
 **Practical guidance**
-Do not let "activation requested" mean "activation complete". Require a short post-activation confirmation pass and only allow toggle-off from a stable active state. During pending or degraded activation, a repeat trigger should re-confirm or re-attempt activation instead of restoring away immediately.
+Do not let "activation requested" mean "activation complete". Require a short post-activation confirmation pass and only allow toggle-off from a stable active state. During pending or degraded activation, a repeat trigger should re-confirm or re-attempt activation instead of making hide/reactivate decisions from a transient snapshot.
 
 ## Session-Owned Previous App Memory
 
 **Issue**
-Restore confirmation becomes unreliable if previous-app memory is cleared as soon as a restore attempt starts.
+Session context becomes incoherent if previous-app memory is cleared as soon as activation is accepted.
 
 **Cause**
-The restore path needs the same `previousBundle` to survive activation, pending confirmation, deactivation, and retry/degraded branches. A destructive read from a lightweight tracker loses that ownership too early.
+Even after removing restore-first toggle-off, the same `previousBundle` still needs to survive activation, pending confirmation, stable state, and deactivation as durable session context. A destructive read from a lightweight tracker loses that ownership too early.
 
 **Practical guidance**
-Let the toggle session own the durable `previousBundle` once a trigger is accepted. Use `FrontmostApplicationTracker` to capture the current frontmost app and execute restore attempts, but keep the authoritative previous-app value on the coordinator session until the session is reset.
+Let the toggle session own the durable `previousBundle` once a trigger is accepted. Use `FrontmostApplicationTracker` to capture current frontmost context, but keep the authoritative previous-app value on the coordinator session until the session is reset. Treat it as session context and observability metadata, not as a reason to reintroduce restore-first toggle-off.
 
 ## Notification-Driven Toggle Invalidation
 
@@ -128,13 +161,13 @@ Some system utilities use nonstandard scene, hide/unhide, or window activation b
 **Practical guidance**
 Do not force all apps through one generic "front app with visible window means success" rule. Keep a degraded-success path for system or window-weird apps, log why the app is degraded, and avoid counting degraded activation as safe toggle-off state.
 
-## Cross-App Restore Breaks Toggle-Off Tracking
+## Untracked Frontmost Apps Need a Direct Hide Path
 
 **Issue**
-When App A's toggle-off restores App B to the foreground, pressing App B's shortcut fails to toggle it off — instead it re-activates or silently does nothing.
+An app can be frontmost and apparently stable even though Quickey has no active stable session for it.
 
 **Cause**
-`stableActivationState` for App B was cleared when App A was toggled on (because `acceptPendingActivation` clears stable state for the new target's bundle, and `clearActivationTracking` clears the old target). When App B returns to the foreground via another app's restore, no code recreates its `stableActivationState`. Without stable state, `shouldToggleOff()` returns false, and the code falls through to the activate path. Additionally, `frontmostTracker.noteCurrentFrontmostApp(excluding: B)` sees B as the frontmost app and skips it, leaving `lastNonTargetBundleIdentifier` as B itself — a self-reference.
+Apps can become frontmost through paths Quickey does not own: Dock click, Cmd-Tab, macOS choosing the next app after a hide, or another app flow returning them to the foreground. `stableActivationState` only exists for apps Quickey itself recently stabilized, so these externally surfaced apps may otherwise fall through to the activate path.
 
 **Practical guidance**
 When the target app is already active and frontmost but has no tracking state, treat it as an untracked toggle-off: hide the app and let macOS bring the next app forward. Guard against self-referencing `previousApp` (target == previous) by explicitly clearing it. Log the `ACTIVE_UNTRACKED` path with coordinator phase and tracker state for post-hoc analysis.
@@ -142,21 +175,13 @@ When the target app is already active and frontmost but has no tracking state, t
 ## Previous App Self-Reference in Tracker
 
 **Issue**
-`previousApp` resolves to the target app's own bundle identifier, causing toggle-off to attempt restoring the same app it just hid.
+`previousApp` resolves to the target app's own bundle identifier, poisoning activation context and making later toggle decisions misleading.
 
 **Cause**
-When App A is frontmost and App B is toggled on, `noteCurrentFrontmostApp(excluding: B)` correctly records A. But `lastNonTargetBundleIdentifier` is not cleared when App B's toggle-off restores App A. If the user then toggles App A, `noteCurrentFrontmostApp(excluding: A)` sees A as frontmost, skips the update, and the stale value (which happens to be A from the previous cycle) persists.
+When App A is frontmost and App B is toggled on, `noteCurrentFrontmostApp(excluding: B)` correctly records A. But after App B is hidden and macOS brings App A back, `noteCurrentFrontmostApp(excluding: A)` sees A as frontmost and skips the update, so a stale self-reference can persist into the next activation cycle.
 
 **Practical guidance**
 Always check `previousApp != shortcut.bundleIdentifier` before recording it. If a self-reference is detected, treat `previousApp` as nil and log the anomaly.
-
-## Toggle State Machine Must Handle External Activation
-
-**Issue**
-Apps can become frontmost through paths Quickey doesn't control (Dock click, Cmd-Tab, another app's restore). These externally-activated apps have no `stableActivationState` or coordinator session.
-
-**Practical guidance**
-Do not assume that every frontmost app was activated by Quickey. Add a catch-all path for apps that are active+frontmost but untracked. The `ACTIVE_UNTRACKED` path serves this purpose — it hides the app without attempting to restore a specific previous app, since the previous app info is unreliable in this state.
 
 ## DiagnosticLog.log() Uses queue.async to Avoid Blocking
 
@@ -173,6 +198,7 @@ Switched to `queue.async`. The serial queue still guarantees ordered output. Tim
 
 **Context**
 Compared Quickey's toggle implementation with alt-tab-macos (https://github.com/lwouis/alt-tab-macos), the most mature macOS window switcher.
+This comparison predates the 2026-04-08 capture split and front-process-first activation hot path, so read it as historical reference, not as a full description of the current runtime.
 
 **Key findings**
 - alt-tab uses a "show-select-focus" model, not toggle. No stableActivationState equivalent — just a `appIsBeingUsed` boolean.
@@ -192,7 +218,7 @@ Compared Quickey's toggle implementation with alt-tab-macos (https://github.com/
 - Hotkey 用 Carbon RegisterEventHotKey 而非 CGEventTap（更轻量但功能受限）
 
 **Practical guidance**
-Quickey 的三层激活方案（SkyLight + 0xf8 makeKeyWindow + AXRaise）是三个参考项目中最完整的，与 alt-tab 一致，优于 Hammerspoon 的双层方案。toggle 状态机（pending/stable/degraded）是 Quickey 独有的需求（alt-tab 和 Hammerspoon 都不做 toggle），设计合理。后台线程 event tap 优于 Hammerspoon 的主线程方案。可优化方向：SkyLight/AX 调用可考虑移至后台队列（alt-tab 做法），但需评估 @MainActor 约束。
+仍然成立的结论有两点：Quickey 需要 SkyLight 作为 LSUIElement 的可靠强激活基础；后台线程 event tap 仍优于主线程 tap。已经过时的部分是“完整三层激活始终在热路径上”和“所有快捷键都要靠 event tap”这两个心智模型。当前更准确的做法是：标准快捷键优先走 Carbon，Hyper 才走 event tap；激活热路径先做 front-process 激活，只在观察显示未稳定时再逐级升级到 `makeKeyWindow` / `AXRaise` / window recovery。
 
 ## CGEvent.timestamp Is Nanoseconds, Not Mach Ticks
 

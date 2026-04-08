@@ -4,8 +4,9 @@ Quickey is a macOS menu bar app that binds global shortcuts to target apps, with
 
 ## Highlights
 - Global shortcuts that launch or toggle target apps with a single keystroke
-- Thor-like semantics that restore, activate, or hide apps depending on state
-- Accurate shortcut readiness that reflects both permissions and live event-tap health
+- Thor-like semantics that activate, re-activate hidden apps, or directly hide the frontmost target depending on state
+- Standard shortcuts use Carbon hotkeys; Hyper shortcuts use the active event tap
+- Accurate shortcut readiness reflects Accessibility, Input Monitoring, Carbon registration, and live Hyper event-tap health
 - Supports letters, modifiers, Hyper Key, F-keys, arrows, and space
 - Launch at login support with system approval surfaced in the app
 - Insights view for recent usage trends and app ranking
@@ -22,7 +23,7 @@ Quickey is a macOS menu bar app that binds global shortcuts to target apps, with
 swift build
 swift test
 ./scripts/package-app.sh        # release build + .app bundle
-./scripts/e2e-full-test.sh      # end-to-end test suite (requires Accessibility + Input Monitoring)
+./scripts/e2e-full-test.sh      # end-to-end test suite (Accessibility required; Input Monitoring needed for Hyper coverage)
 ```
 
 ## Loop Job
@@ -41,4 +42,4 @@ Each iteration runs preflight checks, processes open PRs, selects an issue, impl
 - [`docs/signing-and-release.md`](./docs/signing-and-release.md)
 
 ## Project Status
-Quickey is feature-complete. Broad macOS validation has landed, targeted revalidation for the 2026-03-21 remediation set is still pending, and a signed and notarized release is still pending.
+Quickey is feature-complete. Broad macOS validation has landed, Safari/Hyper relaunch behavior was revalidated on 2026-04-08 after the capture/activation/hide refactor, broader app-matrix revalidation is still pending, and a signed and notarized release is still pending.

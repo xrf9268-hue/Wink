@@ -1,5 +1,7 @@
 # Toggle-off Performance Rollout Implementation Plan
 
+> Superseded for implementation: on 2026-04-08 Quickey deleted the `ToggleRuntime` / `TapContextCache` / `ActivationPipeline` / `ObservationBroker` restore-first rollout and replaced it with a single direct-hide path. Keep this plan only as historical rollout context.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Land the approved toggle-off performance architecture in controlled milestones, starting with reusable runtime foundations and shadow mode, then enabling fast lane for normal apps without regressing compatibility behavior.

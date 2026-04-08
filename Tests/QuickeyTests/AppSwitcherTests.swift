@@ -212,6 +212,26 @@ func postActionLogMessageUsesEffectiveStableOverride() {
     #expect(message.contains("stable=false"))
 }
 
+@Test
+func hideTransportUsesRunningApplicationHide() {
+    #expect(AppSwitcher.hideTransport == .runningApplicationHide)
+}
+
+@Test
+func hideRequestLogUsesRequestNaming() {
+    #expect(AppSwitcher.hideRequestLogEvent == "HIDE_REQUEST")
+}
+
+@Test
+func activationDefaultsToFrontProcessOnly() {
+    #expect(AppSwitcher.windowServerActivationMode == .frontProcessOnly)
+}
+
+@Test
+func postHidePhaseUsesHideNaming() {
+    #expect(AppSwitcher.PostActionPhase.postHideState.rawValue == "POST_HIDE_STATE")
+}
+
 @Test @MainActor
 func toggleLifecycleLogMessageIncludesStructuredObservationFields() {
     let switcher = AppSwitcher(frontmostTracker: makeTrackerForAppSwitcherTests())
@@ -331,8 +351,8 @@ func confirmationWithoutVisibleWindowEvidenceDoesNotPromoteStable() {
         hasMainWindow: false,
         windowObservationSucceeded: true,
         windowObservationFailureReason: nil,
-        classification: .windowlessOrAccessory,
-        classificationReason: "no visible windows"
+        classification: .nonStandardWindowed,
+        classificationReason: "window metadata missing during activation confirmation"
     )
 
     let promoted = switcher.promotePendingActivationIfCurrent(
@@ -434,6 +454,95 @@ func recoverWindowlessAppStageCompletionHappensBeforeNextConfirmation() {
 
     #expect(events == ["confirm:0", "recover:axRaise", "confirm:1"])
     #expect(switcher.stableActivationState?.bundleIdentifier == "com.apple.Home")
+}
+
+@Test @MainActor
+func visibleWindowActivationEscalatesMakeKeyWindowBeforeAXRaise() {
+    let scheduler = ManualConfirmationScheduler()
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        confirmationClient: .init(
+            now: { 50 },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        )
+    )
+    let state = switcher.acceptPendingActivation(
+        for: "com.apple.Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        startedAt: 50
+    )
+    let shortcut = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "s",
+        modifierFlags: ["command"]
+    )
+    var snapshots = [
+        ActivationObservationSnapshot(
+            targetBundleIdentifier: "com.apple.Safari",
+            observedFrontmostBundleIdentifier: "com.apple.Safari",
+            targetIsActive: true,
+            targetIsHidden: false,
+            visibleWindowCount: 1,
+            hasFocusedWindow: false,
+            hasMainWindow: true,
+            windowObservationSucceeded: true,
+            windowObservationFailureReason: nil,
+            classification: .regularWindowed,
+            classificationReason: "frontmost but key window not settled"
+        ),
+        ActivationObservationSnapshot(
+            targetBundleIdentifier: "com.apple.Safari",
+            observedFrontmostBundleIdentifier: "com.apple.Safari",
+            targetIsActive: true,
+            targetIsHidden: false,
+            visibleWindowCount: 1,
+            hasFocusedWindow: false,
+            hasMainWindow: true,
+            windowObservationSucceeded: true,
+            windowObservationFailureReason: nil,
+            classification: .regularWindowed,
+            classificationReason: "still not focused after makeKeyWindow"
+        ),
+        ActivationObservationSnapshot(
+            targetBundleIdentifier: "com.apple.Safari",
+            observedFrontmostBundleIdentifier: "com.apple.Safari",
+            targetIsActive: true,
+            targetIsHidden: false,
+            visibleWindowCount: 1,
+            hasFocusedWindow: true,
+            hasMainWindow: true,
+            windowObservationSucceeded: true,
+            windowObservationFailureReason: nil,
+            classification: .regularWindowed,
+            classificationReason: "focused after escalation"
+        )
+    ]
+    var events: [String] = []
+
+    switcher.schedulePendingConfirmation(
+        state: state,
+        shortcut: shortcut,
+        activationPath: .activate,
+        observe: {
+            let snapshot = snapshots.removeFirst()
+            events.append("confirm:\(snapshot.hasFocusedWindow)")
+            return snapshot
+        },
+        recoverIfNeeded: { stage, completion in
+            events.append("recover:\(stage.rawValue)")
+            completion()
+        }
+    )
+
+    scheduler.runNext()
+    scheduler.runNext()
+    scheduler.runNext()
+
+    #expect(events == ["confirm:false", "recover:makeKeyWindow", "confirm:false", "recover:axRaise", "confirm:true"])
+    #expect(switcher.stableActivationState?.bundleIdentifier == "com.apple.Safari")
 }
 
 // MARK: - Coordinator integration tests
@@ -539,6 +648,306 @@ func shouldToggleOffReturnsFalseWhenCoordinatorInvalidatesSession() {
 }
 
 @Test @MainActor
+func shouldToggleOffKeepsStableStateWhileDeactivationIsPending() {
+    let clock = MutableClock(time: 100)
+    let coordinator = ToggleSessionCoordinator(now: { clock.time })
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        confirmationClient: .init(now: { clock.time }, schedule: { _, _ in }),
+        sessionCoordinator: coordinator
+    )
+
+    let pending = switcher.acceptPendingActivation(
+        for: "com.apple.Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        startedAt: clock.time
+    )
+    clock.time = 101
+    let stableSnapshot = ActivationObservationSnapshot(
+        targetBundleIdentifier: "com.apple.Safari",
+        observedFrontmostBundleIdentifier: "com.apple.Safari",
+        targetIsActive: true,
+        targetIsHidden: false,
+        visibleWindowCount: 1,
+        hasFocusedWindow: true,
+        hasMainWindow: true,
+        windowObservationSucceeded: true,
+        windowObservationFailureReason: nil,
+        classification: .regularWindowed,
+        classificationReason: "visible focused main window"
+    )
+    switcher.promotePendingActivationIfCurrent(
+        bundleIdentifier: "com.apple.Safari",
+        generation: pending.generation,
+        snapshot: stableSnapshot
+    )
+
+    let deactivation = switcher.acceptPendingDeactivation(
+        for: "com.apple.Safari",
+        appName: "Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        activationPath: .hide,
+        startedAt: clock.time
+    )
+
+    #expect(coordinator.session(for: "com.apple.Safari")?.phase == .deactivating)
+    #expect(deactivation.bundleIdentifier == "com.apple.Safari")
+    #expect(switcher.shouldToggleOff(bundleIdentifier: "com.apple.Safari", runningAppIsActive: true) == false)
+    #expect(switcher.stableActivationState?.bundleIdentifier == "com.apple.Safari")
+    #expect(switcher.pendingDeactivationState == deactivation)
+}
+
+@Test @MainActor
+func deactivationConfirmationWaitsUntilTargetIsActuallyHidden() {
+    let clock = MutableClock(time: 200)
+    let scheduler = ManualConfirmationScheduler()
+    let coordinator = ToggleSessionCoordinator(now: { clock.time })
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        sessionCoordinator: coordinator
+    )
+
+    let pending = switcher.acceptPendingActivation(
+        for: "com.apple.Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        startedAt: clock.time
+    )
+    clock.time = 201
+    let stableSnapshot = ActivationObservationSnapshot(
+        targetBundleIdentifier: "com.apple.Safari",
+        observedFrontmostBundleIdentifier: "com.apple.Safari",
+        targetIsActive: true,
+        targetIsHidden: false,
+        visibleWindowCount: 1,
+        hasFocusedWindow: true,
+        hasMainWindow: true,
+        windowObservationSucceeded: true,
+        windowObservationFailureReason: nil,
+        classification: .regularWindowed,
+        classificationReason: "visible focused main window"
+    )
+    switcher.promotePendingActivationIfCurrent(
+        bundleIdentifier: "com.apple.Safari",
+        generation: pending.generation,
+        snapshot: stableSnapshot
+    )
+
+    let deactivation = switcher.acceptPendingDeactivation(
+        for: "com.apple.Safari",
+        appName: "Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        activationPath: .hide,
+        startedAt: clock.time
+    )
+    let shortcut = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "s",
+        modifierFlags: ["command"]
+    )
+
+    var snapshots = [
+        ActivationObservationSnapshot(
+            targetBundleIdentifier: "com.apple.Safari",
+            observedFrontmostBundleIdentifier: "com.apple.Terminal",
+            targetIsActive: false,
+            targetIsHidden: false,
+            visibleWindowCount: 1,
+            hasFocusedWindow: false,
+            hasMainWindow: false,
+            windowObservationSucceeded: true,
+            windowObservationFailureReason: nil,
+            classification: .regularWindowed,
+            classificationReason: "window still visible behind previous app"
+        ),
+        ActivationObservationSnapshot(
+            targetBundleIdentifier: "com.apple.Safari",
+            observedFrontmostBundleIdentifier: "com.apple.Terminal",
+            targetIsActive: false,
+            targetIsHidden: true,
+            visibleWindowCount: 0,
+            hasFocusedWindow: false,
+            hasMainWindow: false,
+            windowObservationSucceeded: true,
+            windowObservationFailureReason: nil,
+            classification: .regularWindowed,
+            classificationReason: "app is hidden"
+        )
+    ]
+
+    switcher.schedulePendingDeactivation(
+        state: deactivation,
+        shortcut: shortcut,
+        previousBundle: "com.apple.Terminal",
+        activationPath: .hide,
+        observe: {
+            snapshots.removeFirst()
+        }
+    )
+
+    scheduler.runNext()
+
+    #expect(switcher.stableActivationState?.bundleIdentifier == "com.apple.Safari")
+    #expect(switcher.pendingDeactivationState == deactivation)
+    #expect(coordinator.session(for: "com.apple.Safari")?.phase == .deactivating)
+
+    clock.time = 202
+    scheduler.runNext()
+
+    #expect(switcher.pendingDeactivationState == nil)
+    #expect(switcher.stableActivationState == nil)
+    #expect(coordinator.session(for: "com.apple.Safari")?.phase == .idle)
+}
+
+@Test @MainActor
+func deactivationConfirmationRevertsToStableWhenHideDoesNotSettleBeforeDeadline() {
+    let clock = MutableClock(time: 300)
+    let scheduler = ManualConfirmationScheduler()
+    let coordinator = ToggleSessionCoordinator(now: { clock.time })
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        sessionCoordinator: coordinator
+    )
+
+    let pending = switcher.acceptPendingActivation(
+        for: "com.apple.Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        startedAt: clock.time
+    )
+    clock.time = 301
+    let stableSnapshot = ActivationObservationSnapshot(
+        targetBundleIdentifier: "com.apple.Safari",
+        observedFrontmostBundleIdentifier: "com.apple.Safari",
+        targetIsActive: true,
+        targetIsHidden: false,
+        visibleWindowCount: 1,
+        hasFocusedWindow: true,
+        hasMainWindow: true,
+        windowObservationSucceeded: true,
+        windowObservationFailureReason: nil,
+        classification: .regularWindowed,
+        classificationReason: "visible focused main window"
+    )
+    switcher.promotePendingActivationIfCurrent(
+        bundleIdentifier: "com.apple.Safari",
+        generation: pending.generation,
+        snapshot: stableSnapshot
+    )
+
+    let deactivation = switcher.acceptPendingDeactivation(
+        for: "com.apple.Safari",
+        appName: "Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        activationPath: .hide,
+        startedAt: clock.time
+    )
+    let shortcut = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "s",
+        modifierFlags: ["command"]
+    )
+
+    switcher.schedulePendingDeactivation(
+        state: deactivation,
+        shortcut: shortcut,
+        previousBundle: "com.apple.Terminal",
+        activationPath: .hide,
+        observe: {
+            ActivationObservationSnapshot(
+                targetBundleIdentifier: "com.apple.Safari",
+                observedFrontmostBundleIdentifier: "com.apple.Terminal",
+                targetIsActive: false,
+                targetIsHidden: false,
+                visibleWindowCount: 1,
+                hasFocusedWindow: false,
+                hasMainWindow: false,
+                windowObservationSucceeded: true,
+                windowObservationFailureReason: nil,
+                classification: .regularWindowed,
+                classificationReason: "window remains visible"
+            )
+        }
+    )
+
+    scheduler.runNext()
+    clock.time = 301.1
+    scheduler.runNext()
+    clock.time = 301.2
+    scheduler.runNext()
+    clock.time = 301.3
+    scheduler.runNext()
+
+    #expect(switcher.pendingDeactivationState == nil)
+    #expect(switcher.stableActivationState?.bundleIdentifier == "com.apple.Safari")
+    #expect(coordinator.session(for: "com.apple.Safari")?.phase == .activeStable)
+}
+
+@Test @MainActor
+func workspaceHideNotificationCompletesPendingDeactivationWithHideConfirmedLog() {
+    let clock = MutableClock(time: 500)
+    let coordinator = ToggleSessionCoordinator(now: { clock.time })
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        confirmationClient: .init(now: { clock.time }, schedule: { _, _ in }),
+        sessionCoordinator: coordinator
+    )
+
+    let pending = switcher.acceptPendingActivation(
+        for: "com.apple.Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        startedAt: clock.time
+    )
+    clock.time = 501
+    let stableSnapshot = ActivationObservationSnapshot(
+        targetBundleIdentifier: "com.apple.Safari",
+        observedFrontmostBundleIdentifier: "com.apple.Safari",
+        targetIsActive: true,
+        targetIsHidden: false,
+        visibleWindowCount: 1,
+        hasFocusedWindow: true,
+        hasMainWindow: true,
+        windowObservationSucceeded: true,
+        windowObservationFailureReason: nil,
+        classification: .regularWindowed,
+        classificationReason: "visible focused main window"
+    )
+    switcher.promotePendingActivationIfCurrent(
+        bundleIdentifier: "com.apple.Safari",
+        generation: pending.generation,
+        snapshot: stableSnapshot
+    )
+
+    switcher.acceptPendingDeactivation(
+        for: "com.apple.Safari",
+        appName: "Safari",
+        previousBundleIdentifier: "com.apple.Terminal",
+        activationPath: .hide,
+        startedAt: clock.time
+    )
+
+    let message = switcher.handleWorkspaceHideNotification(bundleIdentifier: "com.apple.Safari")
+
+    #expect(message?.contains("TOGGLE_HIDE_CONFIRMED") == true)
+    #expect(message?.contains("activationPath=hide") == true)
+    #expect(switcher.pendingDeactivationState == nil)
+    #expect(switcher.stableActivationState == nil)
+    #expect(coordinator.session(for: "com.apple.Safari")?.phase == .idle)
+}
+
+@Test @MainActor
 func clearActivationTrackingResetsCoordinatorSession() {
     let coordinator = ToggleSessionCoordinator(now: { 100 })
     let switcher = AppSwitcher(
@@ -604,10 +1013,7 @@ func cooldownBlocksBeforeNewGenerationIsAllocated() {
 }
 
 @Test @MainActor
-func compatibilityToggleLogsStructuredMetricFields() {
-    // Verify the structured log message format includes the required fields.
-    // This tests the postActionLogMessage helper to verify it produces the
-    // expected field structure without needing a full toggle-off integration.
+func hideToggleLogsStructuredMetricFields() {
     let switcher = AppSwitcher(
         frontmostTracker: makeTrackerForAppSwitcherTests()
     )
@@ -633,21 +1039,19 @@ func compatibilityToggleLogsStructuredMetricFields() {
 
     let message = switcher.postActionLogMessage(
         for: shortcut,
-        phase: .postRestoreState,
+        phase: .postHideState,
         snapshot: snapshot
     )
 
-    #expect(message.contains("POST_RESTORE_STATE"))
+    #expect(message.contains("POST_HIDE_STATE"))
+    #expect(!message.contains("POST_RESTORE_STATE"))
     #expect(message.contains("com.test.MetricsApp"))
 }
 
 @MainActor
 private func makeTrackerForAppSwitcherTests() -> FrontmostApplicationTracker {
     FrontmostApplicationTracker(client: .init(
-        currentFrontmostBundleIdentifier: { nil },
-        processIdentifierForRunningApplication: { _ in nil },
-        activateRunningApplication: { _ in false },
-        setFrontProcess: { _ in false }
+        currentFrontmostBundleIdentifier: { nil }
     ))
 }
 

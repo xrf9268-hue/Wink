@@ -1,5 +1,7 @@
 # Toggle Stability and Event Tap Reliability Design
 
+> Partially superseded for toggle-off: the restore-first / hide-fallback portions of this design were replaced on 2026-04-08 by a direct-hide-only toggle-off path. The activation stability and event-tap reliability parts remain historical background, but should not be used to reintroduce restore-first toggle-off logic.
+
 **Date:** 2026-03-23
 **Branch:** main
 **Status:** Draft
