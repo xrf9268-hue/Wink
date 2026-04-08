@@ -23,10 +23,13 @@ Quickey is a macOS menu bar app that binds global shortcuts to target apps, with
 swift build
 swift test
 ./scripts/package-app.sh        # release build + .app bundle
+./scripts/package-dmg.sh        # drag-install DMG from build/Quickey.app
 ./scripts/e2e-full-test.sh      # end-to-end test suite (Accessibility required; Input Monitoring needed for Hyper coverage)
 ```
 
 `Launch at Login` should be validated from a packaged app installed in `/Applications` or `~/Applications`. Running `build/Quickey.app` directly from the repo can surface an install-location warning instead of a real login-item configuration state.
+
+Tagged releases use `v<CFBundleShortVersionString>` and publish `Quickey-<version>.dmg` through the release workflow described in [`docs/signing-and-release.md`](./docs/signing-and-release.md).
 
 ## Loop Job
 
@@ -44,4 +47,4 @@ Each iteration runs preflight checks, processes open PRs, selects an issue, impl
 - [`docs/signing-and-release.md`](./docs/signing-and-release.md)
 
 ## Project Status
-Quickey is feature-complete. Broad macOS validation has landed, Safari/Hyper relaunch behavior was revalidated on 2026-04-08 after the capture/activation/hide refactor, broader app-matrix revalidation is still pending, and a signed and notarized release is still pending.
+Quickey is feature-complete. Broad macOS validation has landed, Safari/Hyper relaunch behavior was revalidated on 2026-04-08 after the capture/activation/hide refactor, local DMG packaging and GitHub release automation are now in place, broader app-matrix revalidation is still pending, and credential-backed notarized release validation is still pending.

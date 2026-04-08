@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, Notarize, and Publish DMG
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      KEYCHAIN_PATH: ${{ runner.temp }}/quickey-release.keychain-db
+      CERT_PATH: ${{ runner.temp }}/quickey-developer-id.p12
+      NOTARY_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Resolve release metadata
+        run: |
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Quickey/Resources/Info.plist)"
+          RELEASE_TAG="${GITHUB_REF_NAME}"
+
+          case "$RELEASE_TAG" in
+            v*) ;;
+            *)
+              echo "Error: release workflow requires a v* tag, got '$RELEASE_TAG'" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ "v${VERSION}" != "$RELEASE_TAG" ]; then
+            echo "Error: tag '$RELEASE_TAG' does not match Info.plist version 'v${VERSION}'" >&2
+            exit 1
+          fi
+
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+          echo "DMG_PATH=build/Quickey-${VERSION}.dmg" >> "$GITHUB_ENV"
+
+      - name: Import Developer ID certificate
+        env:
+          DEVELOPER_ID_APP_CERT_BASE64: ${{ secrets.DEVELOPER_ID_APP_CERT_BASE64 }}
+          DEVELOPER_ID_APP_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_APP_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          printf '%s' "$DEVELOPER_ID_APP_CERT_BASE64" | base64 -D > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$DEVELOPER_ID_APP_CERT_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Write notarytool API key
+        env:
+          NOTARYTOOL_KEY: ${{ secrets.NOTARYTOOL_KEY }}
+        run: |
+          printf '%s' "$NOTARYTOOL_KEY" > "$NOTARY_KEY_PATH"
+          chmod 600 "$NOTARY_KEY_PATH"
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Test
+        run: swift test
+
+      - name: Package signed app bundle
+        env:
+          SIGN_IDENTITY: ${{ secrets.DEVELOPER_ID_APP_SIGNING_IDENTITY }}
+          ENTITLEMENTS_PLIST: ${{ github.workspace }}/entitlements.plist
+          ENABLE_HARDENED_RUNTIME: "1"
+          ENABLE_TIMESTAMP: "1"
+          REQUIRE_SIGN_IDENTITY: "1"
+        run: bash scripts/package-app.sh
+
+      - name: Verify app signature
+        run: |
+          codesign --verify --deep --strict --verbose=2 build/Quickey.app
+          spctl --assess --type exec --verbose build/Quickey.app
+
+      - name: Package signed DMG
+        env:
+          DMG_SIGN_IDENTITY: ${{ secrets.DEVELOPER_ID_APP_SIGNING_IDENTITY }}
+        run: bash scripts/package-dmg.sh
+
+      - name: Submit DMG for notarization
+        env:
+          NOTARYTOOL_KEY_ID: ${{ secrets.NOTARYTOOL_KEY_ID }}
+          NOTARYTOOL_ISSUER: ${{ secrets.NOTARYTOOL_ISSUER }}
+        run: |
+          xcrun notarytool submit "$DMG_PATH" \
+            --key "$NOTARY_KEY_PATH" \
+            --key-id "$NOTARYTOOL_KEY_ID" \
+            --issuer "$NOTARYTOOL_ISSUER" \
+            --wait
+
+      - name: Staple notarization ticket
+        run: xcrun stapler staple "$DMG_PATH"
+
+      - name: Validate final DMG
+        run: |
+          xcrun stapler validate "$DMG_PATH"
+          spctl --assess --type open --context context:primary-signature --verbose "$DMG_PATH"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$DMG_PATH" --clobber
+          else
+            gh release create "$RELEASE_TAG" "$DMG_PATH" \
+              --title "$RELEASE_TAG" \
+              --generate-notes
+          fi
+
+      - name: Cleanup temporary credentials
+        if: always()
+        run: |
+          rm -f "$CERT_PATH" "$NOTARY_KEY_PATH"
+          security delete-keychain "$KEYCHAIN_PATH" || true

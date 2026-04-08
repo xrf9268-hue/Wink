@@ -11,6 +11,11 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 INFO_PLIST="$PROJECT_DIR/Sources/Quickey/Resources/Info.plist"
+SIGN_IDENTITY="${SIGN_IDENTITY:-Quickey}"
+ENTITLEMENTS_PLIST="${ENTITLEMENTS_PLIST:-$PROJECT_DIR/entitlements.plist}"
+ENABLE_HARDENED_RUNTIME="${ENABLE_HARDENED_RUNTIME:-0}"
+ENABLE_TIMESTAMP="${ENABLE_TIMESTAMP:-0}"
+REQUIRE_SIGN_IDENTITY="${REQUIRE_SIGN_IDENTITY:-0}"
 
 echo "==> Building release binary..."
 swift build -c release --package-path "$PROJECT_DIR"
@@ -59,14 +64,34 @@ fi
 # permissions survive across rebuilds. Create one via:
 #   Keychain Access → Certificate Assistant → Create a Certificate
 #   Name: "Quickey Dev", Type: Code Signing
-SIGN_IDENTITY="Quickey"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$SIGN_IDENTITY"; then
-    echo "==> Signing with '$SIGN_IDENTITY' (TCC permissions will persist across builds)..."
-    codesign --force --sign "$SIGN_IDENTITY" --identifier "$BUNDLE_ID" "$APP_DIR" 2>&1
+if security find-identity -v -p codesigning 2>/dev/null | grep -Fq "$SIGN_IDENTITY"; then
+    echo "==> Signing with '$SIGN_IDENTITY'..."
+    SIGN_ARGS=(--force --sign "$SIGN_IDENTITY" --identifier "$BUNDLE_ID")
+
+    if [ "$ENABLE_HARDENED_RUNTIME" = "1" ]; then
+        SIGN_ARGS+=(--options runtime)
+        if [ ! -f "$ENTITLEMENTS_PLIST" ]; then
+            echo "Error: entitlements file not found at $ENTITLEMENTS_PLIST" >&2
+            exit 1
+        fi
+        SIGN_ARGS+=(--entitlements "$ENTITLEMENTS_PLIST")
+    fi
+
+    if [ "$ENABLE_TIMESTAMP" = "1" ]; then
+        SIGN_ARGS+=(--timestamp)
+    fi
+
+    codesign "${SIGN_ARGS[@]}" "$APP_DIR" 2>&1
 else
-    echo "==> Ad-hoc signed (no '$SIGN_IDENTITY' cert found)."
+    if [ "$REQUIRE_SIGN_IDENTITY" = "1" ]; then
+        echo "Error: required signing identity '$SIGN_IDENTITY' was not found" >&2
+        exit 1
+    fi
+
+    echo "==> Ad-hoc signing app bundle (no '$SIGN_IDENTITY' cert found)."
     echo "    TCC permissions may need re-granting after each rebuild."
     echo "    To fix: create a self-signed cert named '$SIGN_IDENTITY' in Keychain Access."
+    codesign --force --sign - --identifier "$BUNDLE_ID" "$APP_DIR" 2>&1
 fi
 
 echo "==> Done: $APP_DIR"

@@ -46,3 +46,11 @@ jobs:
           test -f build/Quickey.app/Contents/MacOS/Quickey
           test -f build/Quickey.app/Contents/Info.plist
           file build/Quickey.app/Contents/MacOS/Quickey | grep -q "Mach-O"
+
+      - name: Package DMG
+        run: bash scripts/package-dmg.sh
+
+      - name: Verify DMG
+        run: |
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Quickey/Resources/Info.plist)"
+          test -f "build/Quickey-${VERSION}.dmg"

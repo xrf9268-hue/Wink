@@ -4,7 +4,7 @@ This directory maps the maintainer-facing docs for Quickey.
 
 ## Core Docs
 - [`architecture.md`](./architecture.md)
-- [`signing-and-release.md`](./signing-and-release.md)
+- [`signing-and-release.md`](./signing-and-release.md) — local DMG packaging, signing, notarization, release secrets, and tag-driven GitHub Release flow
 
 ## Maintainer Notes
 - [`../AGENTS.md`](../AGENTS.md)
