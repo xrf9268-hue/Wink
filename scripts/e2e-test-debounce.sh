@@ -8,22 +8,26 @@ e2e_maybe_launch "$MODULE_NAME"
 echo ""
 echo "=== $MODULE_NAME ==="
 
+if ! bundle_has_configured_shortcut "com.apple.Safari" standard; then
+    e2e_skip_module "Safari standard shortcut not configured"
+fi
+
 ensure_app_running "Safari"
 sleep 1
 
 # --- Part 1: Ultra-rapid presses (single osascript, accurate sub-200ms timing) ---
 echo ""
-echo "  -- Part 1: Ultra-rapid presses (3x @ 50ms, expect debounce) --"
+echo "  -- Part 1: Ultra-rapid presses (3x @ 50ms, expect cooldown protection on standard route) --"
 
 PRE=$(log_line_count)
 send_rapid_keystrokes "s" "{shift down, command down}" 3 0.05
 sleep 3
 
 SLICE=$(get_log_slice "$PRE")
-echo "    Swallowed=$(count_in_slice "$SLICE" "EVENT_TAP_SWALLOW:"), MATCHED=$(count_in_slice "$SLICE" "MATCHED:"), Debounced=$(count_in_slice "$SLICE" "DEBOUNCE_BLOCKED")"
+echo "    MATCHED=$(count_in_slice "$SLICE" "MATCHED:"), Cooldown=$(count_in_slice "$SLICE" "BLOCKED cooldown"), Debounced=$(count_in_slice "$SLICE" "DEBOUNCE_BLOCKED")"
 
-assert_count_ge "$SLICE" "EVENT_TAP_SWALLOW:" 2 "Multiple events swallowed at tap level"
-assert_count_ge "$SLICE" "DEBOUNCE_BLOCKED" 1 "At least one press debounce-blocked"
+assert_count_ge "$SLICE" "MATCHED:" 1 "At least one press matched"
+assert_count_ge "$SLICE" "BLOCKED cooldown" 1 "At least one press cooldown-blocked"
 
 # --- Part 2: Medium-rapid presses (expect cooldown) ---
 echo ""

@@ -7,18 +7,24 @@ private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "Short
 
 @MainActor
 final class ShortcutManager {
+    struct DiagnosticClient {
+        let log: @Sendable (String) -> Void
+    }
+
     private let shortcutStore: ShortcutStore
     private let persistenceService: PersistenceService
     private let appSwitcher: any AppSwitching
     private let captureCoordinator: ShortcutCaptureCoordinator
     private let permissionService: any PermissionServicing
     private let usageTracker: UsageTracker?
+    private let diagnosticClient: DiagnosticClient
     private let keyMatcher = KeyMatcher()
     private var triggerIndex: [ShortcutTrigger: AppShortcut] = [:]
     private var permissionTimer: Timer?
     private var lastAccessibilityState: Bool = false
     private var lastInputMonitoringState: Bool = false
     private var hyperKeyEnabled = false
+    private var lastCaptureBlockedMessages: Set<String> = []
 
     init(
         shortcutStore: ShortcutStore,
@@ -26,7 +32,8 @@ final class ShortcutManager {
         appSwitcher: any AppSwitching,
         captureCoordinator: ShortcutCaptureCoordinator = ShortcutCaptureCoordinator(),
         permissionService: any PermissionServicing = AccessibilityPermissionService(),
-        usageTracker: UsageTracker? = nil
+        usageTracker: UsageTracker? = nil,
+        diagnosticClient: DiagnosticClient
     ) {
         self.shortcutStore = shortcutStore
         self.persistenceService = persistenceService
@@ -34,12 +41,13 @@ final class ShortcutManager {
         self.captureCoordinator = captureCoordinator
         self.permissionService = permissionService
         self.usageTracker = usageTracker
+        self.diagnosticClient = diagnosticClient
     }
 
     func start() {
         let trusted = permissionService.requestIfNeeded(prompt: true)
         logger.info("start(): trusted=\(trusted), isTrusted=\(self.permissionService.isTrusted())")
-        DiagnosticLog.log("start(): trusted=\(trusted), isTrusted=\(permissionService.isTrusted())")
+        diagnosticClient.log("start(): trusted=\(trusted), isTrusted=\(permissionService.isTrusted())")
         startPermissionMonitoring()
         rebuildIndex()
         attemptStartIfPermitted()
@@ -100,7 +108,7 @@ final class ShortcutManager {
         logger.info(
             "checkPermission: ax=\(axGranted) im=\(imGranted) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive)"
         )
-        DiagnosticLog.log(
+        diagnosticClient.log(
             "checkPermission: ax=\(axGranted) im=\(imGranted) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive)"
         )
 
@@ -108,10 +116,10 @@ final class ShortcutManager {
         if accessibilityChanged {
             if axGranted {
                 logger.notice("Accessibility permission: granted")
-                DiagnosticLog.log("Accessibility permission: granted")
+                diagnosticClient.log("Accessibility permission: granted")
             } else {
                 logger.error("Accessibility permission: REVOKED")
-                DiagnosticLog.log("Accessibility permission: REVOKED")
+                diagnosticClient.log("Accessibility permission: REVOKED")
                 sendPermissionNotification(permission: "Accessibility")
             }
             lastAccessibilityState = axGranted
@@ -120,10 +128,10 @@ final class ShortcutManager {
         if inputMonitoringChanged {
             if imGranted {
                 logger.notice("Input Monitoring permission: granted")
-                DiagnosticLog.log("Input Monitoring permission: granted")
+                diagnosticClient.log("Input Monitoring permission: granted")
             } else {
                 logger.error("Input Monitoring permission: REVOKED")
-                DiagnosticLog.log("Input Monitoring permission: REVOKED")
+                diagnosticClient.log("Input Monitoring permission: REVOKED")
                 sendPermissionNotification(permission: "Input Monitoring")
             }
             lastInputMonitoringState = imGranted
@@ -132,7 +140,7 @@ final class ShortcutManager {
         guard axGranted else {
             if snapshot.carbonHotKeysRegistered || snapshot.eventTapActive {
                 logger.error("Accessibility lost — stopping shortcut capture")
-                DiagnosticLog.log("Accessibility lost — stopping shortcut capture")
+                diagnosticClient.log("Accessibility lost — stopping shortcut capture")
                 captureCoordinator.stop()
             }
             return
@@ -149,7 +157,7 @@ final class ShortcutManager {
 
         captureCoordinator.refreshInputMonitoring(granted: imGranted)
         logger.notice("Accessibility ready — syncing shortcut capture")
-        DiagnosticLog.log("Accessibility ready — syncing shortcut capture")
+        diagnosticClient.log("Accessibility ready — syncing shortcut capture")
         attemptStartIfPermitted()
     }
 
@@ -187,9 +195,10 @@ final class ShortcutManager {
         logger.info(
             "attemptStart: shortcuts=\(self.shortcutStore.shortcuts.count) triggerIndex=\(self.triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive)"
         )
-        DiagnosticLog.log(
+        diagnosticClient.log(
             "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive)"
         )
+        emitCaptureBlockedDiagnostics(snapshot: snapshot)
     }
 
     // MARK: - Key handling
@@ -211,8 +220,69 @@ final class ShortcutManager {
             return false
         }
         logger.info("MATCHED: \(match.appName) - \(match.bundleIdentifier)")
-        DiagnosticLog.log("MATCHED: \(match.appName) - \(match.bundleIdentifier)")
+        diagnosticClient.log("MATCHED: \(match.appName) - \(match.bundleIdentifier)")
+        diagnosticClient.log(matchedShortcutTraceMessage(for: match))
         _ = trigger(match)
         return true
     }
+
+    private func emitCaptureBlockedDiagnostics(snapshot: ShortcutCaptureSnapshot) {
+        var blockedMessages = Set<String>()
+
+        if snapshot.standardShortcutCount > 0 && !snapshot.carbonHotKeysRegistered {
+            blockedMessages.insert(captureBlockedMessage(
+                reason: "missing_registration_or_system_conflict",
+                route: .standard,
+                snapshot: snapshot
+            ))
+        }
+
+        if snapshot.hyperShortcutCount > 0 && !permissionService.isInputMonitoringTrusted() {
+            blockedMessages.insert(captureBlockedMessage(
+                reason: "input_monitoring_missing",
+                route: .hyper,
+                snapshot: snapshot
+            ))
+        } else if snapshot.hyperShortcutCount > 0 && !snapshot.eventTapActive {
+            blockedMessages.insert(captureBlockedMessage(
+                reason: "event_tap_inactive",
+                route: .hyper,
+                snapshot: snapshot
+            ))
+        }
+
+        guard blockedMessages != lastCaptureBlockedMessages else {
+            return
+        }
+
+        lastCaptureBlockedMessages = blockedMessages
+        for message in blockedMessages.sorted() {
+            diagnosticClient.log(message)
+        }
+    }
+
+    func matchedShortcutTraceMessage(for shortcut: AppShortcut) -> String {
+        let route = ShortcutCaptureRoute.route(for: shortcut, hyperKeyEnabled: hyperKeyEnabled)
+        return "SHORTCUT_TRACE_DECISION event=matched bundle=\(shortcut.bundleIdentifier) route=\(route == .hyper ? "hyper" : "standard")"
+    }
+
+    func captureBlockedMessage(
+        reason: String,
+        route: ShortcutCaptureRoute,
+        snapshot: ShortcutCaptureSnapshot
+    ) -> String {
+        "SHORTCUT_TRACE_BLOCKED reason=\(quoted(reason)) route=\(route == .hyper ? "hyper" : "standard") carbonRegistered=\(snapshot.carbonHotKeysRegistered) eventTapActive=\(snapshot.eventTapActive) standardShortcutCount=\(snapshot.standardShortcutCount) hyperShortcutCount=\(snapshot.hyperShortcutCount)"
+    }
+
+    private func quoted(_ value: String) -> String {
+        "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
+    }
+}
+
+extension ShortcutManager.DiagnosticClient {
+    static let live = ShortcutManager.DiagnosticClient(
+        log: { message in
+            DiagnosticLog.log(message)
+        }
+    )
 }

@@ -145,11 +145,20 @@ final class AppSwitcher: AppSwitching {
     }
 
     struct FallbackActivationClient {
-        let openApplication: (URL, NSWorkspace.OpenConfiguration, @escaping @Sendable (Error?) -> Void) -> Void
+        let openApplication: (
+            URL,
+            NSWorkspace.OpenConfiguration,
+            @escaping @Sendable (NSRunningApplication?, Error?) -> Void
+        ) -> Void
     }
 
     struct HideRequestClient {
         let hideApplication: (NSRunningApplication) -> Bool
+    }
+
+    struct AppLookupClient {
+        let runningApplications: (String) -> [NSRunningApplication]
+        let applicationURL: (String) -> URL?
     }
 
     struct ConfirmationClient {
@@ -162,12 +171,9 @@ final class AppSwitcher: AppSwitching {
     private let activationClient: ActivationClient
     private let fallbackActivationClient: FallbackActivationClient
     private let hideRequestClient: HideRequestClient
+    private let appLookupClient: AppLookupClient
     private let confirmationClient: ConfirmationClient
     private let sessionCoordinator: ToggleSessionCoordinator
-    private var nextPendingGeneration = 0
-    private(set) var pendingActivationState: PendingActivationState?
-    private(set) var pendingDeactivationState: PendingDeactivationState?
-    private(set) var stableActivationState: StableActivationState?
 
     /// Re-entry guard: prevents nested calls to toggleApplication on the same run loop turn.
     private var isToggling = false
@@ -188,17 +194,19 @@ final class AppSwitcher: AppSwitching {
         activationClient: ActivationClient = .live,
         fallbackActivationClient: FallbackActivationClient = .live,
         hideRequestClient: HideRequestClient = .live,
+        appLookupClient: AppLookupClient = .live,
         confirmationClient: ConfirmationClient = .live,
-        sessionCoordinator: ToggleSessionCoordinator = ToggleSessionCoordinator()
+        sessionCoordinator: ToggleSessionCoordinator? = nil
     ) {
         self.frontmostTracker = frontmostTracker
         self.applicationObservation = applicationObservation
         self.activationClient = activationClient
         self.fallbackActivationClient = fallbackActivationClient
         self.hideRequestClient = hideRequestClient
+        self.appLookupClient = appLookupClient
         self.confirmationClient = confirmationClient
-        self.sessionCoordinator = sessionCoordinator
-        sessionCoordinator.startObservingWorkspaceNotifications()
+        self.sessionCoordinator = sessionCoordinator ?? ToggleSessionCoordinator(now: confirmationClient.now)
+        self.sessionCoordinator.startObservingWorkspaceNotifications()
         workspaceHideObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didHideApplicationNotification,
             object: nil,
@@ -216,25 +224,98 @@ final class AppSwitcher: AppSwitching {
         }
     }
 
+    var pendingActivationState: PendingActivationState? {
+        pendingActivationState(for: nil)
+    }
+
+    var pendingDeactivationState: PendingDeactivationState? {
+        pendingDeactivationState(for: nil)
+    }
+
+    var stableActivationState: StableActivationState? {
+        stableActivationState(for: nil)
+    }
+
+    private func pendingActivationState(for bundleIdentifier: String?) -> PendingActivationState? {
+        let session = sessionCoordinator.pendingActivationSession(for: bundleIdentifier)
+        return session.map {
+            PendingActivationState(
+                bundleIdentifier: $0.bundleIdentifier,
+                previousBundleIdentifier: $0.previousBundle,
+                generation: $0.generation,
+                startedAt: $0.activationStartedAt
+            )
+        }
+    }
+
+    private func pendingDeactivationState(for bundleIdentifier: String?) -> PendingDeactivationState? {
+        let session = sessionCoordinator.pendingDeactivationSession(for: bundleIdentifier)
+        guard let session, let appName = session.appName else {
+            return nil
+        }
+        return PendingDeactivationState(
+            bundleIdentifier: session.bundleIdentifier,
+            appName: appName,
+            previousBundleIdentifier: session.previousBundle,
+            activationPath: session.activationPath,
+            generation: session.generation,
+            startedAt: session.phaseStartedAt
+        )
+    }
+
+    private func stableActivationState(for bundleIdentifier: String?) -> StableActivationState? {
+        let session = sessionCoordinator.stableSession(for: bundleIdentifier)
+        guard let session, let confirmedAt = session.confirmedAt else {
+            return nil
+        }
+        return StableActivationState(
+            bundleIdentifier: session.bundleIdentifier,
+            previousBundleIdentifier: session.previousBundle,
+            generation: session.generation,
+            startedAt: session.activationStartedAt,
+            confirmedAt: confirmedAt
+        )
+    }
+
     @discardableResult
     func acceptPendingActivation(
         for bundleIdentifier: String,
         previousBundleIdentifier: String?,
-        startedAt: CFAbsoluteTime
+        startedAt: CFAbsoluteTime,
+        pid: pid_t? = nil
     ) -> PendingActivationState {
-        nextPendingGeneration += 1
-        let state = PendingActivationState(
-            bundleIdentifier: bundleIdentifier,
-            previousBundleIdentifier: previousBundleIdentifier,
-            generation: nextPendingGeneration,
+        let session = sessionCoordinator.beginActivation(
+            for: bundleIdentifier,
+            previousBundle: previousBundleIdentifier,
+            pid: pid,
             startedAt: startedAt
         )
-        pendingActivationState = state
-        if stableActivationState?.bundleIdentifier == bundleIdentifier {
-            stableActivationState = nil
-        }
-        sessionCoordinator.beginActivation(for: bundleIdentifier, previousBundle: previousBundleIdentifier)
-        return state
+        return PendingActivationState(
+            bundleIdentifier: session.bundleIdentifier,
+            previousBundleIdentifier: session.previousBundle,
+            generation: session.generation,
+            startedAt: startedAt
+        )
+    }
+
+    @discardableResult
+    private func acceptPendingLaunch(
+        for shortcut: AppShortcut,
+        previousBundleIdentifier: String?,
+        startedAt: CFAbsoluteTime
+    ) -> PendingActivationState {
+        let session = sessionCoordinator.beginLaunch(
+            for: shortcut.bundleIdentifier,
+            appName: shortcut.appName,
+            previousBundle: previousBundleIdentifier,
+            startedAt: startedAt
+        )
+        return PendingActivationState(
+            bundleIdentifier: session.bundleIdentifier,
+            previousBundleIdentifier: session.previousBundle,
+            generation: session.generation,
+            startedAt: startedAt
+        )
     }
 
     @discardableResult
@@ -257,20 +338,35 @@ final class AppSwitcher: AppSwitching {
         appName: String,
         previousBundleIdentifier: String?,
         activationPath: ActivationPath,
-        startedAt: CFAbsoluteTime
+        startedAt: CFAbsoluteTime,
+        pid: pid_t? = nil
     ) -> PendingDeactivationState {
-        nextPendingGeneration += 1
-        let state = PendingDeactivationState(
-            bundleIdentifier: bundleIdentifier,
+        let session = sessionCoordinator.beginDeactivation(
+            for: bundleIdentifier,
             appName: appName,
-            previousBundleIdentifier: previousBundleIdentifier,
+            previousBundle: previousBundleIdentifier,
             activationPath: activationPath,
-            generation: nextPendingGeneration,
+            pid: pid,
             startedAt: startedAt
         )
-        pendingDeactivationState = state
-        sessionCoordinator.beginDeactivation(for: bundleIdentifier)
-        return state
+        guard let session else {
+            return PendingDeactivationState(
+                bundleIdentifier: bundleIdentifier,
+                appName: appName,
+                previousBundleIdentifier: previousBundleIdentifier,
+                activationPath: activationPath,
+                generation: pendingDeactivationState?.generation ?? -1,
+                startedAt: startedAt
+            )
+        }
+        return PendingDeactivationState(
+            bundleIdentifier: session.bundleIdentifier,
+            appName: session.appName ?? appName,
+            previousBundleIdentifier: session.previousBundle,
+            activationPath: session.activationPath,
+            generation: session.generation,
+            startedAt: startedAt
+        )
     }
 
     func shouldToggleOff(bundleIdentifier: String, runningAppIsActive: Bool) -> Bool {
@@ -289,7 +385,6 @@ final class AppSwitcher: AppSwitching {
         }
         guard coordinatorPhase == .activeStable else {
             DiagnosticLog.log("TOGGLE[\(stableActivationState.bundleIdentifier)]: stableState invalidated by coordinator, phase=\(coordinatorPhase?.rawValue ?? "no_session")")
-            self.stableActivationState = nil
             return false
         }
         return true
@@ -308,16 +403,7 @@ final class AppSwitcher: AppSwitching {
             return false
         }
 
-        stableActivationState = StableActivationState(
-            bundleIdentifier: bundleIdentifier,
-            previousBundleIdentifier: pendingActivationState.previousBundleIdentifier,
-            generation: generation,
-            startedAt: pendingActivationState.startedAt,
-            confirmedAt: confirmationClient.now()
-        )
-        self.pendingActivationState = nil
-        sessionCoordinator.markStable(for: bundleIdentifier)
-        return true
+        return sessionCoordinator.markStable(for: bundleIdentifier, generation: generation) != nil
     }
 
     func schedulePendingConfirmation(
@@ -372,10 +458,43 @@ final class AppSwitcher: AppSwitching {
                 generation: state.generation,
                 snapshot: snapshot
             ) {
+                self.logToggleTrace(
+                    family: .confirmation,
+                    bundleIdentifier: state.bundleIdentifier,
+                    event: "confirmed",
+                    reason: "activation_stable",
+                    activationPath: activationPath,
+                    previousBundle: pendingActivationState.previousBundleIdentifier
+                )
                 return
             }
 
+            if snapshot.targetIsObservedFrontmost,
+               snapshot.targetIsActive,
+               !snapshot.targetIsHidden,
+               !snapshot.allowsWindowlessStableActivation,
+               !snapshot.targetHasVisibleWindows,
+               !snapshot.hasFocusedWindow,
+               !snapshot.hasMainWindow {
+                self.logToggleTrace(
+                    family: .confirmation,
+                    bundleIdentifier: state.bundleIdentifier,
+                    event: "awaiting_window_evidence",
+                    reason: "frontmost_without_window_evidence",
+                    activationPath: activationPath,
+                    previousBundle: pendingActivationState.previousBundleIdentifier
+                )
+            }
+
             guard let nextRecoveryStage = self.nextRecoveryStage(for: snapshot, candidate: nextRecoveryStage) else {
+                self.logToggleTrace(
+                    family: .reset,
+                    bundleIdentifier: state.bundleIdentifier,
+                    event: "session_cleared",
+                    reason: "activation_recovery_exhausted",
+                    activationPath: activationPath,
+                    previousBundle: pendingActivationState.previousBundleIdentifier
+                )
                 self.clearActivationTracking(for: state.bundleIdentifier, resetPreviousTracking: true)
                 return
             }
@@ -441,6 +560,14 @@ final class AppSwitcher: AppSwitching {
 
             if confirmed {
                 self.completePendingDeactivation(for: state.bundleIdentifier)
+                self.logToggleTrace(
+                    family: .confirmation,
+                    bundleIdentifier: state.bundleIdentifier,
+                    event: "confirmed",
+                    reason: "hide_confirmed",
+                    activationPath: activationPath,
+                    previousBundle: previousBundle
+                )
                 self.logToggleLifecycle(
                     for: shortcut,
                     lifecycle: .hideConfirmed,
@@ -454,6 +581,14 @@ final class AppSwitcher: AppSwitching {
 
             if self.confirmationClient.now() - state.startedAt >= self.deactivationConfirmationTimeout {
                 self.cancelPendingDeactivation(for: state.bundleIdentifier)
+                self.logToggleTrace(
+                    family: .confirmation,
+                    bundleIdentifier: state.bundleIdentifier,
+                    event: "degraded",
+                    reason: "partial_hide_degraded",
+                    activationPath: activationPath,
+                    previousBundle: previousBundle
+                )
                 self.logToggleLifecycle(
                     for: shortcut,
                     lifecycle: .hideDegraded,
@@ -477,20 +612,7 @@ final class AppSwitcher: AppSwitching {
     }
 
     private func canPromoteToStable(with snapshot: ActivationObservationSnapshot) -> Bool {
-        guard snapshot.targetIsObservedFrontmost,
-              snapshot.targetIsActive,
-              !snapshot.targetIsHidden else {
-            return false
-        }
-
-        switch snapshot.classification {
-        case .regularWindowed, .nonStandardWindowed:
-            return snapshot.targetHasVisibleWindows
-                && snapshot.hasFocusedWindow
-                && snapshot.hasMainWindow
-        case .windowlessOrAccessory, .systemUtility:
-            return true
-        }
+        snapshot.isStableActivation
     }
 
     private func nextRecoveryStage(
@@ -521,15 +643,6 @@ final class AppSwitcher: AppSwitching {
     }
 
     private func clearActivationTracking(for bundleIdentifier: String, resetPreviousTracking: Bool) {
-        if pendingActivationState?.bundleIdentifier == bundleIdentifier {
-            pendingActivationState = nil
-        }
-        if pendingDeactivationState?.bundleIdentifier == bundleIdentifier {
-            pendingDeactivationState = nil
-        }
-        if stableActivationState?.bundleIdentifier == bundleIdentifier {
-            stableActivationState = nil
-        }
         if resetPreviousTracking {
             frontmostTracker.resetPreviousAppTracking()
         }
@@ -537,19 +650,10 @@ final class AppSwitcher: AppSwitching {
     }
 
     private func completePendingDeactivation(for bundleIdentifier: String) {
-        if pendingDeactivationState?.bundleIdentifier == bundleIdentifier {
-            pendingDeactivationState = nil
-        }
-        if stableActivationState?.bundleIdentifier == bundleIdentifier {
-            stableActivationState = nil
-        }
         sessionCoordinator.completeDeactivation(for: bundleIdentifier)
     }
 
     private func cancelPendingDeactivation(for bundleIdentifier: String) {
-        if pendingDeactivationState?.bundleIdentifier == bundleIdentifier {
-            pendingDeactivationState = nil
-        }
         sessionCoordinator.cancelDeactivation(for: bundleIdentifier)
     }
 
@@ -586,6 +690,14 @@ final class AppSwitcher: AppSwitching {
         // Re-entry guard
         guard !isToggling else {
             DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: BLOCKED re-entry guard")
+            logToggleTrace(
+                family: .decision,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "blocked",
+                reason: "re_entry_guard",
+                activationPath: nil,
+                previousBundle: sessionCoordinator.previousBundle(for: shortcut.bundleIdentifier)
+            )
             return false
         }
 
@@ -594,6 +706,14 @@ final class AppSwitcher: AppSwitching {
            attemptStartedAt - lastTime < toggleCooldown {
             let elapsed = Int((attemptStartedAt - lastTime) * 1000)
             DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: BLOCKED cooldown elapsedMs=\(elapsed) limit=\(Int(toggleCooldown * 1000))ms")
+            logToggleTrace(
+                family: .decision,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "blocked",
+                reason: "cooldown",
+                activationPath: nil,
+                previousBundle: sessionCoordinator.previousBundle(for: shortcut.bundleIdentifier)
+            )
             return false
         }
 
@@ -607,10 +727,23 @@ final class AppSwitcher: AppSwitching {
             }
         }
 
-        guard let runningApp = NSRunningApplication.runningApplications(withBundleIdentifier: shortcut.bundleIdentifier).first else {
+        guard let runningApp = appLookupClient.runningApplications(shortcut.bundleIdentifier).first else {
             // App not running — launch it
-            if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: shortcut.bundleIdentifier) {
+            if let appURL = appLookupClient.applicationURL(shortcut.bundleIdentifier) {
                 frontmostTracker.noteCurrentFrontmostApp(excluding: shortcut.bundleIdentifier)
+                _ = acceptPendingLaunch(
+                    for: shortcut,
+                    previousBundleIdentifier: frontmostTracker.lastNonTargetBundleIdentifier,
+                    startedAt: attemptStartedAt
+                )
+                logToggleTrace(
+                    family: .session,
+                    bundleIdentifier: shortcut.bundleIdentifier,
+                    event: "session_started",
+                    reason: "not_running_launch_request",
+                    activationPath: .launch,
+                    previousBundle: frontmostTracker.lastNonTargetBundleIdentifier
+                )
                 logger.info("TOGGLE[\(shortcut.appName)]: NOT RUNNING → launching")
                 DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: NOT RUNNING → launching, saved previous=\(frontmostTracker.lastNonTargetBundleIdentifier ?? "nil")")
                 logToggleLifecycle(
@@ -622,10 +755,31 @@ final class AppSwitcher: AppSwitching {
                 )
                 let bundleId = shortcut.bundleIdentifier
                 let configuration = NSWorkspace.OpenConfiguration()
-                NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { @Sendable app, error in
+                fallbackActivationClient.openApplication(appURL, configuration) { [weak self] launchedApp, error in
                     if let error {
                         logger.error("Failed to launch \(bundleId): \(error.localizedDescription)")
                         DiagnosticLog.log("Failed to launch \(bundleId): \(error.localizedDescription)")
+                        Task { @MainActor [weak self] in
+                            guard let self else { return }
+                            self.logToggleTrace(
+                                family: .reset,
+                                bundleIdentifier: bundleId,
+                                event: "session_cleared",
+                                reason: "launch_failed",
+                                activationPath: .launch,
+                                previousBundle: self.sessionCoordinator.previousBundle(for: bundleId)
+                            )
+                            self.clearActivationTracking(for: bundleId, resetPreviousTracking: true)
+                        }
+                        return
+                    }
+
+                    let launchedProcessIdentifier = launchedApp?.processIdentifier
+                    Task { @MainActor [weak self] in
+                        self?.continueOwnedLaunchConfirmation(
+                            for: shortcut,
+                            launchedProcessIdentifier: launchedProcessIdentifier
+                        )
                     }
                 }
                 return true
@@ -634,6 +788,11 @@ final class AppSwitcher: AppSwitching {
             DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: NOT RUNNING, no URL found — cannot launch")
             return false
         }
+
+        _ = sessionCoordinator.updateProcessIdentifier(
+            for: shortcut.bundleIdentifier,
+            pid: runningApp.processIdentifier
+        )
 
         let preActionWindowObservation = applicationObservation.windowObservation(for: runningApp)
         let preActionSnapshot = applicationObservation.snapshot(
@@ -644,7 +803,15 @@ final class AppSwitcher: AppSwitching {
         if stableActivationState?.bundleIdentifier == shortcut.bundleIdentifier,
            pendingDeactivationState?.bundleIdentifier != shortcut.bundleIdentifier,
            !preActionSnapshot.isStableActivation {
-            stableActivationState = nil
+            logToggleTrace(
+                family: .reset,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "session_invalidated",
+                reason: "stale_state_invalidated",
+                activationPath: sessionCoordinator.session(for: shortcut.bundleIdentifier)?.activationPath,
+                previousBundle: sessionCoordinator.previousBundle(for: shortcut.bundleIdentifier)
+            )
+            sessionCoordinator.resetSession(for: shortcut.bundleIdentifier)
         }
 
         if let pendingDeactivationState, pendingDeactivationState.bundleIdentifier == shortcut.bundleIdentifier {
@@ -654,6 +821,23 @@ final class AppSwitcher: AppSwitching {
                 DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: DEACTIVATING pending=true elapsedMs=\(elapsedMilliseconds(since: pendingDeactivationState.startedAt))")
             }
             return true
+        }
+
+        if let pendingActivationState = pendingActivationState(for: shortcut.bundleIdentifier),
+           canPromoteToStable(with: preActionSnapshot) {
+            logToggleTrace(
+                family: .decision,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "pending_promoted",
+                reason: "activation_pending_now_stable",
+                activationPath: sessionCoordinator.session(for: shortcut.bundleIdentifier)?.activationPath,
+                previousBundle: pendingActivationState.previousBundleIdentifier
+            )
+            _ = promotePendingActivationIfCurrent(
+                bundleIdentifier: shortcut.bundleIdentifier,
+                generation: pendingActivationState.generation,
+                snapshot: preActionSnapshot
+            )
         }
 
         if shouldToggleOff(bundleIdentifier: shortcut.bundleIdentifier, runningAppIsActive: runningApp.isActive),
@@ -674,7 +858,8 @@ final class AppSwitcher: AppSwitching {
                 appName: shortcut.appName,
                 previousBundleIdentifier: previousApp,
                 activationPath: .hide,
-                startedAt: attemptStartedAt
+                startedAt: attemptStartedAt,
+                pid: runningApp.processIdentifier
             )
             return performHideToggle(
                 shortcut: shortcut,
@@ -692,6 +877,22 @@ final class AppSwitcher: AppSwitching {
         if runningApp.isActive, preActionSnapshot.isStableActivation,
            stableActivationState?.bundleIdentifier != shortcut.bundleIdentifier,
            pendingActivationState?.bundleIdentifier != shortcut.bundleIdentifier {
+            let deactivationState = acceptPendingDeactivation(
+                for: shortcut.bundleIdentifier,
+                appName: shortcut.appName,
+                previousBundleIdentifier: nil,
+                activationPath: .hideUntracked,
+                startedAt: attemptStartedAt,
+                pid: runningApp.processIdentifier
+            )
+            logToggleTrace(
+                family: .decision,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "hide_untracked",
+                reason: "external_untracked_hide",
+                activationPath: .hideUntracked,
+                previousBundle: nil
+            )
             logToggleLifecycle(
                 for: shortcut,
                 lifecycle: .hideUntracked,
@@ -699,13 +900,6 @@ final class AppSwitcher: AppSwitching {
                 activationPath: .hideUntracked,
                 snapshot: preActionSnapshot,
                 elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
-            )
-            let deactivationState = acceptPendingDeactivation(
-                for: shortcut.bundleIdentifier,
-                appName: shortcut.appName,
-                previousBundleIdentifier: nil,
-                activationPath: .hideUntracked,
-                startedAt: attemptStartedAt
             )
             return performHideToggle(
                 shortcut: shortcut,
@@ -740,6 +934,16 @@ final class AppSwitcher: AppSwitching {
             ? pendingActivationState?.startedAt ?? attemptStartedAt
             : attemptStartedAt
         let activationPath: ActivationPath = runningApp.isHidden ? .unhideActivate : .activate
+        if continuingPendingActivation, !canPromoteToStable(with: preActionSnapshot) {
+            logToggleTrace(
+                family: .decision,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "blocked",
+                reason: "activation_pending_not_stable",
+                activationPath: activationPath,
+                previousBundle: previousApp
+            )
+        }
         if runningApp.isActive {
             // Should not normally reach here — ACTIVE_UNTRACKED should have caught it.
             // Log a warning for diagnostics if it happens (e.g. isStableActivation was false).
@@ -766,11 +970,28 @@ final class AppSwitcher: AppSwitching {
             return false
         }
 
-        let pendingState = acceptPendingActivation(
-            for: shortcut.bundleIdentifier,
-            previousBundleIdentifier: previousApp,
-            startedAt: pendingStartedAt
-        )
+        let pendingState: PendingActivationState
+        if continuingPendingActivation {
+            _ = sessionCoordinator.continueActivation(
+                for: shortcut.bundleIdentifier,
+                activationPath: activationPath,
+                pid: runningApp.processIdentifier
+            )
+            pendingState = pendingActivationState(for: shortcut.bundleIdentifier)
+                ?? PendingActivationState(
+                    bundleIdentifier: shortcut.bundleIdentifier,
+                    previousBundleIdentifier: previousApp,
+                    generation: pendingActivationState?.generation ?? -1,
+                    startedAt: pendingStartedAt
+                )
+        } else {
+            pendingState = acceptPendingActivation(
+                for: shortcut.bundleIdentifier,
+                previousBundleIdentifier: previousApp,
+                startedAt: pendingStartedAt,
+                pid: runningApp.processIdentifier
+            )
+        }
         schedulePendingConfirmation(
             state: pendingState,
             shortcut: shortcut,
@@ -872,6 +1093,121 @@ final class AppSwitcher: AppSwitching {
         return true
     }
 
+    private func continueOwnedLaunchConfirmation(
+        for shortcut: AppShortcut,
+        launchedProcessIdentifier: pid_t?
+    ) {
+        guard let pendingState = pendingActivationState(for: shortcut.bundleIdentifier) else {
+            return
+        }
+
+        let runningApp = appLookupClient.runningApplications(shortcut.bundleIdentifier)
+            .first { runningApp in
+                guard let launchedProcessIdentifier else { return true }
+                return runningApp.processIdentifier == launchedProcessIdentifier
+            }
+        guard let runningApp else {
+            logToggleTrace(
+                family: .confirmation,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "awaiting_process",
+                reason: "launch_completion_missing_process",
+                activationPath: .launch,
+                previousBundle: pendingState.previousBundleIdentifier
+            )
+            return
+        }
+
+        _ = sessionCoordinator.continueActivation(
+            for: shortcut.bundleIdentifier,
+            activationPath: .launch,
+            pid: runningApp.processIdentifier
+        )
+        logToggleTrace(
+            family: .session,
+            bundleIdentifier: shortcut.bundleIdentifier,
+            event: "launch_attached",
+            reason: "launch_completion_process_lookup",
+            activationPath: .launch,
+            previousBundle: pendingState.previousBundleIdentifier
+        )
+
+        let preActionWindowObservation = applicationObservation.windowObservation(for: runningApp)
+        let preActionSnapshot = applicationObservation.snapshot(
+            for: runningApp,
+            windowObservation: preActionWindowObservation
+        )
+
+        if promotePendingActivationIfCurrent(
+            bundleIdentifier: shortcut.bundleIdentifier,
+            generation: pendingState.generation,
+            snapshot: preActionSnapshot
+        ) {
+            logToggleTrace(
+                family: .confirmation,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "confirmed",
+                reason: "activation_stable",
+                activationPath: .launch,
+                previousBundle: pendingState.previousBundleIdentifier
+            )
+            return
+        }
+
+        if runningApp.isHidden {
+            runningApp.unhide()
+        }
+        let windows = preActionWindowObservation.windows
+        unminimizeWindows(of: runningApp, windows: windows)
+        _ = activateViaWindowServer(runningApp, windows: windows)
+
+        let continuedState = pendingActivationState(for: shortcut.bundleIdentifier) ?? pendingState
+        schedulePendingConfirmation(
+            state: continuedState,
+            shortcut: shortcut,
+            activationPath: .launch,
+            observe: { [weak self] in
+                guard let self else {
+                    return ActivationObservationSnapshot(
+                        targetBundleIdentifier: runningApp.bundleIdentifier,
+                        observedFrontmostBundleIdentifier: nil,
+                        targetIsActive: false,
+                        targetIsHidden: true,
+                        visibleWindowCount: 0,
+                        hasFocusedWindow: false,
+                        hasMainWindow: false,
+                        windowObservationSucceeded: false,
+                        windowObservationFailureReason: "appSwitcherReleased",
+                        classification: .windowlessOrAccessory,
+                        classificationReason: "app switcher released during confirmation"
+                    )
+                }
+                let confirmationWindowObservation = self.applicationObservation.windowObservation(for: runningApp)
+                return self.applicationObservation.snapshot(
+                    for: runningApp,
+                    windowObservation: confirmationWindowObservation
+                )
+            },
+            recoverIfNeeded: { [weak self] stage, completion in
+                self?.recoverActivation(
+                    runningApp,
+                    shortcut: shortcut,
+                    stage: stage,
+                    fallbackActivate: {
+                        self?.requestFallbackActivation(
+                            bundleURL: runningApp.bundleURL,
+                            bundleIdentifier: runningApp.bundleIdentifier ?? "\(runningApp.processIdentifier)",
+                            plainActivate: {
+                                runningApp.activate()
+                            }
+                        ) ?? false
+                    },
+                    completion: completion
+                )
+            }
+        )
+    }
+
     // MARK: - Activation path
 
     /// Default activation is minimal: front-process only.
@@ -928,7 +1264,7 @@ final class AppSwitcher: AppSwitching {
 
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
-        fallbackActivationClient.openApplication(bundleURL, configuration) { error in
+        fallbackActivationClient.openApplication(bundleURL, configuration) { _, error in
             if let error {
                 logger.error("Fallback activation via NSWorkspace failed for \(bundleIdentifier): \(error.localizedDescription)")
                 DiagnosticLog.log("Fallback activation via NSWorkspace failed for \(bundleIdentifier): \(error.localizedDescription)")
@@ -1022,7 +1358,7 @@ final class AppSwitcher: AppSwitching {
             }
             completion()
         case .reopen:
-            guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: shortcut.bundleIdentifier) else {
+            guard let appURL = appLookupClient.applicationURL(shortcut.bundleIdentifier) else {
                 logger.info("TOGGLE[\(shortcut.appName)]: sending ⌘N (no app URL)")
                 DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: sending ⌘N (no app URL)")
                 recoverActivation(
@@ -1036,7 +1372,7 @@ final class AppSwitcher: AppSwitching {
             }
 
             let config = NSWorkspace.OpenConfiguration()
-            fallbackActivationClient.openApplication(appURL, config) { @Sendable error in
+            fallbackActivationClient.openApplication(appURL, config) { @Sendable _, error in
                 if let error {
                     logger.error("TOGGLE[\(shortcut.appName)]: NSWorkspace.open failed: \(error.localizedDescription)")
                     DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: NSWorkspace.open failed: \(error.localizedDescription)")
@@ -1164,7 +1500,8 @@ final class AppSwitcher: AppSwitching {
         effectiveStable: Bool? = nil
     ) -> String {
         let state = TogglePostActionState(snapshot: snapshot)
-        return "TOGGLE[\(shortcut.appName)]: \(phase.rawValue) \(state.logDetails) \(snapshot.structuredLogFields(stableOverride: effectiveStable))"
+        let sessionFields = sessionLogFields(for: shortcut.bundleIdentifier)
+        return "TOGGLE[\(shortcut.appName)]: \(phase.rawValue) \(state.logDetails) \(snapshot.structuredLogFields(stableOverride: effectiveStable)) \(sessionFields.joined(separator: " "))"
     }
 
     func toggleLifecycleLogMessage(
@@ -1188,6 +1525,7 @@ final class AppSwitcher: AppSwitching {
         } else {
             fields.append(ActivationObservationSnapshot.quotedField("frontmost", frontmostTracker.currentFrontmostBundleIdentifier()))
         }
+        fields.append(contentsOf: sessionLogFields(for: shortcut.bundleIdentifier))
 
         return "TOGGLE[\(shortcut.appName)]: \(lifecycle.rawValue) \(fields.joined(separator: " "))"
     }
@@ -1216,6 +1554,41 @@ final class AppSwitcher: AppSwitching {
 
     private func elapsedMilliseconds(since startedAt: CFAbsoluteTime) -> Int {
         Int((confirmationClient.now() - startedAt) * 1000)
+    }
+
+    private func sessionLogFields(for bundleIdentifier: String) -> [String] {
+        guard let session = sessionCoordinator.session(for: bundleIdentifier) else {
+            return ["attemptId=nil", "pid=nil", "phase=nil"]
+        }
+        return [
+            "attemptId=\(session.attemptID.uuidString)",
+            "pid=\(session.pid.map(String.init) ?? "nil")",
+            "phase=\(session.phase.rawValue)"
+        ]
+    }
+
+    private func logToggleTrace(
+        family: ToggleDiagnosticEvent.Family,
+        bundleIdentifier: String,
+        event: String,
+        reason: String?,
+        activationPath: ActivationPath?,
+        previousBundle: String?
+    ) {
+        let session = sessionCoordinator.session(for: bundleIdentifier)
+        let message = ToggleDiagnosticEvent(
+            family: family,
+            attemptID: session?.attemptID,
+            bundleIdentifier: bundleIdentifier,
+            pid: session?.pid,
+            phase: session?.phase,
+            event: event,
+            activationPath: activationPath ?? session?.activationPath,
+            reason: reason,
+            previousBundleIdentifier: previousBundle ?? session?.previousBundle
+        ).logMessage
+        logger.info("\(message)")
+        DiagnosticLog.log(message)
     }
 
     nonisolated static let hideTransport: HideTransport = .runningApplicationHide
@@ -1248,8 +1621,8 @@ extension AppSwitcher.FallbackActivationClient {
     @MainActor
     static let live = AppSwitcher.FallbackActivationClient(
         openApplication: { url, configuration, completion in
-            NSWorkspace.shared.openApplication(at: url, configuration: configuration) { @Sendable _, error in
-                completion(error)
+            NSWorkspace.shared.openApplication(at: url, configuration: configuration) { @Sendable app, error in
+                completion(app, error)
             }
         }
     )
@@ -1260,6 +1633,18 @@ extension AppSwitcher.HideRequestClient {
     static let live = AppSwitcher.HideRequestClient(
         hideApplication: { app in
             app.hide()
+        }
+    )
+}
+
+extension AppSwitcher.AppLookupClient {
+    @MainActor
+    static let live = AppSwitcher.AppLookupClient(
+        runningApplications: { bundleIdentifier in
+            NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+        },
+        applicationURL: { bundleIdentifier in
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
         }
     )
 }

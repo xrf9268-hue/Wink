@@ -8,6 +8,10 @@ e2e_maybe_launch "$MODULE_NAME"
 echo ""
 echo "=== $MODULE_NAME ==="
 
+if ! bundle_has_configured_shortcut "com.apple.Safari" standard; then
+    e2e_skip_module "Safari standard shortcut not configured"
+fi
+
 # Ensure Safari running but not frontmost
 ensure_app_running "Safari"
 open -a Finder  # push Safari to background
@@ -24,7 +28,7 @@ sleep 3
 SLICE=$(get_log_slice "$PRE")
 
 assert_count_eq "$SLICE" "MATCHED: Safari" 1 "Single MATCHED: Safari"
-assert_count_ge "$SLICE" "EVENT_TAP_SWALLOW:" 1 "Event swallowed"
+assert_contains "$SLICE" "SHORTCUT_TRACE_DECISION event=matched bundle=com.apple.Safari route=standard" "Matched via standard route"
 assert_count_ge "$SLICE" "TOGGLE_ATTEMPT" 1 "Toggle attempt logged"
 assert_app_frontmost "com.apple.Safari" "Safari is frontmost after toggle ON"
 
@@ -40,8 +44,8 @@ sleep 3
 SLICE=$(get_log_slice "$PRE")
 
 assert_count_eq "$SLICE" "MATCHED: Safari" 1 "Single MATCHED: Safari"
-assert_count_ge "$SLICE" "TOGGLE_RESTORE_ATTEMPT" 1 "Toggle restore attempted"
-assert_contains "$SLICE" "IS ACTIVE.*restored=true" "Restore path: IS ACTIVE -> restored"
+assert_count_ge "$SLICE" "HIDE_REQUEST" 1 "Hide request logged"
+assert_count_ge "$SLICE" "TOGGLE_HIDE_CONFIRMED" 1 "Hide confirmed"
 assert_app_not_frontmost "com.apple.Safari" "Safari not frontmost after toggle OFF"
 
 e2e_maybe_stop

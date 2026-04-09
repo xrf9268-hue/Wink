@@ -1,3 +1,4 @@
+import AppKit
 import Testing
 @testable import Quickey
 
@@ -32,8 +33,8 @@ func observationReevaluatesClassificationPerAttempt() {
         hasMainWindow: false,
         windowObservationSucceeded: true,
         windowObservationFailureReason: nil,
-        classification: .windowlessOrAccessory,
-        classificationReason: "no visible windows"
+        classification: .nonStandardWindowed,
+        classificationReason: "regular app has no visible, focused, or main window evidence"
     )
     let secondAttempt = ActivationObservationSnapshot(
         targetBundleIdentifier: "com.apple.Home",
@@ -45,36 +46,36 @@ func observationReevaluatesClassificationPerAttempt() {
         hasMainWindow: true,
         windowObservationSucceeded: true,
         windowObservationFailureReason: nil,
-        classification: .nonStandardWindowed,
+        classification: .regularWindowed,
         classificationReason: "window appeared during confirmation"
     )
 
-    #expect(firstAttempt.classification == .windowlessOrAccessory)
-    #expect(secondAttempt.classification == .nonStandardWindowed)
+    #expect(firstAttempt.classification == .nonStandardWindowed)
+    #expect(secondAttempt.classification == .regularWindowed)
     #expect(firstAttempt.classification != secondAttempt.classification)
 }
 
 @Test
-func nonStandardFrontmostWindowWithoutFocusIsNotStable() {
+func regularAppWithoutUsableWindowEvidenceIsNotStable() {
     let snapshot = ActivationObservationSnapshot(
         targetBundleIdentifier: "dev.zed.Zed",
         observedFrontmostBundleIdentifier: "dev.zed.Zed",
         targetIsActive: true,
         targetIsHidden: false,
-        visibleWindowCount: 1,
+        visibleWindowCount: 0,
         hasFocusedWindow: false,
         hasMainWindow: false,
         windowObservationSucceeded: true,
         windowObservationFailureReason: nil,
         classification: .nonStandardWindowed,
-        classificationReason: "window evidence is incomplete for dev.zed.Zed"
+        classificationReason: "regular app has no visible, focused, or main window evidence"
     )
 
     #expect(snapshot.isStableActivation == false)
 }
 
 @Test
-func nonStandardFrontmostWindowWithFocusAndMainWindowCanBeStable() {
+func regularAppWithAnyUsableWindowEvidenceCanBeStable() {
     let snapshot = ActivationObservationSnapshot(
         targetBundleIdentifier: "dev.zed.Zed",
         observedFrontmostBundleIdentifier: "dev.zed.Zed",
@@ -137,6 +138,7 @@ func structuredLogFieldsQuoteStringValues() {
     #expect(snapshot.structuredLogFields.contains("target=\"com.apple.Safari\""))
     #expect(snapshot.structuredLogFields.contains("classification=\"regularWindowed\""))
     #expect(snapshot.structuredLogFields.contains("classificationReason=\"visible focused \\\"main\\\" window\""))
+    #expect(snapshot.structuredLogFields.contains("allowsWindowlessStableActivation=false"))
 }
 
 @Test
@@ -158,4 +160,60 @@ func structuredLogFieldsIncludeWindowObservationFailureSignal() {
     #expect(snapshot.structuredLogFields.contains("windowObservationSucceeded=false"))
     #expect(snapshot.structuredLogFields.contains("windowObservationFailureReason=\"axWindowsReadFailed=-25204\""))
     #expect(snapshot.structuredLogFields.contains("classification=\"nonStandardWindowed\""))
+}
+
+@Test @MainActor
+func regularAppWithoutWindowEvidenceDoesNotClassifyAsWindowlessAccessory() {
+    let currentApp = NSRunningApplication.current
+    let observation = ApplicationObservation(client: .init(
+        currentFrontmostBundleIdentifier: {
+            currentApp.bundleIdentifier
+        },
+        windowObservation: { _ in
+            .init(
+                windows: nil,
+                visibleWindowCount: 0,
+                hasFocusedWindow: false,
+                hasMainWindow: false,
+                windowsReadSucceeded: true,
+                failureReason: nil
+            )
+        },
+        activationPolicy: { _ in
+            .regular
+        }
+    ))
+
+    let snapshot = observation.snapshot(for: currentApp)
+
+    #expect(snapshot.classification == .nonStandardWindowed)
+    #expect(snapshot.allowsWindowlessStableActivation == false)
+}
+
+@Test @MainActor
+func nonRegularAppWithoutWindowEvidenceCanRemainStable() {
+    let currentApp = NSRunningApplication.current
+    let observation = ApplicationObservation(client: .init(
+        currentFrontmostBundleIdentifier: {
+            currentApp.bundleIdentifier
+        },
+        windowObservation: { _ in
+            .init(
+                windows: nil,
+                visibleWindowCount: 0,
+                hasFocusedWindow: false,
+                hasMainWindow: false,
+                windowsReadSucceeded: true,
+                failureReason: nil
+            )
+        },
+        activationPolicy: { _ in
+            .accessory
+        }
+    ))
+
+    let snapshot = observation.snapshot(for: currentApp)
+
+    #expect(snapshot.classification == .systemUtility)
+    #expect(snapshot.allowsWindowlessStableActivation == true)
 }
