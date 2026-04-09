@@ -7,9 +7,10 @@ set -euo pipefail
 # --- Constants ---
 E2E_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$E2E_LIB_DIR/.." && pwd)"
-APP_PATH="$PROJECT_DIR/build/Quickey.app"
-LOG_FILE="$HOME/.config/Quickey/debug.log"
-QUICKEY_BUNDLE_ID="com.quickey.app"
+APP_PATH="${E2E_APP_PATH:-$PROJECT_DIR/build/Quickey.app}"
+LOG_FILE="${E2E_LOG_FILE:-$HOME/.config/Quickey/debug.log}"
+QUICKEY_BUNDLE_ID="${E2E_BUNDLE_ID:-com.quickey.app}"
+SHORTCUTS_FILE="${E2E_SHORTCUTS_FILE:-$HOME/Library/Application Support/Quickey/shortcuts.json}"
 CGEVENT_HELPER="$E2E_LIB_DIR/cgevent-helper"
 CGEVENT_SRC="$E2E_LIB_DIR/cgevent-helper.swift"
 
@@ -77,6 +78,133 @@ wait_for_log() {
         sleep 1
         ((elapsed++)) || true
     done
+    return 1
+}
+
+hyper_key_enabled_flag() {
+    defaults read "$QUICKEY_BUNDLE_ID" hyperKeyEnabled 2>/dev/null || echo "0"
+}
+
+detect_capture_requirement() {
+    local shortcuts_file="${1:-$SHORTCUTS_FILE}"
+    local hyper_enabled="${2:-$(hyper_key_enabled_flag)}"
+
+    if [ ! -f "$shortcuts_file" ]; then
+        echo "none"
+        return 0
+    fi
+
+    /usr/bin/ruby -rjson -e '
+        shortcuts = JSON.parse(File.read(ARGV[0])) rescue []
+        hyper_enabled = ARGV[1] == "1"
+        standard = false
+        hyper = false
+
+        shortcuts.each do |shortcut|
+          next if shortcut["isEnabled"] == false
+
+          modifiers = Array(shortcut["modifierFlags"]).map { |flag| flag.to_s.downcase }
+          is_hyper_combo = modifiers.length == 4 &&
+            %w[command option control shift].all? { |flag| modifiers.include?(flag) }
+
+          if hyper_enabled && is_hyper_combo
+            hyper = true
+          else
+            standard = true
+          end
+        end
+
+        if standard && hyper
+          puts "mixed"
+        elsif hyper
+          puts "hyper"
+        elsif standard
+          puts "standard"
+        else
+          puts "none"
+        end
+    ' "$shortcuts_file" "$hyper_enabled"
+}
+
+bundle_has_configured_shortcut() {
+    local bundle_id="$1"
+    local expected_route="$2"
+    local shortcuts_file="${3:-$SHORTCUTS_FILE}"
+    local hyper_enabled="${4:-$(hyper_key_enabled_flag)}"
+
+    if [ ! -f "$shortcuts_file" ]; then
+        return 1
+    fi
+
+    /usr/bin/ruby -rjson -e '
+        shortcuts = JSON.parse(File.read(ARGV[0])) rescue []
+        hyper_enabled = ARGV[1] == "1"
+        bundle_id = ARGV[2]
+        expected_route = ARGV[3]
+
+        matched = shortcuts.any? do |shortcut|
+          next false if shortcut["isEnabled"] == false
+          next false unless shortcut["bundleIdentifier"] == bundle_id
+
+          modifiers = Array(shortcut["modifierFlags"]).map { |flag| flag.to_s.downcase }
+          is_hyper_combo = modifiers.length == 4 &&
+            %w[command option control shift].all? { |flag| modifiers.include?(flag) }
+          route = hyper_enabled && is_hyper_combo ? "hyper" : "standard"
+
+          route == expected_route
+        end
+
+        exit(matched ? 0 : 1)
+    ' "$shortcuts_file" "$hyper_enabled" "$bundle_id" "$expected_route"
+}
+
+_standard_capture_ready() {
+    local log_file="${1:-$LOG_FILE}"
+    grep -Eq 'attemptStart: .*carbon=true|checkPermission: ax=true .*carbon=true' "$log_file" 2>/dev/null
+}
+
+_hyper_capture_ready() {
+    local log_file="${1:-$LOG_FILE}"
+    grep -Eq 'Event tap started|attemptStart: .*eventTap=true|checkPermission: ax=true im=true .*eventTap=true' "$log_file" 2>/dev/null
+}
+
+capture_requirement_satisfied() {
+    local requirement="$1"
+    local log_file="${2:-$LOG_FILE}"
+
+    case "$requirement" in
+        standard)
+            _standard_capture_ready "$log_file"
+            ;;
+        hyper)
+            _hyper_capture_ready "$log_file"
+            ;;
+        mixed)
+            _standard_capture_ready "$log_file" && _hyper_capture_ready "$log_file"
+            ;;
+        none)
+            grep -q "Quickey starting" "$log_file" 2>/dev/null
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+wait_for_capture_requirement() {
+    local requirement="$1"
+    local timeout="$2"
+    local log_file="${3:-$LOG_FILE}"
+    local elapsed=0
+
+    while [ "$elapsed" -lt "$timeout" ]; do
+        if capture_requirement_satisfied "$requirement" "$log_file"; then
+            return 0
+        fi
+        sleep 1
+        ((elapsed++)) || true
+    done
+
     return 1
 }
 
@@ -259,9 +387,7 @@ ensure_app_stopped() {
 }
 
 is_hyper_key_enabled() {
-    local val
-    val=$(defaults read "$QUICKEY_BUNDLE_ID" hyperKeyEnabled 2>/dev/null || echo "0")
-    [ "$val" = "1" ]
+    [ "$(hyper_key_enabled_flag)" = "1" ]
 }
 
 # --- Module support ---
@@ -274,6 +400,7 @@ for arg in "$@"; do
 done
 
 e2e_launch_app() {
+    local requirement
     if [ ! -d "$APP_PATH" ]; then
         echo -e "${RED}ERROR: Quickey.app not found at $APP_PATH${NC}"
         echo "    Run: ./scripts/package-app.sh"
@@ -290,11 +417,13 @@ e2e_launch_app() {
 
     open "$APP_PATH"
 
-    echo "    Waiting for event tap to start..."
-    if wait_for_log "Event tap started" 30 0; then
-        echo -e "    ${GREEN}Event tap started${NC}"
+    requirement=$(detect_capture_requirement "$SHORTCUTS_FILE" "$(hyper_key_enabled_flag)")
+
+    echo "    Waiting for capture readiness (${requirement})..."
+    if wait_for_capture_requirement "$requirement" 30 "$LOG_FILE"; then
+        echo -e "    ${GREEN}Capture ready${NC} (${requirement})"
     else
-        echo -e "    ${RED}Event tap failed to start within 30s${NC}"
+        echo -e "    ${RED}Capture failed to become ready within 30s${NC} (${requirement})"
         if grep -q "tapCreate.*failed" "$LOG_FILE" 2>/dev/null; then
             echo "    Check permissions:"
             echo "    System Settings > Privacy & Security > Accessibility -> add Quickey"
@@ -333,4 +462,11 @@ e2e_verdict() {
         echo -e "${GREEN}${BOLD}$module_name: PASS${NC} ($PASSES passed)"
         return 0
     fi
+}
+
+e2e_skip_module() {
+    local reason="$1"
+    echo -e "    ${YELLOW}SKIP${NC}: $reason"
+    e2e_maybe_stop
+    exit 2
 }

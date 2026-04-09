@@ -169,7 +169,16 @@ func handleEventTapEvent(
         if swallow {
             let seq = box.incrementAndGetSwallowSequence()
             DispatchQueue.global(qos: .utility).async {
-                DiagnosticLog.log("EVENT_TAP_SWALLOW: seq=\(seq) keyCode=\(keyCode) modifiers=\(keyPress.modifiers.rawValue) eventTimestamp=\(eventTimestamp)")
+                DiagnosticLog.log(
+                    eventTapSwallowLogMessage(
+                        seq: seq,
+                        keyCode: keyCode,
+                        modifiers: keyPress.modifiers,
+                        eventTimestamp: eventTimestamp,
+                        isAutorepeat: isAutorepeat,
+                        hyperInjected: injectHyper
+                    )
+                )
             }
             box.onKeyPress?(keyPress)
             return nil
@@ -266,6 +275,17 @@ func handleEventTapEvent(
     default:
         return Unmanaged.passUnretained(event)
     }
+}
+
+func eventTapSwallowLogMessage(
+    seq: Int,
+    keyCode: CGKeyCode,
+    modifiers: NSEvent.ModifierFlags,
+    eventTimestamp: UInt64,
+    isAutorepeat: Bool,
+    hyperInjected: Bool
+) -> String {
+    "EVENT_TAP_SWALLOW: seq=\(seq) keyCode=\(keyCode) modifiers=\(modifiers.rawValue) eventTimestamp=\(eventTimestamp) autorepeat=\(isAutorepeat) hyperInjected=\(hyperInjected)"
 }
 
 private let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in

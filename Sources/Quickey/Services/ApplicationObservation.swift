@@ -20,6 +20,35 @@ struct ActivationObservationSnapshot: Sendable, Equatable {
     let windowObservationFailureReason: String?
     let classification: ApplicationClassification
     let classificationReason: String
+    let allowsWindowlessStableActivation: Bool
+
+    init(
+        targetBundleIdentifier: String?,
+        observedFrontmostBundleIdentifier: String?,
+        targetIsActive: Bool,
+        targetIsHidden: Bool,
+        visibleWindowCount: Int,
+        hasFocusedWindow: Bool,
+        hasMainWindow: Bool,
+        windowObservationSucceeded: Bool,
+        windowObservationFailureReason: String?,
+        classification: ApplicationClassification,
+        classificationReason: String,
+        allowsWindowlessStableActivation: Bool = false
+    ) {
+        self.targetBundleIdentifier = targetBundleIdentifier
+        self.observedFrontmostBundleIdentifier = observedFrontmostBundleIdentifier
+        self.targetIsActive = targetIsActive
+        self.targetIsHidden = targetIsHidden
+        self.visibleWindowCount = visibleWindowCount
+        self.hasFocusedWindow = hasFocusedWindow
+        self.hasMainWindow = hasMainWindow
+        self.windowObservationSucceeded = windowObservationSucceeded
+        self.windowObservationFailureReason = windowObservationFailureReason
+        self.classification = classification
+        self.classificationReason = classificationReason
+        self.allowsWindowlessStableActivation = allowsWindowlessStableActivation
+    }
 
     var targetHasVisibleWindows: Bool {
         visibleWindowCount > 0
@@ -35,14 +64,11 @@ struct ActivationObservationSnapshot: Sendable, Equatable {
             return false
         }
 
-        switch classification {
-        case .regularWindowed:
-            return targetHasVisibleWindows || hasFocusedWindow || hasMainWindow
-        case .nonStandardWindowed:
-            return targetHasVisibleWindows && hasFocusedWindow && hasMainWindow
-        case .windowlessOrAccessory, .systemUtility:
+        if allowsWindowlessStableActivation {
             return true
         }
+
+        return targetHasVisibleWindows || hasFocusedWindow || hasMainWindow
     }
 
     var structuredLogFields: String {
@@ -62,6 +88,7 @@ struct ActivationObservationSnapshot: Sendable, Equatable {
             Self.quotedField("windowObservationFailureReason", windowObservationFailureReason),
             Self.quotedField("classification", classification.rawValue),
             Self.quotedField("classificationReason", classificationReason),
+            "allowsWindowlessStableActivation=\(allowsWindowlessStableActivation)",
             "stable=\(stableOverride ?? isStableActivation)"
         ].joined(separator: " ")
     }
@@ -147,7 +174,8 @@ struct ApplicationObservation {
             windowObservationSucceeded: windowObservation.windowsReadSucceeded,
             windowObservationFailureReason: windowObservation.failureReason,
             classification: classification.classification,
-            classificationReason: classification.reason
+            classificationReason: classification.reason,
+            allowsWindowlessStableActivation: classification.allowsWindowlessStableActivation
         )
     }
 
@@ -155,28 +183,28 @@ struct ApplicationObservation {
         bundleIdentifier: String?,
         activationPolicy: NSApplication.ActivationPolicy,
         windowObservation: WindowObservation
-    ) -> (classification: ApplicationClassification, reason: String) {
+    ) -> (classification: ApplicationClassification, reason: String, allowsWindowlessStableActivation: Bool) {
         if activationPolicy != .regular {
-            return (.systemUtility, "activation policy is \(String(describing: activationPolicy))")
+            return (.systemUtility, "activation policy is \(String(describing: activationPolicy))", true)
         }
 
         if !windowObservation.windowsReadSucceeded {
-            return (.nonStandardWindowed, windowObservation.failureReason ?? "window observation failed")
+            return (.nonStandardWindowed, windowObservation.failureReason ?? "window observation failed", false)
         }
 
         if windowObservation.visibleWindowCount == 0 &&
             !windowObservation.hasFocusedWindow &&
             !windowObservation.hasMainWindow {
-            return (.windowlessOrAccessory, "no visible, focused, or main windows")
+            return (.nonStandardWindowed, "regular app has no visible, focused, or main window evidence", false)
         }
 
         if windowObservation.visibleWindowCount == 0 ||
             !windowObservation.hasFocusedWindow ||
             !windowObservation.hasMainWindow {
-            return (.nonStandardWindowed, "window evidence is incomplete for \(bundleIdentifier ?? "unknown bundle")")
+            return (.nonStandardWindowed, "window evidence is incomplete for \(bundleIdentifier ?? "unknown bundle")", false)
         }
 
-        return (.regularWindowed, "visible focused main window")
+        return (.regularWindowed, "visible focused main window", false)
     }
 }
 

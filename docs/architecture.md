@@ -3,72 +3,66 @@
 ## High-level overview
 Quickey is a menu bar macOS utility that stores app-shortcut bindings, captures global key events, matches them to stored shortcuts, and toggles target apps.
 
-```text
-+--------------------+
-|   Menu Bar App     |
-|  AppDelegate/Main  |
-+---------+----------+
-          |
-          v
-+--------------------+
-|   AppController    |
-| bootstraps modules |
-+----+----+----+-----+
-     |    |    |
-     |    |    +-----------------------------+
-     |    |                                  |
-     v    v                                  v
-+---------+--------+              +----------------------+
-| ShortcutManager  |<------------>|    ShortcutStore     |
-| event + trigger  |              | in-memory shortcuts  |
-+----+--------+----+              +----------+-----------+
-     |        |                              |
-     |        v                              v
-     |   +------------------+        +-------------------+
-     |   | Persistence      |        | Settings UI       |
-     |   | JSON save/load   |        | SwiftUI + AppKit  |
-     |   +------------------+        +-------------------+
-     |
-     v
-+--------------------+
-+ ShortcutCapture    +
-| Coordinator        |
-+---------+----------+
-     +----+----+
-     |         |
-     v         v
-+--------------------+   +--------------------+
-| CarbonHotKeyProvider|   | EventTapManager   |
-| standard shortcuts  |   | Hyper-only input  |
-+---------+----------+   +---------+----------+
-          |                        |
-          +-----------+------------+
-                      |
-                      v
-+--------------------+
-|    KeyMatcher      |
-| key/modifier match |
-+---------+----------+
-          |
-          v
-+--------------------+
-|    AppSwitcher     |
-| activate/toggle    |
-+----+---------+-----------+
-     |         |
-     |         +-----------------------+
-     |                                 |
-     v                                 v
-+---------------------------+   +------------------------+
-| ToggleSessionCoordinator  |   | ApplicationObservation |
-| per-target runtime state  |   | frontmost/window truth |
-+------------+--------------+   +------------------------+
-             |
-             v
-+---------------------------+
-| FrontmostApplicationTracker |
-| previous app restore state |
-+---------------------------+
+```mermaid
+flowchart LR
+  subgraph B["启动 / 配置"]
+    A["A(AppController)\n启动编排"]
+    H["H(HyperKeyService)\n恢复持久化 Hyper"]
+    P["P(PersistenceService)\nshortcuts.json"]
+    S["S(ShortcutStore)\n内存快捷键"]
+    U["U(Settings UI / AppPreferences)\n编辑快捷键与通用设置"]
+    R["R(LaunchAtLoginService)\n登录项状态"]
+    X["X(UsageTracker)\n使用统计"]
+  end
+
+  subgraph C["捕获 / 匹配"]
+    M["M(ShortcutManager)\n匹配、分发、SHORTCUT_TRACE_*"]
+    Q["Q(ShortcutCaptureCoordinator)\ntransport-aware readiness"]
+    C1["C(CarbonHotKeyProvider)\n标准快捷键"]
+    E["E(EventTapCaptureProvider / EventTapManager)\nHyper 快捷键"]
+    K["K(KeyMatcher)\nO(1) Trigger Index"]
+  end
+
+  subgraph T["Toggle 运行时"]
+    W["W(AppSwitcher)\n激活 / 隐藏编排"]
+    T1["T(ToggleSessionCoordinator)\ncanonical owner\nlaunching → activating → activeStable → deactivating → degraded / idle"]
+    O["O(ApplicationObservation)\nfrontmost + window 证据"]
+    F["F(FrontmostApplicationTracker)\nprevious app snapshot"]
+    L["L(AppBundleLocator)\n目标 app 定位"]
+    G["G(ToggleDiagnosticEvent)\nTOGGLE_TRACE_* 格式化"]
+  end
+
+  U --> P
+  U --> S
+  U --> H
+  U --> R
+  U --> X
+
+  A --> P
+  A --> S
+  A --> H
+  A --> M
+  A --> R
+
+  P --> S
+  S --> M
+  S --> K
+  M --> K
+
+  M <--> Q
+  Q --> C1
+  Q --> E
+  C1 --> M
+  E --> M
+
+  M --> W
+  W <--> T1
+  W --> O
+  W --> F
+  W --> L
+
+  M --> G
+  W --> G
 ```
 
 ## Main modules
@@ -161,12 +155,18 @@ Responsibilities:
 - fall back to `NSWorkspace` reopen requests before plain AppKit activation requests when SkyLight activation cannot complete
 - build `ActivationObservationSnapshot` values from frontmost-app, active/hidden, visible-window, focused-window, main-window, and app-classification evidence
 - re-evaluate app classification per toggle attempt instead of caching it globally
-- keep per-target toggle sessions on the main actor and let `ToggleSessionCoordinator` own the durable `previousBundle` for `activating`, `activeStable`, `degraded`, and `deactivating` phases
+- keep per-target toggle sessions on the main actor and let `ToggleSessionCoordinator` own the full pid-aware lifecycle for `launching`, `activating`, `activeStable`, `degraded`, `deactivating`, and `idle`
+- treat `ToggleSessionCoordinator` as the canonical lifecycle owner; `AppSwitcher` only exposes derived pending/stable views instead of keeping a second mutable toggle owner
+- keep durable `previousBundle`, `attemptID`, `pid`, and activation path on the coordinator session so relaunches and pid rollover stay traceable
+- attach the `NSRunningApplication` returned by `NSWorkspace.openApplication` back onto the existing `launching` session so launch and activate share the same confirmation pipeline
 - invalidate or clear sessions from `NSWorkspace.didActivateApplicationNotification` and `NSWorkspace.didTerminateApplicationNotification` instead of polling
 - only allow toggle-off from a confirmed stable state; repeat triggers during pending or degraded activation re-confirm the session instead of restoring away
 - use `FrontmostApplicationTracker` for current-frontmost capture and restore attempts, while session-owned `previousBundle` remains the source of truth during confirmation and deactivation
+- only allow windowless stable success for non-regular targets; regular apps must show visible/focused/main-window evidence before toggle-on can become `activeStable`
 - keep the hot activation path to front-process activation only, then escalate to `makeKeyWindow`, `AXRaise`, and window recovery only when observation shows activation is not yet settled
 - toggle off by requesting `NSRunningApplication.hide()`, then confirm deactivation asynchronously from `NSWorkspace.didHideApplicationNotification` plus a short observation window before clearing session state
+- when an app is externally frontmost and unowned, still create a coordinator-owned `deactivating` session before dispatching `hide()` so `hide_untracked` remains an explicit, traceable toggle lane instead of an ad-hoc branch
+- emit `TOGGLE_TRACE_*` lifecycle diagnostics from accepted-toggle transitions and `SHORTCUT_TRACE_*` diagnostics only from matched or explicitly blocked shortcut boundaries
 - reveal selected application in Finder when needed
 
 ### Usage tracking
@@ -227,10 +227,12 @@ Global keyDown event
   -> CarbonHotKeyProvider or EventTapManager emits KeyPress
   -> ShortcutManager.handleKeyPress()
   -> KeyMatcher finds matching AppShortcut
+  -> ShortcutManager emits `SHORTCUT_TRACE_DECISION` or `SHORTCUT_TRACE_BLOCKED` only on the accepted-trigger boundary
   -> AppSwitcher.toggleApplication()
-  -> ToggleSessionCoordinator records bundle-keyed session + previousBundle
+  -> ToggleSessionCoordinator creates/updates pid-aware attempt session + previousBundle
   -> ApplicationObservation captures frontmost/window evidence
   -> activate / confirm / recover stage-by-stage
+  -> `TOGGLE_TRACE_*` lines record branch reason, reset reason, and confirmation outcome for that attempt
   -> direct hide request only from activeStable, then async hide confirmation
 ```
 
@@ -252,7 +254,11 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **Capability-aware shortcut readiness**: `ShortcutCaptureStatus` separates Accessibility, Input Monitoring, Carbon registration, Hyper event-tap activity, standard-shortcut readiness, and Hyper readiness
 - **O(1) trigger index**: `ShortcutSignature` dictionary replaces linear scans in the hot path
 - **Observation-first toggle truth**: `ApplicationObservation` snapshots gate stable-state promotion from frontmost/window evidence instead of trusting `isActive` alone
+- **Single-source toggle ownership**: `ToggleSessionCoordinator` is the only mutable lifecycle owner; `AppSwitcher` derives pending/stable views from coordinator state instead of dual-writing local activation state
 - **Session-owned previous-app memory**: `ToggleSessionCoordinator` holds the durable `previousBundle` once a toggle session is accepted; `FrontmostApplicationTracker` remains the restore executor
+- **Pid-aware attempt sessions**: launch / relaunch / termination recovery use attempt-scoped sessions that track `attemptID`, `pid`, `activationPath`, and current phase so process-lifetime boundaries cannot silently desynchronize ownership
+- **No-window success policy**: regular apps require usable window evidence before `activeStable`; only `activationPolicy != .regular` targets may succeed while windowless
+- **Attempt-scoped diagnostics**: `TOGGLE_TRACE_*` and `SHORTCUT_TRACE_*` explain branch choice and failure boundaries without adding detailed logs to unrelated key events
 - **Notification-driven invalidation**: `NSWorkspace` activation and termination notifications clear or expire stable/deactivating sessions without polling
 - **Hardened EventTap lifecycle**: explicit ownership, callback-safe timeout snapshots, threshold-based escalation, and same-thread run-loop recreation
 - **Split capture transports**: standard shortcuts use Carbon hotkeys; Hyper-only shortcuts use the active event tap. Passive `.listenOnly` mode is not used in the interception path because it cannot consume shortcut events

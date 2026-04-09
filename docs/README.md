@@ -8,8 +8,8 @@ This directory maps the maintainer-facing docs for Quickey.
 
 ## Maintainer Notes
 - [`../AGENTS.md`](../AGENTS.md)
-- [`handoff-notes.md`](./handoff-notes.md)
-- [`lessons-learned.md`](./lessons-learned.md)
+- [`handoff-notes.md`](./handoff-notes.md) — current runtime validation status, packaged-app caveats, latest toggle trace signatures, and the exact 2026-04-09 Safari launch/relaunch validation evidence
+- [`lessons-learned.md`](./lessons-learned.md) — operational pitfalls, including session ownership across relaunches and the no-window success policy for regular apps
 
 ## Automation
 - [`loop-prompt.md`](./loop-prompt.md) — reference and migration note; active automation is the `/babysit-prs` skill

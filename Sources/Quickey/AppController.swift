@@ -12,7 +12,8 @@ final class AppController {
         shortcutStore: shortcutStore,
         persistenceService: persistenceService,
         appSwitcher: appSwitcher,
-        usageTracker: usageTracker
+        usageTracker: usageTracker,
+        diagnosticClient: .live
     )
     private lazy var menuBarController = MenuBarController(
         onOpenSettings: { [weak self] in self?.openSettings() },
@@ -34,11 +35,15 @@ final class AppController {
         // Reference: alt-tab-macos
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1.0)
 
-        shortcutStore.replaceAll(with: persistenceService.load())
-        hyperKeyService.reapplyIfNeeded()
-        shortcutManager.start()
-        shortcutManager.setHyperKeyEnabled(hyperKeyService.isEnabled)
-        menuBarController.install()
+        Self.runStartupSequence(
+            loadShortcuts: { persistenceService.load() },
+            replaceShortcuts: { shortcutStore.replaceAll(with: $0) },
+            reapplyHyperIfNeeded: { hyperKeyService.reapplyIfNeeded() },
+            isHyperEnabled: { hyperKeyService.isEnabled },
+            setHyperKeyEnabled: { shortcutManager.setHyperKeyEnabled($0) },
+            startShortcutManager: { shortcutManager.start() },
+            installMenuBar: { menuBarController.install() }
+        )
     }
 
     func stop() {
@@ -49,5 +54,21 @@ final class AppController {
     private func openSettings() {
         settingsWindowController.show()
         NSApp.activate()
+    }
+
+    static func runStartupSequence(
+        loadShortcuts: @MainActor () -> [AppShortcut],
+        replaceShortcuts: @MainActor ([AppShortcut]) -> Void,
+        reapplyHyperIfNeeded: @MainActor () -> Void,
+        isHyperEnabled: @MainActor () -> Bool,
+        setHyperKeyEnabled: @MainActor (Bool) -> Void,
+        startShortcutManager: @MainActor () -> Void,
+        installMenuBar: @MainActor () -> Void
+    ) {
+        replaceShortcuts(loadShortcuts())
+        reapplyHyperIfNeeded()
+        setHyperKeyEnabled(isHyperEnabled())
+        startShortcutManager()
+        installMenuBar()
     }
 }

@@ -14,11 +14,17 @@ final class ToggleSessionCoordinator {
         var sessionCap: Int = 50
     }
 
-    struct Session: Equatable {
+    struct ToggleSession: Equatable {
         let bundleIdentifier: String
+        let attemptID: UUID
+        var generation: Int
+        var pid: pid_t?
+        var appName: String?
         var phase: Phase
+        var activationPath: AppSwitcher.ActivationPath
         var previousBundle: String?
         var activationStartedAt: CFAbsoluteTime
+        var phaseStartedAt: CFAbsoluteTime
         var lastActivityAt: CFAbsoluteTime
         var confirmedAt: CFAbsoluteTime?
         var retryCount: Int
@@ -26,12 +32,15 @@ final class ToggleSessionCoordinator {
 
         enum Phase: String, Equatable, Sendable {
             case idle
+            case launching
             case activating
             case activeStable
             case deactivating
             case degraded
         }
     }
+
+    typealias Session = ToggleSession
 
     enum ReconfirmResult: Equatable {
         case accepted
@@ -42,6 +51,7 @@ final class ToggleSessionCoordinator {
 
     let configuration: Configuration
     private let now: @MainActor () -> CFAbsoluteTime
+    private var nextGeneration = 0
     private(set) var sessions: [String: Session] = [:]
 
     init(
@@ -70,30 +80,127 @@ final class ToggleSessionCoordinator {
         session(for: bundleIdentifier)?.previousBundle
     }
 
+    func pendingActivationSession(for bundleIdentifier: String? = nil) -> Session? {
+        session(for: bundleIdentifier, matching: [.launching, .activating, .degraded])
+    }
+
+    func pendingDeactivationSession(for bundleIdentifier: String? = nil) -> Session? {
+        session(for: bundleIdentifier, matching: [.deactivating])
+    }
+
+    func stableSession(for bundleIdentifier: String? = nil) -> Session? {
+        session(for: bundleIdentifier, matching: [.activeStable, .deactivating])
+    }
+
+    func trackedActivationBundle(excluding bundleIdentifier: String) -> String? {
+        guard let session = mostRecentSession(matching: [.launching, .activating, .activeStable, .deactivating, .degraded]),
+              session.bundleIdentifier != bundleIdentifier else {
+            return nil
+        }
+        return session.bundleIdentifier
+    }
+
     // MARK: - Mutations
 
     @discardableResult
-    func beginActivation(for bundleIdentifier: String, previousBundle: String?) -> Session {
-        evictIfNeeded(excluding: bundleIdentifier)
-        let currentTime = now()
-        let session = Session(
+    func beginLaunch(
+        for bundleIdentifier: String,
+        appName: String? = nil,
+        previousBundle: String?,
+        startedAt: CFAbsoluteTime? = nil
+    ) -> Session {
+        makeSession(
             bundleIdentifier: bundleIdentifier,
-            phase: .activating,
+            appName: appName,
+            phase: .launching,
+            activationPath: .launch,
             previousBundle: previousBundle,
-            activationStartedAt: currentTime,
-            lastActivityAt: currentTime,
-            confirmedAt: nil,
-            retryCount: 0,
-            degradedReason: nil
+            pid: nil,
+            startedAt: startedAt
         )
+    }
+
+    @discardableResult
+    func beginActivation(
+        for bundleIdentifier: String,
+        previousBundle: String?,
+        appName: String? = nil,
+        activationPath: AppSwitcher.ActivationPath = .activate,
+        pid: pid_t? = nil,
+        startedAt: CFAbsoluteTime? = nil
+    ) -> Session {
+        makeSession(
+            bundleIdentifier: bundleIdentifier,
+            appName: appName,
+            phase: .activating,
+            activationPath: activationPath,
+            previousBundle: previousBundle,
+            pid: pid,
+            startedAt: startedAt
+        )
+    }
+
+    @discardableResult
+    func updateProcessIdentifier(for bundleIdentifier: String, pid: pid_t?) -> Session? {
+        guard var session = sessions[bundleIdentifier] else { return nil }
+        if let existingPID = session.pid,
+           let pid,
+           existingPID != pid {
+            let rolloverMessage = ToggleDiagnosticEvent(
+                family: .reset,
+                attemptID: session.attemptID,
+                bundleIdentifier: bundleIdentifier,
+                pid: existingPID,
+                phase: session.phase,
+                event: "session_cleared",
+                activationPath: session.activationPath,
+                reason: "pid_rollover",
+                previousBundleIdentifier: session.previousBundle
+            ).logMessage
+            DiagnosticLog.log(rolloverMessage)
+
+            let replacement = makeSession(
+                bundleIdentifier: bundleIdentifier,
+                appName: session.appName,
+                phase: .activating,
+                activationPath: session.activationPath,
+                previousBundle: session.previousBundle,
+                pid: pid,
+                startedAt: now()
+            )
+            return replacement
+        }
+        session.pid = pid
+        session.lastActivityAt = now()
         sessions[bundleIdentifier] = session
         return session
     }
 
     @discardableResult
-    func markStable(for bundleIdentifier: String) -> Session? {
+    func continueActivation(
+        for bundleIdentifier: String,
+        activationPath: AppSwitcher.ActivationPath,
+        pid: pid_t? = nil
+    ) -> Session? {
         guard var session = sessions[bundleIdentifier],
-              session.phase == .activating || session.phase == .degraded else {
+              session.phase == .launching || session.phase == .activating || session.phase == .degraded else {
+            return nil
+        }
+        session.phase = .activating
+        session.activationPath = activationPath
+        if let pid {
+            session.pid = pid
+        }
+        session.lastActivityAt = now()
+        sessions[bundleIdentifier] = session
+        return session
+    }
+
+    @discardableResult
+    func markStable(for bundleIdentifier: String, generation: Int? = nil) -> Session? {
+        guard var session = sessions[bundleIdentifier],
+              session.phase == .launching || session.phase == .activating || session.phase == .degraded,
+              generation.map({ $0 == session.generation }) ?? true else {
             return nil
         }
         let currentTime = now()
@@ -105,13 +212,15 @@ final class ToggleSessionCoordinator {
     }
 
     @discardableResult
-    func markDegraded(for bundleIdentifier: String, reason: String) -> Session? {
+    func markDegraded(for bundleIdentifier: String, reason: String, generation: Int? = nil) -> Session? {
         guard var session = sessions[bundleIdentifier],
-              session.phase == .activating || session.phase == .degraded else {
+              session.phase == .launching || session.phase == .activating || session.phase == .degraded,
+              generation.map({ $0 == session.generation }) ?? true else {
             return nil
         }
         session.phase = .degraded
         session.degradedReason = reason
+        session.lastActivityAt = now()
         sessions[bundleIdentifier] = session
         return session
     }
@@ -146,13 +255,43 @@ final class ToggleSessionCoordinator {
     }
 
     @discardableResult
-    func beginDeactivation(for bundleIdentifier: String) -> Session? {
+    func beginDeactivation(
+        for bundleIdentifier: String,
+        appName: String? = nil,
+        previousBundle: String? = nil,
+        activationPath: AppSwitcher.ActivationPath = .hide,
+        pid: pid_t? = nil,
+        startedAt: CFAbsoluteTime? = nil
+    ) -> Session? {
+        if activationPath == .hideUntracked {
+            return makeSession(
+                bundleIdentifier: bundleIdentifier,
+                appName: appName,
+                phase: .deactivating,
+                activationPath: activationPath,
+                previousBundle: previousBundle,
+                pid: pid,
+                startedAt: startedAt
+            )
+        }
+
         guard var session = sessions[bundleIdentifier],
               session.phase == .activeStable else {
             return nil
         }
         let currentTime = now()
+        if let appName {
+            session.appName = appName
+        }
+        if let previousBundle {
+            session.previousBundle = previousBundle
+        }
+        if let pid {
+            session.pid = pid
+        }
+        session.activationPath = activationPath
         session.phase = .deactivating
+        session.phaseStartedAt = startedAt ?? currentTime
         session.lastActivityAt = currentTime
         sessions[bundleIdentifier] = session
         return session
@@ -201,7 +340,7 @@ final class ToggleSessionCoordinator {
         let currentTime = now()
         for (bundleId, var session) in sessions {
             if bundleId != newFrontmostBundle
-                && (session.phase == .activeStable || session.phase == .deactivating) {
+                && session.phase == .activeStable {
                 session.phase = .idle
                 session.lastActivityAt = currentTime
                 sessions[bundleId] = session
@@ -209,7 +348,22 @@ final class ToggleSessionCoordinator {
         }
     }
 
-    func handleTermination(bundleIdentifier: String) {
+    func handleTermination(bundleIdentifier: String, pid: pid_t? = nil) {
+        guard let session = sessions[bundleIdentifier] else { return }
+        guard pid == nil || session.pid == nil || session.pid == pid else { return }
+        DiagnosticLog.log(
+            ToggleDiagnosticEvent(
+                family: .reset,
+                attemptID: session.attemptID,
+                bundleIdentifier: bundleIdentifier,
+                pid: session.pid,
+                phase: session.phase,
+                event: "session_cleared",
+                activationPath: session.activationPath,
+                reason: "termination",
+                previousBundleIdentifier: session.previousBundle
+            ).logMessage
+        )
         sessions.removeValue(forKey: bundleIdentifier)
     }
 
@@ -235,10 +389,12 @@ final class ToggleSessionCoordinator {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            let bundle = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
+            let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            let bundle = app?.bundleIdentifier
+            let pid = app?.processIdentifier
             if let bundle {
                 Task { @MainActor [weak self] in
-                    self?.handleTermination(bundleIdentifier: bundle)
+                    self?.handleTermination(bundleIdentifier: bundle, pid: pid)
                 }
             }
         }
@@ -270,7 +426,7 @@ final class ToggleSessionCoordinator {
                 return true
             }
             return false
-        case .activating:
+        case .launching, .activating:
             if currentTime - session.lastActivityAt > configuration.activatingIdleExpiry
                 || currentTime - session.activationStartedAt > configuration.absoluteActivationCeiling {
                 session.phase = .idle
@@ -293,6 +449,33 @@ final class ToggleSessionCoordinator {
                 return true
             }
             return false
+        }
+    }
+
+    private func session(for bundleIdentifier: String?, matching phases: Set<Session.Phase>) -> Session? {
+        if let bundleIdentifier {
+            guard let session = session(for: bundleIdentifier), phases.contains(session.phase) else {
+                return nil
+            }
+            return session
+        }
+
+        return mostRecentSession(matching: phases)
+    }
+
+    private func mostRecentSession(matching phases: Set<Session.Phase>) -> Session? {
+        var candidates: [Session] = []
+        for bundleIdentifier in sessions.keys {
+            guard let session = session(for: bundleIdentifier), phases.contains(session.phase) else {
+                continue
+            }
+            candidates.append(session)
+        }
+        return candidates.max { lhs, rhs in
+            if lhs.lastActivityAt == rhs.lastActivityAt {
+                return lhs.generation < rhs.generation
+            }
+            return lhs.lastActivityAt < rhs.lastActivityAt
         }
     }
 
@@ -328,5 +511,39 @@ final class ToggleSessionCoordinator {
             .min(by: { $0.value.lastActivityAt < $1.value.lastActivityAt }) {
             sessions.removeValue(forKey: stalest.key)
         }
+    }
+
+    @discardableResult
+    private func makeSession(
+        bundleIdentifier: String,
+        appName: String?,
+        phase: Session.Phase,
+        activationPath: AppSwitcher.ActivationPath,
+        previousBundle: String?,
+        pid: pid_t?,
+        startedAt: CFAbsoluteTime?
+    ) -> Session {
+        evictIfNeeded(excluding: bundleIdentifier)
+        nextGeneration += 1
+        let currentTime = now()
+        let startedAt = startedAt ?? currentTime
+        let session = Session(
+            bundleIdentifier: bundleIdentifier,
+            attemptID: UUID(),
+            generation: nextGeneration,
+            pid: pid,
+            appName: appName,
+            phase: phase,
+            activationPath: activationPath,
+            previousBundle: previousBundle,
+            activationStartedAt: startedAt,
+            phaseStartedAt: startedAt,
+            lastActivityAt: currentTime,
+            confirmedAt: nil,
+            retryCount: 0,
+            degradedReason: nil
+        )
+        sessions[bundleIdentifier] = session
+        return session
     }
 }

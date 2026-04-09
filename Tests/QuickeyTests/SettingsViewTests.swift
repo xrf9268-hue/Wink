@@ -98,7 +98,8 @@ private func makeShortcutManager(
         persistenceService: PersistenceService(),
         appSwitcher: FakeAppSwitcher(),
         captureCoordinator: captureCoordinator,
-        permissionService: permissionService
+        permissionService: permissionService,
+        diagnosticClient: .live
     )
 }
 

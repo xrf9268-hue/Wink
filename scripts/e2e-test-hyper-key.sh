@@ -9,9 +9,11 @@ echo ""
 echo "=== $MODULE_NAME ==="
 
 if ! is_hyper_key_enabled; then
-    echo -e "    ${YELLOW}SKIP${NC}: Hyper Key not enabled, cannot test"
-    e2e_maybe_stop
-    exit 0
+    e2e_skip_module "Hyper Key not enabled"
+fi
+
+if ! bundle_has_configured_shortcut "com.colliderli.iina" hyper; then
+    e2e_skip_module "IINA Hyper shortcut not configured"
 fi
 
 # Probe CGEvent delivery; fall back to osascript if needed

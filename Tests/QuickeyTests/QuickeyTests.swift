@@ -384,6 +384,24 @@ struct EventTapManagerDeliveryTests {
         #expect(delivered == keyPress)
     }
 
+    @Test
+    func eventTapSwallowLogMessageIncludesAutorepeatAndHyperInjectionContext() {
+        let message = eventTapSwallowLogMessage(
+            seq: 42,
+            keyCode: CGKeyCode(kVK_ANSI_Z),
+            modifiers: [.command, .option, .control, .shift],
+            eventTimestamp: 123_456,
+            isAutorepeat: false,
+            hyperInjected: true
+        )
+
+        #expect(message.contains("EVENT_TAP_SWALLOW"))
+        #expect(message.contains("seq=42"))
+        #expect(message.contains("keyCode=6"))
+        #expect(message.contains("autorepeat=false"))
+        #expect(message.contains("hyperInjected=true"))
+    }
+
     private func makeKeyEvent(
         _ keyCode: CGKeyCode,
         modifiers: NSEvent.ModifierFlags,

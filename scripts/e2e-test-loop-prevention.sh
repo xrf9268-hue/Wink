@@ -11,6 +11,10 @@ e2e_maybe_launch "$MODULE_NAME"
 echo ""
 echo "=== $MODULE_NAME ==="
 
+if ! bundle_has_configured_shortcut "com.apple.Safari" standard; then
+    e2e_skip_module "Safari standard shortcut not configured"
+fi
+
 ensure_app_running "Safari"
 sleep 1
 

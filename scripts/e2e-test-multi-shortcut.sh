@@ -8,6 +8,10 @@ e2e_maybe_launch "$MODULE_NAME"
 echo ""
 echo "=== $MODULE_NAME ==="
 
+if ! bundle_has_configured_shortcut "com.apple.Safari" standard; then
+    e2e_skip_module "Safari standard shortcut not configured"
+fi
+
 ensure_app_running "Safari"
 sleep 1
 
@@ -24,7 +28,7 @@ assert_count_ge "$SLICE" "MATCHED: Safari" 1 "Safari shortcut matched"
 assert_not_contains "$SLICE" "MATCHED: IINA" "IINA not triggered by Safari shortcut"
 
 # --- Step 2: Hyper+A -> only IINA ---
-if is_hyper_key_enabled; then
+if is_hyper_key_enabled && bundle_has_configured_shortcut "com.colliderli.iina" hyper; then
     _probe_cgevent
     echo ""
     echo "  -- Step 2: Hyper+A -> only IINA --"
@@ -41,7 +45,7 @@ if is_hyper_key_enabled; then
     ensure_app_stopped "IINA"
 else
     echo ""
-    echo -e "  -- Step 2: ${YELLOW}SKIP${NC} (Hyper Key not enabled) --"
+    echo -e "  -- Step 2: ${YELLOW}SKIP${NC} (IINA Hyper shortcut not configured) --"
 fi
 
 # --- Step 3: Safari again ---

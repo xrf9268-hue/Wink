@@ -48,4 +48,4 @@ Each iteration runs preflight checks, processes open PRs, selects an issue, impl
 - [`docs/signing-and-release.md`](./docs/signing-and-release.md)
 
 ## Project Status
-Quickey is feature-complete. Broad macOS validation has landed, Safari/Hyper relaunch behavior was revalidated on 2026-04-08 after the capture/activation/hide refactor, local DMG packaging and GitHub release automation are now in place, broader app-matrix revalidation is still pending, and credential-backed notarized release validation is still pending.
+Quickey is feature-complete. Broad macOS validation has landed, the 2026-04-09 toggle reliability recovery and transport-aware E2E updates are in place, packaged-app manual validation has clean recent toggle traces for both standard and Hyper coverage, local DMG packaging and GitHub release automation are now in place, broader app-matrix revalidation is still pending, and credential-backed notarized release validation is still pending.

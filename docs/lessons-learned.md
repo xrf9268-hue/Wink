@@ -139,6 +139,41 @@ Even after removing restore-first toggle-off, the same `previousBundle` still ne
 **Practical guidance**
 Let the toggle session own the durable `previousBundle` once a trigger is accepted. Use `FrontmostApplicationTracker` to capture current frontmost context, but keep the authoritative previous-app value on the coordinator session until the session is reset. Treat it as session context and observability metadata, not as a reason to reintroduce restore-first toggle-off.
 
+## Bundle-Only Tracking Fails Across Process Lifetimes
+
+**Issue**
+Launch -> quit -> relaunch flows can leave Quickey believing a target is both "stable" and "missing" at the same time.
+
+**Cause**
+When bundle-keyed session tracking is duplicated across multiple owners, termination or pid rollover can clear one owner while the other still holds stale stable/pending state. That is how relaunch paths degrade into `phase=no_session`, `hide_untracked`, or other ownership confusion right after an otherwise valid launch.
+
+**Practical guidance**
+Make `ToggleSessionCoordinator` the only lifecycle owner. Keep pid, attempt id, phase, and durable `previousBundle` on that single session object, and reset or replace the session on termination and pid rollover. `AppSwitcher` may expose derived read-only views, but it must not become a second mutable lifecycle owner.
+
+Do not throw away the `NSRunningApplication` returned by `NSWorkspace.openApplication`. The launch completion is the cleanest process-identity seam Quickey gets for a just-launched target. Attach that pid back onto the existing `launching` session immediately and run the same confirmation pipeline used by activate/unhide, or the next press can still fall through to `hide_untracked` despite an otherwise successful launch.
+
+## Frontmost Without Window Evidence Is Not Success For Regular Apps
+
+**Issue**
+A regular app can become frontmost and active without restoring a usable window, making toggle-on look "successful" even though the user still sees no target window to work with.
+
+**Cause**
+Treating all frontmost non-hidden apps as stable collapses accessory utilities and normal windowed apps into the same success path. That hides exactly the failure mode users care about: the app is technically foregrounded, but still not actually usable.
+
+**Practical guidance**
+Only allow windowless stable success for targets whose `activationPolicy != .regular`. For `.regular` apps, require at least one of `visibleWindowCount > 0`, `hasFocusedWindow == true`, or `hasMainWindow == true` before promoting to `activeStable`. If that evidence never arrives, stay in pending/visibility-recovery or degrade explicitly; do not silently coerce the state into success.
+
+## Attempt-Scoped Trace Logs Beat Outcome-Only Logging
+
+**Issue**
+Outcome logs such as `TOGGLE_STABLE` or `TOGGLE_HIDE_DEGRADED` are not enough to explain which branch Quickey took when launch, relaunch, deactivation, and ownership invalidation happen close together.
+
+**Cause**
+Without an attempt-level identifier, log readers have to infer which launch, confirmation, and reset lines belong together. That breaks down quickly around relaunches, pid changes, or repeated key presses.
+
+**Practical guidance**
+Emit trace logs with `attemptId`, `bundle`, `pid`, `phase`, `event`, `activationPath`, `reason`, and `previousBundle`. Keep them at the matched-shortcut and lifecycle-transition boundaries, not on every raw key event. The goal is that one failed attempt window in `~/.config/Quickey/debug.log` is enough to reconstruct the branch choice end-to-end.
+
 ## Notification-Driven Toggle Invalidation
 
 **Issue**
@@ -171,6 +206,53 @@ Apps can become frontmost through paths Quickey does not own: Dock click, Cmd-Ta
 
 **Practical guidance**
 When the target app is already active and frontmost but has no tracking state, treat it as an untracked toggle-off: hide the app and let macOS bring the next app forward. Guard against self-referencing `previousApp` (target == previous) by explicitly clearing it. Log the `ACTIVE_UNTRACKED` path with coordinator phase and tracker state for post-hoc analysis.
+
+The hide-untracked branch still needs a real owned deactivation session. Logging `hide_untracked` alone is not enough: if the branch does not allocate a coordinator-owned `deactivating` session first, later `HIDE_REQUEST` / hide-confirmation guards can no-op and the target will remain frontmost even though Quickey chose the correct branch in logs.
+
+## Verify The Persisted Shortcut Route Before Debugging Capture Readiness
+
+**Issue**
+`checkPermission: ax=true im=true carbon=false eventTap=true` can look like Carbon registration drift even when the capture stack is actually behaving correctly.
+
+**Cause**
+Quickey's active transport depends on the current saved shortcut set plus `hyperKeyEnabled`. If the persisted shortcut is a Hyper combo, then `carbon=false eventTap=true` is the expected readiness snapshot. In the 2026-04-09 Safari investigation, the real culprit was not permission loss or Carbon failure: `shortcuts.json` had already been switched to `command` + `option` + `control` + `shift` + `s`, and `hyperKeyEnabled` was still enabled.
+
+**Practical guidance**
+Before debugging transport readiness, inspect the actual persisted shortcut config and Hyper toggle state. Do not assume the active shortcut is still standard because an older session used `Shift+Cmd+S`. Interpret `carbon` / `eventTap` logs against the current saved shortcut route, not against stale expectations.
+
+## Restore Hyper State Before Starting Capture
+
+**Issue**
+Startup diagnostics can report a transport that is already obsolete by the time the app is actually accepting shortcuts.
+
+**Cause**
+If `ShortcutManager.start()` runs before the persisted Hyper state is replayed, the first readiness log reflects the pre-restore transport instead of the real steady-state routing. That is how a valid Hyper configuration can briefly print `attemptStart: ... carbon=true eventTap=false` and look like transport drift.
+
+**Practical guidance**
+Replay the persisted Hyper enablement before starting shortcut capture. The first `attemptStart` / readiness snapshot should describe the transport Quickey will actually use after launch, not a transient bootstrapping state that disappears one call later.
+
+## Validation Readiness Must Be Transport-Specific
+
+**Issue**
+An E2E harness can falsely report startup failure even while the configured shortcut transport is healthy.
+
+**Cause**
+Standard shortcuts and Hyper shortcuts have different readiness predicates. Waiting unconditionally for `Event tap started` treats event-tap availability as a universal startup requirement, but a standard-only shortcut set is valid with `carbon=true eventTap=false`.
+
+**Practical guidance**
+Drive validation off the active transport, not a one-size-fits-all startup marker. For standard shortcuts, require Accessibility plus successful Carbon registration. For Hyper shortcuts, require Input Monitoring plus an active event tap. Keep the validation rule aligned with the same transport-specific readiness semantics used in production code.
+For mixed fixtures, expect both transports to be ready at once (`carbon=true` and `eventTap=true`) and make the harness wait for both before declaring startup healthy.
+
+## E2E Fixtures Must Match The Saved Shortcut Set
+
+**Issue**
+An end-to-end module can fail even when the product is healthy if the machine's saved shortcuts do not contain the fixture shortcut the module is trying to exercise.
+
+**Cause**
+The E2E shell modules historically assumed a fixed local fixture, such as Safari on `Shift+Cmd+S` and IINA on a Hyper combo. When `shortcuts.json` drifts away from that fixture, the module reports a product failure even though Quickey is simply following the saved config.
+
+**Practical guidance**
+Teach each E2E module to inspect the current saved shortcuts before asserting on runtime behavior. If the required shortcut is absent for the expected route, report `SKIP`/`WARN` instead of `FAIL`. Reserve hard failures for mismatches between the configured shortcut and the observed runtime behavior.
 
 ## Previous App Self-Reference in Tracker
 

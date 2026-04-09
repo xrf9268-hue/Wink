@@ -1,3 +1,4 @@
+import Carbon.HIToolbox
 import Foundation
 import Testing
 @testable import Quickey
@@ -54,18 +55,22 @@ private final class MutablePermissionService: @unchecked Sendable, PermissionSer
 @MainActor
 private final class FakeCaptureProvider: ShortcutCaptureProvider {
     var isRunning = false
+    var startSucceeds = true
     private(set) var startCallCount = 0
     private(set) var stopCallCount = 0
     private(set) var registeredShortcuts: Set<KeyPress> = []
+    private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
 
     func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {
         startCallCount += 1
-        isRunning = !registeredShortcuts.isEmpty
+        self.onKeyPress = onKeyPress
+        isRunning = startSucceeds && !registeredShortcuts.isEmpty
     }
 
     func stop() {
         stopCallCount += 1
         isRunning = false
+        onKeyPress = nil
     }
 
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {
@@ -74,24 +79,32 @@ private final class FakeCaptureProvider: ShortcutCaptureProvider {
             isRunning = false
         }
     }
+
+    func emit(_ keyPress: KeyPress) {
+        onKeyPress?(keyPress)
+    }
 }
 
 @MainActor
 private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
     var isRunning = false
+    var startSucceeds = true
     private(set) var startCallCount = 0
     private(set) var stopCallCount = 0
     private(set) var registeredShortcuts: Set<KeyPress> = []
     private(set) var hyperKeyEnabled = false
+    private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
 
     func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {
         startCallCount += 1
-        isRunning = !registeredShortcuts.isEmpty
+        self.onKeyPress = onKeyPress
+        isRunning = startSucceeds && !registeredShortcuts.isEmpty
     }
 
     func stop() {
         stopCallCount += 1
         isRunning = false
+        onKeyPress = nil
     }
 
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {
@@ -103,6 +116,10 @@ private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
 
     func setHyperKeyEnabled(_ enabled: Bool) {
         hyperKeyEnabled = enabled
+    }
+
+    func emit(_ keyPress: KeyPress) {
+        onKeyPress?(keyPress)
     }
 }
 
@@ -118,7 +135,8 @@ private struct FakeAppSwitcher: AppSwitching {
 private func makeShortcutManager(
     permissionService: some PermissionServicing,
     standardProvider: FakeCaptureProvider = FakeCaptureProvider(),
-    hyperProvider: FakeHyperCaptureProvider = FakeHyperCaptureProvider()
+    hyperProvider: FakeHyperCaptureProvider = FakeHyperCaptureProvider(),
+    diagnosticSink: @escaping @Sendable (String) -> Void = { _ in }
 ) -> (ShortcutManager, FakeCaptureProvider, FakeHyperCaptureProvider) {
     let coordinator = ShortcutCaptureCoordinator(
         standardProvider: standardProvider,
@@ -129,7 +147,8 @@ private func makeShortcutManager(
         persistenceService: PersistenceService(),
         appSwitcher: FakeAppSwitcher(),
         captureCoordinator: coordinator,
-        permissionService: permissionService
+        permissionService: permissionService,
+        diagnosticClient: .init(log: diagnosticSink)
     )
     return (manager, standardProvider, hyperProvider)
 }
@@ -233,7 +252,8 @@ func accessibilityLossStopsAllShortcutCapture() {
         persistenceService: PersistenceService(),
         appSwitcher: FakeAppSwitcher(),
         captureCoordinator: coordinator,
-        permissionService: permissionService
+        permissionService: permissionService,
+        diagnosticClient: .live
     )
 
     manager.checkPermissionChange()
@@ -260,4 +280,80 @@ func unchangedPermissionsDoNotResyncCaptureRepeatedly() {
 
     #expect(standardProvider.startCallCount == standardStartsAfterLaunch)
     #expect(hyperProvider.startCallCount == hyperStartsAfterLaunch)
+}
+
+@Test @MainActor
+func matchedShortcutEmitsTraceOnlyForMatchedKeys() {
+    let diagnostics = DiagnosticCapture()
+    let standardProvider = FakeCaptureProvider()
+    let (manager, _, _) = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        standardProvider: standardProvider,
+        diagnosticSink: diagnostics.record
+    )
+    manager.save(shortcuts: [standardShortcut()])
+    manager.start()
+
+    standardProvider.emit(KeyPress(
+        keyCode: UInt16(kVK_ANSI_S),
+        modifiers: [.command, .shift]
+    ))
+
+    let logCountAfterMatch = diagnostics.messages.count
+    standardProvider.emit(KeyPress(
+        keyCode: UInt16(kVK_ANSI_A),
+        modifiers: [.command]
+    ))
+
+    #expect(diagnostics.messages.contains { $0.contains("MATCHED: Safari - com.apple.Safari") })
+    #expect(diagnostics.messages.contains { $0.contains("SHORTCUT_TRACE_DECISION event=matched bundle=com.apple.Safari") })
+    #expect(diagnostics.messages.count == logCountAfterMatch)
+}
+
+@Test @MainActor
+func missingStandardRegistrationEmitsCaptureBlockedDiagnostic() {
+    let diagnostics = DiagnosticCapture()
+    let standardProvider = FakeCaptureProvider()
+    standardProvider.startSucceeds = false
+    let (manager, _, _) = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        standardProvider: standardProvider,
+        diagnosticSink: diagnostics.record
+    )
+    manager.save(shortcuts: [standardShortcut()])
+
+    manager.start()
+
+    #expect(diagnostics.messages.contains {
+        $0.contains("SHORTCUT_TRACE_BLOCKED")
+            && $0.contains("reason=\"missing_registration_or_system_conflict\"")
+            && $0.contains("route=standard")
+    })
+}
+
+@Test @MainActor
+func missingInputMonitoringEmitsHyperCaptureBlockedDiagnostic() {
+    let diagnostics = DiagnosticCapture()
+    let (manager, _, _) = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        diagnosticSink: diagnostics.record
+    )
+    manager.save(shortcuts: [hyperShortcut()])
+    manager.setHyperKeyEnabled(true)
+
+    manager.start()
+
+    #expect(diagnostics.messages.contains {
+        $0.contains("SHORTCUT_TRACE_BLOCKED")
+            && $0.contains("reason=\"input_monitoring_missing\"")
+            && $0.contains("route=hyper")
+    })
+}
+
+private final class DiagnosticCapture: @unchecked Sendable {
+    private(set) var messages: [String] = []
+
+    func record(_ message: String) {
+        messages.append(message)
+    }
 }
