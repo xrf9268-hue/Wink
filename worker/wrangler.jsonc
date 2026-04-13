@@ -1,0 +1,8 @@
+{
+  "name": "quickey-cheatsheet",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-12-01",
+  "routes": [
+    { "pattern": "quickey.aixie.de", "custom_domain": true }
+  ]
+}
