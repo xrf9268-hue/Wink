@@ -13,3 +13,4 @@ scripts/cgevent-helper
 !.claude/settings.json
 .worktrees/
 logs/
+worker/.wrangler/
