@@ -13,7 +13,11 @@ let package = Package(
         .executableTarget(
             name: "Quickey",
             path: "Sources/Quickey",
-            exclude: ["Resources/Info.plist"],
+            exclude: [
+                "Resources/Info.plist",
+                "Resources/AppIcon.svg",
+                "Resources/AppIcon.icns",
+            ],
             swiftSettings: [
                 .define("DEBUG", .when(configuration: .debug)),
             ],

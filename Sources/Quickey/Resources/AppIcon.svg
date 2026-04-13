@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- macOS squircle clip -->
+    <clipPath id="iconClip">
+      <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228"/>
+    </clipPath>
+
+    <!-- Background: rich deep indigo -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#0f0a2e"/>
+    </linearGradient>
+
+    <!-- Keycap side/base: darker purple for depth -->
+    <linearGradient id="keySide" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#3b2f7e"/>
+      <stop offset="100%" stop-color="#2a1f66"/>
+    </linearGradient>
+
+    <!-- Keycap top face: vibrant gradient -->
+    <linearGradient id="keyTop" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#7c6ce7"/>
+      <stop offset="40%" stop-color="#6d5de0"/>
+      <stop offset="100%" stop-color="#5b4bd4"/>
+    </linearGradient>
+
+    <!-- Top highlight: simulates overhead light hitting keycap -->
+    <linearGradient id="topHighlight" x1="0.2" y1="0" x2="0.8" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#fff" stop-opacity="0.25"/>
+      <stop offset="40%" stop-color="#fff" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0.1"/>
+    </linearGradient>
+
+    <!-- Lightning legend gradient: warm gold -->
+    <linearGradient id="boltGrad" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#fde68a"/>
+      <stop offset="50%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+
+    <!-- Subtle glow behind bolt -->
+    <filter id="boltGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Key shadow cast onto background -->
+    <filter id="keyShadow" x="-15%" y="-10%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="20" stdDeviation="28" flood-color="#050216" flood-opacity="0.6"/>
+    </filter>
+
+    <!-- Subtle ambient light on background -->
+    <radialGradient id="ambientGlow" cx="50%" cy="42%" r="50%">
+      <stop offset="0%" stop-color="#6d5de0" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#6d5de0" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Edge highlight for keycap rim -->
+    <linearGradient id="rimLight" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#fff" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#fff" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <g clip-path="url(#iconClip)">
+
+    <!-- Background fill -->
+    <rect width="1024" height="1024" fill="url(#bgGrad)"/>
+
+    <!-- Ambient light glow on background -->
+    <rect width="1024" height="1024" fill="url(#ambientGlow)"/>
+
+    <!-- ============ KEYCAP ============ -->
+
+    <!-- Shadow layer -->
+    <g filter="url(#keyShadow)">
+      <rect x="120" y="120" width="784" height="784" rx="100" ry="100" fill="#1a1145" opacity="0.01"/>
+    </g>
+
+    <!-- Keycap base/side wall — offset down to show depth -->
+    <rect x="120" y="160" width="784" height="750" rx="100" ry="100" fill="url(#keySide)"/>
+
+    <!-- Side wall bottom edge darkening -->
+    <rect x="120" y="860" width="784" height="50" rx="0" ry="0" fill="#1a1250" opacity="0.5"/>
+
+    <!-- Keycap top face — the main visible surface -->
+    <rect x="132" y="120" width="760" height="730" rx="92" ry="92" fill="url(#keyTop)"/>
+
+    <!-- Top face lighting overlay -->
+    <rect x="132" y="120" width="760" height="730" rx="92" ry="92" fill="url(#topHighlight)"/>
+
+    <!-- Rim highlight — thin bright edge -->
+    <rect x="132" y="120" width="760" height="730" rx="92" ry="92"
+          fill="none" stroke="url(#rimLight)" stroke-width="2.5"/>
+
+    <!-- Subtle inner dish depression -->
+    <rect x="176" y="158" width="672" height="650" rx="68" ry="68"
+          fill="#000" opacity="0.05"/>
+
+    <!-- ============ LIGHTNING BOLT LEGEND ============ -->
+    <!-- Centered on the keycap, as the printed key legend -->
+    <g filter="url(#boltGlow)">
+      <path d="
+        M 548 195
+        L 410 470
+        L 496 470
+        L 448 830
+        L 618 420
+        L 528 420
+        Z
+      " fill="url(#boltGrad)"/>
+    </g>
+
+    <!-- Bolt specular highlight — white reflection on upper facet -->
+    <path d="
+      M 548 195
+      L 478 330
+      L 538 330
+      Z
+    " fill="#fff" opacity="0.3"/>
+
+  </g>
+</svg>

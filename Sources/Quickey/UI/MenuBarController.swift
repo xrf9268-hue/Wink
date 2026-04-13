@@ -20,7 +20,10 @@ final class MenuBarController {
 
     func install() {
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "command.square", accessibilityDescription: "Quickey")
+            let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+            button.image = NSImage(systemSymbolName: "bolt.square.fill", accessibilityDescription: "Quickey")?
+                .withSymbolConfiguration(config)
+            button.image?.isTemplate = true
             button.image?.size = NSSize(width: 18, height: 18)
         }
 

@@ -11,6 +11,7 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 INFO_PLIST="$PROJECT_DIR/Sources/Quickey/Resources/Info.plist"
+APP_ICON="$PROJECT_DIR/Sources/Quickey/Resources/AppIcon.icns"
 SIGN_IDENTITY="${SIGN_IDENTITY:-Quickey}"
 ENTITLEMENTS_PLIST="${ENTITLEMENTS_PLIST:-$PROJECT_DIR/entitlements.plist}"
 ENABLE_HARDENED_RUNTIME="${ENABLE_HARDENED_RUNTIME:-0}"
@@ -33,6 +34,14 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 # Copy binary
 cp "$BINARY" "$MACOS_DIR/${APP_NAME}"
 chmod +x "$MACOS_DIR/${APP_NAME}"
+
+# Copy app icon into the bundle
+if [ -f "$APP_ICON" ]; then
+    cp "$APP_ICON" "$RESOURCES_DIR/AppIcon.icns"
+    echo "    AppIcon.icns copied to Resources"
+else
+    echo "Warning: AppIcon.icns not found at $APP_ICON" >&2
+fi
 
 # Copy Info.plist from canonical source
 if [ -f "$INFO_PLIST" ]; then
