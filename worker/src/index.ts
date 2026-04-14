@@ -359,6 +359,7 @@ const html = `<!DOCTYPE html>
     </div>
     <div class="keyboard-row">
       <div class="kb-key hyper-key">Hyper</div>
+      <div class="kb-key">A</div>
       <div class="kb-key active">S<span class="kb-app">Safari</span></div>
       <div class="kb-key active">D<span class="kb-app">DingTalk</span></div>
       <div class="kb-key active">F<span class="kb-app">Finder</span></div>
