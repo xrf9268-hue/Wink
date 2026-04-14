@@ -1,5 +1,9 @@
 # Quickey
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="Quickey" width="600">
+</p>
+
 Quickey is a macOS menu bar app that binds global shortcuts to target apps, with Thor-like toggle behavior, fast activation, and lightweight usage insights.
 
 ## Highlights
