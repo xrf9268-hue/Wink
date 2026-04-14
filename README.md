@@ -33,23 +33,9 @@ swift test
 
 `Launch at Login` should be validated from a packaged app installed in `/Applications` or `~/Applications`. Running `build/Quickey.app` directly from the repo can surface an install-location warning instead of a real login-item configuration state.
 
-Tagged releases use `v<CFBundleShortVersionString>` and publish `Quickey-<version>.dmg` through the release workflow described in [`docs/signing-and-release.md`](./docs/signing-and-release.md).
-While Developer ID credentials are unavailable, trusted testers can use the rolling internal prerelease at [internal-downloads](https://github.com/xrf9268-hue/Quickey/releases/tag/internal-downloads). That package is intentionally unsigned and not notarized, so macOS may warn on first launch.
-
-## Loop Job
-
-Run automated Claude Code sessions to process issues and PRs:
-
-```
-/loop 30m /babysit-prs
-```
-
-Each iteration runs preflight checks, processes open PRs, selects an issue, implements with review gates, and defers merge until CI and async reviews settle. See [`docs/loop-job-guide.md`](./docs/loop-job-guide.md) for details.
+Tagged releases use `v<CFBundleShortVersionString>` and publish `Quickey-<version>.dmg` through the release workflow described in [`docs/signing-and-release.md`](./docs/signing-and-release.md). Notarized releases are not yet available; the current [internal prerelease](https://github.com/xrf9268-hue/Quickey/releases/tag/internal-downloads) is unsigned, so macOS may warn on first launch.
 
 ## Documentation
 - [`docs/README.md`](./docs/README.md)
 - [`docs/architecture.md`](./docs/architecture.md)
 - [`docs/signing-and-release.md`](./docs/signing-and-release.md)
-
-## Project Status
-Quickey is feature-complete. Broad macOS validation has landed, the 2026-04-09 toggle reliability recovery and transport-aware E2E updates are in place, packaged-app manual validation has clean recent toggle traces for both standard and Hyper coverage, local DMG packaging and GitHub release automation are now in place, broader app-matrix revalidation is still pending, and credential-backed notarized release validation is still pending.
