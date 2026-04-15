@@ -3,5 +3,12 @@ protocol PermissionServicing: Sendable {
     func isAccessibilityTrusted() -> Bool
     func isInputMonitoringTrusted() -> Bool
     @discardableResult
-    func requestIfNeeded(prompt: Bool) -> Bool
+    func requestIfNeeded(prompt: Bool, inputMonitoringRequired: Bool) -> Bool
+}
+
+extension PermissionServicing {
+    @discardableResult
+    func requestIfNeeded(prompt: Bool) -> Bool {
+        requestIfNeeded(prompt: prompt, inputMonitoringRequired: true)
+    }
 }

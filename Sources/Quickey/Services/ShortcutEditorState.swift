@@ -16,12 +16,19 @@ final class ShortcutEditorState {
     private let shortcutStore: ShortcutStore
     private let shortcutManager: ShortcutManager
     private let usageTracker: UsageTracker?
+    private let onShortcutConfigurationChange: @MainActor () -> Void
     private let shortcutValidator = ShortcutValidator()
 
-    init(shortcutStore: ShortcutStore, shortcutManager: ShortcutManager, usageTracker: UsageTracker? = nil) {
+    init(
+        shortcutStore: ShortcutStore,
+        shortcutManager: ShortcutManager,
+        usageTracker: UsageTracker? = nil,
+        onShortcutConfigurationChange: @escaping @MainActor () -> Void = {}
+    ) {
         self.shortcutStore = shortcutStore
         self.shortcutManager = shortcutManager
         self.usageTracker = usageTracker
+        self.onShortcutConfigurationChange = onShortcutConfigurationChange
         self.shortcuts = shortcutStore.shortcuts
         Task { await refreshUsageCounts() }
     }
@@ -49,6 +56,7 @@ final class ShortcutEditorState {
         updated.append(candidate)
         shortcuts = updated
         shortcutManager.save(shortcuts: updated)
+        onShortcutConfigurationChange()
         conflictMessage = nil
         resetDraft()
         Task { await refreshUsageCounts() }
@@ -58,6 +66,7 @@ final class ShortcutEditorState {
         let updated = shortcuts.filter { $0.id != id }
         shortcuts = updated
         shortcutManager.save(shortcuts: updated)
+        onShortcutConfigurationChange()
         if let usageTracker {
             Task {
                 await usageTracker.deleteUsage(shortcutId: id)
@@ -74,6 +83,7 @@ final class ShortcutEditorState {
         guard let index = shortcuts.firstIndex(where: { $0.id == id }) else { return }
         shortcuts[index].isEnabled.toggle()
         shortcutManager.save(shortcuts: shortcuts)
+        onShortcutConfigurationChange()
     }
 
     func setAllEnabled(_ enabled: Bool) {
@@ -81,6 +91,7 @@ final class ShortcutEditorState {
             shortcuts[index].isEnabled = enabled
         }
         shortcutManager.save(shortcuts: shortcuts)
+        onShortcutConfigurationChange()
     }
 
     func chooseApplication() {

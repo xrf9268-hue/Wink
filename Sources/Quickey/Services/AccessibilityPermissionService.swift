@@ -33,12 +33,16 @@ struct AccessibilityPermissionService: PermissionServicing {
     }
 
     @discardableResult
-    func requestIfNeeded(prompt: Bool = true) -> Bool {
+    func requestIfNeeded(
+        prompt: Bool = true,
+        inputMonitoringRequired: Bool = true
+    ) -> Bool {
         let axGranted = client.requestAccessibilityPermission(prompt)
 
-        // Request Input Monitoring permission
         let imGranted: Bool
-        if client.isInputMonitoringTrusted() {
+        if !inputMonitoringRequired {
+            imGranted = client.isInputMonitoringTrusted()
+        } else if client.isInputMonitoringTrusted() {
             imGranted = true
         } else if prompt {
             imGranted = client.requestInputMonitoringAccess()
@@ -46,7 +50,7 @@ struct AccessibilityPermissionService: PermissionServicing {
             imGranted = false
         }
 
-        return axGranted && imGranted
+        return axGranted && (!inputMonitoringRequired || imGranted)
     }
 }
 

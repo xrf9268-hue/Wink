@@ -22,8 +22,15 @@ final class SettingsWindowController {
             return
         }
 
-        let editor = ShortcutEditorState(shortcutStore: shortcutStore, shortcutManager: shortcutManager, usageTracker: usageTracker)
         let preferences = AppPreferences(shortcutManager: shortcutManager, hyperKeyService: hyperKeyService)
+        let editor = ShortcutEditorState(
+            shortcutStore: shortcutStore,
+            shortcutManager: shortcutManager,
+            usageTracker: usageTracker,
+            onShortcutConfigurationChange: {
+                preferences.refreshPermissions()
+            }
+        )
         let insightsViewModel = InsightsViewModel(usageTracker: usageTracker, shortcutStore: shortcutStore)
         let appListProvider = AppListProvider()
         let contentView = SettingsView(editor: editor, preferences: preferences, insightsViewModel: insightsViewModel, appListProvider: appListProvider)

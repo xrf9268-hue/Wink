@@ -31,7 +31,7 @@ func requestWithoutPromptDoesNotRequestInputMonitoringAccess() {
         }
     ))
 
-    let granted = service.requestIfNeeded(prompt: false)
+    let granted = service.requestIfNeeded(prompt: false, inputMonitoringRequired: true)
 
     #expect(granted == false)
     #expect(recorder.accessibilityPromptValues == [false])
@@ -39,7 +39,7 @@ func requestWithoutPromptDoesNotRequestInputMonitoringAccess() {
 }
 
 @Test
-func requestWithPromptRequestsInputMonitoringAccessWhenPreflightFails() {
+func requestWithPromptSkipsInputMonitoringWhenCurrentConfigurationDoesNotNeedIt() {
     let recorder = PermissionRequestRecorder()
     let service = AccessibilityPermissionService(client: .init(
         isAccessibilityTrusted: { true },
@@ -54,7 +54,30 @@ func requestWithPromptRequestsInputMonitoringAccessWhenPreflightFails() {
         }
     ))
 
-    let granted = service.requestIfNeeded(prompt: true)
+    let granted = service.requestIfNeeded(prompt: true, inputMonitoringRequired: false)
+
+    #expect(granted == true)
+    #expect(recorder.accessibilityPromptValues == [true])
+    #expect(recorder.inputMonitoringRequestCount == 0)
+}
+
+@Test
+func requestWithPromptRequestsInputMonitoringAccessWhenPreflightFailsAndHyperNeedsIt() {
+    let recorder = PermissionRequestRecorder()
+    let service = AccessibilityPermissionService(client: .init(
+        isAccessibilityTrusted: { true },
+        isInputMonitoringTrusted: { false },
+        requestAccessibilityPermission: { prompt in
+            recorder.accessibilityPromptValues.append(prompt)
+            return true
+        },
+        requestInputMonitoringAccess: {
+            recorder.inputMonitoringRequestCount += 1
+            return true
+        }
+    ))
+
+    let granted = service.requestIfNeeded(prompt: true, inputMonitoringRequired: true)
 
     #expect(granted == true)
     #expect(recorder.accessibilityPromptValues == [true])

@@ -20,14 +20,17 @@ private struct FakePermissionService: PermissionServicing {
     }
 
     @discardableResult
-    func requestIfNeeded(prompt: Bool) -> Bool {
-        isTrusted()
+    func requestIfNeeded(prompt: Bool, inputMonitoringRequired: Bool) -> Bool {
+        ax && (!inputMonitoringRequired || input)
     }
 }
 
 private final class MutablePermissionService: @unchecked Sendable, PermissionServicing {
     var ax: Bool
     var input: Bool
+    var requestCallCount = 0
+    var requestedInputMonitoringFlags: [Bool] = []
+    var grantInputMonitoringOnPrompt = false
 
     init(ax: Bool, input: Bool) {
         self.ax = ax
@@ -47,8 +50,13 @@ private final class MutablePermissionService: @unchecked Sendable, PermissionSer
     }
 
     @discardableResult
-    func requestIfNeeded(prompt: Bool) -> Bool {
-        isTrusted()
+    func requestIfNeeded(prompt: Bool, inputMonitoringRequired: Bool) -> Bool {
+        requestCallCount += 1
+        requestedInputMonitoringFlags.append(inputMonitoringRequired)
+        if prompt && inputMonitoringRequired && grantInputMonitoringOnPrompt {
+            input = true
+        }
+        return ax && (!inputMonitoringRequired || input)
     }
 }
 
@@ -183,6 +191,7 @@ func captureStatusKeepsStandardShortcutsReadyWhenInputMonitoringIsMissing() {
 
     #expect(status.accessibilityGranted == true)
     #expect(status.inputMonitoringGranted == false)
+    #expect(status.inputMonitoringRequired == false)
     #expect(status.carbonHotKeysRegistered == true)
     #expect(status.eventTapActive == false)
     #expect(status.standardShortcutsReady == true)
@@ -206,6 +215,7 @@ func hyperShortcutsNeedInputMonitoringAndDoNotStartEventTapWithoutIt() {
 
     #expect(status.carbonHotKeysRegistered == false)
     #expect(status.eventTapActive == false)
+    #expect(status.inputMonitoringRequired == true)
     #expect(status.standardShortcutsReady == true)
     #expect(status.hyperShortcutsReady == false)
     #expect(standardProvider.startCallCount == 0)
@@ -234,6 +244,95 @@ func permissionGainStartsStandardCaptureWhenAccessibilityBecomesAvailable() {
     #expect(standardProvider.startCallCount == 1)
     #expect(standardProvider.isRunning == true)
     #expect(hyperProvider.startCallCount == 0)
+}
+
+@Test @MainActor
+func startDoesNotRequestInputMonitoringWhenCurrentConfigurationIsStandardOnly() {
+    let permissionService = MutablePermissionService(ax: true, input: false)
+    let (manager, standardProvider, hyperProvider) = makeShortcutManager(
+        permissionService: permissionService
+    )
+    manager.save(shortcuts: [standardShortcut()])
+
+    manager.start()
+
+    #expect(permissionService.requestCallCount == 1)
+    #expect(permissionService.requestedInputMonitoringFlags == [false])
+    #expect(standardProvider.startCallCount == 1)
+    #expect(hyperProvider.startCallCount == 0)
+}
+
+@Test @MainActor
+func startRequestsInputMonitoringWhenCurrentConfigurationNeedsHyperTransport() {
+    let permissionService = MutablePermissionService(ax: true, input: false)
+    permissionService.grantInputMonitoringOnPrompt = true
+    let (manager, standardProvider, hyperProvider) = makeShortcutManager(
+        permissionService: permissionService
+    )
+    manager.save(shortcuts: [hyperShortcut()])
+    manager.setHyperKeyEnabled(true)
+
+    manager.start()
+
+    let status = manager.shortcutCaptureStatus()
+
+    #expect(permissionService.requestCallCount == 1)
+    #expect(permissionService.requestedInputMonitoringFlags == [true])
+    #expect(status.inputMonitoringGranted == true)
+    #expect(status.inputMonitoringRequired == true)
+    #expect(status.standardShortcutsReady == true)
+    #expect(status.hyperShortcutsReady == true)
+    #expect(standardProvider.startCallCount == 0)
+    #expect(hyperProvider.startCallCount == 1)
+}
+
+@Test @MainActor
+func mixedConfigurationKeepsStandardShortcutsReadyWhileHyperWaitsForInputMonitoring() {
+    let permissionService = MutablePermissionService(ax: true, input: false)
+    let (manager, standardProvider, hyperProvider) = makeShortcutManager(
+        permissionService: permissionService
+    )
+    manager.save(shortcuts: [standardShortcut(), hyperShortcut()])
+    manager.setHyperKeyEnabled(true)
+
+    manager.start()
+
+    let status = manager.shortcutCaptureStatus()
+
+    #expect(permissionService.requestedInputMonitoringFlags == [true])
+    #expect(status.inputMonitoringGranted == false)
+    #expect(status.inputMonitoringRequired == true)
+    #expect(status.standardShortcutsReady == true)
+    #expect(status.hyperShortcutsReady == false)
+    #expect(standardProvider.startCallCount == 1)
+    #expect(hyperProvider.startCallCount == 0)
+}
+
+@Test @MainActor
+func enablingHyperAtRuntimeRequestsInputMonitoringAndResyncsCapture() {
+    let permissionService = MutablePermissionService(ax: true, input: false)
+    permissionService.grantInputMonitoringOnPrompt = true
+    let (manager, standardProvider, hyperProvider) = makeShortcutManager(
+        permissionService: permissionService
+    )
+    manager.save(shortcuts: [hyperShortcut()])
+    manager.start()
+
+    #expect(permissionService.requestedInputMonitoringFlags == [false])
+    #expect(standardProvider.isRunning == true)
+    #expect(hyperProvider.isRunning == false)
+
+    manager.setHyperKeyEnabled(true)
+
+    let status = manager.shortcutCaptureStatus()
+
+    #expect(permissionService.requestedInputMonitoringFlags == [false, true])
+    #expect(status.inputMonitoringGranted == true)
+    #expect(status.inputMonitoringRequired == true)
+    #expect(status.standardShortcutsReady == true)
+    #expect(status.hyperShortcutsReady == true)
+    #expect(standardProvider.isRunning == false)
+    #expect(hyperProvider.isRunning == true)
 }
 
 @Test @MainActor

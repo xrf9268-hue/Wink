@@ -120,6 +120,9 @@ struct PermissionStatusBanner: View {
         if !status.accessibilityGranted {
             return "Accessibility permission required"
         }
+        if !status.inputMonitoringRequired && status.standardShortcutsReady {
+            return "Standard shortcuts ready"
+        }
         if status.standardShortcutsReady && status.hyperShortcutsReady {
             return "Shortcut capture ready"
         }
@@ -132,6 +135,9 @@ struct PermissionStatusBanner: View {
     private var detail: String {
         if let warning = status.permissionWarning {
             return warning
+        }
+        if !status.inputMonitoringRequired {
+            return "Standard shortcuts are active."
         }
         if !status.hyperShortcutsReady {
             return "Hyper shortcuts need Input Monitoring."

@@ -137,8 +137,8 @@ private struct FakePermissionService: PermissionServicing {
     }
 
     @discardableResult
-    func requestIfNeeded(prompt: Bool) -> Bool {
-        isTrusted()
+    func requestIfNeeded(prompt: Bool, inputMonitoringRequired: Bool) -> Bool {
+        state.ax && (!inputMonitoringRequired || state.input)
     }
 }
 

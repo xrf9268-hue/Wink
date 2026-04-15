@@ -70,6 +70,45 @@ func setHyperKeyEnabledTracksActualServiceStateAfterFailure() {
 }
 
 @Test @MainActor
+func setHyperKeyEnabledRefreshesShortcutCaptureStatusForHyperRoutingChanges() {
+    let suiteName = "AppPreferencesTests.setHyperKeyEnabledRefreshesShortcutCaptureStatusForHyperRoutingChanges"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+
+    let shortcutStore = ShortcutStore()
+    shortcutStore.replaceAll(with: [
+        AppShortcut(
+            appName: "Safari",
+            bundleIdentifier: "com.apple.Safari",
+            keyEquivalent: "s",
+            modifierFlags: ["command", "option", "control", "shift"]
+        )
+    ])
+    let manager = ShortcutManager(
+        shortcutStore: shortcutStore,
+        persistenceService: PersistenceService(),
+        appSwitcher: FakeAppSwitcher(),
+        captureCoordinator: makeCaptureCoordinator(),
+        permissionService: FakePermissionService(ax: true, input: false),
+        diagnosticClient: .live
+    )
+    manager.save(shortcuts: shortcutStore.shortcuts)
+
+    let preferences = AppPreferences(
+        shortcutManager: manager,
+        hyperKeyService: HyperKeyService(runner: { _ in true }, defaults: defaults)
+    )
+
+    #expect(preferences.shortcutCaptureStatus.inputMonitoringRequired == false)
+    #expect(preferences.shortcutCaptureStatus.hyperShortcutsReady == true)
+
+    preferences.setHyperKeyEnabled(true)
+
+    #expect(preferences.shortcutCaptureStatus.inputMonitoringRequired == true)
+    #expect(preferences.shortcutCaptureStatus.hyperShortcutsReady == false)
+}
+
+@Test @MainActor
 func LaunchAtLoginPresentation_enabledMapsToInteractiveOnToggleWithoutMessage() {
     let preferences = makePreferences(status: .enabled)
 
@@ -168,8 +207,8 @@ private struct FakePermissionService: PermissionServicing {
     }
 
     @discardableResult
-    func requestIfNeeded(prompt: Bool) -> Bool {
-        isTrusted()
+    func requestIfNeeded(prompt: Bool, inputMonitoringRequired: Bool) -> Bool {
+        ax && (!inputMonitoringRequired || input)
     }
 }
 

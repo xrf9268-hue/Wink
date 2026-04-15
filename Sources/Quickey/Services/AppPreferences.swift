@@ -125,5 +125,6 @@ final class AppPreferences {
         }
         hyperKeyEnabled = hyperKeyService.isEnabled
         shortcutManager.setHyperKeyEnabled(hyperKeyEnabled)
+        refreshPermissions()
     }
 }

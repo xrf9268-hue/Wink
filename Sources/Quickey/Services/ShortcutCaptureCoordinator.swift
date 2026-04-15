@@ -69,6 +69,10 @@ final class ShortcutCaptureCoordinator {
         syncProviders()
     }
 
+    var inputMonitoringRequired: Bool {
+        !hyperShortcuts.isEmpty
+    }
+
     func status(
         accessibilityGranted: Bool,
         inputMonitoringGranted: Bool
@@ -81,6 +85,7 @@ final class ShortcutCaptureCoordinator {
         return ShortcutCaptureStatus(
             accessibilityGranted: accessibilityGranted,
             inputMonitoringGranted: inputMonitoringGranted,
+            inputMonitoringRequired: inputMonitoringRequired,
             carbonHotKeysRegistered: standardProvider.isRunning,
             eventTapActive: hyperProvider.isRunning,
             standardShortcutsReady: standardReady,
