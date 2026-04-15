@@ -53,7 +53,7 @@ private final class MutablePermissionService: @unchecked Sendable, PermissionSer
     func requestIfNeeded(prompt: Bool, inputMonitoringRequired: Bool) -> Bool {
         requestCallCount += 1
         requestedInputMonitoringFlags.append(inputMonitoringRequired)
-        if prompt && inputMonitoringRequired && grantInputMonitoringOnPrompt {
+        if prompt && inputMonitoringRequired && grantInputMonitoringOnPrompt && ax {
             input = true
         }
         return ax && (!inputMonitoringRequired || input)
@@ -284,6 +284,38 @@ func startRequestsInputMonitoringWhenCurrentConfigurationNeedsHyperTransport() {
     #expect(status.hyperShortcutsReady == true)
     #expect(standardProvider.startCallCount == 0)
     #expect(hyperProvider.startCallCount == 1)
+}
+
+@Test @MainActor
+func startDefersInputMonitoringPromptUntilAccessibilityIsGrantedForHyperConfiguration() {
+    let permissionService = MutablePermissionService(ax: false, input: false)
+    permissionService.grantInputMonitoringOnPrompt = true
+    let (manager, standardProvider, hyperProvider) = makeShortcutManager(
+        permissionService: permissionService
+    )
+    manager.save(shortcuts: [hyperShortcut()])
+    manager.setHyperKeyEnabled(true)
+
+    manager.start()
+
+    #expect(permissionService.requestedInputMonitoringFlags == [false])
+    #expect(permissionService.input == false)
+    #expect(standardProvider.isRunning == false)
+    #expect(hyperProvider.isRunning == false)
+
+    permissionService.ax = true
+    manager.checkPermissionChange()
+
+    let status = manager.shortcutCaptureStatus()
+
+    #expect(permissionService.requestedInputMonitoringFlags == [false, true])
+    #expect(status.accessibilityGranted == true)
+    #expect(status.inputMonitoringGranted == true)
+    #expect(status.inputMonitoringRequired == true)
+    #expect(status.standardShortcutsReady == true)
+    #expect(status.hyperShortcutsReady == true)
+    #expect(standardProvider.isRunning == false)
+    #expect(hyperProvider.isRunning == true)
 }
 
 @Test @MainActor

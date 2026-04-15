@@ -186,7 +186,7 @@ Responsibilities:
 
 Responsibilities:
 - request/check Accessibility + Input Monitoring permission for global shortcuts
-- request Input Monitoring only when the current enabled shortcut set actually requires Hyper transport
+- request Input Monitoring only when the current enabled shortcut set actually requires Hyper transport, and defer the request until Accessibility is already available
 - report shortcut readiness from both permissions plus live Carbon/event-tap state
 - recover monitoring after permission changes without relaunch
 - manage launch-at-login state via `SMAppService`, including approval-needed state
@@ -204,7 +204,9 @@ App launch
   -> ShortcutStore.replaceAll()
   -> ShortcutManager.start()
   -> ShortcutManager computes current transport needs from saved shortcuts + Hyper state
-  -> AccessibilityPermissionService requests Accessibility, and only requests Input Monitoring when Hyper transport is currently required
+  -> AccessibilityPermissionService requests Accessibility
+  -> if Hyper transport is required and Accessibility is already granted, request Input Monitoring immediately
+  -> otherwise defer Input Monitoring until the later permission-change poll observes Accessibility becoming available
   -> ShortcutCaptureCoordinator syncs providers
   -> CarbonHotKeyProvider registers standard shortcuts
   -> EventTapManager starts only if Hyper-routed shortcuts need it
@@ -254,7 +256,7 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **SPM-first**: simple repo layout and source organization
 - **AppKit-first with selective SwiftUI**: deliberate architectural decision documented in `docs/archive/app-structure-direction.md`; hard AppKit requirements (`.accessory` policy, raw key capture, CGEvent tap, NSWorkspace) prevent a pure SwiftUI scene-based approach
 - **Capability-aware shortcut readiness**: `ShortcutCaptureStatus` separates Accessibility, Input Monitoring, Carbon registration, Hyper event-tap activity, standard-shortcut readiness, and Hyper readiness
-- **On-demand Input Monitoring**: startup and later shortcut-routing changes request Input Monitoring only when the current enabled shortcut set actually needs Hyper transport; standard-only configurations stay on the Carbon/Accessibility path without an eager Input Monitoring prompt
+- **On-demand Input Monitoring**: startup and later shortcut-routing changes request Input Monitoring only when the current enabled shortcut set actually needs Hyper transport; standard-only configurations stay on the Carbon/Accessibility path without an eager Input Monitoring prompt, and Hyper-required startup defers the Input Monitoring request until Accessibility has actually been granted
 - **O(1) trigger index**: `ShortcutSignature` dictionary replaces linear scans in the hot path
 - **Observation-first toggle truth**: `ApplicationObservation` snapshots gate stable-state promotion from frontmost/window evidence instead of trusting `isActive` alone
 - **Single-source toggle ownership**: `ToggleSessionCoordinator` is the only mutable lifecycle owner; `AppSwitcher` derives pending/stable views from coordinator state instead of dual-writing local activation state

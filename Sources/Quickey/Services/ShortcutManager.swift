@@ -48,9 +48,11 @@ final class ShortcutManager {
     func start() {
         rebuildIndex()
         let inputMonitoringRequired = captureCoordinator.inputMonitoringRequired
+        let shouldRequestInputMonitoring = inputMonitoringRequired
+            && permissionService.isAccessibilityTrusted()
         let ready = permissionService.requestIfNeeded(
             prompt: true,
-            inputMonitoringRequired: inputMonitoringRequired
+            inputMonitoringRequired: shouldRequestInputMonitoring
         )
         logger.info(
             "start(): ready=\(ready), ax=\(self.permissionService.isAccessibilityTrusted()), im=\(self.permissionService.isInputMonitoringTrusted()), inputMonitoringRequired=\(inputMonitoringRequired)"
