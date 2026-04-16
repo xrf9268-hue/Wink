@@ -11,6 +11,7 @@ Quickey now uses repository-native GitHub Actions to keep issue closure, project
 
 2. **Project reconciliation** (`.github/workflows/project-sync.yml`)
    - Adds the event issue or linked issue into the `Quickey Backlog` Project V2 if it is missing
+   - Scheduled and manual reconciliation runs backfill any repository issues that are still missing from `Quickey Backlog`
    - Syncs `Status` to `Ready`, `In Progress`, or `Done`
    - Syncs `Runtime Validation` to `None`, `macOS pending`, or `macOS complete`
    - Re-runs every 6 hours so transient event failures do not leave the project permanently stale

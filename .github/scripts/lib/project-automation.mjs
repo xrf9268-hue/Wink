@@ -201,6 +201,32 @@ export function normalizePullRequestState(pullRequest) {
   return 'CLOSED';
 }
 
+export function resolveIssueNumbersToEnsure({
+  eventName,
+  eventIssueNumber,
+  linkedIssueNumbers = [],
+  repositoryIssueNumbers = [],
+}) {
+  const issueNumbers =
+    eventName === 'schedule' || eventName === 'workflow_dispatch'
+      ? repositoryIssueNumbers
+      : [eventIssueNumber, ...linkedIssueNumbers];
+
+  const dedupedIssueNumbers = [];
+  const seen = new Set();
+
+  for (const issueNumber of issueNumbers) {
+    if (!Number.isInteger(issueNumber) || seen.has(issueNumber)) {
+      continue;
+    }
+
+    seen.add(issueNumber);
+    dedupedIssueNumbers.push(issueNumber);
+  }
+
+  return dedupedIssueNumbers;
+}
+
 export function sortPullRequestsForIssue(pullRequests) {
   return [...pullRequests].sort((left, right) => {
     const leftPriority =

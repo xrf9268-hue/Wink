@@ -6,6 +6,7 @@ import {
   extractClosingIssueNumbers,
   normalizePullRequestState,
   parseValidationStatus,
+  resolveIssueNumbersToEnsure,
   resolveRuntimeValidationOptionName,
   sortPullRequestsForIssue,
 } from './lib/project-automation.mjs';
@@ -288,6 +289,27 @@ async function fetchIssueNodeId(owner, repo, issueNumber) {
   return issue.node_id;
 }
 
+async function listRepositoryIssues(owner, repo) {
+  const issues = [];
+  let page = 1;
+
+  while (true) {
+    const result = await restRequest(
+      `/repos/${owner}/${repo}/issues?state=all&per_page=100&page=${page}`,
+    );
+
+    issues.push(
+      ...result.filter((item) => !Object.prototype.hasOwnProperty.call(item, 'pull_request')),
+    );
+
+    if (result.length < 100) {
+      return issues;
+    }
+
+    page += 1;
+  }
+}
+
 function buildFieldMaps(fields) {
   const fieldByName = new Map(fields.map((field) => [field.name, field]));
   const statusField = fieldByName.get(statusFieldName);
@@ -329,16 +351,18 @@ async function ensureIssuesInProject(owner, repo, projectId, snapshotItems, even
       .map((issue) => issue.number),
   );
 
-  const issueNumbersToEnsure = new Set();
-  if (event.issue?.number) {
-    issueNumbersToEnsure.add(event.issue.number);
-  }
-
-  if (event.pull_request?.body) {
-    for (const issueNumber of extractClosingIssueNumbers(event.pull_request.body, { owner, repo })) {
-      issueNumbersToEnsure.add(issueNumber);
-    }
-  }
+  const repositoryIssueNumbers =
+    eventName(event) === 'schedule' || eventName(event) === 'workflow_dispatch'
+      ? (await listRepositoryIssues(owner, repo)).map((issue) => issue.number)
+      : [];
+  const issueNumbersToEnsure = resolveIssueNumbersToEnsure({
+    eventIssueNumber: event.issue?.number ?? null,
+    eventName: eventName(event),
+    linkedIssueNumbers: event.pull_request?.body
+      ? extractClosingIssueNumbers(event.pull_request.body, { owner, repo })
+      : [],
+    repositoryIssueNumbers,
+  });
 
   for (const issueNumber of issueNumbersToEnsure) {
     if (knownIssueNumbers.has(issueNumber)) {
@@ -349,6 +373,10 @@ async function ensureIssuesInProject(owner, repo, projectId, snapshotItems, even
     await addIssueToProject(projectId, issueNodeId);
     console.log(`Added issue #${issueNumber} to project "${projectTitle}".`);
   }
+}
+
+function eventName(event) {
+  return process.env.GITHUB_EVENT_NAME ?? event?.action ?? 'workflow_dispatch';
 }
 
 async function buildPullRequestIndex(owner, repo, event) {

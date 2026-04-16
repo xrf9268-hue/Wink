@@ -7,6 +7,7 @@ import {
   extractClosingIssueNumbers,
   normalizePullRequestState,
   parseValidationStatus,
+  resolveIssueNumbersToEnsure,
   resolveRuntimeValidationOptionName,
 } from '../lib/project-automation.mjs';
 
@@ -97,5 +98,17 @@ test('normalizePullRequestState treats merged pull requests as MERGED even when 
       state: 'CLOSED',
     }),
     'MERGED',
+  );
+});
+
+test('resolveIssueNumbersToEnsure uses repository issues during scheduled reconciliation', () => {
+  assert.deepEqual(
+    resolveIssueNumbersToEnsure({
+      eventIssueNumber: null,
+      eventName: 'schedule',
+      linkedIssueNumbers: [144],
+      repositoryIssueNumbers: [133, 134, 135, 144],
+    }),
+    [133, 134, 135, 144],
   );
 });
