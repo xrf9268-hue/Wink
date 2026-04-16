@@ -133,19 +133,7 @@ struct PermissionStatusBanner: View {
     }
 
     private var detail: String {
-        if let warning = status.permissionWarning {
-            return warning
-        }
-        if let warning = status.standardRegistrationWarning {
-            return warning
-        }
-        if !status.inputMonitoringRequired {
-            return "Standard shortcuts are active."
-        }
-        if !status.hyperShortcutsReady {
-            return "Hyper shortcuts need Input Monitoring."
-        }
-        return "Standard and Hyper shortcuts are active."
+        status.bannerDetail
     }
 
     var body: some View {
@@ -163,9 +151,17 @@ struct PermissionStatusBanner: View {
                     .buttonStyle(.borderless)
             }
 
-            Text(detail)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                if let guidance = status.systemSettingsGuidance {
+                    Text(guidance)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)

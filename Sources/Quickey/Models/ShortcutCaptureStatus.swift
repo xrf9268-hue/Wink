@@ -57,6 +57,38 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
         return nil
     }
 
+    var bannerDetail: String {
+        if let warning = permissionWarning {
+            return warning
+        }
+
+        if let warning = standardRegistrationWarning {
+            return warning
+        }
+
+        if !inputMonitoringRequired {
+            return "Standard shortcuts are active."
+        }
+
+        if !hyperShortcutsReady {
+            return "Hyper shortcuts need Input Monitoring."
+        }
+
+        return "Standard and Hyper shortcuts are active."
+    }
+
+    var systemSettingsGuidance: String? {
+        guard permissionWarning == nil, standardRegistrationWarning == nil else {
+            return nil
+        }
+
+        guard inputMonitoringRequired, inputMonitoringGranted, hyperShortcutsReady else {
+            return nil
+        }
+
+        return "System Settings > Input Monitoring can lag behind live access. If Hyper shortcuts work here, Quickey already has the permission it needs."
+    }
+
     var standardRegistrationWarning: String? {
         let failedCount = max(0, standardShortcutCount - registeredStandardShortcutCount)
         guard failedCount > 0 else {

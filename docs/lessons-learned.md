@@ -44,6 +44,17 @@ On macOS 15, the active event-tap path requires both Accessibility and Input Mon
 **Practical guidance**
 Check both `AXIsProcessTrusted()` and `CGPreflightListenEventAccess()` before starting the Hyper/event-tap path, but keep readiness split by transport: standard shortcuts can still be ready with Accessibility + Carbon alone, while Hyper shortcuts are only ready after the active event tap starts successfully.
 
+## Input Monitoring Pane Visibility Is Not The Source Of Truth
+
+**Issue**
+System Settings can appear to show no Quickey row under `Privacy & Security > Input Monitoring` even after Hyper capture has started working.
+
+**Cause**
+The macOS 15 SDK contract for `CGPreflightListenEventAccess()` / `CGRequestListenEventAccess()` only promises whether event-listening access is effective for the current process. It does not promise that System Settings will immediately show, persist, or refresh a visible row for that process. In Quickey's 2026-04-15 packaged-app validation, the authoritative runtime signals were already green (`Input Monitoring permission: granted`, active event tap, passing Hyper E2E) even though the pane still looked empty.
+
+**Practical guidance**
+When investigating Hyper capture, trust the live runtime signals first: `CGPreflightListenEventAccess()`, the Quickey Settings banner, `Event tap started`, and an actual Hyper end-to-end pass. Treat the System Settings pane as helpful but non-authoritative UI that may lag behind live access. Signature churn and launch-path mismatches still matter, so validate with `open Quickey.app` and remember that rebuilding or re-signing can change the TCC identity that System Settings associates with the app.
+
 ## Ad-hoc Signing and TCC
 
 **Issue**
