@@ -40,7 +40,7 @@ func handleAppearRefreshesPermissionsAndLaunchAtLoginStatusFromLiveServiceState(
 }
 
 @Test @MainActor
-func handleAppDidBecomeActiveRefreshesOnlyLaunchAtLoginStatus() {
+func handleAppDidBecomeActiveRefreshesShortcutCaptureAndLaunchAtLoginStatus() {
     let permissionState = MutablePermissionState(ax: false, input: false)
     let launchAtLoginState = MutableLaunchAtLoginState(status: .requiresApproval)
     let preferences = makePreferences(
@@ -55,12 +55,12 @@ func handleAppDidBecomeActiveRefreshesOnlyLaunchAtLoginStatus() {
     SettingsViewLifecycleHandler(preferences: preferences).handleAppDidBecomeActive()
 
     #expect(preferences.shortcutCaptureStatus == ShortcutCaptureStatus(
-        accessibilityGranted: false,
-        inputMonitoringGranted: false,
+        accessibilityGranted: true,
+        inputMonitoringGranted: true,
         carbonHotKeysRegistered: false,
         eventTapActive: false,
-        standardShortcutsReady: false,
-        hyperShortcutsReady: false
+        standardShortcutsReady: true,
+        hyperShortcutsReady: true
     ))
     #expect(preferences.launchAtLoginStatus == .enabled)
 }

@@ -17,6 +17,7 @@ struct SettingsViewLifecycleHandler {
     }
 
     func handleAppDidBecomeActive() {
+        preferences.refreshPermissions()
         preferences.refreshLaunchAtLoginStatus()
     }
 }
