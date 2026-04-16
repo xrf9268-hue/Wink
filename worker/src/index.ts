@@ -460,7 +460,7 @@ const html = `<!DOCTYPE html>
     </div>
     <div class="keyboard-row">
       <div class="kb-key hyper-key">Hyper</div>
-      <div class="kb-key">A</div>
+      <div class="kb-key active">A<span class="kb-app">Antigrav</span></div>
       <div class="kb-key active">S<span class="kb-app">Safari</span></div>
       <div class="kb-key active">D<span class="kb-app">DingTalk</span></div>
       <div class="kb-key active">F<span class="kb-app">Finder</span></div>
@@ -552,9 +552,20 @@ const html = `<!DOCTYPE html>
     <div class="section-title">
       <div class="section-icon">&#x2699;</div>
       <h2>Dev Tools</h2>
-      <span class="count">6 shortcuts</span>
+      <span class="count">7 shortcuts</span>
     </div>
     <div class="grid">
+      <div class="card">
+        <div class="key-combo">
+          <span class="key key-hyper">Hyper</span>
+          <span class="key-plus">+</span>
+          <span class="key key-letter">A</span>
+        </div>
+        <div class="app-info">
+          <span class="app-name">Antigravity</span>
+          <span class="app-hint">A = Antigravity</span>
+        </div>
+      </div>
       <div class="card">
         <div class="key-combo">
           <span class="key key-hyper">Hyper</span>
@@ -672,7 +683,7 @@ const html = `<!DOCTYPE html>
           <span class="key key-letter">H</span>
         </div>
         <div class="app-info">
-          <span class="app-name">ChatGPT Atlas</span>
+          <span class="app-name">ChatGPT</span>
           <span class="app-hint">H = cHatGPT</span>
         </div>
       </div>
@@ -737,7 +748,7 @@ const html = `<!DOCTYPE html>
   <div class="footer">
     <p>
       <kbd>Hyper</kbd> = Caps Lock remapped via <strong>Quickey</strong> &nbsp;|&nbsp;
-      Available: <kbd>A</kbd> <kbd>E</kbd> <kbd>J</kbd> <kbd>L</kbd> <kbd>Q</kbd> <kbd>U</kbd> <kbd>Y</kbd>
+      Available: <kbd>E</kbd> <kbd>J</kbd> <kbd>L</kbd> <kbd>Q</kbd> <kbd>U</kbd> <kbd>Y</kbd>
     </p>
     <a class="repo-link" href="https://github.com/xrf9268-hue/Quickey" target="_blank" rel="noopener noreferrer" aria-label="View on GitHub">
       <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
