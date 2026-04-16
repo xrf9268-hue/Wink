@@ -2,6 +2,11 @@
 
 How to run automated Claude Code sessions for recurring project work using `/loop`. See also [Wiki: Loop Job Configuration](https://github.com/xrf9268-hue/Quickey/wiki/Loop-Job-Configuration).
 
+Repository-native state sync is now handled separately by GitHub Actions:
+- `.github/workflows/pr-metadata.yml` enforces PR issue linkage and validation-state metadata
+- `.github/workflows/project-sync.yml` keeps `Quickey Backlog` `Status` and `Runtime Validation` aligned with issue/PR state
+- [`github-automation.md`](./github-automation.md) documents the required `PROJECT_AUTOMATION_TOKEN` secret and branch-protection recommendation
+
 ## Quick Start
 
 In a Claude Code interactive session, run:

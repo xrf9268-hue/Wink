@@ -4,6 +4,7 @@ This directory maps the maintainer-facing docs for Quickey.
 
 ## Core Docs
 - [`architecture.md`](./architecture.md)
+- [`github-automation.md`](./github-automation.md) — PR metadata enforcement, Quickey Backlog project reconciliation, runtime-validation field sync, and required repository secrets
 - [`signing-and-release.md`](./signing-and-release.md) — local DMG packaging, internal-package artifacts, signing, notarization, release secrets, and tag-driven GitHub Release flow
 
 ## Maintainer Notes
@@ -12,6 +13,7 @@ This directory maps the maintainer-facing docs for Quickey.
 - [`lessons-learned.md`](./lessons-learned.md) — operational pitfalls, including session ownership across relaunches and the no-window success policy for regular apps
 
 ## Automation
+- [`github-automation.md`](./github-automation.md) — GitHub-native PR and Project workflows that close the issue/project-status gap
 - [`loop-prompt.md`](./loop-prompt.md) — reference and migration note; active automation is the `/babysit-prs` skill
 - [`loop-job-guide.md`](./loop-job-guide.md) — how to run and manage loop jobs with `/loop 30m /babysit-prs`
 
@@ -26,4 +28,5 @@ This directory maps the maintainer-facing docs for Quickey.
 2. [`architecture.md`](./architecture.md)
 3. [`handoff-notes.md`](./handoff-notes.md)
 4. [`lessons-learned.md`](./lessons-learned.md)
-5. [`signing-and-release.md`](./signing-and-release.md)
+5. [`github-automation.md`](./github-automation.md)
+6. [`signing-and-release.md`](./signing-and-release.md)

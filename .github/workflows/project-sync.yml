@@ -1,0 +1,44 @@
+name: Sync GitHub Project
+
+on:
+  issues:
+    types: [opened, reopened, closed]
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, closed, ready_for_review, converted_to_draft]
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.repository }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Reconcile Quickey Backlog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require project automation token
+        env:
+          PROJECT_AUTOMATION_TOKEN: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
+        run: |
+          if [ -z "$PROJECT_AUTOMATION_TOKEN" ]; then
+            echo "::error::Missing PROJECT_AUTOMATION_TOKEN secret. Store a PAT with at least repo + project scopes so GitHub Actions can update Project V2 fields."
+            exit 1
+          fi
+
+      - name: Checkout base workflow code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+
+      - name: Sync issue status and runtime validation fields
+        env:
+          PROJECT_AUTOMATION_TOKEN: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
+        run: node .github/scripts/sync-project-fields.mjs

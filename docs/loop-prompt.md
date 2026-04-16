@@ -2,6 +2,10 @@
 
 This file is retained for reference. The active loop automation is now delivered as a skill: `/babysit-prs`.
 
+Core repository state sync now lives in GitHub Actions:
+- `.github/workflows/pr-metadata.yml` enforces `Fixes #...` and `Validation Status`
+- `.github/workflows/project-sync.yml` reconciles `Quickey Backlog` issue/project state
+
 ## Usage
 
 ```

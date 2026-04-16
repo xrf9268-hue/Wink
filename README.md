@@ -38,4 +38,8 @@ Tagged releases use `v<CFBundleShortVersionString>` and publish `Quickey-<versio
 ## Documentation
 - [`docs/README.md`](./docs/README.md)
 - [`docs/architecture.md`](./docs/architecture.md)
+- [`docs/github-automation.md`](./docs/github-automation.md)
 - [`docs/signing-and-release.md`](./docs/signing-and-release.md)
+
+## Repository Automation
+GitHub Actions now enforce PR issue linkage (`Fixes #...`) and keep the `Quickey Backlog` project's `Status` / `Runtime Validation` fields synchronized. See [`docs/github-automation.md`](./docs/github-automation.md) for the required `PROJECT_AUTOMATION_TOKEN` secret and the recommended branch-protection check.
