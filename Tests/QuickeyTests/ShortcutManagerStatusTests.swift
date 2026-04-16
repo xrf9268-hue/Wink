@@ -64,32 +64,53 @@ private final class MutablePermissionService: @unchecked Sendable, PermissionSer
 private final class FakeCaptureProvider: ShortcutCaptureProvider {
     var isRunning = false
     var startSucceeds = true
+    var failingShortcuts: Set<KeyPress> = []
     private(set) var startCallCount = 0
     private(set) var stopCallCount = 0
     private(set) var registeredShortcuts: Set<KeyPress> = []
+    private(set) var activeShortcuts: Set<KeyPress> = []
     private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
+
+    var registrationState: ShortcutCaptureRegistrationState {
+        ShortcutCaptureRegistrationState(
+            desiredShortcutCount: registeredShortcuts.count,
+            registeredShortcutCount: activeShortcuts.count,
+            failures: failingShortcuts.map {
+                ShortcutCaptureRegistrationFailure(keyPress: $0, status: Int32(eventHotKeyExistsErr))
+            }.sorted {
+                if $0.keyPress.keyCode == $1.keyPress.keyCode {
+                    return $0.keyPress.modifiers.rawValue < $1.keyPress.modifiers.rawValue
+                }
+                return $0.keyPress.keyCode < $1.keyPress.keyCode
+            }
+        )
+    }
 
     func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {
         startCallCount += 1
         self.onKeyPress = onKeyPress
-        isRunning = startSucceeds && !registeredShortcuts.isEmpty
+        refreshRunningState()
     }
 
     func stop() {
         stopCallCount += 1
         isRunning = false
+        activeShortcuts = []
         onKeyPress = nil
     }
 
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {
         registeredShortcuts = keyPresses
-        if keyPresses.isEmpty {
-            isRunning = false
-        }
+        refreshRunningState()
     }
 
     func emit(_ keyPress: KeyPress) {
         onKeyPress?(keyPress)
+    }
+
+    private func refreshRunningState() {
+        activeShortcuts = startSucceeds ? registeredShortcuts.subtracting(failingShortcuts) : []
+        isRunning = onKeyPress != nil && !activeShortcuts.isEmpty
     }
 }
 
@@ -102,6 +123,14 @@ private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
     private(set) var registeredShortcuts: Set<KeyPress> = []
     private(set) var hyperKeyEnabled = false
     private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
+
+    var registrationState: ShortcutCaptureRegistrationState {
+        ShortcutCaptureRegistrationState(
+            desiredShortcutCount: registeredShortcuts.count,
+            registeredShortcutCount: isRunning ? registeredShortcuts.count : 0,
+            failures: []
+        )
+    }
 
     func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {
         startCallCount += 1
@@ -166,6 +195,15 @@ private func standardShortcut() -> AppShortcut {
         appName: "Safari",
         bundleIdentifier: "com.apple.Safari",
         keyEquivalent: "s",
+        modifierFlags: ["command", "shift"]
+    )
+}
+
+private func alternateStandardShortcut() -> AppShortcut {
+    AppShortcut(
+        appName: "Terminal",
+        bundleIdentifier: "com.apple.Terminal",
+        keyEquivalent: "t",
         modifierFlags: ["command", "shift"]
     )
 }
@@ -485,11 +523,49 @@ func missingStandardRegistrationEmitsCaptureBlockedDiagnostic() {
     manager.save(shortcuts: [standardShortcut()])
 
     manager.start()
+    let status = manager.shortcutCaptureStatus()
 
+    #expect(status.carbonHotKeysRegistered == false)
+    #expect(status.standardShortcutsReady == false)
+    #expect(status.standardRegistrationWarning == "Standard shortcuts failed to register. Check logs for the blocked key combinations.")
+    #expect(status.permissionWarning == nil)
     #expect(diagnostics.messages.contains {
         $0.contains("SHORTCUT_TRACE_BLOCKED")
             && $0.contains("reason=\"missing_registration_or_system_conflict\"")
             && $0.contains("route=standard")
+    })
+}
+
+@Test @MainActor
+func partialStandardRegistrationMarksStandardCaptureNotReadyAndIncludesFailedBindingDetails() {
+    let diagnostics = DiagnosticCapture()
+    let standardProvider = FakeCaptureProvider()
+    let failedKeyPress = KeyPress(
+        keyCode: UInt16(kVK_ANSI_T),
+        modifiers: [.command, .shift]
+    )
+    standardProvider.failingShortcuts = [failedKeyPress]
+    let (manager, _, _) = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        standardProvider: standardProvider,
+        diagnosticSink: diagnostics.record
+    )
+    manager.save(shortcuts: [standardShortcut(), alternateStandardShortcut()])
+
+    manager.start()
+
+    let status = manager.shortcutCaptureStatus()
+
+    #expect(status.carbonHotKeysRegistered == false)
+    #expect(status.standardShortcutsReady == false)
+    #expect(status.standardRegistrationWarning == "1 standard shortcut binding failed to register. Check logs for the blocked key combination.")
+    #expect(status.permissionWarning == nil)
+    #expect(diagnostics.messages.contains {
+        $0.contains("SHORTCUT_TRACE_BLOCKED")
+            && $0.contains("reason=\"missing_registration_or_system_conflict\"")
+            && $0.contains("route=standard")
+            && $0.contains("keyCode=\(failedKeyPress.keyCode)")
+            && $0.contains("modifiers=\(failedKeyPress.modifiers.rawValue)")
     })
 }
 

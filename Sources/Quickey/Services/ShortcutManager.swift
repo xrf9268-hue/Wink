@@ -327,7 +327,22 @@ final class ShortcutManager {
         route: ShortcutCaptureRoute,
         snapshot: ShortcutCaptureSnapshot
     ) -> String {
-        "SHORTCUT_TRACE_BLOCKED reason=\(quoted(reason)) route=\(route == .hyper ? "hyper" : "standard") carbonRegistered=\(snapshot.carbonHotKeysRegistered) eventTapActive=\(snapshot.eventTapActive) standardShortcutCount=\(snapshot.standardShortcutCount) hyperShortcutCount=\(snapshot.hyperShortcutCount)"
+        var message = "SHORTCUT_TRACE_BLOCKED reason=\(quoted(reason)) route=\(route == .hyper ? "hyper" : "standard") carbonRegistered=\(snapshot.carbonHotKeysRegistered) eventTapActive=\(snapshot.eventTapActive) standardShortcutCount=\(snapshot.standardShortcutCount) hyperShortcutCount=\(snapshot.hyperShortcutCount)"
+
+        if route == .standard {
+            message += " registeredStandardShortcutCount=\(snapshot.registeredStandardShortcutCount)"
+
+            if !snapshot.standardRegistrationFailures.isEmpty {
+                let failedBindings = snapshot.standardRegistrationFailures
+                    .map { failure in
+                        "keyCode=\(failure.keyPress.keyCode),modifiers=\(failure.keyPress.modifiers.rawValue),status=\(failure.status)"
+                    }
+                    .joined(separator: ";")
+                message += " failedBindings=\(quoted(failedBindings))"
+            }
+        }
+
+        return message
     }
 
     private func quoted(_ value: String) -> String {

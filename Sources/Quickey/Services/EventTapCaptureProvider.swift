@@ -4,6 +4,7 @@ import AppKit
 final class EventTapCaptureProvider: HyperShortcutCaptureProvider {
     private let manager: any EventTapManaging
     private var pendingHyperKeyEnabled = false
+    private var registeredShortcuts: Set<KeyPress> = []
 
     init(manager: any EventTapManaging = EventTapManager()) {
         self.manager = manager
@@ -11,6 +12,14 @@ final class EventTapCaptureProvider: HyperShortcutCaptureProvider {
 
     var isRunning: Bool {
         manager.isRunning
+    }
+
+    var registrationState: ShortcutCaptureRegistrationState {
+        ShortcutCaptureRegistrationState(
+            desiredShortcutCount: registeredShortcuts.count,
+            registeredShortcutCount: manager.isRunning ? registeredShortcuts.count : 0,
+            failures: []
+        )
     }
 
     func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {
@@ -30,6 +39,7 @@ final class EventTapCaptureProvider: HyperShortcutCaptureProvider {
     }
 
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {
+        registeredShortcuts = keyPresses
         manager.updateRegisteredShortcuts(keyPresses)
     }
 

@@ -64,6 +64,14 @@ private struct FakePermissionService: PermissionServicing {
 private final class FakeCaptureProvider: ShortcutCaptureProvider {
     var isRunning = false
 
+    var registrationState: ShortcutCaptureRegistrationState {
+        ShortcutCaptureRegistrationState(
+            desiredShortcutCount: isRunning ? 1 : 0,
+            registeredShortcutCount: isRunning ? 1 : 0,
+            failures: []
+        )
+    }
+
     func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {
         isRunning = true
     }
@@ -78,6 +86,14 @@ private final class FakeCaptureProvider: ShortcutCaptureProvider {
 @MainActor
 private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
     var isRunning = false
+
+    var registrationState: ShortcutCaptureRegistrationState {
+        ShortcutCaptureRegistrationState(
+            desiredShortcutCount: isRunning ? 1 : 0,
+            registeredShortcutCount: isRunning ? 1 : 0,
+            failures: []
+        )
+    }
 
     func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {
         isRunning = true

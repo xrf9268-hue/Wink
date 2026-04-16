@@ -6,6 +6,9 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
     let eventTapActive: Bool
     let standardShortcutsReady: Bool
     let hyperShortcutsReady: Bool
+    let standardShortcutCount: Int
+    let registeredStandardShortcutCount: Int
+    let standardRegistrationFailures: [ShortcutCaptureRegistrationFailure]
 
     init(
         accessibilityGranted: Bool,
@@ -14,7 +17,10 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
         carbonHotKeysRegistered: Bool,
         eventTapActive: Bool,
         standardShortcutsReady: Bool,
-        hyperShortcutsReady: Bool
+        hyperShortcutsReady: Bool,
+        standardShortcutCount: Int = 0,
+        registeredStandardShortcutCount: Int = 0,
+        standardRegistrationFailures: [ShortcutCaptureRegistrationFailure] = []
     ) {
         self.accessibilityGranted = accessibilityGranted
         self.inputMonitoringGranted = inputMonitoringGranted
@@ -23,6 +29,9 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
         self.eventTapActive = eventTapActive
         self.standardShortcutsReady = standardShortcutsReady
         self.hyperShortcutsReady = hyperShortcutsReady
+        self.standardShortcutCount = standardShortcutCount
+        self.registeredStandardShortcutCount = registeredStandardShortcutCount
+        self.standardRegistrationFailures = standardRegistrationFailures
     }
 
     var anyShortcutsReady: Bool {
@@ -35,6 +44,9 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
         }
         guard inputMonitoringRequired else {
             guard inputMonitoringGranted else {
+                guard standardRegistrationWarning == nil else {
+                    return nil
+                }
                 return "Input Monitoring is only required for Hyper shortcuts."
             }
             return nil
@@ -43,5 +55,22 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
             return "Hyper shortcuts need Input Monitoring."
         }
         return nil
+    }
+
+    var standardRegistrationWarning: String? {
+        let failedCount = max(0, standardShortcutCount - registeredStandardShortcutCount)
+        guard failedCount > 0 else {
+            return nil
+        }
+
+        if failedCount == standardShortcutCount {
+            return "Standard shortcuts failed to register. Check logs for the blocked key combinations."
+        }
+
+        if failedCount == 1 {
+            return "1 standard shortcut binding failed to register. Check logs for the blocked key combination."
+        }
+
+        return "\(failedCount) standard shortcut bindings failed to register. Check logs for the blocked key combinations."
     }
 }

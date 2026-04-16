@@ -136,6 +136,9 @@ struct PermissionStatusBanner: View {
         if let warning = status.permissionWarning {
             return warning
         }
+        if let warning = status.standardRegistrationWarning {
+            return warning
+        }
         if !status.inputMonitoringRequired {
             return "Standard shortcuts are active."
         }

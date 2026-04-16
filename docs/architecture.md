@@ -134,9 +134,11 @@ Responsibilities:
   - Accessibility granted
   - Input Monitoring granted
   - Carbon hotkeys registered
+    - standard Carbon readiness is all-or-nothing per enabled binding: partial `RegisterEventHotKey` success keeps Carbon readiness false until every desired standard binding registers
   - Hyper event tap active
   - standard shortcuts ready
   - Hyper shortcuts ready
+  - expose structured standard-registration failure diagnostics (failed keyCode/modifier/status tuples) so logs and UI can explain blocked bindings consistently
 - track lifecycle state and escalation thresholds:
   - first timeout -> in-place re-enable
   - 3 timeouts within 30 seconds -> full recreation

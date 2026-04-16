@@ -13,6 +13,8 @@ struct ShortcutCaptureSnapshot: Equatable, Sendable {
     let carbonHotKeysRegistered: Bool
     let eventTapActive: Bool
     let standardShortcutCount: Int
+    let registeredStandardShortcutCount: Int
+    let standardRegistrationFailures: [ShortcutCaptureRegistrationFailure]
     let hyperShortcutCount: Int
 }
 
@@ -77,8 +79,13 @@ final class ShortcutCaptureCoordinator {
         accessibilityGranted: Bool,
         inputMonitoringGranted: Bool
     ) -> ShortcutCaptureStatus {
+        let standardRegistrationState = standardProvider.registrationState
+        let standardShortcutCount = standardRegistrationState.desiredShortcutCount
+        let allStandardShortcutsRegistered = standardShortcutCount == 0
+            || standardRegistrationState.registeredShortcutCount == standardShortcutCount
+        let carbonHotKeysRegistered = standardShortcutCount > 0 && allStandardShortcutsRegistered
         let standardReady = accessibilityGranted
-            && (standardShortcuts.isEmpty || standardProvider.isRunning)
+            && (standardShortcutCount == 0 || allStandardShortcutsRegistered)
         let hyperReady = accessibilityGranted
             && (hyperShortcuts.isEmpty || (inputMonitoringGranted && hyperProvider.isRunning))
 
@@ -86,18 +93,27 @@ final class ShortcutCaptureCoordinator {
             accessibilityGranted: accessibilityGranted,
             inputMonitoringGranted: inputMonitoringGranted,
             inputMonitoringRequired: inputMonitoringRequired,
-            carbonHotKeysRegistered: standardProvider.isRunning,
+            carbonHotKeysRegistered: carbonHotKeysRegistered,
             eventTapActive: hyperProvider.isRunning,
             standardShortcutsReady: standardReady,
-            hyperShortcutsReady: hyperReady
+            hyperShortcutsReady: hyperReady,
+            standardShortcutCount: standardShortcutCount,
+            registeredStandardShortcutCount: standardRegistrationState.registeredShortcutCount,
+            standardRegistrationFailures: standardRegistrationState.failures
         )
     }
 
     func snapshot() -> ShortcutCaptureSnapshot {
-        ShortcutCaptureSnapshot(
-            carbonHotKeysRegistered: standardProvider.isRunning,
+        let standardRegistrationState = standardProvider.registrationState
+        let standardShortcutCount = standardRegistrationState.desiredShortcutCount
+        let carbonHotKeysRegistered = standardShortcutCount > 0
+            && standardRegistrationState.registeredShortcutCount == standardShortcutCount
+        return ShortcutCaptureSnapshot(
+            carbonHotKeysRegistered: carbonHotKeysRegistered,
             eventTapActive: hyperProvider.isRunning,
-            standardShortcutCount: standardShortcuts.count,
+            standardShortcutCount: standardShortcutCount,
+            registeredStandardShortcutCount: standardRegistrationState.registeredShortcutCount,
+            standardRegistrationFailures: standardRegistrationState.failures,
             hyperShortcutCount: hyperShortcuts.count
         )
     }

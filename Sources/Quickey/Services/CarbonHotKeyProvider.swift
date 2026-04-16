@@ -58,6 +58,7 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
     private var eventHandlerRef: EventHandlerRef?
     private var desiredShortcuts: Set<KeyPress> = []
     private var registrations: [UInt32: Registration] = [:]
+    private var registrationFailures: [ShortcutCaptureRegistrationFailure] = []
     private var nextIdentifier: UInt32 = 1
     private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
 
@@ -65,10 +66,24 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
         !registrations.isEmpty
     }
 
+    var registrationState: ShortcutCaptureRegistrationState {
+        ShortcutCaptureRegistrationState(
+            desiredShortcutCount: desiredShortcuts.count,
+            registeredShortcutCount: registrations.count,
+            failures: registrationFailures.sorted {
+                if $0.keyPress.keyCode == $1.keyPress.keyCode {
+                    return $0.keyPress.modifiers.rawValue < $1.keyPress.modifiers.rawValue
+                }
+                return $0.keyPress.keyCode < $1.keyPress.keyCode
+            }
+        )
+    }
+
     func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {
         self.onKeyPress = onKeyPress
         guard !desiredShortcuts.isEmpty else {
             unregisterAll()
+            registrationFailures = []
             removeHandlerIfNeeded()
             return
         }
@@ -89,6 +104,7 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
 
         if desiredShortcuts.isEmpty {
             unregisterAll()
+            registrationFailures = []
             removeHandlerIfNeeded()
             return
         }
@@ -135,6 +151,7 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
 
     private func reregisterShortcuts() {
         unregisterAll()
+        registrationFailures = []
 
         let sortedShortcuts = desiredShortcuts.sorted {
             if $0.keyCode == $1.keyCode {
@@ -163,6 +180,10 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
         )
 
         guard status == noErr, let hotKeyRef else {
+            registrationFailures.append(ShortcutCaptureRegistrationFailure(
+                keyPress: keyPress,
+                status: status
+            ))
             DiagnosticLog.log(
                 "CARBON_HOTKEY_REGISTER_FAILED status=\(status) keyCode=\(keyPress.keyCode) modifiers=\(keyPress.modifiers.rawValue)"
             )
