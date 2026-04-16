@@ -1,7 +1,68 @@
 import AppKit
 
+enum MenuBarLaunchAtLoginToggleState: Equatable {
+    case on
+    case off
+    case mixed
+
+    var controlState: NSControl.StateValue {
+        switch self {
+        case .on:
+            .on
+        case .off:
+            .off
+        case .mixed:
+            .mixed
+        }
+    }
+}
+
+enum MenuBarLaunchAtLoginAction: Equatable {
+    case enable
+    case disable
+    case openLoginItemsSettings
+    case unavailable
+}
+
+struct MenuBarLaunchAtLoginPresentation: Equatable {
+    let title: String
+    let state: MenuBarLaunchAtLoginToggleState
+    let isEnabled: Bool
+    let action: MenuBarLaunchAtLoginAction
+
+    init(snapshot: LaunchAtLoginSnapshot) {
+        switch snapshot.status {
+        case .enabled:
+            title = "Launch at Login"
+            state = .on
+            isEnabled = true
+            action = .disable
+        case .disabled:
+            title = "Launch at Login"
+            state = .off
+            isEnabled = true
+            action = .enable
+        case .requiresApproval:
+            title = "Approve Launch at Login..."
+            state = .mixed
+            isEnabled = true
+            action = .openLoginItemsSettings
+        case .notFound:
+            switch snapshot.availability {
+            case .requiresAppInApplicationsFolder:
+                title = "Launch at Login (Move App to Applications)"
+            case .available, .missingConfiguration:
+                title = "Launch at Login (Configuration Missing)"
+            }
+            state = .off
+            isEnabled = false
+            action = .unavailable
+        }
+    }
+}
+
 @MainActor
-final class MenuBarController {
+final class MenuBarController: NSObject, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let onOpenSettings: () -> Void
     private let onQuit: () -> Void
@@ -16,6 +77,7 @@ final class MenuBarController {
         self.onOpenSettings = onOpenSettings
         self.onQuit = onQuit
         self.launchAtLoginService = launchAtLoginService
+        super.init()
     }
 
     func install() {
@@ -28,13 +90,14 @@ final class MenuBarController {
         }
 
         let menu = NSMenu()
+        menu.delegate = self
         menu.addItem(NSMenuItem(title: "Settings", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(.separator())
 
         let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
-        loginItem.state = menuItemState(for: launchAtLoginService.status)
         launchAtLoginItem = loginItem
         menu.addItem(loginItem)
+        refreshLaunchAtLoginItem()
 
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
@@ -49,9 +112,20 @@ final class MenuBarController {
 
     @objc
     private func toggleLaunchAtLogin() {
-        let newState = !launchAtLoginService.isEnabled
-        launchAtLoginService.setEnabled(newState)
-        launchAtLoginItem?.state = menuItemState(for: launchAtLoginService.status)
+        let presentation = MenuBarLaunchAtLoginPresentation(snapshot: launchAtLoginService.snapshot)
+
+        switch presentation.action {
+        case .enable:
+            launchAtLoginService.setEnabled(true)
+        case .disable:
+            launchAtLoginService.setEnabled(false)
+        case .openLoginItemsSettings:
+            launchAtLoginService.openSystemSettingsLoginItems()
+        case .unavailable:
+            break
+        }
+
+        refreshLaunchAtLoginItem()
     }
 
     @objc
@@ -59,14 +133,16 @@ final class MenuBarController {
         onQuit()
     }
 
-    private func menuItemState(for status: LaunchAtLoginStatus) -> NSControl.StateValue {
-        switch status {
-        case .enabled:
-            .on
-        case .requiresApproval:
-            .mixed
-        case .disabled, .notFound:
-            .off
-        }
+    func menuWillOpen(_ menu: NSMenu) {
+        refreshLaunchAtLoginItem()
+    }
+
+    private func refreshLaunchAtLoginItem() {
+        guard let launchAtLoginItem else { return }
+
+        let presentation = MenuBarLaunchAtLoginPresentation(snapshot: launchAtLoginService.snapshot)
+        launchAtLoginItem.title = presentation.title
+        launchAtLoginItem.state = presentation.state.controlState
+        launchAtLoginItem.isEnabled = presentation.isEnabled
     }
 }
