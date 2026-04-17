@@ -103,8 +103,15 @@ final class HyperKeyService {
     }
 
     private func clearMapping() -> Bool {
-        // CapsLockDelayOverride is not explicitly reset here. hidutil properties
-        // do not survive reboot (Apple TN2450), so the override clears naturally.
-        return runner(["property", "--set", "{\"UserKeyMapping\":[]}"])
+        // Explicitly restore CapsLockDelayOverride to the macOS 15 default (100 ms).
+        // applyMapping sets it to 0 to bypass the built-in Caps Lock press-duration
+        // threshold; without writing a value back here, that override would remain
+        // in effect until reboot and leak into system-wide Caps Lock behavior
+        // (e.g. input-source switching becomes overly sensitive in other apps).
+        return runner([
+            "property",
+            "--set",
+            "{\"UserKeyMapping\":[],\"CapsLockDelayOverride\":100}"
+        ])
     }
 }
