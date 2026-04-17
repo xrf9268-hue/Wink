@@ -2,6 +2,10 @@
 
 This runbook captures the recommended rollout order for the PR governance and review-gate changes on `codex/pr-governance-harness`.
 
+## Recommended PR Title
+
+`ci: add PR governance review gate and ruleset baseline`
+
 ## Rollout Order
 
 1. Open a PR from `codex/pr-governance-harness` into `main`.
@@ -21,7 +25,7 @@ Fixes #<issue>
 
 ## Summary
 - add a repository-owned review gate that fails on `CHANGES_REQUESTED` and unresolved actionable inline review threads
-- check in the desired `main` ruleset as `.github/governance/main-ruleset.json`
+- check in the desired `main` ruleset baseline as `.github/governance/main-ruleset.json`
 - document the rollout order and the boundary between deterministic merge gates and manual macOS runtime validation
 
 ## Testing
@@ -39,6 +43,8 @@ Fixes #<issue>
 - This PR intentionally does not apply the live GitHub ruleset yet; the ruleset should be applied only after these workflow changes land on `main`.
 - GitHub Actions does not expose a dedicated review-thread resolved/unresolved workflow trigger, so a pure thread-resolution change may require another PR/review/comment event or a manual rerun before `Review Gate / Validate review state` refreshes.
 ```
+
+The summary bullets above are already suitable for the PR body. If you want a shorter version, keep the first two bullets and move the runtime-validation boundary note into `## Notes`.
 
 ## PR Verification Checklist
 
