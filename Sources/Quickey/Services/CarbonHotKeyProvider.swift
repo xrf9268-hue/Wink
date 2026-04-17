@@ -4,7 +4,8 @@ import Foundation
 
 private let carbonHotKeySignature: OSType = 0x514B4559 // 'QKEY'
 
-private final class CarbonHotKeyCallbackBox {
+private final class CarbonHotKeyCallbackBox: @unchecked Sendable {
+    // weak reference reads are atomic; provider is set once in init and never mutated.
     weak var provider: CarbonHotKeyProvider?
 
     init(provider: CarbonHotKeyProvider) {
@@ -35,10 +36,10 @@ private func carbonHotKeyCallbackImpl(
     }
 
     let box = Unmanaged<CarbonHotKeyCallbackBox>.fromOpaque(userData).takeUnretainedValue()
-    if let provider = box.provider {
-        DispatchQueue.main.async {
-            provider.handleHotKeyEvent(identifier: hotKeyID.id)
-        }
+    // Carbon hotkey events installed on GetApplicationEventTarget() are delivered
+    // on the main thread, so isolation can be asserted without an async hop.
+    MainActor.assumeIsolated {
+        box.provider?.handleHotKeyEvent(identifier: hotKeyID.id)
     }
     return noErr
 }
@@ -214,9 +215,6 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
               let onKeyPress else {
             return
         }
-
-        Task { @MainActor in
-            onKeyPress(registration.keyPress)
-        }
+        onKeyPress(registration.keyPress)
     }
 }
