@@ -96,6 +96,33 @@ func noteRecentAppCapsPersistedRecentsAtTenEntries() {
     #expect(recorder.savedRecents.last?.count == 10)
 }
 
+@Test @MainActor
+func recentAppsResolvesAgainstAllAppsCacheAndSkipsStaleBundleIDs() async {
+    let recorder = AppListProviderRecorder(now: Date(timeIntervalSinceReferenceDate: 300))
+    let safariURL = URL(fileURLWithPath: "/Applications/Safari.app")
+    let finderURL = URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app")
+    let provider = AppListProvider(client: .init(
+        now: { recorder.now },
+        scanInstalledApps: {
+            recorder.scanCallCount += 1
+            return [
+                AppEntry(id: "com.apple.Safari", name: "Safari", url: safariURL),
+                AppEntry(id: "com.apple.Finder", name: "Finder", url: finderURL),
+            ]
+        },
+        runningApplications: { [] },
+        loadRecents: { ["com.apple.Safari", "com.apple.Finder", "com.example.missing"] },
+        saveRecents: { _ in },
+        mainBundleIdentifier: { nil }
+    ))
+
+    provider.refreshIfNeeded()
+    await provider.waitForRefreshForTesting()
+
+    let resolved = provider.recentApps.map(\.bundleIdentifier)
+    #expect(resolved == ["com.apple.Safari", "com.apple.Finder"])
+}
+
 private final class AppListProviderRecorder: @unchecked Sendable {
     var now: Date
     var scanCallCount = 0

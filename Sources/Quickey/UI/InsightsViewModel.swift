@@ -130,13 +130,8 @@ final class InsightsViewModel {
 
         // Generate zero-filled date range
         let calendar = Calendar.current
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = .current
-
-        let labelFormatter = DateFormatter()
-        labelFormatter.dateFormat = days <= 7 ? "EEE" : "M/d"
-        labelFormatter.timeZone = .current
+        let formatter = Self.isoDateFormatter
+        let labelFormatter = days <= 7 ? Self.weekdayLabelFormatter : Self.monthDayLabelFormatter
 
         var result: [DailyBar] = []
         for i in stride(from: days - 1, through: 0, by: -1) {
@@ -148,4 +143,25 @@ final class InsightsViewModel {
         }
         return result
     }
+
+    private static let isoDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = .current
+        return f
+    }()
+
+    private static let weekdayLabelFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE"
+        f.timeZone = .current
+        return f
+    }()
+
+    private static let monthDayLabelFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "M/d"
+        f.timeZone = .current
+        return f
+    }()
 }

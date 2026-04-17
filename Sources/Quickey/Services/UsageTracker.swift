@@ -21,6 +21,15 @@ actor UsageTracker: UsageTracking {
     private var dateFormatter: DateFormatter
     private var dateFormatterTimeZoneIdentifier: String
 
+    // Prepared-statement cache. All writes occur from actor-isolated methods,
+    // which serialize access. `nonisolated(unsafe)` mirrors the `db` pattern
+    // above so `deinit` can finalize each statement without an actor hop.
+    private nonisolated(unsafe) var recordUsageStmt: OpaquePointer?
+    private nonisolated(unsafe) var deleteUsageStmt: OpaquePointer?
+    private nonisolated(unsafe) var usageCountsStmt: OpaquePointer?
+    private nonisolated(unsafe) var dailyCountsStmt: OpaquePointer?
+    private nonisolated(unsafe) var totalSwitchesStmt: OpaquePointer?
+
     init(
         timeZoneProvider: @escaping @Sendable () -> TimeZone = { TimeZone.current }
     ) {
@@ -47,6 +56,9 @@ actor UsageTracker: UsageTracking {
     }
 
     deinit {
+        for stmt in [recordUsageStmt, deleteUsageStmt, usageCountsStmt, dailyCountsStmt, totalSwitchesStmt] {
+            sqlite3_finalize(stmt)
+        }
         if let db { sqlite3_close(db) }
     }
 
@@ -62,8 +74,7 @@ actor UsageTracker: UsageTracking {
             VALUES (?, ?, 1)
             ON CONFLICT(shortcut_id, date) DO UPDATE SET count = count + 1
             """
-        guard let stmt = prepare(sql) else { return }
-        defer { sqlite3_finalize(stmt) }
+        guard let stmt = cachedStatement(&recordUsageStmt, sql: sql) else { return }
 
         let idString = shortcutId.uuidString
         sqlite3_bind_text(stmt, 1, (idString as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
@@ -78,8 +89,7 @@ actor UsageTracker: UsageTracking {
 
     func deleteUsage(shortcutId: UUID) {
         let sql = "DELETE FROM daily_usage WHERE shortcut_id = ?"
-        guard let stmt = prepare(sql) else { return }
-        defer { sqlite3_finalize(stmt) }
+        guard let stmt = cachedStatement(&deleteUsageStmt, sql: sql) else { return }
 
         let idString = shortcutId.uuidString
         sqlite3_bind_text(stmt, 1, (idString as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
@@ -99,8 +109,7 @@ actor UsageTracker: UsageTracking {
 
     func usageCounts(days: Int, relativeTo now: Date) -> [UUID: Int] {
         let sql = "SELECT shortcut_id, SUM(count) FROM daily_usage WHERE date >= ? GROUP BY shortcut_id"
-        guard let stmt = prepare(sql) else { return [:] }
-        defer { sqlite3_finalize(stmt) }
+        guard let stmt = cachedStatement(&usageCountsStmt, sql: sql) else { return [:] }
 
         let cutoff = windowStartString(days: days, relativeTo: now)
         sqlite3_bind_text(stmt, 1, (cutoff as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
@@ -121,8 +130,7 @@ actor UsageTracker: UsageTracking {
 
     func dailyCounts(days: Int, relativeTo now: Date) -> [String: [(date: String, count: Int)]] {
         let sql = "SELECT shortcut_id, date, count FROM daily_usage WHERE date >= ? ORDER BY date"
-        guard let stmt = prepare(sql) else { return [:] }
-        defer { sqlite3_finalize(stmt) }
+        guard let stmt = cachedStatement(&dailyCountsStmt, sql: sql) else { return [:] }
 
         let cutoff = windowStartString(days: days, relativeTo: now)
         sqlite3_bind_text(stmt, 1, (cutoff as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
@@ -145,8 +153,7 @@ actor UsageTracker: UsageTracking {
 
     func totalSwitches(days: Int, relativeTo now: Date) -> Int {
         let sql = "SELECT COALESCE(SUM(count), 0) FROM daily_usage WHERE date >= ?"
-        guard let stmt = prepare(sql) else { return 0 }
-        defer { sqlite3_finalize(stmt) }
+        guard let stmt = cachedStatement(&totalSwitchesStmt, sql: sql) else { return 0 }
 
         let cutoff = windowStartString(days: days, relativeTo: now)
         sqlite3_bind_text(stmt, 1, (cutoff as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
@@ -200,7 +207,15 @@ actor UsageTracker: UsageTracking {
         }
     }
 
-    private func prepare(_ sql: String) -> OpaquePointer? {
+    /// Returns a cached prepared statement for `sql`, compiling it on first use
+    /// and resetting/clearing bindings on subsequent calls. Actor isolation
+    /// guarantees the statement is never reused concurrently.
+    private func cachedStatement(_ slot: inout OpaquePointer?, sql: String) -> OpaquePointer? {
+        if let stmt = slot {
+            sqlite3_reset(stmt)
+            sqlite3_clear_bindings(stmt)
+            return stmt
+        }
         guard let db else { return nil }
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) != SQLITE_OK {
@@ -209,6 +224,7 @@ actor UsageTracker: UsageTracking {
             DiagnosticLog.log("SQL prepare failed: \(errMsg)")
             return nil
         }
+        slot = stmt
         return stmt
     }
 

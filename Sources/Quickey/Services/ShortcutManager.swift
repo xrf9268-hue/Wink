@@ -269,7 +269,7 @@ final class ShortcutManager {
         let key = keyMatcher.trigger(for: keyPress)
         #if DEBUG
         if !triggerIndex.isEmpty {
-            logger.debug("handleKeyPress: trigger=(\(key.keyCode), \(key.modifierMask)), index=\(self.triggerIndex.keys.map { "(\($0.keyCode),\($0.modifierMask))" }.joined(separator: ","))")
+            logger.debug("handleKeyPress: trigger=(\(key.keyCode), \(key.modifierMask)) indexCount=\(self.triggerIndex.count)")
         }
         #endif
         guard let match = triggerIndex[key] else {

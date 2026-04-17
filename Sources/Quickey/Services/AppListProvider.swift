@@ -33,10 +33,10 @@ final class AppListProvider {
     private(set) var allApps: [AppEntry] = []
     private(set) var recentBundleIDs: [String] = []
     private var lastScanTime: Date?
+    private var allAppsByID: [String: AppEntry] = [:]
 
     var recentApps: [AppEntry] {
-        let lookup = Dictionary(uniqueKeysWithValues: allApps.map { ($0.bundleIdentifier, $0) })
-        return recentBundleIDs.compactMap { lookup[$0] }
+        recentBundleIDs.compactMap { allAppsByID[$0] }
     }
 
     private var isScanning = false
@@ -125,6 +125,7 @@ final class AppListProvider {
 
         entries.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         allApps = entries
+        allAppsByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
         lastScanTime = now
         loadRecents(from: runningApplications)
         isScanning = false
