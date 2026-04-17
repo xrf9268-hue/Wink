@@ -16,6 +16,7 @@ This runbook captures the recommended rollout order for the PR governance and re
 
 Do not apply the ruleset before the workflow changes are on `main`, or `main` will be blocked by a missing `Review Gate / Validate review state` check.
 Because this is the bootstrap PR that introduces `review-gate.yml`, it will not automatically show `Review Gate / Validate review state` as a PR check yet; that workflow does not exist on `main` until after this PR merges.
+`.github/governance/main-ruleset.json` is intended to be directly usable as the REST `POST`/`PUT` payload for GitHub rulesets.
 
 ## PR Body Draft
 
@@ -121,6 +122,8 @@ The live ruleset should require:
   - `CI / Build and Test`
   - `PR Metadata / Validate PR metadata`
   - `Review Gate / Validate review state`
+
+If GitHub returns a schema error here, treat that as a repository artifact bug and update `.github/governance/main-ruleset.json` rather than applying undocumented local transforms.
 
 ## Smoke Test After Ruleset Apply
 

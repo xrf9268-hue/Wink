@@ -27,6 +27,7 @@ Quickey now uses repository-native GitHub Actions and a checked-in ruleset artif
    - Captures the desired `main` merge policy in-repo
    - Requires pull requests, one approval, last-push freshness, conversation resolution, and the required deterministic checks
    - Gives repository admins a reviewable artifact to apply after the workflow changes are present on `main`
+   - Is kept in the same schema shape used by GitHub's repository ruleset REST `POST`/`PUT` endpoints so the checked-in file can be applied directly
 
 ## Required Repository Setup
 
