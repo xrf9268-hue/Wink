@@ -67,7 +67,7 @@ actor UsageTracker: UsageTracking {
 
         let idString = shortcutId.uuidString
         sqlite3_bind_text(stmt, 1, (idString as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
-        sqlite3_bind_text(stmt, 2, (dateString(for: date) as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, (dateString(for: date, in: timeZoneProvider()) as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
         if sqlite3_step(stmt) != SQLITE_DONE {
             let errMsg = String(cString: sqlite3_errmsg(self.db!))
@@ -216,14 +216,17 @@ actor UsageTracker: UsageTracking {
 
     private func windowStartString(days: Int, relativeTo now: Date) -> String {
         let clampedDays = max(days, 1)
+        // Snapshot the time zone once so the cutoff arithmetic and its
+        // formatted representation always share the same reference frame,
+        // even if the system time zone changes mid-query.
+        let tz = timeZoneProvider()
         var calendar = Calendar.current
-        calendar.timeZone = timeZoneProvider()
+        calendar.timeZone = tz
         let start = calendar.date(byAdding: .day, value: -(clampedDays - 1), to: now) ?? now
-        return dateString(for: start)
+        return dateString(for: start, in: tz)
     }
 
-    private func dateString(for date: Date) -> String {
-        let tz = timeZoneProvider()
+    private func dateString(for date: Date, in tz: TimeZone) -> String {
         if tz.identifier != dateFormatterTimeZoneIdentifier {
             (dateFormatter, dateFormatterTimeZoneIdentifier) = Self.makeDateFormatter(for: tz)
         }
