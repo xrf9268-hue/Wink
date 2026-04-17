@@ -4,7 +4,7 @@ This directory maps the maintainer-facing docs for Quickey.
 
 ## Core Docs
 - [`architecture.md`](./architecture.md)
-- [`github-automation.md`](./github-automation.md) — PR metadata enforcement, Quickey Backlog project reconciliation, runtime-validation field sync, and required repository secrets
+- [`github-automation.md`](./github-automation.md) — PR metadata enforcement, deterministic review gating, the checked-in `main` ruleset artifact, Quickey Backlog project reconciliation, runtime-validation field sync, and required repository secrets
 - [`signing-and-release.md`](./signing-and-release.md) — local DMG packaging, internal-package artifacts, signing, notarization, release secrets, and tag-driven GitHub Release flow
 
 ## Maintainer Notes

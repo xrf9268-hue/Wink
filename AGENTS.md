@@ -99,6 +99,7 @@ If a change cannot be verified on Linux, document what must be verified on macOS
 
 Runtime-sensitive changes = event taps, app activation, permissions/TCC, Accessibility/Input Monitoring, login items, launch behavior, packaging/signing.
 
+- Merge governance is deterministic and repository-native: unresolved actionable inline review threads and `CHANGES_REQUESTED` should fail `Review Gate / Validate review state`, while GitHub's own conversation-resolution requirement remains enabled separately.
 - Development merges may rely on CI + review gates alone
 - Runtime-sensitive PRs must carry `macOS runtime validation pending` until validated on macOS, then update to `macOS runtime validation complete`
 - Release-candidate signoff requires all pending items validated

@@ -4,8 +4,9 @@ How to run automated Claude Code sessions for recurring project work using `/loo
 
 Repository-native state sync is now handled separately by GitHub Actions:
 - `.github/workflows/pr-metadata.yml` enforces PR issue linkage and validation-state metadata
+- `.github/workflows/review-gate.yml` turns unresolved actionable review state into a deterministic required check
 - `.github/workflows/project-sync.yml` keeps `Quickey Backlog` `Status` and `Runtime Validation` aligned with issue/PR state
-- [`github-automation.md`](./github-automation.md) documents the required `PROJECT_AUTOMATION_TOKEN` secret and branch-protection recommendation
+- [`github-automation.md`](./github-automation.md) documents the required `PROJECT_AUTOMATION_TOKEN` secret, checked-in ruleset artifact, and governance rollout order
 
 ## Quick Start
 
@@ -90,7 +91,9 @@ Keep the skill generic. Project-specific context belongs in `CLAUDE.md` / `AGENT
 
 The current Quickey policy is intentionally development-stage biased:
 
-- CI, review gates, and async bot feedback are the merge gate for `/loop`
+- The durable merge gate lives in repository-native governance: required checks plus GitHub conversation resolution on `main`
+- `/loop` should treat unresolved bot or human review feedback in GitHub as actionable because `Review Gate / Validate review state` will convert that state into a required check
+- Pure thread-resolution changes may not rerun the review gate automatically, so `/loop` should not assume a resolved thread instantly clears the required check without another PR/review/comment event or a manual rerun
 - Runtime-sensitive macOS validation is tracked but as a release-readiness gate, not a per-PR merge blocker
 - Runtime-sensitive PRs must carry `macOS runtime validation pending` until validated on macOS (see `AGENTS.md` § macOS runtime validation policy)
 

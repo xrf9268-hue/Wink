@@ -1,0 +1,37 @@
+name: Review Gate
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate-review-state:
+    name: Validate review state
+    runs-on: ubuntu-latest
+    steps:
+      # GitHub Actions does not expose a dedicated review-thread resolved/unresolved
+      # workflow trigger, so this check refreshes on PR, review, and review-comment
+      # activity. Required conversation resolution still provides the durable
+      # thread-resolution gate on main.
+      - name: Checkout base workflow code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Validate review state
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/scripts/validate-review-state.mjs

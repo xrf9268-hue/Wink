@@ -4,6 +4,7 @@ This file is retained for reference. The active loop automation is now delivered
 
 Core repository state sync now lives in GitHub Actions:
 - `.github/workflows/pr-metadata.yml` enforces `Fixes #...` and `Validation Status`
+- `.github/workflows/review-gate.yml` enforces deterministic review-state blocking
 - `.github/workflows/project-sync.yml` reconciles `Quickey Backlog` issue/project state
 
 ## Usage
