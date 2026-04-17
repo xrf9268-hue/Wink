@@ -24,7 +24,7 @@ echo ""
 # --- Run test modules ---
 MODULES=(
     "e2e-test-startup.sh:Startup & Lifecycle"
-    "e2e-test-standard-toggle.sh:Standard Toggle ON/OFF"
+    "e2e-test-standard-toggle.sh:Configured Toggle ON/OFF"
     "e2e-test-hyper-key.sh:Hyper Key (CGEvent hold)"
     "e2e-test-debounce.sh:Debounce & Cooldown"
     "e2e-test-loop-prevention.sh:Toggle Loop Prevention"

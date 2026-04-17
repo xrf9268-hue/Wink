@@ -1300,6 +1300,34 @@ func hideToggleLogsStructuredMetricFields() {
     #expect(message.contains("com.test.MetricsApp"))
 }
 
+@Test @MainActor
+func appSwitcherDeinitRemovesWorkspaceObservers() {
+    weak var weakSwitcher: AppSwitcher?
+    do {
+        let switcher = AppSwitcher(frontmostTracker: makeTrackerForAppSwitcherTests())
+        weakSwitcher = switcher
+    }
+    // Strong ref dropped at end of scope; nonisolated deinit must remove both
+    // the workspaceHideObserver and the activation/termination observers that
+    // sessionCoordinator installed on behalf of the switcher.
+    #expect(weakSwitcher == nil, "AppSwitcher should deallocate after scope exit")
+
+    // Posting notifications after release must be safe; a leaked observer block
+    // would fire on a dangling context.
+    NSWorkspace.shared.notificationCenter.post(
+        name: NSWorkspace.didHideApplicationNotification,
+        object: nil
+    )
+    NSWorkspace.shared.notificationCenter.post(
+        name: NSWorkspace.didActivateApplicationNotification,
+        object: nil
+    )
+    NSWorkspace.shared.notificationCenter.post(
+        name: NSWorkspace.didTerminateApplicationNotification,
+        object: nil
+    )
+}
+
 @MainActor
 private func makeTrackerForAppSwitcherTests() -> FrontmostApplicationTracker {
     FrontmostApplicationTracker(client: .init(

@@ -187,7 +187,20 @@ final class AppSwitcher: AppSwitching {
     private let deactivationConfirmationInitialDelay: TimeInterval = 0.05
     private let deactivationConfirmationPollInterval: TimeInterval = 0.05
     private let deactivationConfirmationTimeout: TimeInterval = 0.3
-    private var workspaceHideObserver: Any?
+    // nonisolated(unsafe): written only while @MainActor-isolated (from init)
+    // but read from the nonisolated deinit below, where NotificationCenter.removeObserver
+    // is thread-safe.
+    private nonisolated(unsafe) var workspaceHideObserver: Any?
+
+    deinit {
+        if let workspaceHideObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(workspaceHideObserver)
+        }
+        // AppSwitcher owns the lifecycle of the workspace observers it asked
+        // sessionCoordinator to install, so stop them even if the coordinator
+        // is kept alive by another owner.
+        sessionCoordinator.stopObservingWorkspaceNotifications()
+    }
 
     init(
         frontmostTracker: FrontmostApplicationTracker = FrontmostApplicationTracker(),

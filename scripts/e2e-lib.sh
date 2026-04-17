@@ -104,8 +104,7 @@ detect_capture_requirement() {
           next if shortcut["isEnabled"] == false
 
           modifiers = Array(shortcut["modifierFlags"]).map { |flag| flag.to_s.downcase }
-          is_hyper_combo = modifiers.length == 4 &&
-            %w[command option control shift].all? { |flag| modifiers.include?(flag) }
+          is_hyper_combo = %w[command option control shift].all? { |flag| modifiers.include?(flag) }
 
           if hyper_enabled && is_hyper_combo
             hyper = true
@@ -147,8 +146,7 @@ bundle_has_configured_shortcut() {
           next false unless shortcut["bundleIdentifier"] == bundle_id
 
           modifiers = Array(shortcut["modifierFlags"]).map { |flag| flag.to_s.downcase }
-          is_hyper_combo = modifiers.length == 4 &&
-            %w[command option control shift].all? { |flag| modifiers.include?(flag) }
+          is_hyper_combo = %w[command option control shift].all? { |flag| modifiers.include?(flag) }
           route = hyper_enabled && is_hyper_combo ? "hyper" : "standard"
 
           route == expected_route
@@ -156,6 +154,147 @@ bundle_has_configured_shortcut() {
 
         exit(matched ? 0 : 1)
     ' "$shortcuts_file" "$hyper_enabled" "$bundle_id" "$expected_route"
+}
+
+shortcut_inventory_json() {
+    local shortcuts_file="${1:-$SHORTCUTS_FILE}"
+    local hyper_enabled="${2:-$(hyper_key_enabled_flag)}"
+
+    if [ ! -f "$shortcuts_file" ]; then
+        echo "[]"
+        return 0
+    fi
+
+    /usr/bin/ruby -rjson -e '
+        key_codes = {
+          "a" => 0, "s" => 1, "d" => 2, "f" => 3, "h" => 4, "g" => 5,
+          "z" => 6, "x" => 7, "c" => 8, "v" => 9, "b" => 11, "q" => 12,
+          "w" => 13, "e" => 14, "r" => 15, "y" => 16, "t" => 17, "1" => 18,
+          "2" => 19, "3" => 20, "4" => 21, "6" => 22, "5" => 23, "=" => 24,
+          "9" => 25, "7" => 26, "-" => 27, "8" => 28, "0" => 29, "]" => 30,
+          "o" => 31, "u" => 32, "[" => 33, "i" => 34, "p" => 35, "l" => 37,
+          "j" => 38, "k" => 40, ";" => 41, "\\" => 42, "," => 43,
+          "/" => 44, "n" => 45, "m" => 46, "." => 47, "tab" => 48, "space" => 49,
+          "`" => 50, "delete" => 51, "backspace" => 51, "escape" => 53, "esc" => 53,
+          "command" => 55, "shift" => 56, "capslock" => 57, "option" => 58,
+          "control" => 59, "rightshift" => 60, "rightoption" => 61, "rightcontrol" => 62,
+          "function" => 63, "f17" => 64, "volumeup" => 72, "volumedown" => 73,
+          "mute" => 74, "f18" => 79, "f19" => 80, "f20" => 90, "f5" => 96,
+          "f6" => 97, "f7" => 98, "f3" => 99, "f8" => 100, "f9" => 101,
+          "f11" => 103, "f13" => 105, "f16" => 106, "f14" => 107, "f10" => 109,
+          "f12" => 111, "f15" => 113, "help" => 114, "home" => 115, "pageup" => 116,
+          "forwarddelete" => 117, "f4" => 118, "end" => 119, "f2" => 120,
+          "pagedown" => 121, "f1" => 122, "left" => 123, "right" => 124,
+          "down" => 125, "up" => 126, "return" => 36, "enter" => 36
+        }
+
+        shortcuts = JSON.parse(File.read(ARGV[0])) rescue []
+        hyper_enabled = ARGV[1] == "1"
+
+        inventory = shortcuts.each_with_object([]) do |shortcut, entries|
+          next if shortcut["isEnabled"] == false
+
+          key_equivalent = shortcut["keyEquivalent"].to_s.downcase
+          key_code = key_codes[key_equivalent]
+          next if key_code.nil?
+
+          modifiers = Array(shortcut["modifierFlags"]).map { |flag| flag.to_s.downcase }
+          is_hyper_combo = %w[command option control shift].all? { |flag| modifiers.include?(flag) }
+          route = hyper_enabled && is_hyper_combo ? "hyper" : "standard"
+
+          entries << {
+            "appName" => shortcut["appName"],
+            "bundleIdentifier" => shortcut["bundleIdentifier"],
+            "keyEquivalent" => key_equivalent,
+            "modifierFlags" => modifiers,
+            "route" => route,
+            "keyCode" => key_code
+          }
+        end
+
+        puts JSON.generate(inventory)
+    ' "$shortcuts_file" "$hyper_enabled"
+}
+
+first_shortcut_for_route() {
+    local expected_route="$1"
+    local exclude_bundle="${2:-}"
+    local shortcuts_file="${3:-$SHORTCUTS_FILE}"
+    local hyper_enabled="${4:-$(hyper_key_enabled_flag)}"
+
+    shortcut_inventory_json "$shortcuts_file" "$hyper_enabled" | /usr/bin/ruby -rjson -e '
+        inventory = JSON.parse(STDIN.read) rescue []
+        expected_route = ARGV[0]
+        exclude_bundle = ARGV[1]
+
+        shortcut = inventory.find do |entry|
+          route_match = expected_route == "any" || entry["route"] == expected_route
+          bundle_match = exclude_bundle.empty? || entry["bundleIdentifier"] != exclude_bundle
+          route_match && bundle_match
+        end
+
+        if shortcut
+          puts JSON.generate(shortcut)
+        else
+          exit 1
+        end
+    ' "$expected_route" "$exclude_bundle"
+}
+
+resolve_primary_test_shortcut() {
+    local shortcuts_file="${1:-$SHORTCUTS_FILE}"
+    local hyper_enabled="${2:-$(hyper_key_enabled_flag)}"
+
+    first_shortcut_for_route standard "" "$shortcuts_file" "$hyper_enabled" ||
+        first_shortcut_for_route hyper "" "$shortcuts_file" "$hyper_enabled"
+}
+
+resolve_isolation_shortcuts() {
+    local shortcuts_file="${1:-$SHORTCUTS_FILE}"
+    local hyper_enabled="${2:-$(hyper_key_enabled_flag)}"
+    local primary
+    local secondary
+    local primary_bundle
+    local primary_route
+
+    primary=$(resolve_primary_test_shortcut "$shortcuts_file" "$hyper_enabled") || return 1
+    primary_bundle=$(shortcut_json_field "$primary" bundleIdentifier)
+    primary_route=$(shortcut_json_field "$primary" route)
+
+    if [ "$primary_route" = "standard" ]; then
+        secondary=$(first_shortcut_for_route hyper "$primary_bundle" "$shortcuts_file" "$hyper_enabled") ||
+            secondary=$(first_shortcut_for_route any "$primary_bundle" "$shortcuts_file" "$hyper_enabled") ||
+            return 1
+    else
+        secondary=$(first_shortcut_for_route standard "$primary_bundle" "$shortcuts_file" "$hyper_enabled") ||
+            secondary=$(first_shortcut_for_route any "$primary_bundle" "$shortcuts_file" "$hyper_enabled") ||
+            return 1
+    fi
+
+    printf '%s\n%s\n' "$primary" "$secondary"
+}
+
+shortcut_json_field() {
+    local shortcut_json="$1"
+    local field="$2"
+
+    printf '%s' "$shortcut_json" | /usr/bin/ruby -rjson -e '
+        shortcut = JSON.parse(STDIN.read) rescue nil
+        exit 1 if shortcut.nil?
+
+        value = shortcut[ARGV[0]]
+        exit 1 if value.nil?
+
+        if value.is_a?(Array) || value.is_a?(Hash)
+          puts JSON.generate(value)
+        else
+          puts value
+        end
+    ' "$field"
+}
+
+regex_escape() {
+    printf '%s' "$1" | /usr/bin/ruby -e 'print Regexp.escape(STDIN.read)'
 }
 
 _standard_capture_ready() {
@@ -308,6 +447,33 @@ send_keycode() {
     osascript -e "tell application \"System Events\" to key code $code"
 }
 
+send_keycode_with_modifiers() {
+    local code="$1" modifiers="$2"
+    osascript -e "tell application \"System Events\" to key code $code using $modifiers"
+}
+
+shortcut_modifiers_osascript() {
+    local shortcut_json="$1"
+
+    printf '%s' "$shortcut_json" | /usr/bin/ruby -rjson -e '
+        shortcut = JSON.parse(STDIN.read) rescue {}
+        modifiers = Array(shortcut["modifierFlags"]).map { |flag| flag.to_s.downcase }
+        order = %w[command option control shift function]
+        formatted = order.select { |flag| modifiers.include?(flag) }.map { |flag| "#{flag} down" }
+        puts "{#{formatted.join(", ")}}"
+    '
+}
+
+send_standard_shortcut() {
+    local shortcut_json="$1"
+    local key_code
+    local modifiers
+
+    key_code=$(shortcut_json_field "$shortcut_json" keyCode)
+    modifiers=$(shortcut_modifiers_osascript "$shortcut_json")
+    send_keycode_with_modifiers "$key_code" "$modifiers"
+}
+
 # Send F19 held + key tap for Hyper Key testing.
 # Strategy: try CGEvent helper first (real hold simulation); fall back to
 # osascript if CGEvent.post() fails (requires calling process to have
@@ -329,6 +495,7 @@ end tell"
 # Probe once whether CGEvent posting reaches the event tap.
 # If not, fall back to osascript for the rest of the session.
 _HYPER_USE_OSASCRIPT="0"
+_HYPER_PROBED="0"
 _probe_cgevent() {
     if [ ! -f "$LOG_FILE" ]; then _HYPER_USE_OSASCRIPT="1"; return; fi
     local pre
@@ -344,11 +511,50 @@ _probe_cgevent() {
     else
         _HYPER_USE_OSASCRIPT="1"
     fi
+    _HYPER_PROBED="1"
+}
+
+ensure_hyper_sender_ready() {
+    if [ "$_HYPER_PROBED" != "1" ]; then
+        _probe_cgevent
+        _HYPER_PROBED="1"
+    fi
+}
+
+send_hyper_shortcut_compat() {
+    local key_code="$1"
+    local previous_mode="${_HYPER_USE_OSASCRIPT:-0}"
+
+    ensure_hyper_sender_ready
+    _HYPER_USE_OSASCRIPT="1"
+    send_hyper_combo "$key_code"
+    _HYPER_USE_OSASCRIPT="$previous_mode"
 }
 
 # Send individual keyDown or keyUp via CGEvent (for precise event control)
 send_cgevent_down() { "$CGEVENT_HELPER" down "$1"; }
 send_cgevent_up()   { "$CGEVENT_HELPER" up "$1"; }
+
+send_shortcut() {
+    local shortcut_json="$1"
+    local route
+    local key_code
+
+    route=$(shortcut_json_field "$shortcut_json" route)
+    case "$route" in
+        standard)
+            send_standard_shortcut "$shortcut_json"
+            ;;
+        hyper)
+            key_code=$(shortcut_json_field "$shortcut_json" keyCode)
+            send_hyper_shortcut_compat "$key_code"
+            ;;
+        *)
+            echo "ERROR: unsupported shortcut route '$route'" >&2
+            return 1
+            ;;
+    esac
+}
 
 # Send N rapid keystrokes in a single osascript (accurate sub-200ms timing)
 send_rapid_keystrokes() {
@@ -365,6 +571,44 @@ send_rapid_keystrokes() {
     script="$script
 end tell"
     osascript -e "$script"
+}
+
+send_rapid_shortcuts() {
+    local shortcut_json="$1"
+    local count="$2"
+    local delay="$3"
+    local route
+    local key_code
+    local modifiers
+    local script
+    local i
+
+    route=$(shortcut_json_field "$shortcut_json" route)
+
+    if [ "$route" = "standard" ]; then
+        key_code=$(shortcut_json_field "$shortcut_json" keyCode)
+        modifiers=$(shortcut_modifiers_osascript "$shortcut_json")
+        script="tell application \"System Events\""
+        for i in $(seq 1 "$count"); do
+            script="$script
+    key code $key_code using $modifiers"
+            if [ "$i" -lt "$count" ]; then
+                script="$script
+    delay $delay"
+            fi
+        done
+        script="$script
+end tell"
+        osascript -e "$script"
+        return 0
+    fi
+
+    for i in $(seq 1 "$count"); do
+        send_shortcut "$shortcut_json"
+        if [ "$i" -lt "$count" ]; then
+            sleep "$delay"
+        fi
+    done
 }
 
 # --- App state helpers ---
@@ -384,6 +628,39 @@ ensure_app_running() {
 ensure_app_stopped() {
     local app_name="$1"
     pkill -f "$app_name" 2>/dev/null || true
+}
+
+ensure_shortcut_target_running() {
+    local shortcut_json="$1"
+    local bundle_id
+    local app_name
+
+    bundle_id=$(shortcut_json_field "$shortcut_json" bundleIdentifier)
+    app_name=$(shortcut_json_field "$shortcut_json" appName)
+
+    if ! pgrep -x "$app_name" > /dev/null 2>&1; then
+        open -b "$bundle_id" --background 2>/dev/null || open -a "$app_name" --background 2>/dev/null || true
+        sleep 0.5
+    fi
+}
+
+ensure_shortcut_target_stopped() {
+    local shortcut_json="$1"
+    local app_name
+
+    app_name=$(shortcut_json_field "$shortcut_json" appName)
+    ensure_app_stopped "$app_name"
+}
+
+focus_non_target_app() {
+    local target_bundle="$1"
+
+    if [ "$target_bundle" = "com.apple.finder" ]; then
+        open -a "System Settings" 2>/dev/null || true
+    else
+        open -a Finder 2>/dev/null || true
+    fi
+    sleep 1
 }
 
 is_hyper_key_enabled() {

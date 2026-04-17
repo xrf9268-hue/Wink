@@ -1,3 +1,4 @@
+import AppKit
 import CoreFoundation
 import Testing
 @testable import Quickey
@@ -372,6 +373,40 @@ func handleFrontmostChangeKeepsDeactivatingSessionAliveUntilHideConfirmation() {
     coordinator.handleFrontmostChange(newFrontmostBundle: "com.apple.Terminal")
 
     #expect(coordinator.session(for: "com.apple.Safari")?.phase == .deactivating)
+}
+
+@Test @MainActor
+func deinitRemovesWorkspaceObservers() {
+    weak var weakCoordinator: ToggleSessionCoordinator?
+    do {
+        let coordinator = ToggleSessionCoordinator()
+        coordinator.startObservingWorkspaceNotifications()
+        weakCoordinator = coordinator
+    }
+    // Strong ref was dropped at end of scope; nonisolated deinit runs
+    // synchronously on the releasing thread and tears down the observer tokens.
+    #expect(weakCoordinator == nil, "coordinator should deallocate after scope exit")
+
+    // Posting notifications that the coordinator used to observe must be safe
+    // after release. If the observer wasn't removed on deinit, the block would
+    // be retained forever and could fire on a dangling context.
+    NSWorkspace.shared.notificationCenter.post(
+        name: NSWorkspace.didActivateApplicationNotification,
+        object: nil
+    )
+    NSWorkspace.shared.notificationCenter.post(
+        name: NSWorkspace.didTerminateApplicationNotification,
+        object: nil
+    )
+}
+
+@Test @MainActor
+func stopObservingWorkspaceNotificationsIsIdempotent() {
+    let coordinator = ToggleSessionCoordinator()
+    coordinator.startObservingWorkspaceNotifications()
+    coordinator.stopObservingWorkspaceNotifications()
+    // Calling again must be a safe no-op, not a double-remove crash.
+    coordinator.stopObservingWorkspaceNotifications()
 }
 
 private final class CoordinatorTestClock: @unchecked Sendable {
