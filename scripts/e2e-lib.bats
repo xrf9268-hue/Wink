@@ -52,6 +52,28 @@ JSON
   [ "$result" = "mixed" ]
 }
 
+@test "detect_capture_requirement treats Hyper modifier supersets as hyper" {
+  local shortcuts="$BATS_TEST_TMPDIR/shortcuts.json"
+  cat >"$shortcuts" <<'JSON'
+[
+  {
+    "appName": "Preview",
+    "bundleIdentifier": "com.apple.Preview",
+    "id": "33333333-3333-3333-3333-333333333333",
+    "isEnabled": true,
+    "keyEquivalent": "f1",
+    "modifierFlags": ["command", "option", "control", "shift", "function"]
+  }
+]
+JSON
+
+  run bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; detect_capture_requirement '$shortcuts' 1"
+
+  local result="${output##*$'\n'}"
+  [ "$status" -eq 0 ]
+  [ "$result" = "hyper" ]
+}
+
 @test "capture_requirement_satisfied accepts standard readiness without event tap" {
   local log_file="$BATS_TEST_TMPDIR/debug.log"
   cat >"$log_file" <<'LOG'
@@ -118,6 +140,26 @@ JSON
   [ "$status" -eq 1 ]
 }
 
+@test "bundle_has_configured_shortcut matches a Hyper modifier superset" {
+  local shortcuts="$BATS_TEST_TMPDIR/shortcuts.json"
+  cat >"$shortcuts" <<'JSON'
+[
+  {
+    "appName": "Preview",
+    "bundleIdentifier": "com.apple.Preview",
+    "id": "33333333-3333-3333-3333-333333333333",
+    "isEnabled": true,
+    "keyEquivalent": "f1",
+    "modifierFlags": ["command", "option", "control", "shift", "function"]
+  }
+]
+JSON
+
+  run bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; bundle_has_configured_shortcut 'com.apple.Preview' hyper '$shortcuts' 1"
+
+  [ "$status" -eq 0 ]
+}
+
 @test "resolve_primary_test_shortcut prefers a configured standard shortcut" {
   local shortcuts="$BATS_TEST_TMPDIR/shortcuts.json"
   cat >"$shortcuts" <<'JSON'
@@ -170,6 +212,29 @@ JSON
   [[ "$output" == *'"bundleIdentifier":"com.google.antigravity"'* ]]
   [[ "$output" == *'"route":"hyper"'* ]]
   [[ "$output" == *'"keyCode":0'* ]]
+}
+
+@test "shortcut_inventory_json marks Hyper modifier supersets as hyper" {
+  local shortcuts="$BATS_TEST_TMPDIR/shortcuts.json"
+  cat >"$shortcuts" <<'JSON'
+[
+  {
+    "appName": "Preview",
+    "bundleIdentifier": "com.apple.Preview",
+    "id": "33333333-3333-3333-3333-333333333333",
+    "isEnabled": true,
+    "keyEquivalent": "f1",
+    "modifierFlags": ["command", "option", "control", "shift", "function"]
+  }
+]
+JSON
+
+  run bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; shortcut_inventory_json '$shortcuts' 1"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"bundleIdentifier":"com.apple.Preview"'* ]]
+  [[ "$output" == *'"route":"hyper"'* ]]
+  [[ "$output" == *'"keyCode":122'* ]]
 }
 
 @test "resolve_isolation_shortcuts returns two distinct shortcuts for a hyper-only fixture" {

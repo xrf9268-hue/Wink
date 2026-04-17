@@ -104,8 +104,7 @@ detect_capture_requirement() {
           next if shortcut["isEnabled"] == false
 
           modifiers = Array(shortcut["modifierFlags"]).map { |flag| flag.to_s.downcase }
-          is_hyper_combo = modifiers.length == 4 &&
-            %w[command option control shift].all? { |flag| modifiers.include?(flag) }
+          is_hyper_combo = %w[command option control shift].all? { |flag| modifiers.include?(flag) }
 
           if hyper_enabled && is_hyper_combo
             hyper = true
@@ -147,8 +146,7 @@ bundle_has_configured_shortcut() {
           next false unless shortcut["bundleIdentifier"] == bundle_id
 
           modifiers = Array(shortcut["modifierFlags"]).map { |flag| flag.to_s.downcase }
-          is_hyper_combo = modifiers.length == 4 &&
-            %w[command option control shift].all? { |flag| modifiers.include?(flag) }
+          is_hyper_combo = %w[command option control shift].all? { |flag| modifiers.include?(flag) }
           route = hyper_enabled && is_hyper_combo ? "hyper" : "standard"
 
           route == expected_route
@@ -201,8 +199,7 @@ shortcut_inventory_json() {
           next if key_code.nil?
 
           modifiers = Array(shortcut["modifierFlags"]).map { |flag| flag.to_s.downcase }
-          is_hyper_combo = modifiers.length == 4 &&
-            %w[command option control shift].all? { |flag| modifiers.include?(flag) }
+          is_hyper_combo = %w[command option control shift].all? { |flag| modifiers.include?(flag) }
           route = hyper_enabled && is_hyper_combo ? "hyper" : "standard"
 
           entries << {
