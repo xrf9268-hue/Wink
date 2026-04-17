@@ -28,8 +28,23 @@ swift build
 swift test
 ./scripts/package-app.sh        # release build + .app bundle
 ./scripts/package-dmg.sh        # drag-install DMG from build/Quickey.app
-./scripts/e2e-full-test.sh      # end-to-end test suite (Accessibility required; Input Monitoring needed for Hyper coverage)
+./scripts/e2e-full-test.sh      # end-to-end suite using the current saved shortcuts (Accessibility required; Input Monitoring needed when Hyper shortcuts are configured)
 ```
+
+## Permissions / First Launch
+- Quickey needs `Accessibility` to intercept and route all shortcuts.
+- Quickey needs `Input Monitoring` only when the current enabled shortcut set includes Hyper-routed shortcuts.
+- Grant permissions in:
+  `System Settings > Privacy & Security > Accessibility`
+  `System Settings > Privacy & Security > Input Monitoring`
+- When testing a newly built `build/Quickey.app`, do not assume an older `/Applications/Quickey.app` grant will carry over. If macOS is still pointing at the wrong app copy, remove the old `Quickey` entry and add the current app bundle again.
+- After changing `Input Monitoring`, quit and reopen Quickey so the active event tap is recreated under the new permission state.
+- Prefer `open build/Quickey.app` over launching the binary directly so macOS tracks the correct app identity for TCC.
+- To confirm the grant actually took effect, inspect `~/.config/Quickey/debug.log`:
+  - `ax=true` is the Accessibility signal
+  - `im=true` is the Input Monitoring signal
+  - `carbon=true` means standard shortcuts registered successfully
+  - `eventTap=true` means the Hyper capture path is active
 
 `Launch at Login` should be validated from a packaged app installed in `/Applications` or `~/Applications`. Running `build/Quickey.app` directly from the repo can surface an install-location warning instead of a real login-item configuration state.
 

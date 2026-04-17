@@ -28,6 +28,7 @@ swift build
 swift test
 swift build -c release
 ./scripts/package-app.sh
+./scripts/e2e-full-test.sh
 cp .build/release/Quickey build/Quickey.app/Contents/MacOS/Quickey
 ```
 
@@ -93,6 +94,8 @@ Highest-value test targets:
 
 If a change cannot be verified on Linux, document what must be verified on macOS.
 - End-to-end shortcut testing on macOS: `osascript` key events are useful for driving the live shortcut pipeline; `cliclick` does not cover the same path reliably. Use `osascript -e 'tell application "System Events" to key code ...'` for E2E validation of shortcut capture → match → toggle, and remember that Hyper coverage still exercises the event-tap path while standard shortcuts route through Carbon.
+- The E2E shell harness now resolves its runtime targets from the current enabled `~/Library/Application Support/Quickey/shortcuts.json` entries instead of assuming a fixed Safari/IINA local fixture. Before interpreting `PASS`, `WARN`, or readiness logs, inspect the saved shortcut mix and match expectations to the active standard-vs-Hyper route set.
+- When validating a freshly packaged `build/Quickey.app`, do not assume TCC grants for another Quickey app copy still apply. If System Settings is still pointing at an older `/Applications/Quickey.app`, remove that row, add the current build again, and relaunch Quickey after changing Input Monitoring so the event tap is recreated under the new permission state. Use `~/.config/Quickey/debug.log` (`ax`, `im`, `carbon`, `eventTap`) as the runtime source of truth.
 - `kCGKeyboardEventAutorepeat` (Apple SDK: "non-zero when this is an autorepeat of a key-down") must be filtered in the event tap callback to prevent held-key loops.
 
 ## macOS runtime validation policy

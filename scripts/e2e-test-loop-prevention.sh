@@ -11,30 +11,34 @@ e2e_maybe_launch "$MODULE_NAME"
 echo ""
 echo "=== $MODULE_NAME ==="
 
-if ! bundle_has_configured_shortcut "com.apple.Safari" standard; then
-    e2e_skip_module "Safari standard shortcut not configured"
-fi
+TEST_SHORTCUT=$(resolve_primary_test_shortcut) || e2e_skip_module "No supported shortcut configured"
+TARGET_APP=$(shortcut_json_field "$TEST_SHORTCUT" appName)
+TARGET_BUNDLE=$(shortcut_json_field "$TEST_SHORTCUT" bundleIdentifier)
+TARGET_ROUTE=$(shortcut_json_field "$TEST_SHORTCUT" route)
+TARGET_BUNDLE_PATTERN=$(regex_escape "$TARGET_BUNDLE")
 
-ensure_app_running "Safari"
-sleep 1
+echo "    Using $TARGET_APP ($TARGET_ROUTE route)"
 
-echo "    Sending single Shift+Cmd+S, monitoring for ${TEST_DURATION}s..."
+ensure_shortcut_target_running "$TEST_SHORTCUT"
+focus_non_target_app "$TARGET_BUNDLE"
+
+echo "    Sending single $TARGET_APP shortcut, monitoring for ${TEST_DURATION}s..."
 
 PRE=$(log_line_count)
-send_keystroke "s" "{shift down, command down}"
+send_shortcut "$TEST_SHORTCUT"
 
 # Poll with early exit if loop detected
 elapsed=0
 while [ "$elapsed" -lt "$TEST_DURATION" ]; do
     SLICE=$(get_log_slice "$PRE")
-    MATCHED=$(count_in_slice "$SLICE" "MATCHED:")
+    MATCHED=$(count_in_slice "$SLICE" "MATCHED: .* - $TARGET_BUNDLE_PATTERN")
     [ "$MATCHED" -gt "$MAX_MATCHED" ] && break
     sleep 1
     ((elapsed++)) || true
 done
 
 SLICE=$(get_log_slice "$PRE")
-MATCHED=$(count_in_slice "$SLICE" "MATCHED:")
+MATCHED=$(count_in_slice "$SLICE" "MATCHED: .* - $TARGET_BUNDLE_PATTERN")
 DEBOUNCED=$(count_in_slice "$SLICE" "DEBOUNCE_BLOCKED")
 COOLDOWN=$(count_in_slice "$SLICE" "BLOCKED cooldown")
 REENTRY=$(count_in_slice "$SLICE" "BLOCKED re-entry")
@@ -51,7 +55,7 @@ echo "  Log entries:"
 echo "$SLICE" | head -30
 echo ""
 
-assert_count_le "$SLICE" "MATCHED:" "$MAX_MATCHED" "No toggle loop (MATCHED <= $MAX_MATCHED)"
+assert_count_le "$SLICE" "MATCHED: .* - $TARGET_BUNDLE_PATTERN" "$MAX_MATCHED" "No toggle loop for $TARGET_APP (MATCHED <= $MAX_MATCHED)"
 
 if [ "$MATCHED" -le 2 ]; then
     echo -e "    ${CYAN}INFO${NC}: $MATCHED MATCHED = normal toggle behavior"
