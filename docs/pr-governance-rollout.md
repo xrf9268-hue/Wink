@@ -9,12 +9,13 @@ This runbook captures the recommended rollout order for the PR governance and re
 ## Rollout Order
 
 1. Open a PR from `codex/pr-governance-harness` into `main`.
-2. Verify the new required check behavior on that PR.
+2. Validate the review-state logic for the bootstrap PR with the local script against the live PR state.
 3. Merge the PR to `main`.
 4. Apply `.github/governance/main-ruleset.json` as the live repository ruleset.
 5. Run one small smoke-test PR against `main` after the ruleset is active.
 
 Do not apply the ruleset before the workflow changes are on `main`, or `main` will be blocked by a missing `Review Gate / Validate review state` check.
+Because this is the bootstrap PR that introduces `review-gate.yml`, it will not automatically show `Review Gate / Validate review state` as a PR check yet; that workflow does not exist on `main` until after this PR merges.
 
 ## PR Body Draft
 
@@ -48,15 +49,29 @@ The summary bullets above are already suitable for the PR body. If you want a sh
 
 ## PR Verification Checklist
 
-- Confirm the PR shows all three checks:
+- Confirm the bootstrap PR shows these checks:
   - `CI / Build and Test`
   - `PR Metadata / Validate PR metadata`
-  - `Review Gate / Validate review state`
-- Leave one unresolved inline review thread on a changed line and ensure a review-related event occurs.
-- Confirm `Review Gate / Validate review state` fails.
+- Leave one unresolved inline review thread on a changed line.
+- Run the local script against the live PR state:
+
+```bash
+tmpdir="$(mktemp -d)"
+cat > "$tmpdir/event.json" <<'JSON'
+{
+  "repository": { "owner": { "login": "xrf9268-hue" }, "name": "Quickey" },
+  "pull_request": { "number": 170 }
+}
+JSON
+GITHUB_TOKEN="$(gh auth token)" \
+GITHUB_EVENT_PATH="$tmpdir/event.json" \
+GITHUB_STEP_SUMMARY="$tmpdir/summary.md" \
+node .github/scripts/validate-review-state.mjs
+```
+
+- Confirm the local script fails while the thread is unresolved.
 - Resolve the thread or push a change that makes it outdated.
-- If no new PR/review/comment activity occurs after resolution, manually rerun the review-gate workflow.
-- Confirm `Review Gate / Validate review state` passes.
+- Re-run the same local script and confirm it passes once the thread is resolved or outdated.
 - Confirm the PR still uses `Not runtime-sensitive` truthfully.
 
 ## Post-Merge Ruleset Apply
@@ -111,6 +126,7 @@ The live ruleset should require:
 
 Open a small documentation-only or comments-only PR against `main` and verify:
 
+- the PR shows all three checks, including `Review Gate / Validate review state`
 - the PR cannot merge without the required checks
 - the PR cannot merge while an inline conversation remains unresolved
 - the PR can merge after the conversation is resolved and the review gate is rerun or refreshed
