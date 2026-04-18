@@ -100,13 +100,16 @@ struct ShortcutsTabView: View {
                         .foregroundStyle(.tertiary)
                         .frame(maxWidth: .infinity, minHeight: 60)
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(editor.shortcuts.enumerated()), id: \.element.id) { index, shortcut in
-                                shortcutRow(shortcut, index: index)
-                            }
+                    List {
+                        ForEach(Array(editor.shortcuts.enumerated()), id: \.element.id) { index, shortcut in
+                            shortcutRow(shortcut, index: index)
+                                .listRowInsets(EdgeInsets())
+                                .listRowSeparator(.hidden)
                         }
+                        .onMove(perform: editor.moveShortcut)
                     }
+                    .listStyle(.plain)
+                    .frame(minHeight: 140)
                 }
             }
         }

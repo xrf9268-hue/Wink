@@ -75,6 +75,14 @@ final class ShortcutEditorState {
         }
     }
 
+    func moveShortcut(from source: IndexSet, to destination: Int) {
+        var updated = shortcuts
+        updated.move(fromOffsets: source, toOffset: destination)
+        shortcuts = updated
+        shortcutManager.save(shortcuts: updated)
+        onShortcutConfigurationChange()
+    }
+
     var allEnabled: Bool {
         !shortcuts.isEmpty && shortcuts.allSatisfy(\.isEnabled)
     }
