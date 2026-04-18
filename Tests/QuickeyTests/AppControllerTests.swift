@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Quickey
 
@@ -28,16 +29,6 @@ func startupSequenceAppliesPersistedHyperStateBeforeStartingShortcutManager() {
         },
         installMenuBar: {
             events.append("installMenuBar")
-        },
-        isFirstLaunch: {
-            events.append("isFirstLaunch")
-            return false
-        },
-        markFirstLaunchComplete: {
-            events.append("markFirstLaunchComplete")
-        },
-        openSettings: {
-            events.append("openSettings")
         }
     )
 
@@ -48,63 +39,17 @@ func startupSequenceAppliesPersistedHyperStateBeforeStartingShortcutManager() {
         "readHyperEnabled",
         "setHyper:true",
         "startShortcutManager",
-        "installMenuBar",
-        "isFirstLaunch"
+        "installMenuBar"
     ])
 }
 
-@Test @MainActor
-func startupSequenceOpensSettingsAndMarksCompleteOnFirstLaunch() {
-    var events: [String] = []
+@Test
+func consumeFirstLaunchFlagReturnsTrueOnceThenFalse() throws {
+    let suiteName = "AppControllerTests.firstLaunch.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
 
-    AppController.runStartupSequence(
-        loadShortcuts: { [] },
-        replaceShortcuts: { _ in },
-        reapplyHyperIfNeeded: {},
-        isHyperEnabled: { false },
-        setHyperKeyEnabled: { _ in },
-        startShortcutManager: {},
-        installMenuBar: {
-            events.append("installMenuBar")
-        },
-        isFirstLaunch: { true },
-        markFirstLaunchComplete: {
-            events.append("markFirstLaunchComplete")
-        },
-        openSettings: {
-            events.append("openSettings")
-        }
-    )
-
-    #expect(events == [
-        "installMenuBar",
-        "openSettings",
-        "markFirstLaunchComplete"
-    ])
-}
-
-@Test @MainActor
-func startupSequenceSkipsOpeningSettingsOnSubsequentLaunches() {
-    var openedSettings = false
-    var markedComplete = false
-
-    AppController.runStartupSequence(
-        loadShortcuts: { [] },
-        replaceShortcuts: { _ in },
-        reapplyHyperIfNeeded: {},
-        isHyperEnabled: { false },
-        setHyperKeyEnabled: { _ in },
-        startShortcutManager: {},
-        installMenuBar: {},
-        isFirstLaunch: { false },
-        markFirstLaunchComplete: {
-            markedComplete = true
-        },
-        openSettings: {
-            openedSettings = true
-        }
-    )
-
-    #expect(openedSettings == false)
-    #expect(markedComplete == false)
+    #expect(AppController.consumeFirstLaunchFlag(userDefaults: defaults) == true)
+    #expect(AppController.consumeFirstLaunchFlag(userDefaults: defaults) == false)
+    #expect(AppController.consumeFirstLaunchFlag(userDefaults: defaults) == false)
 }

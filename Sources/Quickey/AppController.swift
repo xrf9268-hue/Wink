@@ -49,15 +49,12 @@ final class AppController {
             isHyperEnabled: { hyperKeyService.isEnabled },
             setHyperKeyEnabled: { shortcutManager.setHyperKeyEnabled($0) },
             startShortcutManager: { shortcutManager.start() },
-            installMenuBar: { menuBarController.install() },
-            isFirstLaunch: { [userDefaults] in
-                !userDefaults.bool(forKey: Self.firstLaunchCompletedDefaultsKey)
-            },
-            markFirstLaunchComplete: { [userDefaults] in
-                userDefaults.set(true, forKey: Self.firstLaunchCompletedDefaultsKey)
-            },
-            openSettings: { [weak self] in self?.openSettings() }
+            installMenuBar: { menuBarController.install() }
         )
+
+        if Self.consumeFirstLaunchFlag(userDefaults: userDefaults) {
+            openSettings()
+        }
     }
 
     func stop() {
@@ -77,10 +74,7 @@ final class AppController {
         isHyperEnabled: @MainActor () -> Bool,
         setHyperKeyEnabled: @MainActor (Bool) -> Void,
         startShortcutManager: @MainActor () -> Void,
-        installMenuBar: @MainActor () -> Void,
-        isFirstLaunch: @MainActor () -> Bool,
-        markFirstLaunchComplete: @MainActor () -> Void,
-        openSettings: @MainActor () -> Void
+        installMenuBar: @MainActor () -> Void
     ) {
         do {
             replaceShortcuts(try loadShortcuts())
@@ -93,9 +87,13 @@ final class AppController {
         setHyperKeyEnabled(isHyperEnabled())
         startShortcutManager()
         installMenuBar()
-        if isFirstLaunch() {
-            openSettings()
-            markFirstLaunchComplete()
-        }
+    }
+
+    /// Returns true exactly once per install: marks the flag synchronously before
+    /// returning so a crash in the caller's follow-up work won't cause a re-prompt.
+    static func consumeFirstLaunchFlag(userDefaults: UserDefaults) -> Bool {
+        guard !userDefaults.bool(forKey: firstLaunchCompletedDefaultsKey) else { return false }
+        userDefaults.set(true, forKey: firstLaunchCompletedDefaultsKey)
+        return true
     }
 }
