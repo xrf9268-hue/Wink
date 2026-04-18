@@ -114,7 +114,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
-        rebuildShortcutSection(in: menu, presentations: shortcutPresentations())
         menu.items.forEach { $0.target = self }
         statusItem.menu = menu
     }
@@ -148,7 +147,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        rebuildShortcutSection(in: menu, presentations: shortcutPresentations())
         refreshLaunchAtLoginItem()
     }
 
@@ -158,19 +156,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     ) {
         removeShortcutSection(from: menu)
 
+        guard !presentations.isEmpty else {
+            return
+        }
+
         var insertionIndex = 0
         for presentation in presentations {
             menu.insertItem(makeShortcutItem(from: presentation), at: insertionIndex)
             insertionIndex += 1
         }
         menu.insertItem(makeShortcutDivider(), at: insertionIndex)
-    }
-
-    private func shortcutPresentations() -> [MenuBarShortcutItemPresentation] {
-        MenuBarShortcutItemPresentation.build(
-            from: shortcutStore.shortcuts,
-            runningBundleIdentifiers: runningBundleIdentifiers()
-        )
     }
 
     private func removeShortcutSection(from menu: NSMenu) {
