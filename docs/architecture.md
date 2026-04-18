@@ -84,6 +84,8 @@ Responsibilities:
 - `SettingsView` (tabbed: Shortcuts / General / Insights)
 - `ShortcutEditorState`
 - `AppPreferences`
+- `UpdateServicing`
+- `SparkleUpdateService`
 - `ShortcutRecorderView`
 - `ShortcutsTabView`
 - `GeneralTabView`
@@ -97,6 +99,7 @@ Responsibilities:
 - display saved bindings with inline usage stats
 - surface truthful shortcut readiness via `ShortcutCaptureStatus`
 - surface launch-at-login state via `LaunchAtLoginStatus`
+- surface update defaults and the manual `Check for Updates…` command without importing Sparkle into SwiftUI
 - show conflicts before saving
 - display usage trends and app ranking via Insights tab
 
@@ -183,9 +186,14 @@ Responsibilities:
 ### Permissions and packaging
 - `AccessibilityPermissionService`
 - `LaunchAtLoginService`
+- `UpdateServicing`
+- `SparkleUpdateService`
 - `ShortcutCaptureStatus`
 - `scripts/package-app.sh`
+- `scripts/package-update-zip.sh`
+- `scripts/generate-appcast.sh`
 - `Sources/Quickey/Resources/Info.plist`
+- `.github/workflows/release.yml`
 
 Responsibilities:
 - request/check Accessibility + Input Monitoring permission for global shortcuts
@@ -194,8 +202,11 @@ Responsibilities:
 - recover monitoring after permission changes without relaunch
 - manage launch-at-login state via `SMAppService`, including approval-needed state
 - distinguish `SMAppService.Status.notFound` caused by install location from a real bundle-configuration miss before surfacing launch-at-login guidance
+- keep Sparkle updater lifecycle behind an app-owned service boundary created by `AppController`
+- carry Sparkle defaults in `Info.plist` while allowing release-time feed/key injection during packaging
 - provide LSUIElement app bundle scaffold
-- automate `.app` packaging via script
+- automate `.app`, Sparkle ZIP, and appcast packaging via script
+- publish GitHub Release DMGs plus R2-hosted Sparkle artifacts through the release workflow
 
 ## Runtime event flow
 
@@ -282,11 +293,13 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **Stable-state toggle semantics**: activate immediately, confirm asynchronously, allow toggle-off only from `activeStable`, and avoid restore-away rollback on confirmation failure
 - **Official hide request path**: toggle-off uses `NSRunningApplication.hide()` plus asynchronous confirmation instead of event-synthesized hide commands
 - **Service-level test seams**: system-facing services use small injected clients or existing collaborators so runtime decision logic can be covered without live TCC or app-launch side effects
+- **Updater isolation**: Sparkle APIs stay inside `SparkleUpdateService`; SwiftUI reads an `UpdatePresentation` model from `AppPreferences`
 - **UsageTracker**: SQLite-backed daily usage aggregation off the main actor
 - **Launch-at-login status modeling**: `LaunchAtLoginStatus` preserves enabled / approval-needed / disabled / not-found states
+- **Dual-track distribution**: GitHub Releases DMG remains the first-install artifact while Sparkle ZIP plus `appcast.xml` on R2 powers in-app updates
 
 ## Known architectural gaps
 - No dedicated per-shortcut toggle history stack beyond the tracker seed plus the active session's single `previousBundle`
 - No test seam around event-tap capture itself (core logic is testable; tap infrastructure requires real macOS)
-- Signed/notarized release build not yet produced (workflow documented in `docs/signing-and-release.md`)
+- Credential-backed Sparkle and DMG release validation is still pending (workflow documented in `docs/signing-and-release.md`)
 - Targeted manual macOS validation is still required for the 2026-04-08 capture/activation/hide redesign, especially Safari-only toggle-off, standard-shortcut vs Hyper parity, permission-state transitions, system apps, hidden/minimized window paths, and timeout-stress behavior

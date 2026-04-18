@@ -11,6 +11,7 @@ Quickey is a macOS menu bar app that binds global shortcuts to target apps, with
 - Thor-like semantics that activate, re-activate hidden apps, or directly hide the frontmost target depending on state
 - Standard shortcuts use Carbon hotkeys; Hyper shortcuts use the active event tap
 - Accurate shortcut readiness reflects Accessibility, Input Monitoring, Carbon registration, and live Hyper event-tap health
+- Sparkle-based in-app updates with a manual `Check for Updates…` entry point and automatic background checks/downloads by default
 - Supports letters, modifiers, Hyper Key, F-keys, arrows, and space
 - Launch at login support with system approval surfaced in the app
 - Insights view for recent usage trends and app ranking
@@ -27,6 +28,7 @@ Quickey is a macOS menu bar app that binds global shortcuts to target apps, with
 swift build
 swift test
 ./scripts/package-app.sh        # release build + .app bundle
+./scripts/package-update-zip.sh # Sparkle update ZIP from build/Quickey.app
 ./scripts/package-dmg.sh        # drag-install DMG from build/Quickey.app
 ./scripts/e2e-full-test.sh      # end-to-end suite using the current saved shortcuts (Accessibility required; Input Monitoring needed when Hyper shortcuts are configured)
 ```
@@ -48,7 +50,12 @@ swift test
 
 `Launch at Login` should be validated from a packaged app installed in `/Applications` or `~/Applications`. Running `build/Quickey.app` directly from the repo can surface an install-location warning instead of a real login-item configuration state.
 
-Tagged releases use `v<CFBundleShortVersionString>` and publish `Quickey-<version>.dmg` through the release workflow described in [`docs/signing-and-release.md`](./docs/signing-and-release.md). Notarized releases are not yet available; the current [internal prerelease](https://github.com/xrf9268-hue/Quickey/releases/tag/internal-downloads) is unsigned, so macOS may warn on first launch.
+Tagged releases use `v<CFBundleShortVersionString>` and are intended to publish:
+
+- `Quickey-<version>.dmg` on GitHub Releases for first install
+- `Quickey-<version>.zip` plus `appcast.xml` on Cloudflare R2 for Sparkle in-app updates
+
+The full flow is documented in [`docs/signing-and-release.md`](./docs/signing-and-release.md). Credential-backed release validation and Sparkle runtime validation still require a real macOS environment. The rolling [internal prerelease](https://github.com/xrf9268-hue/Quickey/releases/tag/internal-downloads) remains DMG-only, unsigned, and intended only for trusted testers.
 
 ## Documentation
 - [`docs/README.md`](./docs/README.md)

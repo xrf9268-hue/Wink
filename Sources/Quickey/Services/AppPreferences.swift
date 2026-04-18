@@ -27,6 +27,15 @@ final class AppPreferences {
         launchAtLoginStatus.isEnabled
     }
 
+    var updatePresentation: UpdatePresentation {
+        UpdatePresentation(
+            currentVersion: updateService?.currentVersion ?? Self.currentVersionString(),
+            checkForUpdatesEnabled: updateService?.canCheckForUpdates ?? false,
+            automaticChecksEnabledByDefault: updateService?.automaticallyChecksForUpdates ?? true,
+            automaticDownloadsEnabledByDefault: updateService?.automaticallyDownloadsUpdates ?? true
+        )
+    }
+
     var launchAtLoginPresentation: LaunchAtLoginPresentation {
         switch launchAtLoginStatus {
         case .enabled:
@@ -78,15 +87,18 @@ final class AppPreferences {
     private let shortcutManager: ShortcutManager
     private let hyperKeyService: HyperKeyService?
     private let launchAtLoginService: LaunchAtLoginService
+    private let updateService: UpdateServicing?
 
     init(
         shortcutManager: ShortcutManager,
         hyperKeyService: HyperKeyService? = nil,
-        launchAtLoginService: LaunchAtLoginService = LaunchAtLoginService()
+        launchAtLoginService: LaunchAtLoginService = LaunchAtLoginService(),
+        updateService: UpdateServicing? = nil
     ) {
         self.shortcutManager = shortcutManager
         self.hyperKeyService = hyperKeyService
         self.launchAtLoginService = launchAtLoginService
+        self.updateService = updateService
         self.shortcutCaptureStatus = shortcutManager.shortcutCaptureStatus()
         let launchAtLoginSnapshot = launchAtLoginService.snapshot
         self.launchAtLoginStatus = launchAtLoginSnapshot.status
@@ -116,6 +128,10 @@ final class AppPreferences {
         launchAtLoginService.openSystemSettingsLoginItems()
     }
 
+    func checkForUpdates() {
+        updateService?.checkForUpdates()
+    }
+
     func setHyperKeyEnabled(_ enabled: Bool) {
         guard let hyperKeyService else { return }
         if enabled {
@@ -126,5 +142,9 @@ final class AppPreferences {
         hyperKeyEnabled = hyperKeyService.isEnabled
         shortcutManager.setHyperKeyEnabled(hyperKeyEnabled)
         refreshPermissions()
+    }
+
+    private static func currentVersionString(bundle: Bundle = .main) -> String {
+        bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
     }
 }

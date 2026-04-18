@@ -7,6 +7,7 @@ final class AppController {
     private let persistenceService = PersistenceService()
     private let usageTracker = UsageTracker()
     private let hyperKeyService = HyperKeyService()
+    private lazy var updateService: UpdateServicing = SparkleUpdateService()
     private lazy var appSwitcher = AppSwitcher()
     private lazy var shortcutManager = ShortcutManager(
         shortcutStore: shortcutStore,
@@ -23,7 +24,8 @@ final class AppController {
         shortcutStore: shortcutStore,
         shortcutManager: shortcutManager,
         usageTracker: usageTracker,
-        hyperKeyService: hyperKeyService
+        hyperKeyService: hyperKeyService,
+        updateService: updateService
     )
 
     func start() {

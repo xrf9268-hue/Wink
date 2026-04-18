@@ -6,12 +6,18 @@ let package = Package(
     platforms: [
         .macOS(.v15)
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.1")
+    ],
     products: [
         .executable(name: "Quickey", targets: ["Quickey"])
     ],
     targets: [
         .executableTarget(
             name: "Quickey",
+            dependencies: [
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
             path: "Sources/Quickey",
             exclude: [
                 "Resources/Info.plist",
@@ -23,7 +29,11 @@ let package = Package(
             ],
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
-                .unsafeFlags(["-F/System/Library/PrivateFrameworks", "-framework", "SkyLight"]),
+                .unsafeFlags([
+                    "-F/System/Library/PrivateFrameworks",
+                    "-framework", "SkyLight",
+                    "-rpath", "@executable_path/../Frameworks",
+                ]),
             ]
         ),
         .testTarget(

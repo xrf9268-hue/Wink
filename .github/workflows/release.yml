@@ -50,6 +50,13 @@ jobs:
           NOTARYTOOL_KEY: ${{ secrets.NOTARYTOOL_KEY }}
           NOTARYTOOL_KEY_ID: ${{ secrets.NOTARYTOOL_KEY_ID }}
           NOTARYTOOL_ISSUER: ${{ secrets.NOTARYTOOL_ISSUER }}
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: |
           missing=()
 
@@ -60,7 +67,14 @@ jobs:
             DEVELOPER_ID_APP_SIGNING_IDENTITY \
             NOTARYTOOL_KEY \
             NOTARYTOOL_KEY_ID \
-            NOTARYTOOL_ISSUER
+            NOTARYTOOL_ISSUER \
+            SPARKLE_PUBLIC_ED_KEY \
+            SPARKLE_PRIVATE_ED_KEY \
+            R2_ACCOUNT_ID \
+            R2_ACCESS_KEY_ID \
+            R2_SECRET_ACCESS_KEY \
+            R2_BUCKET \
+            R2_PUBLIC_BASE_URL
           do
             if [ -z "${!secret_name:-}" ]; then
               missing+=("$secret_name")
@@ -107,7 +121,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   release:
-    name: Build, Notarize, and Publish DMG
+    name: Build, Publish Updates, and Release DMG
     needs: release-readiness
     if: ${{ needs.release-readiness.outputs.release_ready == 'true' }}
     runs-on: macos-15
@@ -144,6 +158,7 @@ jobs:
       - name: Resolve release metadata
         env:
           MANUAL_RELEASE_TAG: ${{ inputs.release_tag }}
+          R2_PUBLIC_BASE_URL_RAW: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: |
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Quickey/Resources/Info.plist)"
 
@@ -166,9 +181,15 @@ jobs:
             exit 1
           fi
 
+          R2_PUBLIC_BASE_URL="$(printf '%s' "$R2_PUBLIC_BASE_URL_RAW" | sed 's#/*$#/#')"
+
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
           echo "DMG_PATH=build/Quickey-${VERSION}.dmg" >> "$GITHUB_ENV"
+          echo "ZIP_PATH=build/Quickey-${VERSION}.zip" >> "$GITHUB_ENV"
+          echo "APPCAST_PATH=build/appcast.xml" >> "$GITHUB_ENV"
+          echo "R2_PUBLIC_BASE_URL=$R2_PUBLIC_BASE_URL" >> "$GITHUB_ENV"
+          echo "SPARKLE_FEED_URL=${R2_PUBLIC_BASE_URL}appcast.xml" >> "$GITHUB_ENV"
 
       - name: Import Developer ID certificate
         env:
@@ -211,12 +232,30 @@ jobs:
           ENABLE_HARDENED_RUNTIME: "1"
           ENABLE_TIMESTAMP: "1"
           REQUIRE_SIGN_IDENTITY: "1"
+          SPARKLE_FEED_URL: ${{ env.SPARKLE_FEED_URL }}
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         run: bash scripts/package-app.sh
 
       - name: Verify app signature
         run: |
           codesign --verify --deep --strict --verbose=2 build/Quickey.app
           spctl --assess --type exec --verbose build/Quickey.app
+          test -d build/Quickey.app/Contents/Frameworks/Sparkle.framework
+
+      - name: Package Sparkle update ZIP
+        run: bash scripts/package-update-zip.sh
+
+      - name: Verify Sparkle update ZIP
+        run: test -f "$ZIP_PATH"
+
+      - name: Generate appcast
+        env:
+          SPARKLE_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: bash scripts/generate-appcast.sh
+
+      - name: Verify appcast
+        run: test -f "$APPCAST_PATH"
 
       - name: Package signed DMG
         env:
@@ -242,6 +281,41 @@ jobs:
           xcrun stapler validate "$DMG_PATH"
           spctl --assess --type open --context context:primary-signature --verbose "$DMG_PATH"
 
+      - name: Install boto3 for R2 upload
+        run: python3 -m pip install --user boto3
+
+      - name: Upload Sparkle ZIP to R2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
+          ZIP_PATH: ${{ env.ZIP_PATH }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse
+          import boto3
+
+          public_base_url = os.environ["R2_PUBLIC_BASE_URL"]
+          parsed = urlparse(public_base_url)
+          prefix = parsed.path.lstrip("/").rstrip("/")
+          zip_path = os.environ["ZIP_PATH"]
+          key_parts = [prefix, os.path.basename(zip_path)] if prefix else [os.path.basename(zip_path)]
+          object_key = "/".join(key_parts)
+
+          client = boto3.client(
+              "s3",
+              endpoint_url=f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+              aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+              aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+              region_name="auto",
+          )
+          client.upload_file(zip_path, os.environ["R2_BUCKET"], object_key, ExtraArgs={"ContentType": "application/zip"})
+          print(f"Uploaded {zip_path} to s3://{os.environ['R2_BUCKET']}/{object_key}")
+          PY
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -253,6 +327,37 @@ jobs:
               --title "$RELEASE_TAG" \
               --generate-notes
           fi
+
+      - name: Upload appcast to R2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ env.R2_PUBLIC_BASE_URL }}
+          APPCAST_PATH: ${{ env.APPCAST_PATH }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse
+          import boto3
+
+          public_base_url = os.environ["R2_PUBLIC_BASE_URL"]
+          parsed = urlparse(public_base_url)
+          prefix = parsed.path.lstrip("/").rstrip("/")
+          key_parts = [prefix, os.path.basename(os.environ["APPCAST_PATH"])] if prefix else [os.path.basename(os.environ["APPCAST_PATH"])]
+          object_key = "/".join(key_parts)
+
+          client = boto3.client(
+              "s3",
+              endpoint_url=f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+              aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+              aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+              region_name="auto",
+          )
+          client.upload_file(os.environ["APPCAST_PATH"], os.environ["R2_BUCKET"], object_key, ExtraArgs={"ContentType": "application/xml"})
+          print(f"Uploaded {os.environ['APPCAST_PATH']} to s3://{os.environ['R2_BUCKET']}/{object_key}")
+          PY
 
       - name: Cleanup temporary credentials
         if: always()

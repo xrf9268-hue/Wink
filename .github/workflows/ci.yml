@@ -44,6 +44,7 @@ jobs:
         run: |
           test -f build/Quickey.app/Contents/MacOS/Quickey
           test -f build/Quickey.app/Contents/Info.plist
+          test -d build/Quickey.app/Contents/Frameworks/Sparkle.framework
           file build/Quickey.app/Contents/MacOS/Quickey | grep -q "Mach-O"
 
       - name: Package DMG
@@ -53,3 +54,11 @@ jobs:
         run: |
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Quickey/Resources/Info.plist)"
           test -f "build/Quickey-${VERSION}.dmg"
+
+      - name: Package update ZIP
+        run: bash scripts/package-update-zip.sh
+
+      - name: Verify update ZIP
+        run: |
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Quickey/Resources/Info.plist)"
+          test -f "build/Quickey-${VERSION}.zip"

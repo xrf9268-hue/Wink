@@ -5,11 +5,11 @@ This directory maps the maintainer-facing docs for Quickey.
 ## Core Docs
 - [`architecture.md`](./architecture.md)
 - [`github-automation.md`](./github-automation.md) — PR metadata enforcement, deterministic review gating, the checked-in `main` ruleset artifact, Quickey Backlog project reconciliation, runtime-validation field sync, and required repository secrets
-- [`signing-and-release.md`](./signing-and-release.md) — local DMG packaging, internal-package artifacts, signing, notarization, release secrets, and tag-driven GitHub Release flow
+- [`signing-and-release.md`](./signing-and-release.md) — local Sparkle/DMG packaging, R2 appcast publication, internal-package artifacts, signing, notarization, release secrets, and tag-driven release flow
 
 ## Maintainer Notes
 - [`../AGENTS.md`](../AGENTS.md)
-- [`handoff-notes.md`](./handoff-notes.md) — current runtime validation status, packaged-app caveats, latest toggle trace signatures, and the exact 2026-04-09 Safari launch/relaunch validation evidence
+- [`handoff-notes.md`](./handoff-notes.md) — current runtime validation status, packaged-app caveats, Sparkle release-validation gaps, latest toggle trace signatures, and the exact 2026-04-09 Safari launch/relaunch validation evidence
 - [`lessons-learned.md`](./lessons-learned.md) — operational pitfalls, including session ownership across relaunches and the no-window success policy for regular apps
 
 ## Automation

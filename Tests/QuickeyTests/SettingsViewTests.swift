@@ -65,10 +65,34 @@ func handleAppDidBecomeActiveRefreshesShortcutCaptureAndLaunchAtLoginStatus() {
     #expect(preferences.launchAtLoginStatus == .enabled)
 }
 
+@Test @MainActor
+func settingsLifecycleLeavesUpdatePresentationAvailable() {
+    let permissionState = MutablePermissionState(ax: true, input: true)
+    let launchAtLoginState = MutableLaunchAtLoginState(status: .enabled)
+    let updateService = FakeUpdateService(
+        canCheckForUpdates: true,
+        currentVersion: "0.3.0",
+        automaticallyChecksForUpdates: true,
+        automaticallyDownloadsUpdates: true
+    )
+    let preferences = makePreferences(
+        permissionState: permissionState,
+        launchAtLoginState: launchAtLoginState,
+        updateService: updateService
+    )
+
+    SettingsViewLifecycleHandler(preferences: preferences).handleAppear()
+
+    let presentation = preferences.updatePresentation
+    #expect(presentation.currentVersion == "0.3.0")
+    #expect(presentation.checkForUpdatesEnabled == true)
+}
+
 @MainActor
 private func makePreferences(
     permissionState: MutablePermissionState,
-    launchAtLoginState: MutableLaunchAtLoginState
+    launchAtLoginState: MutableLaunchAtLoginState,
+    updateService: UpdateServicing? = nil
 ) -> AppPreferences {
     AppPreferences(
         shortcutManager: makeShortcutManager(
@@ -84,7 +108,8 @@ private func makePreferences(
                 launchAtLoginState.statusValue = .notRegistered
             },
             openSystemSettingsLoginItems: {}
-        ))
+        )),
+        updateService: updateService
     )
 }
 
@@ -197,6 +222,28 @@ private struct FakeAppSwitcher: AppSwitching {
     func toggleApplication(for shortcut: AppShortcut) -> Bool {
         true
     }
+}
+
+@MainActor
+private final class FakeUpdateService: UpdateServicing {
+    var canCheckForUpdates: Bool
+    var currentVersion: String
+    var automaticallyChecksForUpdates: Bool
+    var automaticallyDownloadsUpdates: Bool
+
+    init(
+        canCheckForUpdates: Bool,
+        currentVersion: String,
+        automaticallyChecksForUpdates: Bool,
+        automaticallyDownloadsUpdates: Bool
+    ) {
+        self.canCheckForUpdates = canCheckForUpdates
+        self.currentVersion = currentVersion
+        self.automaticallyChecksForUpdates = automaticallyChecksForUpdates
+        self.automaticallyDownloadsUpdates = automaticallyDownloadsUpdates
+    }
+
+    func checkForUpdates() {}
 }
 
 private final class MutableLaunchAtLoginState: @unchecked Sendable {

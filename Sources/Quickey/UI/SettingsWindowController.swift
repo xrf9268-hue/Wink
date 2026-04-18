@@ -7,13 +7,21 @@ final class SettingsWindowController {
     private let shortcutManager: ShortcutManager
     private let usageTracker: UsageTracker?
     private let hyperKeyService: HyperKeyService?
+    private let updateService: UpdateServicing?
     private var window: NSWindow?
 
-    init(shortcutStore: ShortcutStore, shortcutManager: ShortcutManager, usageTracker: UsageTracker? = nil, hyperKeyService: HyperKeyService? = nil) {
+    init(
+        shortcutStore: ShortcutStore,
+        shortcutManager: ShortcutManager,
+        usageTracker: UsageTracker? = nil,
+        hyperKeyService: HyperKeyService? = nil,
+        updateService: UpdateServicing? = nil
+    ) {
         self.shortcutStore = shortcutStore
         self.shortcutManager = shortcutManager
         self.usageTracker = usageTracker
         self.hyperKeyService = hyperKeyService
+        self.updateService = updateService
     }
 
     func show() {
@@ -22,7 +30,11 @@ final class SettingsWindowController {
             return
         }
 
-        let preferences = AppPreferences(shortcutManager: shortcutManager, hyperKeyService: hyperKeyService)
+        let preferences = AppPreferences(
+            shortcutManager: shortcutManager,
+            hyperKeyService: hyperKeyService,
+            updateService: updateService
+        )
         let editor = ShortcutEditorState(
             shortcutStore: shortcutStore,
             shortcutManager: shortcutManager,
