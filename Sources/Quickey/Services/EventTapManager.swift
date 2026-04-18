@@ -118,7 +118,7 @@ func handleEventTapEvent(
             let normalized = KeyMatcher.normalizedFlags(from: rawFlags).rawValue
             if rawDeviceIndep != normalized {
                 let hasKeyCodeMatch = box.withLock {
-                    box._registeredShortcuts.contains { $0.keyCode == keyCode }
+                    box._registeredKeyCodes.contains(keyCode)
                 }
                 if hasKeyCodeMatch {
                     DispatchQueue.global(qos: .utility).async {
@@ -772,6 +772,10 @@ final class EventTapBox {
     // fileprivate so the C callback (defined in EventTapManager.start) can
     // access them inside withLock critical sections.
     fileprivate var _registeredShortcuts: Set<KeyPress> = []
+    /// Side-index of just the registered keyCodes, kept in sync with
+    /// `_registeredShortcuts`. Lets the DEBUG near-miss diagnostic stay O(1)
+    /// on the event-tap callback thread without holding onto modifier data.
+    fileprivate var _registeredKeyCodes: Set<CGKeyCode> = []
     fileprivate var _hyperKeyEnabled: Bool = false
     fileprivate var _isHyperHeld: Bool = false
     /// CGEvent.timestamp (nanoseconds since startup) of the most recent F19
@@ -796,7 +800,13 @@ final class EventTapBox {
 
     var registeredShortcuts: Set<KeyPress> {
         get { withLock { _registeredShortcuts } }
-        set { withLock { _registeredShortcuts = newValue } }
+        set {
+            let keyCodes = Set(newValue.lazy.map(\.keyCode))
+            withLock {
+                _registeredShortcuts = newValue
+                _registeredKeyCodes = keyCodes
+            }
+        }
     }
     var hyperKeyEnabled: Bool {
         get { withLock { _hyperKeyEnabled } }

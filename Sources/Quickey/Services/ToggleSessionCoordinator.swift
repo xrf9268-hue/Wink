@@ -491,32 +491,39 @@ final class ToggleSessionCoordinator {
     private func evictIfNeeded(excluding currentBundleIdentifier: String) {
         guard sessions.count >= configuration.sessionCap else { return }
 
-        // Prefer evicting stalest idle session
-        if let stalestIdle = sessions
-            .filter({ $0.key != currentBundleIdentifier && $0.value.phase == .idle })
-            .min(by: { $0.value.lastActivityAt < $1.value.lastActivityAt }) {
-            sessions.removeValue(forKey: stalestIdle.key)
-            return
+        // Single-pass eviction: simultaneously track the stalest candidate in
+        // three priority tiers (idle > expired > any). Pick from the highest
+        // tier that has a candidate. Avoids three separate filter+min scans.
+        //
+        // expireIfNeeded operates on a local copy purely as a predicate; the
+        // session is removed immediately, so the write-back is unnecessary.
+        var stalestIdleKey: String?
+        var stalestIdleAt: CFAbsoluteTime = .infinity
+        var stalestExpiredKey: String?
+        var stalestExpiredAt: CFAbsoluteTime = .infinity
+        var stalestAnyKey: String?
+        var stalestAnyAt: CFAbsoluteTime = .infinity
+
+        for (key, session) in sessions where key != currentBundleIdentifier {
+            let activity = session.lastActivityAt
+            if activity < stalestAnyAt {
+                stalestAnyAt = activity
+                stalestAnyKey = key
+            }
+            if session.phase == .idle, activity < stalestIdleAt {
+                stalestIdleAt = activity
+                stalestIdleKey = key
+            } else {
+                var probe = session
+                if expireIfNeeded(&probe), activity < stalestExpiredAt {
+                    stalestExpiredAt = activity
+                    stalestExpiredKey = key
+                }
+            }
         }
 
-        // Fall back to stalest expired non-idle session.
-        // expireIfNeeded is called on a local copy purely as a predicate;
-        // the session is removed immediately, so the write-back is unnecessary.
-        if let stalestExpired = sessions
-            .filter({ $0.key != currentBundleIdentifier })
-            .filter({ var s = $0.value; return expireIfNeeded(&s) })
-            .min(by: { $0.value.lastActivityAt < $1.value.lastActivityAt }) {
-            sessions.removeValue(forKey: stalestExpired.key)
-            return
-        }
-
-        // Safety net: if all non-current sessions are non-idle and non-expired,
-        // evict the stalest to prevent exceeding the cap. This goes beyond
-        // the two-tier spec rule but ensures the cap is never violated.
-        if let stalest = sessions
-            .filter({ $0.key != currentBundleIdentifier })
-            .min(by: { $0.value.lastActivityAt < $1.value.lastActivityAt }) {
-            sessions.removeValue(forKey: stalest.key)
+        if let key = stalestIdleKey ?? stalestExpiredKey ?? stalestAnyKey {
+            sessions.removeValue(forKey: key)
         }
     }
 

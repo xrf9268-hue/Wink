@@ -10,32 +10,29 @@ struct AppPickerPopover: View {
     @State private var highlightedIndex: Int?
     @Environment(\.dismiss) private var dismiss
 
-    private var filteredRecent: [AppEntry] {
-        if searchText.isEmpty {
-            return appListProvider.recentApps
+    /// SwiftUI reads these lists several times per body render; computed
+    /// properties would re-filter on each access.
+    private struct Sections {
+        let recent: [AppEntry]
+        let nonRecent: [AppEntry]
+        let all: [AppEntry]
+        let flat: [AppEntry]
+    }
+
+    private func computeSections() -> Sections {
+        let all = appListProvider.filteredApps(query: searchText)
+        guard searchText.isEmpty else {
+            return Sections(recent: [], nonRecent: [], all: all, flat: all)
         }
-        return []
-    }
-
-    private var filteredAll: [AppEntry] {
-        appListProvider.filteredApps(query: searchText)
-    }
-
-    private var nonRecentApps: [AppEntry] {
-        guard searchText.isEmpty else { return [] }
-        let recentIDs = Set(filteredRecent.map(\.bundleIdentifier))
-        return filteredAll.filter { !recentIDs.contains($0.bundleIdentifier) }
-    }
-
-    private var flatList: [AppEntry] {
-        if searchText.isEmpty {
-            return filteredRecent + nonRecentApps
-        }
-        return filteredAll
+        let recent = appListProvider.recentApps
+        let recentIDs = Set(recent.map(\.bundleIdentifier))
+        let nonRecent = all.filter { !recentIDs.contains($0.bundleIdentifier) }
+        return Sections(recent: recent, nonRecent: nonRecent, all: all, flat: recent + nonRecent)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        let sections = computeSections()
+        return VStack(spacing: 0) {
             // Search field
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
@@ -44,7 +41,7 @@ struct AppPickerPopover: View {
                 TextField("Search apps...", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
-                    .onSubmit { selectHighlighted() }
+                    .onSubmit { selectHighlighted(in: sections) }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
@@ -56,30 +53,30 @@ struct AppPickerPopover: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         if searchText.isEmpty {
-                            if !filteredRecent.isEmpty {
+                            if !sections.recent.isEmpty {
                                 sectionHeader("Recently Used")
-                                ForEach(Array(filteredRecent.enumerated()), id: \.element.id) { index, entry in
+                                ForEach(Array(sections.recent.enumerated()), id: \.element.id) { index, entry in
                                     appRow(entry, index: index, proxy: proxy)
                                 }
                             }
 
-                            if !nonRecentApps.isEmpty {
+                            if !sections.nonRecent.isEmpty {
                                 sectionHeader("All Apps")
-                                ForEach(Array(nonRecentApps.enumerated()), id: \.element.id) { i, entry in
-                                    let index = filteredRecent.count + i
+                                ForEach(Array(sections.nonRecent.enumerated()), id: \.element.id) { i, entry in
+                                    let index = sections.recent.count + i
                                     appRow(entry, index: index, proxy: proxy)
                                 }
                             }
                         } else {
-                            ForEach(Array(filteredAll.enumerated()), id: \.element.id) { index, entry in
+                            ForEach(Array(sections.all.enumerated()), id: \.element.id) { index, entry in
                                 appRow(entry, index: index, proxy: proxy)
                             }
                         }
                     }
                 }
-                .onKeyPress(.upArrow) { moveHighlight(-1, proxy: proxy); return .handled }
-                .onKeyPress(.downArrow) { moveHighlight(1, proxy: proxy); return .handled }
-                .onKeyPress(.return) { selectHighlighted(); return .handled }
+                .onKeyPress(.upArrow) { moveHighlight(-1, proxy: proxy, in: sections); return .handled }
+                .onKeyPress(.downArrow) { moveHighlight(1, proxy: proxy, in: sections); return .handled }
+                .onKeyPress(.return) { selectHighlighted(in: sections); return .handled }
             }
 
             Divider()
@@ -148,8 +145,8 @@ struct AppPickerPopover: View {
 
     // MARK: - Navigation
 
-    private func moveHighlight(_ delta: Int, proxy: ScrollViewProxy) {
-        let count = flatList.count
+    private func moveHighlight(_ delta: Int, proxy: ScrollViewProxy, in sections: Sections) {
+        let count = sections.flat.count
         guard count > 0 else { return }
         let current = highlightedIndex ?? 0
         let newIndex = max(0, min(count - 1, current + delta))
@@ -157,9 +154,9 @@ struct AppPickerPopover: View {
         proxy.scrollTo(newIndex, anchor: .center)
     }
 
-    private func selectHighlighted() {
-        guard let index = highlightedIndex, index < flatList.count else { return }
-        select(flatList[index])
+    private func selectHighlighted(in sections: Sections) {
+        guard let index = highlightedIndex, index < sections.flat.count else { return }
+        select(sections.flat[index])
     }
 
     private func select(_ entry: AppEntry) {
