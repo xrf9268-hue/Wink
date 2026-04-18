@@ -181,7 +181,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     private func makeShortcutItem(from presentation: MenuBarShortcutItemPresentation) -> NSMenuItem {
-        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: shortcutItemTitle(for: presentation), action: nil, keyEquivalent: "")
         item.isEnabled = false
         item.view = MenuBarShortcutRowView(presentation: presentation)
         item.representedObject = MenuBarControllerMenuItemMarker.shortcutRow
@@ -210,6 +210,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.items.forEach { $0.target = self }
         rebuildShortcutSection(in: menu, presentations: shortcutPresentations())
         return menu
+    }
+
+    private func shortcutItemTitle(for presentation: MenuBarShortcutItemPresentation) -> String {
+        if let statusText = presentation.statusText, !statusText.isEmpty {
+            return "\(presentation.titleText) (\(statusText))"
+        }
+        return presentation.titleText
     }
 
     private func refreshLaunchAtLoginItem() {

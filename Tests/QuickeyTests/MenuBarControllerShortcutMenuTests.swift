@@ -91,10 +91,12 @@ struct MenuBarControllerShortcutMenuTests {
         #expect(firstRow.presentation.isRunning == true)
         #expect(firstRow.presentation.statusText == nil)
         #expect(firstRow.presentation.shortcutText == "⌃⌥S")
+        #expect(menu.items[0].title == "Safari")
         #expect(secondRow.presentation.titleText == "IINA")
         #expect(secondRow.presentation.isRunning == false)
         #expect(secondRow.presentation.statusText == "disabled")
         #expect(secondRow.presentation.shortcutText == "⌃⌥I")
+        #expect(menu.items[1].title == "IINA (disabled)")
     }
 
     @Test @MainActor
@@ -255,5 +257,30 @@ struct MenuBarControllerShortcutMenuTests {
         #expect(row.presentation.titleText == "Terminal")
         #expect(row.presentation.isRunning == true)
         #expect(row.presentation.shortcutText == "⌘T")
+    }
+
+    @Test @MainActor
+    func disabledShortcutRow_rendersMutedAppearanceAndSemanticTitle() {
+        let controller = MenuBarController(onOpenSettings: {}, onQuit: {})
+        let menu = NSMenu()
+        let presentation = MenuBarShortcutItemPresentation(
+            bundleIdentifier: "com.colliderli.iina",
+            titleText: "IINA",
+            shortcutText: "⌃⌥I",
+            statusText: "disabled",
+            isEnabled: false,
+            isRunning: false,
+            isPlaceholder: false
+        )
+
+        controller.rebuildShortcutSection(in: menu, presentations: [presentation])
+
+        let item = menu.items[0]
+        let row = try #require(item.view as? MenuBarShortcutRowView)
+
+        #expect(item.title == "IINA (disabled)")
+        #expect(row.renderedTitleColor != NSColor.labelColor)
+        #expect(row.renderedShortcutColor != NSColor.secondaryLabelColor)
+        #expect(row.renderedIconAlpha < 1.0)
     }
 }

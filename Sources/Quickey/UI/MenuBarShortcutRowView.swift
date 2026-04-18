@@ -26,6 +26,10 @@ final class MenuBarShortcutRowView: NSView {
         NSSize(width: 320, height: 42)
     }
 
+    var renderedTitleColor: NSColor { titleLabel.textColor ?? .labelColor }
+    var renderedShortcutColor: NSColor { shortcutLabel.textColor ?? .secondaryLabelColor }
+    var renderedIconAlpha: CGFloat { iconView.alphaValue }
+
     private func setupView() {
         let leadingStack = NSStackView()
         leadingStack.orientation = .horizontal
@@ -101,6 +105,16 @@ final class MenuBarShortcutRowView: NSView {
         runningDot.isHidden = !presentation.isRunning
         shortcutLabel.stringValue = presentation.shortcutText ?? ""
         shortcutLabel.isHidden = presentation.shortcutText == nil
+
+        if presentation.isEnabled {
+            titleLabel.textColor = .labelColor
+            shortcutLabel.textColor = .secondaryLabelColor
+            iconView.alphaValue = 1.0
+        } else {
+            titleLabel.textColor = .disabledControlTextColor
+            shortcutLabel.textColor = .disabledControlTextColor
+            iconView.alphaValue = 0.5
+        }
 
         let icon = if let bundleIdentifier = presentation.bundleIdentifier {
             AppIconCache.icon(for: bundleIdentifier) ?? Self.fallbackIcon
