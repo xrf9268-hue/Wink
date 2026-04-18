@@ -76,7 +76,7 @@ struct MenuBarControllerShortcutMenuTests {
     }
 
     @Test @MainActor
-    func rebuildShortcutSection_usesInjectedShortcutStoreDataWhenPresentationsAreBuiltFromIt() {
+    func shortcutPresentations_reflectInjectedShortcutStoreAndRunningBundleIdentifiers() {
         let store = ShortcutStore()
         store.replaceAll(with: [
             AppShortcut(
@@ -91,29 +91,16 @@ struct MenuBarControllerShortcutMenuTests {
             onOpenSettings: {},
             onQuit: {},
             shortcutStore: store,
-            runningBundleIdentifiers: { ["com.apple.Safari"] }
-        )
-        let menu = NSMenu()
-
-        menu.addItem(NSMenuItem(title: "Settings", action: nil, keyEquivalent: ","))
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Launch at Login", action: nil, keyEquivalent: ""))
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: nil, keyEquivalent: "q"))
-
-        let presentations = MenuBarShortcutItemPresentation.build(
-            from: store.shortcuts,
-            runningBundleIdentifiers: ["com.apple.Safari"]
+            runningBundleIdentifiers: { ["com.apple.Safari", "com.apple.Terminal"] }
         )
 
-        controller.rebuildShortcutSection(in: menu, presentations: presentations)
+        let presentations = controller.shortcutPresentations()
 
-        #expect(menu.items[0].title == "Safari")
-        #expect((menu.items[0].representedObject as? String) == MenuBarControllerMenuItemMarker.shortcutRow)
-        #expect(menu.items[1].isSeparatorItem)
-        #expect((menu.items[1].representedObject as? String) == MenuBarControllerMenuItemMarker.shortcutDivider)
-        #expect(menu.items[2].title == "Settings")
-        #expect(menu.items[4].title == "Launch at Login")
-        #expect(menu.items[6].title == "Quit")
+        #expect(presentations.count == 1)
+        #expect(presentations[0].bundleIdentifier == "com.apple.Safari")
+        #expect(presentations[0].titleText == "Safari")
+        #expect(presentations[0].shortcutText == "⌃⌥S")
+        #expect(presentations[0].isRunning == true)
+        #expect(presentations[0].isEnabled == true)
     }
 }

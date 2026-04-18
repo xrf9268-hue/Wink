@@ -168,6 +168,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.insertItem(makeShortcutDivider(), at: insertionIndex)
     }
 
+    func shortcutPresentations() -> [MenuBarShortcutItemPresentation] {
+        MenuBarShortcutItemPresentation.build(
+            from: shortcutStore.shortcuts,
+            runningBundleIdentifiers: runningBundleIdentifiers()
+        )
+    }
+
     private func removeShortcutSection(from menu: NSMenu) {
         for item in menu.items.reversed() where isShortcutSectionItem(item) {
             menu.removeItem(item)
