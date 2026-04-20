@@ -307,6 +307,11 @@ _hyper_capture_ready() {
     grep -Eq 'Event tap started|attemptStart: .*eventTap=true|checkPermission: ax=true im=true .*eventTap=true' "$log_file" 2>/dev/null
 }
 
+_startup_log_ready() {
+    local log_file="${1:-$LOG_FILE}"
+    grep -q "starting, version" "$log_file" 2>/dev/null
+}
+
 capture_requirement_satisfied() {
     local requirement="$1"
     local log_file="${2:-$LOG_FILE}"
@@ -322,7 +327,7 @@ capture_requirement_satisfied() {
             _standard_capture_ready "$log_file" && _hyper_capture_ready "$log_file"
             ;;
         none)
-            grep -q "Quickey starting" "$log_file" 2>/dev/null
+            _startup_log_ready "$log_file"
             ;;
         *)
             return 1
@@ -690,6 +695,7 @@ e2e_launch_app() {
     if [ -f "$LOG_FILE" ]; then
         cp "$LOG_FILE" "$LOG_FILE.e2e-backup"
     fi
+    mkdir -p "$(dirname "$LOG_FILE")"
     : > "$LOG_FILE"
 
     open "$APP_PATH"

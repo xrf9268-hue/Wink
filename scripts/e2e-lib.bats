@@ -1,9 +1,5 @@
 #!/usr/bin/env bats
 
-setup() {
-  unset LC_ALL
-}
-
 @test "detect_capture_requirement returns standard for standard-only shortcuts" {
   local shortcuts="$BATS_TEST_TMPDIR/shortcuts.json"
   cat >"$shortcuts" <<'JSON'
@@ -104,13 +100,35 @@ LOG
   [ "$status" -eq 1 ]
 }
 
-@test "capture_requirement_satisfied accepts current startup log for none mode" {
+@test "capture_requirement_satisfied accepts generic startup marker for none mode" {
   local log_file="$BATS_TEST_TMPDIR/debug.log"
   cat >"$log_file" <<'LOG'
-2026-04-09T04:24:42Z Quickey starting, version 0.2.0
+2026-04-09T04:24:42Z FutureBrand starting, version 0.2.0
 LOG
 
   run bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; capture_requirement_satisfied none '$log_file'"
+
+  [ "$status" -eq 0 ]
+}
+
+@test "e2e_launch_app creates the log parent directory before truncating" {
+  local app_dir="$BATS_TEST_TMPDIR/Wink.app"
+  local log_file="$BATS_TEST_TMPDIR/fresh/config/Wink/debug.log"
+  mkdir -p "$app_dir"
+
+  run bash -lc "
+    export E2E_APP_PATH='$app_dir'
+    export E2E_LOG_FILE='$log_file'
+    source '$BATS_TEST_DIRNAME/e2e-lib.sh'
+    pkill() { :; }
+    open() { :; }
+    detect_capture_requirement() { echo none; }
+    wait_for_capture_requirement() { return 0; }
+    hyper_key_enabled_flag() { echo 0; }
+    e2e_launch_app
+    test -d \"\$(dirname \"\$LOG_FILE\")\"
+    test -f \"\$LOG_FILE\"
+  "
 
   [ "$status" -eq 0 ]
 }
@@ -284,7 +302,7 @@ JSON
 }
 
 @test "e2e defaults target Wink identity" {
-  run bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; printf '%s\n%s\n%s\n%s\n' \"\$APP_PATH\" \"\$LOG_FILE\" \"\$APP_BUNDLE_ID\" \"\$SHORTCUTS_FILE\""
+  run env -u LC_ALL bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; printf '%s\n%s\n%s\n%s\n' \"\$APP_PATH\" \"\$LOG_FILE\" \"\$APP_BUNDLE_ID\" \"\$SHORTCUTS_FILE\""
 
   [ "$status" -eq 0 ]
   [[ "${lines[0]}" == *"/build/Wink.app" ]]
