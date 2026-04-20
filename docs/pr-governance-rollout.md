@@ -60,7 +60,7 @@ The summary bullets above are already suitable for the PR body. If you want a sh
 tmpdir="$(mktemp -d)"
 cat > "$tmpdir/event.json" <<'JSON'
 {
-  "repository": { "owner": { "login": "xrf9268-hue" }, "name": "Quickey" },
+  "repository": { "owner": { "login": "xrf9268-hue" }, "name": "Wink" },
   "pull_request": { "number": 170 }
 }
 JSON
@@ -80,7 +80,7 @@ node .github/scripts/validate-review-state.mjs
 Inspect existing rulesets:
 
 ```bash
-gh api repos/xrf9268-hue/Quickey/rulesets \
+gh api repos/xrf9268-hue/Wink/rulesets \
   -H "Accept: application/vnd.github+json" \
   --jq '.[] | {id, name, target, enforcement}'
 ```
@@ -88,7 +88,7 @@ gh api repos/xrf9268-hue/Quickey/rulesets \
 Create the ruleset if it does not exist:
 
 ```bash
-gh api repos/xrf9268-hue/Quickey/rulesets \
+gh api repos/xrf9268-hue/Wink/rulesets \
   --method POST \
   -H "Accept: application/vnd.github+json" \
   --input .github/governance/main-ruleset.json
@@ -97,8 +97,8 @@ gh api repos/xrf9268-hue/Quickey/rulesets \
 Update the ruleset if it already exists:
 
 ```bash
-RULESET_ID="$(gh api repos/xrf9268-hue/Quickey/rulesets --jq '.[] | select(.name=="main merge governance") | .id')"
-gh api "repos/xrf9268-hue/Quickey/rulesets/$RULESET_ID" \
+RULESET_ID="$(gh api repos/xrf9268-hue/Wink/rulesets --jq '.[] | select(.name=="main merge governance") | .id')"
+gh api "repos/xrf9268-hue/Wink/rulesets/$RULESET_ID" \
   --method PUT \
   -H "Accept: application/vnd.github+json" \
   --input .github/governance/main-ruleset.json
@@ -107,7 +107,7 @@ gh api "repos/xrf9268-hue/Quickey/rulesets/$RULESET_ID" \
 Verify the live ruleset after apply:
 
 ```bash
-gh api repos/xrf9268-hue/Quickey/rulesets \
+gh api repos/xrf9268-hue/Wink/rulesets \
   -H "Accept: application/vnd.github+json" \
   --jq '.[] | select(.name=="main merge governance")'
 ```

@@ -1,11 +1,11 @@
 # Loop Job Guide
 
-How to run automated Claude Code sessions for recurring project work using `/loop`. See also [Wiki: Loop Job Configuration](https://github.com/xrf9268-hue/Quickey/wiki/Loop-Job-Configuration).
+How to run automated Claude Code sessions for recurring project work using `/loop`. See also [Wiki: Loop Job Configuration](https://github.com/xrf9268-hue/Wink/wiki/Loop-Job-Configuration).
 
 Repository-native state sync is now handled separately by GitHub Actions:
 - `.github/workflows/pr-metadata.yml` enforces PR issue linkage and validation-state metadata
 - `.github/workflows/review-gate.yml` turns unresolved actionable review state into a deterministic required check
-- `.github/workflows/project-sync.yml` keeps `Quickey Backlog` `Status` and `Runtime Validation` aligned with issue/PR state
+- `.github/workflows/project-sync.yml` keeps `Wink Backlog` `Status` and `Runtime Validation` aligned with issue/PR state
 - [`github-automation.md`](./github-automation.md) documents the required `PROJECT_AUTOMATION_TOKEN` secret, checked-in ruleset artifact, and governance rollout order
 
 ## Quick Start

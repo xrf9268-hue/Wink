@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   sync:
-    name: Reconcile Quickey Backlog
+    name: Reconcile Wink Backlog
     runs-on: ubuntu-latest
     steps:
       - name: Require project automation token

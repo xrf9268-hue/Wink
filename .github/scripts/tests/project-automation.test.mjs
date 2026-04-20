@@ -14,13 +14,13 @@ import {
 test('extractClosingIssueNumbers finds closing keywords for local issues', () => {
   const body = `
 Fixes #135
-Resolves xrf9268-hue/Quickey#140
+Resolves xrf9268-hue/Wink#140
 
 Refs #141
 `;
 
   assert.deepEqual(
-    extractClosingIssueNumbers(body, { owner: 'xrf9268-hue', repo: 'Quickey' }),
+    extractClosingIssueNumbers(body, { owner: 'xrf9268-hue', repo: 'Wink' }),
     [135, 140],
   );
 });

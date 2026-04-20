@@ -31,7 +31,7 @@ test('main ruleset requires pull requests and review freshness', () => {
   assert.deepEqual(pullRequestRule.parameters.allowed_merge_methods, ['merge', 'squash', 'rebase']);
 });
 
-test('main ruleset requires the deterministic Quickey checks', () => {
+test('main ruleset requires the deterministic Wink checks', () => {
   const statusChecksRule = findRule('required_status_checks');
   const contexts = statusChecksRule.parameters.required_status_checks.map(
     (check) => check.context,

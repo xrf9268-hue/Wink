@@ -17,8 +17,8 @@ Wink now uses repository-native GitHub Actions and a checked-in ruleset artifact
    - Refreshes on PR, review, and review-comment activity; GitHub Actions does not currently expose a dedicated review-thread resolved/unresolved workflow trigger, so a pure thread-resolution change may need a manual rerun or another PR activity before the check turns green again
 
 3. **Project reconciliation** (`.github/workflows/project-sync.yml`)
-   - Adds the event issue or linked issue into the `Quickey Backlog` Project V2 if it is missing
-   - Scheduled and manual reconciliation runs backfill any repository issues that are still missing from `Quickey Backlog`
+   - Adds the event issue or linked issue into the `Wink Backlog` Project V2 if it is missing
+   - Scheduled and manual reconciliation runs backfill any repository issues that are still missing from `Wink Backlog`
    - Syncs `Status` to `Ready`, `In Progress`, or `Done`
    - Syncs `Runtime Validation` to `None`, `macOS pending`, or `macOS complete`
    - Re-runs every 6 hours so transient event failures do not leave the project permanently stale

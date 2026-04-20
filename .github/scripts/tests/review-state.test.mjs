@@ -30,7 +30,7 @@ test('evaluateReviewState fails on unresolved non-outdated inline threads', () =
         isOutdated: false,
         path: 'Sources/Wink/AppController.swift',
         line: 88,
-        reviewer: 'quickey-review-bot',
+        reviewer: 'wink-review-bot',
         bodyText: 'Guard the no-window path before marking activation stable.',
       },
     ],
@@ -118,7 +118,7 @@ test('firstLine trims blank lines and collapses whitespace', () => {
 });
 
 test('validate-review-state writes a step summary and exits non-zero for blocking threads', async () => {
-  const tempDir = await mkdtemp(join(tmpdir(), 'quickey-review-gate-'));
+  const tempDir = await mkdtemp(join(tmpdir(), 'wink-review-gate-'));
   const eventPath = join(tempDir, 'event.json');
   const summaryPath = join(tempDir, 'summary.md');
 
@@ -145,7 +145,7 @@ test('validate-review-state writes a step summary and exits non-zero for blockin
             isOutdated: false,
             path: 'Sources/Wink/AppController.swift',
             line: 88,
-            reviewer: 'quickey-review-bot',
+            reviewer: 'wink-review-bot',
             bodyText: 'Guard the no-window path before marking activation stable.',
           },
         ],

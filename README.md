@@ -6,6 +6,13 @@
 
 Wink is a macOS menu bar app that binds global shortcuts to target apps, with Thor-like toggle behavior, fast activation, and lightweight usage insights.
 
+## Why "Wink"?
+The rename from `Quickey` to `Wink` came out of [issue #183](https://github.com/xrf9268-hue/Wink/issues/183): the old name explained the mechanism ("quick keys"), while the new name tries to capture the feeling. The goal is app switching that happens "in the wink of an eye" rather than a tool name that only describes hotkeys.
+
+- It emphasizes the experience: fast, almost instant switching
+- It keeps the product short, lightweight, and a little more human than a purely functional utility name
+- It mirrors the same naming instinct that inspired tools like [Shun](https://blog.sorrycc.com/release-shun): name the sensation, not just the implementation
+
 ## Highlights
 - Global shortcuts that launch or toggle target apps with a single keystroke
 - Thor-like semantics that activate, re-activate hidden apps, or directly hide the frontmost target depending on state
@@ -48,7 +55,7 @@ swift test
 
 `Launch at Login` should be validated from a packaged app installed in `/Applications` or `~/Applications`. Running `build/Wink.app` directly from the repo can surface an install-location warning instead of a real login-item configuration state.
 
-Tagged releases use `v<CFBundleShortVersionString>` and publish `Wink-<version>.dmg` through the release workflow described in [`docs/signing-and-release.md`](./docs/signing-and-release.md). Notarized releases are not yet available; the current [internal prerelease](https://github.com/xrf9268-hue/Quickey/releases/tag/internal-downloads) is unsigned, so macOS may warn on first launch.
+Tagged releases use `v<CFBundleShortVersionString>` and publish `Wink-<version>.dmg` through the release workflow described in [`docs/signing-and-release.md`](./docs/signing-and-release.md). Notarized releases are not yet available; the current [internal prerelease](https://github.com/xrf9268-hue/Wink/releases/tag/internal-downloads) is unsigned, so macOS may warn on first launch.
 
 ## Documentation
 - [`docs/README.md`](./docs/README.md)
@@ -57,4 +64,4 @@ Tagged releases use `v<CFBundleShortVersionString>` and publish `Wink-<version>.
 - [`docs/signing-and-release.md`](./docs/signing-and-release.md)
 
 ## Repository Automation
-GitHub Actions now enforce PR issue linkage (`Fixes #...`) and keep the `Quickey Backlog` project's `Status` / `Runtime Validation` fields synchronized. See [`docs/github-automation.md`](./docs/github-automation.md) for the required `PROJECT_AUTOMATION_TOKEN` secret and the recommended branch-protection check.
+GitHub Actions now enforce PR issue linkage (`Fixes #...`) and keep the `Wink Backlog` project's `Status` / `Runtime Validation` fields synchronized. See [`docs/github-automation.md`](./docs/github-automation.md) for the required `PROJECT_AUTOMATION_TOKEN` secret and the recommended branch-protection check.

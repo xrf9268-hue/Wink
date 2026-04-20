@@ -13,7 +13,7 @@ async function githubRequest(pathname) {
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-      'User-Agent': 'quickey-pr-metadata-validator',
+      'User-Agent': 'wink-pr-metadata-validator',
       'X-GitHub-Api-Version': apiVersion,
     },
   });

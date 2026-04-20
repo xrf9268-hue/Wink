@@ -77,7 +77,7 @@ Release-mode app signing is driven through environment variables passed to `scri
 - `ENABLE_TIMESTAMP=1`
 - `REQUIRE_SIGN_IDENTITY=1`
 
-The checked-in [entitlements.plist](/Users/yvan/developer/Quickey/entitlements.plist) is the canonical release entitlement file.
+The checked-in [entitlements.plist](../entitlements.plist) is the canonical release entitlement file.
 
 Wink's current entitlement set is intentionally minimal:
 
@@ -96,7 +96,7 @@ Accessibility and Input Monitoring are still user-granted runtime permissions, n
 
 ## GitHub Release Workflow
 
-The release workflow lives at [release.yml](/Users/yvan/developer/Quickey/.github/workflows/release.yml).
+The release workflow lives at [release.yml](../.github/workflows/release.yml).
 
 ### Trigger
 
@@ -134,7 +134,7 @@ When secrets are absent, the workflow reports the missing secrets and skips publ
 
 ## Internal Package Workflow
 
-For teams that do not yet have a `Developer ID Application` certificate, Wink also defines [internal-package.yml](/Users/yvan/developer/Quickey/.github/workflows/internal-package.yml).
+For teams that do not yet have a `Developer ID Application` certificate, Wink also defines [internal-package.yml](../.github/workflows/internal-package.yml).
 
 ### Trigger
 
@@ -156,11 +156,11 @@ The prerelease notes are written for testers, not maintainers: they explain who 
 
 Stable internal prerelease URL:
 
-- [internal-downloads](https://github.com/xrf9268-hue/Quickey/releases/tag/internal-downloads)
+- [internal-downloads](https://github.com/xrf9268-hue/Wink/releases/tag/internal-downloads)
 
 ## Manual Release Checklist
 
-1. Update `CFBundleShortVersionString` and `CFBundleVersion` in [Info.plist](/Users/yvan/developer/Quickey/Sources/Wink/Resources/Info.plist)
+1. Update `CFBundleShortVersionString` and `CFBundleVersion` in [Info.plist](../Sources/Wink/Resources/Info.plist)
 2. Run `swift test`
 3. Run `./scripts/package-app.sh`
 4. Run `./scripts/package-dmg.sh`
@@ -222,9 +222,9 @@ macOS ties Accessibility and Input Monitoring permissions to the app signature. 
 
 ## CI Integration
 
-- [ci.yml](/Users/yvan/developer/Quickey/.github/workflows/ci.yml)
+- [ci.yml](../.github/workflows/ci.yml)
   Builds, tests, packages the app, packages the DMG, and verifies artifacts without Apple credentials
-- [release.yml](/Users/yvan/developer/Quickey/.github/workflows/release.yml)
+- [release.yml](../.github/workflows/release.yml)
   Handles tag-driven signing, notarization, stapling, validation, and GitHub Release publication
 
 ## Validation Limits

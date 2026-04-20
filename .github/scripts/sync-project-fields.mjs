@@ -12,7 +12,7 @@ import {
 } from './lib/project-automation.mjs';
 
 const apiVersion = '2022-11-28';
-const projectTitle = 'Quickey Backlog';
+const projectTitle = 'Wink Backlog';
 const statusFieldName = 'Status';
 const runtimeValidationFieldName = 'Runtime Validation';
 
@@ -32,7 +32,7 @@ async function graphqlRequest(query, variables = {}) {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${requiredEnv('PROJECT_AUTOMATION_TOKEN')}`,
       'Content-Type': 'application/json',
-      'User-Agent': 'quickey-project-sync',
+      'User-Agent': 'wink-project-sync',
       'X-GitHub-Api-Version': apiVersion,
     },
     body: JSON.stringify({ query, variables }),
@@ -52,7 +52,7 @@ async function restRequest(pathname) {
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${requiredEnv('PROJECT_AUTOMATION_TOKEN')}`,
-      'User-Agent': 'quickey-project-sync',
+      'User-Agent': 'wink-project-sync',
       'X-GitHub-Api-Version': apiVersion,
     },
   });
