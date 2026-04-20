@@ -348,7 +348,7 @@ function currentSingleSelectName(item, fieldName) {
   return fieldValue?.name ?? null;
 }
 
-async function ensureIssuesInProject(owner, repo, projectId, snapshotItems, event) {
+async function ensureIssuesInProject(owner, repo, projectId, chosenProjectTitle, snapshotItems, event) {
   const knownIssueNumbers = new Set(
     snapshotItems
       .map((item) => item.content)
@@ -376,7 +376,7 @@ async function ensureIssuesInProject(owner, repo, projectId, snapshotItems, even
 
     const issueNodeId = await fetchIssueNodeId(owner, repo, issueNumber);
     await addIssueToProject(projectId, issueNodeId);
-    console.log(`Added issue #${issueNumber} to project "${projectTitle}".`);
+    console.log(`Added issue #${issueNumber} to project "${chosenProjectTitle}".`);
   }
 }
 
@@ -434,7 +434,7 @@ async function main() {
   const project = await resolveProject(owner, repo);
 
   let snapshot = await loadProjectSnapshot(project.id);
-  await ensureIssuesInProject(owner, repo, project.id, snapshot.items, event);
+  await ensureIssuesInProject(owner, repo, project.id, project.title, snapshot.items, event);
   snapshot = await loadProjectSnapshot(project.id);
 
   const { statusField, runtimeField } = buildFieldMaps(snapshot.fields);
@@ -483,7 +483,7 @@ async function main() {
     }
   }
 
-  console.log(`Project sync complete for "${projectTitle}" with ${updates} field update(s).`);
+  console.log(`Project sync complete for "${project.title}" with ${updates} field update(s).`);
 }
 
 main().catch((error) => {
