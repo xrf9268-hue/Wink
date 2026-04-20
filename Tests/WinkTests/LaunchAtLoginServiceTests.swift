@@ -1,6 +1,6 @@
 import ServiceManagement
 import Testing
-@testable import Quickey
+@testable import Wink
 
 @Test
 func requiresApprovalMapsToApprovalNeededState() {

@@ -1,6 +1,6 @@
 import AppKit
 import Testing
-@testable import Quickey
+@testable import Wink
 
 @Test
 func observationMarksFrontmostMismatchAsNotStable() {

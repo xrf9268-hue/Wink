@@ -1,7 +1,7 @@
 import Foundation
 import ServiceManagement
 import Testing
-@testable import Quickey
+@testable import Wink
 
 @Test @MainActor
 func handleAppearRefreshesPermissionsAndLaunchAtLoginStatusFromLiveServiceState() {
@@ -155,7 +155,7 @@ private final class FakeCaptureProvider: ShortcutCaptureProvider {
         )
     }
 
-    func start(onKeyPress: @escaping @MainActor @Sendable (Quickey.KeyPress) -> Void) {
+    func start(onKeyPress: @escaping @MainActor @Sendable (Wink.KeyPress) -> Void) {
         isRunning = true
     }
 
@@ -163,7 +163,7 @@ private final class FakeCaptureProvider: ShortcutCaptureProvider {
         isRunning = false
     }
 
-    func updateRegisteredShortcuts(_ keyPresses: Set<Quickey.KeyPress>) {}
+    func updateRegisteredShortcuts(_ keyPresses: Set<Wink.KeyPress>) {}
 }
 
 @MainActor
@@ -178,7 +178,7 @@ private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
         )
     }
 
-    func start(onKeyPress: @escaping @MainActor @Sendable (Quickey.KeyPress) -> Void) {
+    func start(onKeyPress: @escaping @MainActor @Sendable (Wink.KeyPress) -> Void) {
         isRunning = true
     }
 
@@ -186,7 +186,7 @@ private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
         isRunning = false
     }
 
-    func updateRegisteredShortcuts(_ keyPresses: Set<Quickey.KeyPress>) {}
+    func updateRegisteredShortcuts(_ keyPresses: Set<Wink.KeyPress>) {}
 
     func setHyperKeyEnabled(_ enabled: Bool) {}
 }

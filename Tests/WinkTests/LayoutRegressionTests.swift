@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 import Testing
-@testable import Quickey
+@testable import Wink
 
 @Suite("Layout regressions")
 struct LayoutRegressionTests {

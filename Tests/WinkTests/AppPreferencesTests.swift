@@ -1,7 +1,7 @@
 import Foundation
 import ServiceManagement
 import Testing
-@testable import Quickey
+@testable import Wink
 
 @Test @MainActor
 func initSnapshotsShortcutAndLaunchAtLoginState() {

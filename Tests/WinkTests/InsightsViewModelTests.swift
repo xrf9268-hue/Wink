@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Quickey
+@testable import Wink
 
 actor DelayedUsageTracker: UsageTracking {
     let shortcutId: UUID

@@ -1,5 +1,5 @@
 import Testing
-@testable import Quickey
+@testable import Wink
 
 @Test @MainActor
 func noteCurrentFrontmostAppSkipsTargetBundleIdentifier() {

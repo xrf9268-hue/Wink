@@ -1,7 +1,7 @@
 import Carbon.HIToolbox
 import Foundation
 import Testing
-@testable import Quickey
+@testable import Wink
 
 private struct FakePermissionService: PermissionServicing {
     let ax: Bool

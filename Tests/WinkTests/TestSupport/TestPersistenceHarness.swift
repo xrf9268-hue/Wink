@@ -1,5 +1,5 @@
 import Foundation
-@testable import Quickey
+@testable import Wink
 
 final class TestPersistenceHarness {
     let directory: URL

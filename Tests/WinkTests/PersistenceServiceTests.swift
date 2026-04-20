@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Quickey
+@testable import Wink
 
 @Suite("PersistenceService disk loading")
 struct PersistenceServiceDiskLoadingTests {

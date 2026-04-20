@@ -1,7 +1,7 @@
 import Testing
 import AppKit
 import Carbon.HIToolbox
-@testable import Quickey
+@testable import Wink
 
 // MARK: - AppShortcut
 

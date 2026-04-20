@@ -1,7 +1,7 @@
 import AppKit
 import CoreFoundation
 import Testing
-@testable import Quickey
+@testable import Wink
 
 // MARK: - Required test directions
 

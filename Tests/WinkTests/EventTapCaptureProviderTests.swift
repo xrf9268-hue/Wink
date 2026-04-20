@@ -1,7 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import Testing
-@testable import Quickey
+@testable import Wink
 
 @MainActor
 private final class FakeEventTapManager: EventTapManaging {

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Quickey
+@testable import Wink
 
 @Suite("UsageTracker window boundaries")
 struct UsageTrackerWindowTests {

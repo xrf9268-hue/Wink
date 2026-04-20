@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Quickey
+@testable import Wink
 
 // MARK: - EventTapLifecycleTracker recovery escalation
 
