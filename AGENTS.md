@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Agent guidance for working on **Quickey**.
+Agent guidance for working on **Wink**.
 
 ## Project overview
 
@@ -41,7 +41,7 @@ The codebase is feature-complete. Key architectural decisions:
 - O(1) precompiled trigger index for hot-path matching
 - Standard shortcuts use Carbon `EventHotKey`; Hyper-dependent shortcuts use the active event tap
 - EventTap lifecycle hardened with auto-recovery
-- SkyLight private API (`_SLPSSetFrontProcessWithOptions`) for app activation: on macOS 15, the `NSApplicationActivateIgnoringOtherApps` option flag is deprecated since macOS 14.0 with **no effect** (Apple SDK: `API_DEPRECATED("ignoringOtherApps is deprecated in macOS 14 and will have no effect.", macos(10.6, 14.0))`). The cooperative model (`yieldActivation(to:)` + `activate(from:options:)`, both `API_AVAILABLE(macos(14.0))`) requires the currently active app to explicitly yield, which is impossible for an accessory utility like Quickey that doesn't control other apps. `NSRunningApplication.activate(options:)` without the flag is a cooperative request that the system may decline. SkyLight is the only reliable way for an `LSUIElement` app to force-activate arbitrary targets.
+- SkyLight private API (`_SLPSSetFrontProcessWithOptions`) for app activation: on macOS 15, the `NSApplicationActivateIgnoringOtherApps` option flag is deprecated since macOS 14.0 with **no effect** (Apple SDK: `API_DEPRECATED("ignoringOtherApps is deprecated in macOS 14 and will have no effect.", macos(10.6, 14.0))`). The cooperative model (`yieldActivation(to:)` + `activate(from:options:)`, both `API_AVAILABLE(macos(14.0))`) requires the currently active app to explicitly yield, which is impossible for an accessory utility like Wink that doesn't control other apps. `NSRunningApplication.activate(options:)` without the flag is a cooperative request that the system may decline. SkyLight is the only reliable way for an `LSUIElement` app to force-activate arbitrary targets.
 - For self-activation (e.g., showing the settings window), use `NSApp.activate()` (`API_AVAILABLE(macos(14.0))`). Do not use the soft-deprecated `activateIgnoringOtherApps:` (`API_DEPRECATED("This method will be deprecated in a future release. Use NSApp.activate instead.")`)
 - Shortcut readiness is transport-specific, not just permission state: standard shortcuts require Accessibility plus successful Carbon registration; Hyper shortcuts additionally require `CGPreflightListenEventAccess()` and a successfully started active event tap
 - Do not reintroduce passive `.listenOnly` fallback for normal shortcut interception; it cannot consume events (Apple SDK: `kCGEventTapOptionListenOnly = 0x00000001` is a passive listener)
@@ -59,7 +59,7 @@ Before making large structural changes, read `docs/architecture.md`.
 
 ## Toggle state management
 
-- Apps can become frontmost through paths Quickey does not control (Dock click, Cmd-Tab, macOS choosing the next app after a hide, or another app flow returning them). Do not assume every frontmost app was activated by Quickey.
+- Apps can become frontmost through paths Wink does not control (Dock click, Cmd-Tab, macOS choosing the next app after a hide, or another app flow returning them). Do not assume every frontmost app was activated by Wink.
 - The `ACTIVE_UNTRACKED` path handles apps that are active+frontmost but have no `stableActivationState` or `pendingActivationState`. It hides the app and lets macOS choose the next foreground app. This is the correct fallback when tracking state is missing.
 - `previousApp` session context can self-reference the target bundle. Always guard `previousApp != shortcut.bundleIdentifier` before recording or using it.
 - Session-owned `previousBundle` in `ToggleSessionCoordinator` is durable activation/deactivation context. `FrontmostApplicationTracker` captures snapshots; the coordinator owns the value across phases.

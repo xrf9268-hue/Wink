@@ -9,7 +9,7 @@ Current decision: **clean-break rename applied**.
 
 ## Why
 
-The proposal is strong from a naming/branding perspective, but a full rename is currently high-risk for reliability and user continuity because it changes multiple runtime-sensitive identities at once:
+Before the clean-break rename was executed, the main concern was that a full rename would change multiple runtime-sensitive identities at once:
 
 - app name (`Wink.app`)
 - bundle identifier (`com.wink.app`)
@@ -17,11 +17,11 @@ The proposal is strong from a naming/branding perspective, but a full rename is 
 - macOS permission (TCC) identity anchoring tied to app signature + bundle id + path
 - login item identity and launch-at-login expectations
 
-Given the project's current focus on capture/activation correctness and runtime validation, a rename now would introduce a large migration surface that is mostly orthogonal to the active stability work.
+The clean-break implementation resolved that concern by choosing not to preserve a migration layer. This archival note keeps the original risk framing for context, but the executed outcome is the direct `Wink` rename recorded below.
 
 ## Guardrails for a future rename
 
-If we choose to rename later, ship it as a dedicated migration release with explicit scope:
+These were the pre-rename guardrails that would have applied if the project had chosen compatibility-preserving migration instead of a clean break:
 
 1. No compatibility layer is preserved for legacy `Quickey` paths or bundle identifiers.
 2. Validate the clean-break rename on macOS using the packaged app and the live permission / event-tap flow.
