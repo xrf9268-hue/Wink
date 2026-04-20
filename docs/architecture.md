@@ -1,7 +1,7 @@
 # Architecture
 
 ## High-level overview
-Quickey is a menu bar macOS utility that stores app-shortcut bindings, captures global key events, matches them to stored shortcuts, and toggles target apps.
+Wink is a menu bar macOS utility that stores app-shortcut bindings, captures global key events, matches them to stored shortcuts, and toggles target apps.
 
 ```mermaid
 flowchart LR
@@ -185,7 +185,7 @@ Responsibilities:
 - `LaunchAtLoginService`
 - `ShortcutCaptureStatus`
 - `scripts/package-app.sh`
-- `Sources/Quickey/Resources/Info.plist`
+- `Sources/Wink/Resources/Info.plist`
 
 Responsibilities:
 - request/check Accessibility + Input Monitoring permission for global shortcuts
@@ -265,7 +265,7 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **AppKit-first with selective SwiftUI**: deliberate architectural decision documented in `docs/archive/app-structure-direction.md`; hard AppKit requirements (`.accessory` policy, raw key capture, CGEvent tap, NSWorkspace) prevent a pure SwiftUI scene-based approach
 - **Capability-aware shortcut readiness**: `ShortcutCaptureStatus` separates Accessibility, Input Monitoring, Carbon registration, Hyper event-tap activity, standard-shortcut readiness, and Hyper readiness
 - **On-demand Input Monitoring**: startup and later shortcut-routing changes request Input Monitoring only when the current enabled shortcut set actually needs Hyper transport; standard-only configurations stay on the Carbon/Accessibility path without an eager Input Monitoring prompt, and Hyper-required startup defers the Input Monitoring request until Accessibility has actually been granted
-- **Strict persistence schema**: Quickey currently supports only the exact `[AppShortcut]` payload it writes today; if `shortcuts.json` is malformed or missing required fields, loading fails loudly, logs `path` plus `reason`, and preserves a `shortcuts.load-failure-*.json` copy instead of silently treating the state as empty
+- **Strict persistence schema**: Wink currently supports only the exact `[AppShortcut]` payload it writes today; if `shortcuts.json` is malformed or missing required fields, loading fails loudly, logs `path` plus `reason`, and preserves a `shortcuts.load-failure-*.json` copy instead of silently treating the state as empty
 - **O(1) trigger index**: `ShortcutSignature` dictionary replaces linear scans in the hot path
 - **Observation-first toggle truth**: `ApplicationObservation` snapshots gate stable-state promotion from frontmost/window evidence instead of trusting `isActive` alone
 - **Single-source toggle ownership**: `ToggleSessionCoordinator` is the only mutable lifecycle owner; `AppSwitcher` derives pending/stable views from coordinator state instead of dual-writing local activation state
@@ -277,7 +277,7 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **Hardened EventTap lifecycle**: explicit ownership, callback-safe timeout snapshots, threshold-based escalation, and same-thread run-loop recreation
 - **Split capture transports**: standard shortcuts use Carbon hotkeys; Hyper-only shortcuts use the active event tap. Passive `.listenOnly` mode is not used in the interception path because it cannot consume shortcut events
 - **SkyLight primary activation path**: private API is used for reliable foreground switching from LSUIElement context
-- **Modern AppKit fallback**: when SkyLight activation fails, Quickey re-requests activation via `NSWorkspace.OpenConfiguration` (`activates = true`) and only falls back to a plain AppKit activation request if no bundle URL is available
+- **Modern AppKit fallback**: when SkyLight activation fails, Wink re-requests activation via `NSWorkspace.OpenConfiguration` (`activates = true`) and only falls back to a plain AppKit activation request if no bundle URL is available
 - **Minimal-by-default activation**: front-process activation is the only hot-path activation step; `makeKeyWindow`, `AXRaise`, and reopen/new-window recovery are bounded escalation steps driven by observation
 - **Stable-state toggle semantics**: activate immediately, confirm asynchronously, allow toggle-off only from `activeStable`, and avoid restore-away rollback on confirmation failure
 - **Official hide request path**: toggle-off uses `NSRunningApplication.hide()` plus asynchronous confirmation instead of event-synthesized hide commands

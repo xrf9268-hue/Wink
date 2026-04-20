@@ -47,14 +47,14 @@ test('parseValidationStatus supports legacy free-text runtime validation section
 
 test('classifyRuntimeSensitivity marks capture and packaging paths as runtime-sensitive', () => {
   const classification = classifyRuntimeSensitivity([
-    'Sources/Quickey/Services/CarbonHotKeyProvider.swift',
+    'Sources/Wink/Services/CarbonHotKeyProvider.swift',
     'scripts/package-app.sh',
     'README.md',
   ]);
 
   assert.equal(classification.runtimeSensitive, true);
   assert.deepEqual(classification.matches, [
-    'Sources/Quickey/Services/CarbonHotKeyProvider.swift',
+    'Sources/Wink/Services/CarbonHotKeyProvider.swift',
     'scripts/package-app.sh',
   ]);
 });

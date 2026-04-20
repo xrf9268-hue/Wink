@@ -1,4 +1,4 @@
-# Quickey Troubleshooting Guidance
+# Wink Troubleshooting Guidance
 
 ## Hyper State Must Be Replayed After Event-Tap Startup
 
@@ -47,18 +47,18 @@ Check both `AXIsProcessTrusted()` and `CGPreflightListenEventAccess()` before st
 ## Input Monitoring Pane Visibility Is Not The Source Of Truth
 
 **Issue**
-System Settings can appear to show no Quickey row under `Privacy & Security > Input Monitoring` even after Hyper capture has started working.
+System Settings can appear to show no Wink row under `Privacy & Security > Input Monitoring` even after Hyper capture has started working.
 
 **Cause**
-The macOS 15 SDK contract for `CGPreflightListenEventAccess()` / `CGRequestListenEventAccess()` only promises whether event-listening access is effective for the current process. It does not promise that System Settings will immediately show, persist, or refresh a visible row for that process. In Quickey's 2026-04-15 packaged-app validation, the authoritative runtime signals were already green (`Input Monitoring permission: granted`, active event tap, passing Hyper E2E) even though the pane still looked empty.
+The macOS 15 SDK contract for `CGPreflightListenEventAccess()` / `CGRequestListenEventAccess()` only promises whether event-listening access is effective for the current process. It does not promise that System Settings will immediately show, persist, or refresh a visible row for that process. In Wink's 2026-04-15 packaged-app validation, the authoritative runtime signals were already green (`Input Monitoring permission: granted`, active event tap, passing Hyper E2E) even though the pane still looked empty.
 
 **Practical guidance**
-When investigating Hyper capture, trust the live runtime signals first: `CGPreflightListenEventAccess()`, the Quickey Settings banner, `Event tap started`, and an actual Hyper end-to-end pass. Treat the System Settings pane as helpful but non-authoritative UI that may lag behind live access. Signature churn and launch-path mismatches still matter, so validate with `open Quickey.app` and remember that rebuilding or re-signing can change the TCC identity that System Settings associates with the app.
+When investigating Hyper capture, trust the live runtime signals first: `CGPreflightListenEventAccess()`, the Wink Settings banner, `Event tap started`, and an actual Hyper end-to-end pass. Treat the System Settings pane as helpful but non-authoritative UI that may lag behind live access. Signature churn and launch-path mismatches still matter, so validate with `open Wink.app` and remember that rebuilding or re-signing can change the TCC identity that System Settings associates with the app.
 
 ## Ad-hoc Signing and TCC
 
 **Issue**
-Permissions appear enabled in System Settings, but Quickey is still not trusted after a rebuild.
+Permissions appear enabled in System Settings, but Wink is still not trusted after a rebuild.
 
 **Cause**
 TCC binds permissions to the app's code signature. Ad-hoc signatures change between builds, so a new binary no longer matches the old TCC record.
@@ -67,8 +67,8 @@ TCC binds permissions to the app's code signature. Ad-hoc signatures change betw
 After rebuilding locally, reset and regrant permissions if the app stops matching its previous TCC state:
 
 ```bash
-tccutil reset Accessibility com.quickey.app
-tccutil reset ListenEvent com.quickey.app
+tccutil reset Accessibility com.wink.app
+tccutil reset ListenEvent com.wink.app
 ```
 
 For long-lived releases, use a stable Developer ID signature.
@@ -79,10 +79,10 @@ For long-lived releases, use a stable Developer ID signature.
 Launching the app binary directly can produce different permission behavior than launching the app bundle.
 
 **Cause**
-TCC and app identity matching are tied to the bundle launch path. Directly running `./Quickey.app/Contents/MacOS/Quickey` can bypass the launch context used during permission registration.
+TCC and app identity matching are tied to the bundle launch path. Directly running `./Wink.app/Contents/MacOS/Wink` can bypass the launch context used during permission registration.
 
 **Practical guidance**
-Validate permission-sensitive behavior by starting the app with `open Quickey.app`, not by executing the binary directly.
+Validate permission-sensitive behavior by starting the app with `open Wink.app`, not by executing the binary directly.
 
 ## File-Based Diagnostics
 
@@ -93,7 +93,7 @@ Validate permission-sensitive behavior by starting the app with `open Quickey.ap
 Unified logging is filtered and can hide the messages you expect to see.
 
 **Practical guidance**
-Use a file-backed log for troubleshooting, such as `~/.config/Quickey/debug.log`. Create the parent directory first, then append short diagnostic lines there.
+Use a file-backed log for troubleshooting, such as `~/.config/Wink/debug.log`. Create the parent directory first, then append short diagnostic lines there.
 
 ## `@Sendable` Completion Handlers
 
@@ -115,12 +115,12 @@ Copy any needed values before the call, and mark the completion handler `@Sendab
 The cooperative activation path can report success without actually activating the app.
 
 **Practical guidance**
-Use the SkyLight-based activation path when Quickey must reliably front the target app. Treat it as the validated route for LSUIElement activation behavior.
+Use the SkyLight-based activation path when Wink must reliably front the target app. Treat it as the validated route for LSUIElement activation behavior.
 
 ## Frontmost Truth for Toggle Semantics
 
 **Issue**
-An app can appear visually present while Quickey still should not treat it as safely toggleable.
+An app can appear visually present while Wink still should not treat it as safely toggleable.
 
 **Cause**
 App activation on macOS is transitional. `NSRunningApplication.activate()` only attempts activation, and `NSRunningApplication.isActive` can briefly disagree with `NSWorkspace.shared.frontmostApplication` during odd system-app or window-recovery flows.
@@ -131,7 +131,7 @@ For app-level toggle behavior, treat `NSWorkspace.shared.frontmostApplication` a
 ## Stable Activation Beats Instantaneous Activation
 
 **Issue**
-Repeated shortcut presses can flap between "activate" and "toggle off" if Quickey decides from a single immediate state snapshot.
+Repeated shortcut presses can flap between "activate" and "toggle off" if Wink decides from a single immediate state snapshot.
 
 **Cause**
 The first trigger may only have started activation, while the second trigger arrives before the app has reached a stable frontmost state with a usable window.
@@ -153,7 +153,7 @@ Let the toggle session own the durable `previousBundle` once a trigger is accept
 ## Bundle-Only Tracking Fails Across Process Lifetimes
 
 **Issue**
-Launch -> quit -> relaunch flows can leave Quickey believing a target is both "stable" and "missing" at the same time.
+Launch -> quit -> relaunch flows can leave Wink believing a target is both "stable" and "missing" at the same time.
 
 **Cause**
 When bundle-keyed session tracking is duplicated across multiple owners, termination or pid rollover can clear one owner while the other still holds stale stable/pending state. That is how relaunch paths degrade into `phase=no_session`, `hide_untracked`, or other ownership confusion right after an otherwise valid launch.
@@ -161,7 +161,7 @@ When bundle-keyed session tracking is duplicated across multiple owners, termina
 **Practical guidance**
 Make `ToggleSessionCoordinator` the only lifecycle owner. Keep pid, attempt id, phase, and durable `previousBundle` on that single session object, and reset or replace the session on termination and pid rollover. `AppSwitcher` may expose derived read-only views, but it must not become a second mutable lifecycle owner.
 
-Do not throw away the `NSRunningApplication` returned by `NSWorkspace.openApplication`. The launch completion is the cleanest process-identity seam Quickey gets for a just-launched target. Attach that pid back onto the existing `launching` session immediately and run the same confirmation pipeline used by activate/unhide, or the next press can still fall through to `hide_untracked` despite an otherwise successful launch.
+Do not throw away the `NSRunningApplication` returned by `NSWorkspace.openApplication`. The launch completion is the cleanest process-identity seam Wink gets for a just-launched target. Attach that pid back onto the existing `launching` session immediately and run the same confirmation pipeline used by activate/unhide, or the next press can still fall through to `hide_untracked` despite an otherwise successful launch.
 
 ## Frontmost Without Window Evidence Is Not Success For Regular Apps
 
@@ -177,18 +177,18 @@ Only allow windowless stable success for targets whose `activationPolicy != .reg
 ## Attempt-Scoped Trace Logs Beat Outcome-Only Logging
 
 **Issue**
-Outcome logs such as `TOGGLE_STABLE` or `TOGGLE_HIDE_DEGRADED` are not enough to explain which branch Quickey took when launch, relaunch, deactivation, and ownership invalidation happen close together.
+Outcome logs such as `TOGGLE_STABLE` or `TOGGLE_HIDE_DEGRADED` are not enough to explain which branch Wink took when launch, relaunch, deactivation, and ownership invalidation happen close together.
 
 **Cause**
 Without an attempt-level identifier, log readers have to infer which launch, confirmation, and reset lines belong together. That breaks down quickly around relaunches, pid changes, or repeated key presses.
 
 **Practical guidance**
-Emit trace logs with `attemptId`, `bundle`, `pid`, `phase`, `event`, `activationPath`, `reason`, and `previousBundle`. Keep them at the matched-shortcut and lifecycle-transition boundaries, not on every raw key event. The goal is that one failed attempt window in `~/.config/Quickey/debug.log` is enough to reconstruct the branch choice end-to-end.
+Emit trace logs with `attemptId`, `bundle`, `pid`, `phase`, `event`, `activationPath`, `reason`, and `previousBundle`. Keep them at the matched-shortcut and lifecycle-transition boundaries, not on every raw key event. The goal is that one failed attempt window in `~/.config/Wink/debug.log` is enough to reconstruct the branch choice end-to-end.
 
 ## Notification-Driven Toggle Invalidation
 
 **Issue**
-Stable toggle state can become stale as soon as the user changes apps outside Quickey.
+Stable toggle state can become stale as soon as the user changes apps outside Wink.
 
 **Cause**
 Polling or one-shot snapshots miss external activation and termination changes, especially while a toggle session is still marked `activeStable` or `deactivating`.
@@ -210,15 +210,15 @@ Do not force all apps through one generic "front app with visible window means s
 ## Untracked Frontmost Apps Need a Direct Hide Path
 
 **Issue**
-An app can be frontmost and apparently stable even though Quickey has no active stable session for it.
+An app can be frontmost and apparently stable even though Wink has no active stable session for it.
 
 **Cause**
-Apps can become frontmost through paths Quickey does not own: Dock click, Cmd-Tab, macOS choosing the next app after a hide, or another app flow returning them to the foreground. `stableActivationState` only exists for apps Quickey itself recently stabilized, so these externally surfaced apps may otherwise fall through to the activate path.
+Apps can become frontmost through paths Wink does not own: Dock click, Cmd-Tab, macOS choosing the next app after a hide, or another app flow returning them to the foreground. `stableActivationState` only exists for apps Wink itself recently stabilized, so these externally surfaced apps may otherwise fall through to the activate path.
 
 **Practical guidance**
 When the target app is already active and frontmost but has no tracking state, treat it as an untracked toggle-off: hide the app and let macOS bring the next app forward. Guard against self-referencing `previousApp` (target == previous) by explicitly clearing it. Log the `ACTIVE_UNTRACKED` path with coordinator phase and tracker state for post-hoc analysis.
 
-The hide-untracked branch still needs a real owned deactivation session. Logging `hide_untracked` alone is not enough: if the branch does not allocate a coordinator-owned `deactivating` session first, later `HIDE_REQUEST` / hide-confirmation guards can no-op and the target will remain frontmost even though Quickey chose the correct branch in logs.
+The hide-untracked branch still needs a real owned deactivation session. Logging `hide_untracked` alone is not enough: if the branch does not allocate a coordinator-owned `deactivating` session first, later `HIDE_REQUEST` / hide-confirmation guards can no-op and the target will remain frontmost even though Wink chose the correct branch in logs.
 
 ## Verify The Persisted Shortcut Route Before Debugging Capture Readiness
 
@@ -226,7 +226,7 @@ The hide-untracked branch still needs a real owned deactivation session. Logging
 `checkPermission: ax=true im=true carbon=false eventTap=true` can look like Carbon registration drift even when the capture stack is actually behaving correctly.
 
 **Cause**
-Quickey's active transport depends on the current saved shortcut set plus `hyperKeyEnabled`. If the persisted shortcut is a Hyper combo, then `carbon=false eventTap=true` is the expected readiness snapshot. In the 2026-04-09 Safari investigation, the real culprit was not permission loss or Carbon failure: `shortcuts.json` had already been switched to `command` + `option` + `control` + `shift` + `s`, and `hyperKeyEnabled` was still enabled.
+Wink's active transport depends on the current saved shortcut set plus `hyperKeyEnabled`. If the persisted shortcut is a Hyper combo, then `carbon=false eventTap=true` is the expected readiness snapshot. In the 2026-04-09 Safari investigation, the real culprit was not permission loss or Carbon failure: `shortcuts.json` had already been switched to `command` + `option` + `control` + `shift` + `s`, and `hyperKeyEnabled` was still enabled.
 
 **Practical guidance**
 Before debugging transport readiness, inspect the actual persisted shortcut config and Hyper toggle state. Do not assume the active shortcut is still standard because an older session used `Shift+Cmd+S`. Interpret `carbon` / `eventTap` logs against the current saved shortcut route, not against stale expectations.
@@ -240,7 +240,7 @@ Startup diagnostics can report a transport that is already obsolete by the time 
 If `ShortcutManager.start()` runs before the persisted Hyper state is replayed, the first readiness log reflects the pre-restore transport instead of the real steady-state routing. That is how a valid Hyper configuration can briefly print `attemptStart: ... carbon=true eventTap=false` and look like transport drift.
 
 **Practical guidance**
-Replay the persisted Hyper enablement before starting shortcut capture. The first `attemptStart` / readiness snapshot should describe the transport Quickey will actually use after launch, not a transient bootstrapping state that disappears one call later.
+Replay the persisted Hyper enablement before starting shortcut capture. The first `attemptStart` / readiness snapshot should describe the transport Wink will actually use after launch, not a transient bootstrapping state that disappears one call later.
 
 ## Validation Readiness Must Be Transport-Specific
 
@@ -260,7 +260,7 @@ For mixed fixtures, expect both transports to be ready at once (`carbon=true` an
 An end-to-end module can fail even when the product is healthy if the machine's saved shortcuts do not contain the fixture shortcut the module is trying to exercise.
 
 **Cause**
-The E2E shell modules historically assumed a fixed local fixture, such as Safari on `Shift+Cmd+S` and IINA on a Hyper combo. When `shortcuts.json` drifts away from that fixture, the module reports a product failure even though Quickey is simply following the saved config.
+The E2E shell modules historically assumed a fixed local fixture, such as Safari on `Shift+Cmd+S` and IINA on a Hyper combo. When `shortcuts.json` drifts away from that fixture, the module reports a product failure even though Wink is simply following the saved config.
 
 **Practical guidance**
 Teach each E2E module to inspect the current saved shortcuts before asserting on runtime behavior. If the required shortcut is absent for the expected route, report `SKIP`/`WARN` instead of `FAIL`. Reserve hard failures for mismatches between the configured shortcut and the observed runtime behavior.
@@ -268,7 +268,7 @@ Teach each E2E module to inspect the current saved shortcuts before asserting on
 ## Tests Must Not Use Live Application Support Persistence
 
 **Issue**
-`swift test` can silently mutate the real `~/Library/Application Support/Quickey/shortcuts.json`, contaminating the developer's local shortcut fixture and making test runs unsafe.
+`swift test` can silently mutate the real `~/Library/Application Support/Wink/shortcuts.json`, contaminating the developer's local shortcut fixture and making test runs unsafe.
 
 **Cause**
 Some test helpers built `ShortcutManager` or `AppPreferences` with a default `PersistenceService()`. The live default storage path resolves through `StoragePaths.appSupportDirectory()`, so any test save path that does not inject `storageURLProvider` writes into the user's real Application Support directory.
@@ -301,13 +301,13 @@ Switched to `queue.async`. The serial queue still guarantees ordered output. Tim
 ## Reference: alt-tab-macos Activation Strategy (2026-03-25)
 
 **Context**
-Compared Quickey's toggle implementation with alt-tab-macos (https://github.com/lwouis/alt-tab-macos), the most mature macOS window switcher.
+Compared Wink's toggle implementation with alt-tab-macos (https://github.com/lwouis/alt-tab-macos), the most mature macOS window switcher.
 This comparison predates the 2026-04-08 capture split and front-process-first activation hot path, so read it as historical reference, not as a full description of the current runtime.
 
 **Key findings**
 - alt-tab uses a "show-select-focus" model, not toggle. No stableActivationState equivalent — just a `appIsBeingUsed` boolean.
-- Three-layer activation (SkyLight + makeKeyWindow 0xf8 + AXRaise) is identical to Quickey's approach.
-- alt-tab runs SkyLight/AX calls on a background queue (`BackgroundWork.accessibilityCommandsQueue`), not the main thread. Quickey runs them on the main actor.
+- Three-layer activation (SkyLight + makeKeyWindow 0xf8 + AXRaise) is identical to Wink's approach.
+- alt-tab runs SkyLight/AX calls on a background queue (`BackgroundWork.accessibilityCommandsQueue`), not the main thread. Wink runs them on the main actor.
 - alt-tab tracks frontmost app via AX notifications (`kAXApplicationActivatedNotification`) rather than NSWorkspace notifications. More real-time but more complex.
 - alt-tab maintains full MRU window ordering (`lastFocusOrder`), not just a single previous app.
 - alt-tab has `redundantSafetyMeasures()` that polls hardware modifier state after each key event to detect lost keyUp events.
@@ -316,13 +316,13 @@ This comparison predates the 2026-04-08 capture split and front-process-first ac
 **Hammerspoon 对比 (https://github.com/Hammerspoon/hammerspoon):**
 - 激活方案更保守：NSRunningApplication + Carbon PSN 双层（无 SkyLight）
 - 窗口焦点：纯 AXUIElement (becomeMain + raise)，无 SkyLight makeKeyWindow
-- 前台监控：NSWorkspace 通知（与 Quickey 一致）
-- Event tap 在**主线程**运行（Quickey 在后台线程更好）
+- 前台监控：NSWorkspace 通知（与 Wink 一致）
+- Event tap 在**主线程**运行（Wink 在后台线程更好）
 - 专门为 Finder 写了 0.3s 延迟 workaround — 说明纯 AX 方案不够可靠
 - Hotkey 用 Carbon RegisterEventHotKey 而非 CGEventTap（更轻量但功能受限）
 
 **Practical guidance**
-仍然成立的结论有两点：Quickey 需要 SkyLight 作为 LSUIElement 的可靠强激活基础；后台线程 event tap 仍优于主线程 tap。已经过时的部分是“完整三层激活始终在热路径上”和“所有快捷键都要靠 event tap”这两个心智模型。当前更准确的做法是：标准快捷键优先走 Carbon，Hyper 才走 event tap；激活热路径先做 front-process 激活，只在观察显示未稳定时再逐级升级到 `makeKeyWindow` / `AXRaise` / window recovery。
+仍然成立的结论有两点：Wink 需要 SkyLight 作为 LSUIElement 的可靠强激活基础；后台线程 event tap 仍优于主线程 tap。已经过时的部分是“完整三层激活始终在热路径上”和“所有快捷键都要靠 event tap”这两个心智模型。当前更准确的做法是：标准快捷键优先走 Carbon，Hyper 才走 event tap；激活热路径先做 front-process 激活，只在观察显示未稳定时再逐级升级到 `makeKeyWindow` / `AXRaise` / window recovery。
 
 ## CGEvent.timestamp Is Nanoseconds, Not Mach Ticks
 
@@ -439,7 +439,7 @@ Re-enabling an event tap after a timeout is necessary but not always sufficient.
 macOS can repeatedly disable the tap with `tapDisabledByTimeout`, which indicates sustained callback or lifecycle pressure rather than a one-off interruption.
 
 **Practical guidance**
-Keep the callback path light and re-enable in place first, but track rolling timeout counts. In Quickey's current recovery ladder, the first timeout stays in-place, 3 timeouts within 30 seconds escalate to full recreation, and 2 recreation failures within 120 seconds mark the tap subsystem degraded. Recreate the tap on the same dedicated background RunLoop thread, using a reusable readiness mechanism so repeated add/remove/recreate cycles do not deadlock.
+Keep the callback path light and re-enable in place first, but track rolling timeout counts. In Wink's current recovery ladder, the first timeout stays in-place, 3 timeouts within 30 seconds escalate to full recreation, and 2 recreation failures within 120 seconds mark the tap subsystem degraded. Recreate the tap on the same dedicated background RunLoop thread, using a reusable readiness mechanism so repeated add/remove/recreate cycles do not deadlock.
 
 ## Codex Stop Hook Infinite Loop
 

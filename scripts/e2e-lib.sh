@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared library for Quickey E2E tests
+# Shared library for Wink E2E tests
 # Source this file: source "$(dirname "$0")/e2e-lib.sh"
 
 set -euo pipefail
@@ -7,10 +7,10 @@ set -euo pipefail
 # --- Constants ---
 E2E_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$E2E_LIB_DIR/.." && pwd)"
-APP_PATH="${E2E_APP_PATH:-$PROJECT_DIR/build/Quickey.app}"
-LOG_FILE="${E2E_LOG_FILE:-$HOME/.config/Quickey/debug.log}"
-QUICKEY_BUNDLE_ID="${E2E_BUNDLE_ID:-com.quickey.app}"
-SHORTCUTS_FILE="${E2E_SHORTCUTS_FILE:-$HOME/Library/Application Support/Quickey/shortcuts.json}"
+APP_PATH="${E2E_APP_PATH:-$PROJECT_DIR/build/Wink.app}"
+LOG_FILE="${E2E_LOG_FILE:-$HOME/.config/Wink/debug.log}"
+APP_BUNDLE_ID="${E2E_BUNDLE_ID:-com.wink.app}"
+SHORTCUTS_FILE="${E2E_SHORTCUTS_FILE:-$HOME/Library/Application Support/Wink/shortcuts.json}"
 CGEVENT_HELPER="$E2E_LIB_DIR/cgevent-helper"
 CGEVENT_SRC="$E2E_LIB_DIR/cgevent-helper.swift"
 
@@ -82,7 +82,7 @@ wait_for_log() {
 }
 
 hyper_key_enabled_flag() {
-    defaults read "$QUICKEY_BUNDLE_ID" hyperKeyEnabled 2>/dev/null || echo "0"
+    defaults read "$APP_BUNDLE_ID" hyperKeyEnabled 2>/dev/null || echo "0"
 }
 
 detect_capture_requirement() {
@@ -307,6 +307,11 @@ _hyper_capture_ready() {
     grep -Eq 'Event tap started|attemptStart: .*eventTap=true|checkPermission: ax=true im=true .*eventTap=true' "$log_file" 2>/dev/null
 }
 
+_startup_log_ready() {
+    local log_file="${1:-$LOG_FILE}"
+    grep -q "starting, version" "$log_file" 2>/dev/null
+}
+
 capture_requirement_satisfied() {
     local requirement="$1"
     local log_file="${2:-$LOG_FILE}"
@@ -322,7 +327,7 @@ capture_requirement_satisfied() {
             _standard_capture_ready "$log_file" && _hyper_capture_ready "$log_file"
             ;;
         none)
-            grep -q "Quickey starting" "$log_file" 2>/dev/null
+            _startup_log_ready "$log_file"
             ;;
         *)
             return 1
@@ -679,17 +684,18 @@ done
 e2e_launch_app() {
     local requirement
     if [ ! -d "$APP_PATH" ]; then
-        echo -e "${RED}ERROR: Quickey.app not found at $APP_PATH${NC}"
+        echo -e "${RED}ERROR: Wink.app not found at $APP_PATH${NC}"
         echo "    Run: ./scripts/package-app.sh"
         exit 1
     fi
 
-    pkill -f "Quickey.app/Contents/MacOS/Quickey" 2>/dev/null || true
+    pkill -f "Wink.app/Contents/MacOS/Wink" 2>/dev/null || true
     sleep 1
 
     if [ -f "$LOG_FILE" ]; then
         cp "$LOG_FILE" "$LOG_FILE.e2e-backup"
     fi
+    mkdir -p "$(dirname "$LOG_FILE")"
     : > "$LOG_FILE"
 
     open "$APP_PATH"
@@ -703,8 +709,8 @@ e2e_launch_app() {
         echo -e "    ${RED}Capture failed to become ready within 30s${NC} (${requirement})"
         if grep -q "tapCreate.*failed" "$LOG_FILE" 2>/dev/null; then
             echo "    Check permissions:"
-            echo "    System Settings > Privacy & Security > Accessibility -> add Quickey"
-            echo "    System Settings > Privacy & Security > Input Monitoring -> add Quickey"
+            echo "    System Settings > Privacy & Security > Accessibility -> add Wink"
+            echo "    System Settings > Privacy & Security > Input Monitoring -> add Wink"
         else
             tail -20 "$LOG_FILE" 2>/dev/null || true
         fi
@@ -713,7 +719,7 @@ e2e_launch_app() {
 }
 
 e2e_stop_app() {
-    pkill -f "Quickey.app/Contents/MacOS/Quickey" 2>/dev/null || true
+    pkill -f "Wink.app/Contents/MacOS/Wink" 2>/dev/null || true
 }
 
 e2e_maybe_launch() {

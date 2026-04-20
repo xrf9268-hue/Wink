@@ -2,12 +2,12 @@
 
 ## Overview
 
-Quickey ships as a drag-install DMG. The release path is:
+Wink ships as a drag-install DMG. The release path is:
 
 1. Build the release binary
-2. Package `build/Quickey.app`
+2. Package `build/Wink.app`
 3. Sign the app with `Developer ID Application`
-4. Package `build/Quickey-<version>.dmg`
+4. Package `build/Wink-<version>.dmg`
 5. Sign the DMG
 6. Submit the DMG to Apple notarization
 7. Staple the notarization ticket to the DMG
@@ -31,7 +31,7 @@ Ordinary CI verifies that the `.app` and `.dmg` packaging paths work without App
 ./scripts/package-app.sh
 ```
 
-This creates `build/Quickey.app`.
+This creates `build/Wink.app`.
 
 ### Build the DMG
 
@@ -41,26 +41,26 @@ This creates `build/Quickey.app`.
 
 This creates:
 
-- `build/Quickey.app`
-- `build/Quickey-<CFBundleShortVersionString>.dmg`
+- `build/Wink.app`
+- `build/Wink-<CFBundleShortVersionString>.dmg`
 
 The DMG contains:
 
-- `Quickey.app`
+- `Wink.app`
 - `Applications` symlink for drag-install
 
 ### Local verification
 
 ```bash
 swift test
-codesign --verify --deep --strict --verbose=2 build/Quickey.app
+codesign --verify --deep --strict --verbose=2 build/Wink.app
 ```
 
 You can also mount and inspect the DMG locally:
 
 ```bash
-VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Quickey/Resources/Info.plist)"
-DMG="build/Quickey-${VERSION}.dmg"
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Wink/Resources/Info.plist)"
+DMG="build/Wink-${VERSION}.dmg"
 MOUNT_OUTPUT="$(hdiutil attach "$DMG" -nobrowse)"
 MOUNT_POINT="$(printf '%s\n' "$MOUNT_OUTPUT" | tail -n 1 | awk '{print $3}')"
 ls "$MOUNT_POINT"
@@ -79,7 +79,7 @@ Release-mode app signing is driven through environment variables passed to `scri
 
 The checked-in [entitlements.plist](/Users/yvan/developer/Quickey/entitlements.plist) is the canonical release entitlement file.
 
-Quickey's current entitlement set is intentionally minimal:
+Wink's current entitlement set is intentionally minimal:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -127,14 +127,14 @@ If the required Developer ID / notarization secrets are not configured, the work
 6. Submit the DMG with `xcrun notarytool submit --wait`
 7. Staple the DMG with `xcrun stapler staple`
 8. Validate the final DMG with `stapler validate` and `spctl --assess --type open`
-9. Create or update the GitHub Release and upload `Quickey-<version>.dmg`
+9. Create or update the GitHub Release and upload `Wink-<version>.dmg`
 
 When secrets are present, the workflow is fail-closed: if signing, notarization, stapling, or validation fails, no release asset is published.
 When secrets are absent, the workflow reports the missing secrets and skips publication without failing the repository.
 
 ## Internal Package Workflow
 
-For teams that do not yet have a `Developer ID Application` certificate, Quickey also defines [internal-package.yml](/Users/yvan/developer/Quickey/.github/workflows/internal-package.yml).
+For teams that do not yet have a `Developer ID Application` certificate, Wink also defines [internal-package.yml](/Users/yvan/developer/Quickey/.github/workflows/internal-package.yml).
 
 ### Trigger
 
@@ -143,9 +143,9 @@ For teams that do not yet have a `Developer ID Application` certificate, Quickey
 
 ### Output
 
-- builds and tests Quickey on `macos-15`
-- packages `build/Quickey-<version>.dmg`
-- uploads an Actions artifact named `Quickey-<version>-internal-<ref>`
+- builds and tests Wink on `macos-15`
+- packages `build/Wink-<version>.dmg`
+- uploads an Actions artifact named `Wink-<version>-internal-<ref>`
 - updates the fixed `internal-downloads` tag to the packaged commit
 - creates or updates a single rolling GitHub prerelease at `internal-downloads`
 - replaces the DMG asset in place so the stable download URL keeps working
@@ -160,7 +160,7 @@ Stable internal prerelease URL:
 
 ## Manual Release Checklist
 
-1. Update `CFBundleShortVersionString` and `CFBundleVersion` in [Info.plist](/Users/yvan/developer/Quickey/Sources/Quickey/Resources/Info.plist)
+1. Update `CFBundleShortVersionString` and `CFBundleVersion` in [Info.plist](/Users/yvan/developer/Quickey/Sources/Wink/Resources/Info.plist)
 2. Run `swift test`
 3. Run `./scripts/package-app.sh`
 4. Run `./scripts/package-dmg.sh`
@@ -184,10 +184,10 @@ bash scripts/package-dmg.sh
 Release verification:
 
 ```bash
-codesign --verify --deep --strict --verbose=2 build/Quickey.app
-spctl --assess --type exec --verbose build/Quickey.app
-xcrun stapler validate build/Quickey-<version>.dmg
-spctl --assess --type open --context context:primary-signature --verbose build/Quickey-<version>.dmg
+codesign --verify --deep --strict --verbose=2 build/Wink.app
+spctl --assess --type exec --verbose build/Wink.app
+xcrun stapler validate build/Wink-<version>.dmg
+spctl --assess --type open --context context:primary-signature --verbose build/Wink-<version>.dmg
 ```
 
 ## Troubleshooting

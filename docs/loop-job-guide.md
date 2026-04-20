@@ -89,7 +89,7 @@ Keep the skill generic. Project-specific context belongs in `CLAUDE.md` / `AGENT
 
 ## Development-Stage Policy
 
-The current Quickey policy is intentionally development-stage biased:
+The current Wink policy is intentionally development-stage biased:
 
 - The durable merge gate lives in repository-native governance: required checks plus GitHub conversation resolution on `main`
 - `/loop` should treat unresolved bot or human review feedback in GitHub as actionable because `Review Gate / Validate review state` will convert that state into a required check

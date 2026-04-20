@@ -3,7 +3,7 @@ const html = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Quickey Cheat Sheet</title>
+<title>Wink Cheat Sheet</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
@@ -439,7 +439,7 @@ const html = `<!DOCTYPE html>
 <div class="container">
 
   <div class="header">
-    <h1>Quickey Cheat Sheet</h1>
+    <h1>Wink Cheat Sheet</h1>
     <p class="subtitle"><kbd>Hyper</kbd> = <kbd>Caps Lock</kbd> = <kbd>^</kbd><kbd>&#x2325;</kbd><kbd>&#x21E7;</kbd><kbd>&#x2318;</kbd>&nbsp; &mdash; &nbsp;One key to rule them all</p>
   </div>
 
@@ -747,7 +747,7 @@ const html = `<!DOCTYPE html>
 
   <div class="footer">
     <p>
-      <kbd>Hyper</kbd> = Caps Lock remapped via <strong>Quickey</strong> &nbsp;|&nbsp;
+      <kbd>Hyper</kbd> = Caps Lock remapped via <strong>Wink</strong> &nbsp;|&nbsp;
       Available: <kbd>E</kbd> <kbd>J</kbd> <kbd>L</kbd> <kbd>Q</kbd> <kbd>U</kbd> <kbd>Y</kbd>
     </p>
     <a class="repo-link" href="https://github.com/xrf9268-hue/Quickey" target="_blank" rel="noopener noreferrer" aria-label="View on GitHub">

@@ -1,6 +1,6 @@
 # Docs Index
 
-This directory maps the maintainer-facing docs for Quickey.
+This directory maps the maintainer-facing docs for Wink.
 
 ## Core Docs
 - [`architecture.md`](./architecture.md)
@@ -21,7 +21,7 @@ This directory maps the maintainer-facing docs for Quickey.
 ## Historical and Process Docs
 - [`archive/`](./archive/)
 - [`superpowers/`](./superpowers/)
-- Rename proposal checkpoint: [`archive/issue-183-wink-rename-evaluation.md`](./archive/issue-183-wink-rename-evaluation.md)
+- Rename evaluation note: [`archive/issue-183-wink-rename-evaluation.md`](./archive/issue-183-wink-rename-evaluation.md)
 
 `archive/` and `superpowers/` are historical or process-oriented references, not the current source of truth.
 

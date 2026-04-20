@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="Quickey"
+APP_NAME="Wink"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="$PROJECT_DIR/build"
 APP_DIR="$BUILD_DIR/${APP_NAME}.app"
-INFO_PLIST="$PROJECT_DIR/Sources/Quickey/Resources/Info.plist"
+INFO_PLIST="$PROJECT_DIR/Sources/Wink/Resources/Info.plist"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")"
 DMG_PATH="$BUILD_DIR/${APP_NAME}-${VERSION}.dmg"
 VOLUME_NAME="$APP_NAME"

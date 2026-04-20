@@ -5,33 +5,30 @@ Issue: https://github.com/xrf9268-hue/Quickey/issues/183
 
 ## Decision
 
-Current decision: **defer rename** (do not execute in this cycle).
+Current decision: **clean-break rename applied**.
 
 ## Why
 
-The proposal is strong from a naming/branding perspective, but a full rename is currently high-risk for reliability and user continuity because it changes multiple runtime-sensitive identities at once:
+Before the clean-break rename was executed, the main concern was that a full rename would change multiple runtime-sensitive identities at once:
 
-- app name (`Quickey.app`)
-- bundle identifier (`com.quickey.app`)
-- persisted state locations (for example `~/.config/Quickey`, and user support/config paths)
+- app name (`Wink.app`)
+- bundle identifier (`com.wink.app`)
+- persisted state locations (for example `~/.config/Wink`, and user support/config paths)
 - macOS permission (TCC) identity anchoring tied to app signature + bundle id + path
 - login item identity and launch-at-login expectations
 
-Given the project's current focus on capture/activation correctness and runtime validation, a rename now would introduce a large migration surface that is mostly orthogonal to the active stability work.
+The clean-break implementation resolved that concern by choosing not to preserve a migration layer. This archival note keeps the original risk framing for context, but the executed outcome is the direct `Wink` rename recorded below.
 
-## Guardrails for a future rename
+## Post-rename follow-up notes
 
-If we choose to rename later, ship it as a dedicated migration release with explicit scope:
+The clean-break execution deliberately avoided any compatibility layer for legacy `Quickey` paths or bundle identifiers. The practical follow-up is to validate the packaged app on macOS with the live permission and event-tap flow, then update any remaining docs or release notes that still describe the old identity as current state.
 
-1. Add one-time data migration from legacy `Quickey` paths to new `Wink` paths.
-2. Preserve backward compatibility for at least one release window (read old path, write new path, log migration outcome).
-3. Add explicit first-launch messaging that permissions may need to be re-granted due to identity/path changes.
-4. Re-run full packaged-app macOS validation (Accessibility, Input Monitoring, event tap startup, Carbon registration, toggle E2E, launch-at-login state transitions).
-5. Update docs/release notes and include rollback guidance.
+1. Validate the clean-break rename on macOS using the packaged app and the live permission / event-tap flow.
+2. Update any remaining docs or release notes that still describe the old identity as current state.
 
 ## Implementation status for Issue #183
 
-- No product rename applied.
-- No bundle identifier rename applied.
-- No user data path rename applied.
-- Issue is handled as a documented product decision checkpoint and migration-plan placeholder.
+- Clean-break product rename applied.
+- Bundle identifier renamed to `com.wink.app`.
+- User data paths renamed to `Wink`.
+- Legacy `Quickey` compatibility paths are intentionally not preserved.
