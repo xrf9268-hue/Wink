@@ -2,17 +2,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "Quickey",
+    name: "Wink",
     platforms: [
         .macOS(.v15)
     ],
     products: [
-        .executable(name: "Quickey", targets: ["Quickey"])
+        .executable(name: "Wink", targets: ["Wink"])
     ],
     targets: [
         .executableTarget(
-            name: "Quickey",
-            path: "Sources/Quickey",
+            name: "Wink",
+            path: "Sources/Wink",
             exclude: [
                 "Resources/Info.plist",
                 "Resources/AppIcon.svg",
@@ -27,9 +27,9 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "QuickeyTests",
-            dependencies: ["Quickey"],
-            path: "Tests/QuickeyTests"
+            name: "WinkTests",
+            dependencies: ["Wink"],
+            path: "Tests/WinkTests"
         )
     ]
 )

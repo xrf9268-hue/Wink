@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="Quickey"
-BUNDLE_ID="com.quickey.app"
+APP_NAME="Wink"
+BUNDLE_ID="com.wink.app"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="$PROJECT_DIR/build"
@@ -10,9 +10,9 @@ APP_DIR="$BUILD_DIR/${APP_NAME}.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
-INFO_PLIST="$PROJECT_DIR/Sources/Quickey/Resources/Info.plist"
-APP_ICON="$PROJECT_DIR/Sources/Quickey/Resources/AppIcon.icns"
-SIGN_IDENTITY="${SIGN_IDENTITY:-Quickey}"
+INFO_PLIST="$PROJECT_DIR/Sources/Wink/Resources/Info.plist"
+APP_ICON="$PROJECT_DIR/Sources/Wink/Resources/AppIcon.icns"
+SIGN_IDENTITY="${SIGN_IDENTITY:-Wink}"
 ENTITLEMENTS_PLIST="${ENTITLEMENTS_PLIST:-$PROJECT_DIR/entitlements.plist}"
 ENABLE_HARDENED_RUNTIME="${ENABLE_HARDENED_RUNTIME:-0}"
 ENABLE_TIMESTAMP="${ENABLE_TIMESTAMP:-0}"
@@ -46,7 +46,7 @@ fi
 # Copy Info.plist from canonical source
 if [ -f "$INFO_PLIST" ]; then
     cp "$INFO_PLIST" "$CONTENTS_DIR/Info.plist"
-    echo "    Info.plist copied from Sources/Quickey/Resources/Info.plist"
+    echo "    Info.plist copied from Sources/Wink/Resources/Info.plist"
 else
     echo "Warning: Info.plist not found at $INFO_PLIST, generating default" >&2
     cat > "$CONTENTS_DIR/Info.plist" <<PLIST
@@ -69,10 +69,10 @@ PLIST
 fi
 
 # Sign with a stable identity if available; fall back to ad-hoc.
-# A stable identity (e.g. "Quickey Dev" self-signed cert) lets TCC
+# A stable identity (e.g. "Wink Dev" self-signed cert) lets TCC
 # permissions survive across rebuilds. Create one via:
 #   Keychain Access → Certificate Assistant → Create a Certificate
-#   Name: "Quickey Dev", Type: Code Signing
+#   Name: "Wink Dev", Type: Code Signing
 if security find-identity -v -p codesigning 2>/dev/null | grep -Fq "$SIGN_IDENTITY"; then
     echo "==> Signing with '$SIGN_IDENTITY'..."
     SIGN_ARGS=(--force --sign "$SIGN_IDENTITY" --identifier "$BUNDLE_ID")

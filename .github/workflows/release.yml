@@ -92,7 +92,7 @@ jobs:
           {
             echo "## Release skipped"
             echo
-            echo "Quickey's formal release pipeline requires Developer ID signing and Apple notarization credentials."
+            echo "Wink's formal release pipeline requires Developer ID signing and Apple notarization credentials."
             echo "Those secrets are not configured in this repository, so no signed or notarized GitHub Release asset was published."
             echo
             echo "Missing secrets:"
@@ -120,8 +120,8 @@ jobs:
 
       - name: Set temporary paths
         run: |
-          echo "KEYCHAIN_PATH=$RUNNER_TEMP/quickey-release.keychain-db" >> "$GITHUB_ENV"
-          echo "CERT_PATH=$RUNNER_TEMP/quickey-developer-id.p12" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PATH=$RUNNER_TEMP/wink-release.keychain-db" >> "$GITHUB_ENV"
+          echo "CERT_PATH=$RUNNER_TEMP/wink-developer-id.p12" >> "$GITHUB_ENV"
           echo "NOTARY_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
 
       - name: Checkout manual release tag
@@ -145,7 +145,7 @@ jobs:
         env:
           MANUAL_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Quickey/Resources/Info.plist)"
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Wink/Resources/Info.plist)"
 
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             RELEASE_TAG="${MANUAL_RELEASE_TAG}"
@@ -168,7 +168,7 @@ jobs:
 
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
-          echo "DMG_PATH=build/Quickey-${VERSION}.dmg" >> "$GITHUB_ENV"
+          echo "DMG_PATH=build/Wink-${VERSION}.dmg" >> "$GITHUB_ENV"
 
       - name: Import Developer ID certificate
         env:
@@ -215,8 +215,8 @@ jobs:
 
       - name: Verify app signature
         run: |
-          codesign --verify --deep --strict --verbose=2 build/Quickey.app
-          spctl --assess --type exec --verbose build/Quickey.app
+          codesign --verify --deep --strict --verbose=2 build/Wink.app
+          spctl --assess --type exec --verbose build/Wink.app
 
       - name: Package signed DMG
         env:

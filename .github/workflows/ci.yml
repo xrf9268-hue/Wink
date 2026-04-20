@@ -42,14 +42,14 @@ jobs:
 
       - name: Verify app bundle
         run: |
-          test -f build/Quickey.app/Contents/MacOS/Quickey
-          test -f build/Quickey.app/Contents/Info.plist
-          file build/Quickey.app/Contents/MacOS/Quickey | grep -q "Mach-O"
+          test -f build/Wink.app/Contents/MacOS/Wink
+          test -f build/Wink.app/Contents/Info.plist
+          file build/Wink.app/Contents/MacOS/Wink | grep -q "Mach-O"
 
       - name: Package DMG
         run: bash scripts/package-dmg.sh
 
       - name: Verify DMG
         run: |
-          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Quickey/Resources/Info.plist)"
-          test -f "build/Quickey-${VERSION}.dmg"
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Wink/Resources/Info.plist)"
+          test -f "build/Wink-${VERSION}.dmg"

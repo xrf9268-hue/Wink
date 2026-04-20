@@ -20,7 +20,7 @@ async function graphqlRequest(query, variables) {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${requiredEnv('GITHUB_TOKEN')}`,
       'Content-Type': 'application/json',
-      'User-Agent': 'quickey-review-gate',
+      'User-Agent': 'wink-review-gate',
       'X-GitHub-Api-Version': apiVersion,
     },
     body: JSON.stringify({ query, variables }),

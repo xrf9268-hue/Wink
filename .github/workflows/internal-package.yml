@@ -46,7 +46,7 @@ jobs:
         env:
           MANUAL_PACKAGE_REF: ${{ inputs.package_ref }}
         run: |
-          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Quickey/Resources/Info.plist)"
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Wink/Resources/Info.plist)"
 
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             SOURCE_REF="${MANUAL_PACKAGE_REF}"
@@ -60,10 +60,10 @@ jobs:
           fi
 
           INTERNAL_RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/internal-downloads"
-          INTERNAL_DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/internal-downloads/Quickey-${VERSION}.dmg"
+          INTERNAL_DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/internal-downloads/Wink-${VERSION}.dmg"
 
-          echo "DMG_PATH=build/Quickey-${VERSION}.dmg" >> "$GITHUB_ENV"
-          echo "ARTIFACT_NAME=Quickey-${VERSION}-internal-${SAFE_REF}" >> "$GITHUB_ENV"
+          echo "DMG_PATH=build/Wink-${VERSION}.dmg" >> "$GITHUB_ENV"
+          echo "ARTIFACT_NAME=Wink-${VERSION}-internal-${SAFE_REF}" >> "$GITHUB_ENV"
           echo "SOURCE_REF=$SOURCE_REF" >> "$GITHUB_ENV"
           echo "PACKAGE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "INTERNAL_RELEASE_URL=$INTERNAL_RELEASE_URL" >> "$GITHUB_ENV"
@@ -94,11 +94,11 @@ jobs:
           DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/internal-downloads/$(basename "$DMG_PATH")"
 
           cat > "$NOTES_FILE" <<EOF
-          Latest internal Quickey build for trusted testers.
+          Latest internal Wink build for trusted testers.
 
           ## Who should use this
 
-          Use this package when you need the newest Quickey build for team testing before a Developer ID signed release is available.
+          Use this package when you need the newest Wink build for team testing before a Developer ID signed release is available.
           If you are looking for a public-ready build, use the normal GitHub Releases page instead of this prerelease.
 
           ## What to expect
@@ -112,8 +112,8 @@ jobs:
           ## Install notes
 
           1. Download \`$(basename "$DMG_PATH")\`
-          2. Open the DMG and drag \`Quickey.app\` into \`Applications\`
-          3. Launch Quickey from \`/Applications\`
+          2. Open the DMG and drag \`Wink.app\` into \`Applications\`
+          3. Launch Wink from \`/Applications\`
           4. If macOS blocks the first launch, use the standard Finder "Open" flow on a trusted internal machine
 
           ## Build details
@@ -170,7 +170,7 @@ jobs:
           fi
 
           gh release upload internal-downloads \
-            "$DMG_PATH#Quickey Internal DMG" \
+            "$DMG_PATH#Wink Internal DMG" \
             --clobber
 
           ACTUAL_RELEASE_URL="$(

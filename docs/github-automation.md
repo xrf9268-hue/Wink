@@ -1,6 +1,6 @@
 # GitHub Automation
 
-Quickey now uses repository-native GitHub Actions and a checked-in ruleset artifact to keep issue closure, review state, project state, and runtime-validation state aligned.
+Wink now uses repository-native GitHub Actions and a checked-in ruleset artifact to keep issue closure, review state, project state, and runtime-validation state aligned.
 
 ## What Is Automated
 
@@ -17,8 +17,8 @@ Quickey now uses repository-native GitHub Actions and a checked-in ruleset artif
    - Refreshes on PR, review, and review-comment activity; GitHub Actions does not currently expose a dedicated review-thread resolved/unresolved workflow trigger, so a pure thread-resolution change may need a manual rerun or another PR activity before the check turns green again
 
 3. **Project reconciliation** (`.github/workflows/project-sync.yml`)
-   - Adds the event issue or linked issue into the `Quickey Backlog` Project V2 if it is missing
-   - Scheduled and manual reconciliation runs backfill any repository issues that are still missing from `Quickey Backlog`
+   - Adds the event issue or linked issue into the `Wink Backlog` Project V2 if it is missing
+   - Scheduled and manual reconciliation runs backfill any repository issues that are still missing from `Wink Backlog`
    - Syncs `Status` to `Ready`, `In Progress`, or `Done`
    - Syncs `Runtime Validation` to `None`, `macOS pending`, or `macOS complete`
    - Re-runs every 6 hours so transient event failures do not leave the project permanently stale
@@ -39,7 +39,7 @@ Recommended scopes for the token:
 - `project`
 - `read:org`
 
-`GITHUB_TOKEN` is enough for PR-body validation, but it is not sufficient for Quickey's Project V2 field updates. The project-sync workflow uses `PROJECT_AUTOMATION_TOKEN` for GraphQL mutations.
+`GITHUB_TOKEN` is enough for PR-body validation, but it is not sufficient for Wink's Project V2 field updates. The project-sync workflow uses `PROJECT_AUTOMATION_TOKEN` for GraphQL mutations.
 
 ## Recommended Governance Rollout
 
@@ -69,7 +69,7 @@ GitHub's required conversation resolution remains important even after `Review G
 
 ## Runtime Validation Boundary
 
-The governance harness does **not** change Quickey's runtime-validation policy:
+The governance harness does **not** change Wink's runtime-validation policy:
 
 - `Validation Status` in the PR template remains a declaration of what the author claims was validated
 - hosted GitHub checks remain deterministic repo-policy/build/test signals
@@ -84,6 +84,6 @@ The current automation treats the following areas as runtime-sensitive:
 - permissions and activation (`AccessibilityPermissionService`, `AppSwitcher`, `SkyLightBridge`, `ApplicationObservation`)
 - launch and startup flow (`LaunchAtLoginService`, `AppController`, `AppDelegate`, `main.swift`)
 - packaging/runtime scripts (`package-app.sh`, `package-dmg.sh`, `e2e-*`, `cgevent-helper.swift`)
-- signing/runtime metadata (`entitlements.plist`, `Sources/Quickey/Resources/Info.plist`)
+- signing/runtime metadata (`entitlements.plist`, `Sources/Wink/Resources/Info.plist`)
 
-If Quickey grows new runtime-sensitive surfaces, update `.github/scripts/lib/project-automation.mjs` so the automation keeps matching reality.
+If Wink grows new runtime-sensitive surfaces, update `.github/scripts/lib/project-automation.mjs` so the automation keeps matching reality.

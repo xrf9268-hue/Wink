@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Quickey E2E Full Test Suite
-# Launches Quickey once, runs all test modules, reports summary
+# Wink E2E Full Test Suite
+# Launches Wink once, runs all test modules, reports summary
 #
 # Usage: ./scripts/e2e-full-test.sh
 #
 # Prerequisites:
-# - Quickey.app built (./scripts/package-app.sh)
+# - Wink.app built (./scripts/package-app.sh)
 # - Accessibility + Input Monitoring permissions granted
 set -euo pipefail
 
@@ -15,7 +15,7 @@ source "$SCRIPT_DIR/e2e-lib.sh"
 trap 'rm -f /tmp/e2e-module-output-*.txt' EXIT
 
 echo ""
-echo -e "${BOLD}=== Quickey E2E Full Test Suite ===${NC}"
+echo -e "${BOLD}=== Wink E2E Full Test Suite ===${NC}"
 echo ""
 
 e2e_launch_app
@@ -67,7 +67,7 @@ for i in "${!MODULES[@]}"; do
 done
 
 echo ""
-echo "==> Stopping Quickey..."
+echo "==> Stopping Wink..."
 e2e_stop_app
 echo "    Done."
 

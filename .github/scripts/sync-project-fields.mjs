@@ -12,7 +12,7 @@ import {
 } from './lib/project-automation.mjs';
 
 const apiVersion = '2022-11-28';
-const projectTitle = 'Quickey Backlog';
+const preferredProjectTitles = ['Wink Backlog', 'Quickey Backlog'];
 const statusFieldName = 'Status';
 const runtimeValidationFieldName = 'Runtime Validation';
 
@@ -32,7 +32,7 @@ async function graphqlRequest(query, variables = {}) {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${requiredEnv('PROJECT_AUTOMATION_TOKEN')}`,
       'Content-Type': 'application/json',
-      'User-Agent': 'quickey-project-sync',
+      'User-Agent': 'wink-project-sync',
       'X-GitHub-Api-Version': apiVersion,
     },
     body: JSON.stringify({ query, variables }),
@@ -52,7 +52,7 @@ async function restRequest(pathname) {
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${requiredEnv('PROJECT_AUTOMATION_TOKEN')}`,
-      'User-Agent': 'quickey-project-sync',
+      'User-Agent': 'wink-project-sync',
       'X-GitHub-Api-Version': apiVersion,
     },
   });
@@ -66,6 +66,7 @@ async function restRequest(pathname) {
 }
 
 async function resolveProject(owner, repo) {
+  const projectQuery = preferredProjectTitles.join(' ');
   const data = await graphqlRequest(
     `
       query ResolveProject($owner: String!, $repo: String!, $projectQuery: String!) {
@@ -93,14 +94,18 @@ async function resolveProject(owner, repo) {
         }
       }
     `,
-    { owner, repo, projectQuery: projectTitle },
+    { owner, repo, projectQuery },
   );
 
   const projects = data.repository.owner.projectsV2.nodes;
-  const project = projects.find((candidate) => candidate.title === projectTitle);
+  const project = preferredProjectTitles
+    .map((title) => projects.find((candidate) => candidate.title === title))
+    .find(Boolean);
 
   if (!project) {
-    throw new Error(`Project "${projectTitle}" was not found for ${owner}.`);
+    throw new Error(
+      `Project "${preferredProjectTitles.join('" or "')}" was not found for ${owner}.`,
+    );
   }
 
   return project;
@@ -343,7 +348,7 @@ function currentSingleSelectName(item, fieldName) {
   return fieldValue?.name ?? null;
 }
 
-async function ensureIssuesInProject(owner, repo, projectId, snapshotItems, event) {
+async function ensureIssuesInProject(owner, repo, projectId, chosenProjectTitle, snapshotItems, event) {
   const knownIssueNumbers = new Set(
     snapshotItems
       .map((item) => item.content)
@@ -371,7 +376,7 @@ async function ensureIssuesInProject(owner, repo, projectId, snapshotItems, even
 
     const issueNodeId = await fetchIssueNodeId(owner, repo, issueNumber);
     await addIssueToProject(projectId, issueNodeId);
-    console.log(`Added issue #${issueNumber} to project "${projectTitle}".`);
+    console.log(`Added issue #${issueNumber} to project "${chosenProjectTitle}".`);
   }
 }
 
@@ -429,7 +434,7 @@ async function main() {
   const project = await resolveProject(owner, repo);
 
   let snapshot = await loadProjectSnapshot(project.id);
-  await ensureIssuesInProject(owner, repo, project.id, snapshot.items, event);
+  await ensureIssuesInProject(owner, repo, project.id, project.title, snapshot.items, event);
   snapshot = await loadProjectSnapshot(project.id);
 
   const { statusField, runtimeField } = buildFieldMaps(snapshot.fields);
@@ -478,7 +483,7 @@ async function main() {
     }
   }
 
-  console.log(`Project sync complete for "${projectTitle}" with ${updates} field update(s).`);
+  console.log(`Project sync complete for "${project.title}" with ${updates} field update(s).`);
 }
 
 main().catch((error) => {

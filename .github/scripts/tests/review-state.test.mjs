@@ -28,9 +28,9 @@ test('evaluateReviewState fails on unresolved non-outdated inline threads', () =
       {
         isResolved: false,
         isOutdated: false,
-        path: 'Sources/Quickey/AppController.swift',
+        path: 'Sources/Wink/AppController.swift',
         line: 88,
-        reviewer: 'quickey-review-bot',
+        reviewer: 'wink-review-bot',
         bodyText: 'Guard the no-window path before marking activation stable.',
       },
     ],
@@ -48,7 +48,7 @@ test('evaluateReviewState fails when changes requested and actionable threads bo
       {
         isResolved: false,
         isOutdated: false,
-        path: 'Sources/Quickey/AppController.swift',
+        path: 'Sources/Wink/AppController.swift',
         line: 88,
         reviewer: 'octocat',
         bodyText: 'Still blocked.',
@@ -67,7 +67,7 @@ test('evaluateReviewState ignores outdated unresolved threads', () => {
       {
         isResolved: false,
         isOutdated: true,
-        path: 'Sources/Quickey/AppController.swift',
+        path: 'Sources/Wink/AppController.swift',
         line: 88,
         reviewer: 'octocat',
         bodyText: 'Old comment',
@@ -87,7 +87,7 @@ test('evaluateReviewState ignores resolved threads', () => {
       {
         isResolved: true,
         isOutdated: false,
-        path: 'Sources/Quickey/AppController.swift',
+        path: 'Sources/Wink/AppController.swift',
         line: 88,
         reviewer: 'octocat',
         bodyText: 'Resolved comment',
@@ -101,7 +101,7 @@ test('evaluateReviewState ignores resolved threads', () => {
 test('summarizeBlockingThreads renders file reviewer and first line', () => {
   const summary = summarizeBlockingThreads([
     {
-      path: 'Sources/Quickey/AppController.swift',
+      path: 'Sources/Wink/AppController.swift',
       line: 88,
       reviewer: 'octocat',
       bodyText: 'Guard the no-window path before marking activation stable.\nExtra detail.',
@@ -118,14 +118,14 @@ test('firstLine trims blank lines and collapses whitespace', () => {
 });
 
 test('validate-review-state writes a step summary and exits non-zero for blocking threads', async () => {
-  const tempDir = await mkdtemp(join(tmpdir(), 'quickey-review-gate-'));
+  const tempDir = await mkdtemp(join(tmpdir(), 'wink-review-gate-'));
   const eventPath = join(tempDir, 'event.json');
   const summaryPath = join(tempDir, 'summary.md');
 
   await writeFile(
     eventPath,
     JSON.stringify({
-      repository: { owner: { login: 'xrf9268-hue' }, name: 'Quickey' },
+      repository: { owner: { login: 'xrf9268-hue' }, name: 'Wink' },
       pull_request: { number: 999, body: '' },
     }),
   );
@@ -143,9 +143,9 @@ test('validate-review-state writes a step summary and exits non-zero for blockin
           {
             isResolved: false,
             isOutdated: false,
-            path: 'Sources/Quickey/AppController.swift',
+            path: 'Sources/Wink/AppController.swift',
             line: 88,
-            reviewer: 'quickey-review-bot',
+            reviewer: 'wink-review-bot',
             bodyText: 'Guard the no-window path before marking activation stable.',
           },
         ],

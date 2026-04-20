@@ -1,11 +1,11 @@
 # Loop Job Guide
 
-How to run automated Claude Code sessions for recurring project work using `/loop`. See also [Wiki: Loop Job Configuration](https://github.com/xrf9268-hue/Quickey/wiki/Loop-Job-Configuration).
+How to run automated Claude Code sessions for recurring project work using `/loop`. See also [Wiki: Loop Job Configuration](https://github.com/xrf9268-hue/Wink/wiki/Loop-Job-Configuration).
 
 Repository-native state sync is now handled separately by GitHub Actions:
 - `.github/workflows/pr-metadata.yml` enforces PR issue linkage and validation-state metadata
 - `.github/workflows/review-gate.yml` turns unresolved actionable review state into a deterministic required check
-- `.github/workflows/project-sync.yml` keeps `Quickey Backlog` `Status` and `Runtime Validation` aligned with issue/PR state
+- `.github/workflows/project-sync.yml` keeps `Wink Backlog` `Status` and `Runtime Validation` aligned with issue/PR state
 - [`github-automation.md`](./github-automation.md) documents the required `PROJECT_AUTOMATION_TOKEN` secret, checked-in ruleset artifact, and governance rollout order
 
 ## Quick Start
@@ -89,7 +89,7 @@ Keep the skill generic. Project-specific context belongs in `CLAUDE.md` / `AGENT
 
 ## Development-Stage Policy
 
-The current Quickey policy is intentionally development-stage biased:
+The current Wink policy is intentionally development-stage biased:
 
 - The durable merge gate lives in repository-native governance: required checks plus GitHub conversation resolution on `main`
 - `/loop` should treat unresolved bot or human review feedback in GitHub as actionable because `Review Gate / Validate review state` will convert that state into a required check

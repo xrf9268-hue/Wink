@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>Wink</string>
+  <key>CFBundleIdentifier</key><string>com.wink.app</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>Wink</string>
+  <key>CFBundleDisplayName</key><string>Wink</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleIconName</key><string>AppIcon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>0.3.0</string>
+  <key>CFBundleVersion</key><string>3</string>
+  <key>LSUIElement</key><true/>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>NSHumanReadableCopyright</key><string>Copyright © 2026. All rights reserved.</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>OSLogPreferences</key>
+  <dict>
+    <key>com.wink.app</key>
+    <dict>
+      <key>DEFAULT-OPTIONS</key>
+      <dict>
+        <key>Level</key>
+        <dict>
+          <key>Enable</key><string>Debug</string>
+          <key>Persist</key><string>Info</string>
+        </dict>
+      </dict>
+    </dict>
+  </dict>
+</dict>
+</plist>

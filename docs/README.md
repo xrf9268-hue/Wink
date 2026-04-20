@@ -1,10 +1,10 @@
 # Docs Index
 
-This directory maps the maintainer-facing docs for Quickey.
+This directory maps the maintainer-facing docs for Wink.
 
 ## Core Docs
 - [`architecture.md`](./architecture.md)
-- [`github-automation.md`](./github-automation.md) — PR metadata enforcement, deterministic review gating, the checked-in `main` ruleset artifact, Quickey Backlog project reconciliation, runtime-validation field sync, and required repository secrets
+- [`github-automation.md`](./github-automation.md) — PR metadata enforcement, deterministic review gating, the checked-in `main` ruleset artifact, Wink Backlog project reconciliation, runtime-validation field sync, and required repository secrets
 - [`signing-and-release.md`](./signing-and-release.md) — local DMG packaging, internal-package artifacts, signing, notarization, release secrets, and tag-driven GitHub Release flow
 
 ## Maintainer Notes
@@ -21,6 +21,7 @@ This directory maps the maintainer-facing docs for Quickey.
 ## Historical and Process Docs
 - [`archive/`](./archive/)
 - [`superpowers/`](./superpowers/)
+- Rename evaluation note: [`archive/issue-183-wink-rename-evaluation.md`](./archive/issue-183-wink-rename-evaluation.md)
 
 `archive/` and `superpowers/` are historical or process-oriented references, not the current source of truth.
 

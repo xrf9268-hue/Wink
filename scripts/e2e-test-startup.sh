@@ -16,7 +16,7 @@ wait_for_log "checkPermission:" 10 0 || true
 
 SLICE=$(get_log_slice 0)
 
-assert_contains "$SLICE" "Quickey starting" "App startup logged"
+assert_contains "$SLICE" "Wink starting" "App startup logged"
 assert_contains "$SLICE" "attemptStart: shortcuts=[0-9][0-9]* triggerIndex=[0-9][0-9]*" "Shortcuts indexed"
 assert_contains "$SLICE" "triggerIndex=[1-9]" "Shortcut count > 0"
 
