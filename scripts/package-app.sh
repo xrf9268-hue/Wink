@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="Quickey"
+APP_NAME="Wink"
 BUNDLE_ID="com.quickey.app"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -10,8 +10,8 @@ APP_DIR="$BUILD_DIR/${APP_NAME}.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
-INFO_PLIST="$PROJECT_DIR/Sources/Quickey/Resources/Info.plist"
-APP_ICON="$PROJECT_DIR/Sources/Quickey/Resources/AppIcon.icns"
+INFO_PLIST="$PROJECT_DIR/Sources/Wink/Resources/Info.plist"
+APP_ICON="$PROJECT_DIR/Sources/Wink/Resources/AppIcon.icns"
 SIGN_IDENTITY="${SIGN_IDENTITY:-Quickey}"
 ENTITLEMENTS_PLIST="${ENTITLEMENTS_PLIST:-$PROJECT_DIR/entitlements.plist}"
 ENABLE_HARDENED_RUNTIME="${ENABLE_HARDENED_RUNTIME:-0}"
@@ -46,7 +46,7 @@ fi
 # Copy Info.plist from canonical source
 if [ -f "$INFO_PLIST" ]; then
     cp "$INFO_PLIST" "$CONTENTS_DIR/Info.plist"
-    echo "    Info.plist copied from Sources/Quickey/Resources/Info.plist"
+    echo "    Info.plist copied from Sources/Wink/Resources/Info.plist"
 else
     echo "Warning: Info.plist not found at $INFO_PLIST, generating default" >&2
     cat > "$CONTENTS_DIR/Info.plist" <<PLIST

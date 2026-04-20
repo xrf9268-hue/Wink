@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
-  <key>CFBundleExecutable</key><string>Quickey</string>
+  <key>CFBundleExecutable</key><string>Wink</string>
   <key>CFBundleIdentifier</key><string>com.quickey.app</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-  <key>CFBundleName</key><string>Quickey</string>
-  <key>CFBundleDisplayName</key><string>Quickey</string>
+  <key>CFBundleName</key><string>Wink</string>
+  <key>CFBundleDisplayName</key><string>Wink</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
