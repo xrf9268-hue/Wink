@@ -60,6 +60,14 @@ private final class MutablePermissionService: @unchecked Sendable, PermissionSer
     }
 }
 
+private final class MutableAppBundleLocatorState: @unchecked Sendable {
+    var entries: [String: URL]
+
+    init(entries: [String: URL]) {
+        self.entries = entries
+    }
+}
+
 @MainActor
 private final class FakeCaptureProvider: ShortcutCaptureProvider {
     var isRunning = false
@@ -168,12 +176,20 @@ private struct FakeAppSwitcher: AppSwitching {
     }
 }
 
+private func defaultShortcutManagerAppBundleLocator() -> AppBundleLocator {
+    TestAppBundleLocator(entries: [
+        "com.apple.Safari": URL(fileURLWithPath: "/Applications/Safari.app"),
+        "com.apple.Terminal": URL(fileURLWithPath: "/Applications/Utilities/Terminal.app"),
+    ]).locator
+}
+
 @MainActor
 private func makeShortcutManager(
     permissionService: some PermissionServicing,
     standardProvider: FakeCaptureProvider = FakeCaptureProvider(),
     hyperProvider: FakeHyperCaptureProvider = FakeHyperCaptureProvider(),
     persistenceHarness: TestPersistenceHarness = TestPersistenceHarness(),
+    appBundleLocator: AppBundleLocator = defaultShortcutManagerAppBundleLocator(),
     diagnosticSink: @escaping @Sendable (String) -> Void = { _ in }
 ) -> (manager: ShortcutManager, standardProvider: FakeCaptureProvider, hyperProvider: FakeHyperCaptureProvider, persistenceHarness: TestPersistenceHarness) {
     let coordinator = ShortcutCaptureCoordinator(
@@ -186,6 +202,7 @@ private func makeShortcutManager(
         appSwitcher: FakeAppSwitcher(),
         captureCoordinator: coordinator,
         permissionService: permissionService,
+        appBundleLocator: appBundleLocator,
         diagnosticClient: .init(log: diagnosticSink)
     )
     return (manager, standardProvider, hyperProvider, persistenceHarness)
@@ -218,6 +235,22 @@ private func hyperShortcut() -> AppShortcut {
     )
 }
 
+private func unavailableShortcut() -> AppShortcut {
+    AppShortcut(
+        appName: "Ghostty",
+        bundleIdentifier: "com.mitchellh.ghostty",
+        keyEquivalent: "g",
+        modifierFlags: ["command"]
+    )
+}
+
+private func standardShortcutKeyPress() -> KeyPress {
+    KeyPress(
+        keyCode: UInt16(kVK_ANSI_S),
+        modifiers: [.command, .shift]
+    )
+}
+
 @Test @MainActor
 func helperBuiltShortcutManagerCanPersistIntoInjectedHarness() throws {
     let shortcuts = [standardShortcut()]
@@ -230,6 +263,99 @@ func helperBuiltShortcutManagerCanPersistIntoInjectedHarness() throws {
     let persisted = try context.persistenceHarness.makePersistenceService().load()
     #expect(persisted == shortcuts)
     #expect(context.persistenceHarness.shortcutsURL.path.hasPrefix(FileManager.default.temporaryDirectory.path))
+}
+
+@Test @MainActor
+func saveRegistersOnlyCurrentlyAvailableShortcuts() throws {
+    let bundleLocatorState = MutableAppBundleLocatorState(entries: [
+        "com.apple.Safari": URL(fileURLWithPath: "/Applications/Safari.app")
+    ])
+    let context = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        appBundleLocator: AppBundleLocator { bundleIdentifier in
+            bundleLocatorState.entries[bundleIdentifier]
+        }
+    )
+    let shortcuts = [standardShortcut(), unavailableShortcut()]
+
+    context.manager.save(shortcuts: shortcuts)
+
+    let persisted = try context.persistenceHarness.makePersistenceService().load()
+    #expect(persisted == shortcuts)
+    #expect(context.standardProvider.registeredShortcuts == [standardShortcutKeyPress()])
+}
+
+@Test @MainActor
+func availabilityGainRebuildsRegisteredShortcutsWithoutAnotherSave() {
+    let bundleLocatorState = MutableAppBundleLocatorState(entries: [:])
+    let context = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        appBundleLocator: AppBundleLocator { bundleIdentifier in
+            bundleLocatorState.entries[bundleIdentifier]
+        }
+    )
+    context.manager.save(shortcuts: [standardShortcut()])
+    context.manager.start()
+
+    #expect(context.standardProvider.registeredShortcuts.isEmpty)
+
+    bundleLocatorState.entries["com.apple.Safari"] = URL(fileURLWithPath: "/Applications/Safari.app")
+    context.manager.checkPermissionChange()
+
+    #expect(context.standardProvider.registeredShortcuts == [standardShortcutKeyPress()])
+}
+
+@Test @MainActor
+func availabilityGainForHyperShortcutRequestsInputMonitoringAndStartsEventTap() {
+    let bundleLocatorState = MutableAppBundleLocatorState(entries: [:])
+    let permissionService = MutablePermissionService(ax: true, input: false)
+    permissionService.grantInputMonitoringOnPrompt = true
+    let context = makeShortcutManager(
+        permissionService: permissionService,
+        appBundleLocator: AppBundleLocator { bundleIdentifier in
+            bundleLocatorState.entries[bundleIdentifier]
+        }
+    )
+
+    context.manager.save(shortcuts: [hyperShortcut()])
+    context.manager.setHyperKeyEnabled(true)
+    context.manager.start()
+
+    #expect(permissionService.requestedInputMonitoringFlags == [false])
+    #expect(context.hyperProvider.isRunning == false)
+
+    bundleLocatorState.entries["com.apple.Safari"] = URL(fileURLWithPath: "/Applications/Safari.app")
+    context.manager.checkPermissionChange()
+
+    let status = context.manager.shortcutCaptureStatus()
+
+    #expect(permissionService.requestedInputMonitoringFlags == [false, true])
+    #expect(status.inputMonitoringGranted == true)
+    #expect(status.inputMonitoringRequired == true)
+    #expect(status.hyperShortcutsReady == true)
+    #expect(context.hyperProvider.isRunning == true)
+}
+
+@Test @MainActor
+func availabilityLossRemovesRegisteredShortcutsWithoutAnotherSave() {
+    let bundleLocatorState = MutableAppBundleLocatorState(entries: [
+        "com.apple.Safari": URL(fileURLWithPath: "/Applications/Safari.app")
+    ])
+    let context = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        appBundleLocator: AppBundleLocator { bundleIdentifier in
+            bundleLocatorState.entries[bundleIdentifier]
+        }
+    )
+    context.manager.save(shortcuts: [standardShortcut()])
+    context.manager.start()
+
+    #expect(context.standardProvider.registeredShortcuts == [standardShortcutKeyPress()])
+
+    bundleLocatorState.entries = [:]
+    context.manager.checkPermissionChange()
+
+    #expect(context.standardProvider.registeredShortcuts.isEmpty)
 }
 
 @Test @MainActor

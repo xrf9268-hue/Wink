@@ -17,12 +17,14 @@ final class ShortcutManager {
     private let captureCoordinator: ShortcutCaptureCoordinator
     private let permissionService: any PermissionServicing
     private let usageTracker: UsageTracker?
+    private let appBundleLocator: AppBundleLocator
     private let diagnosticClient: DiagnosticClient
     private let keyMatcher = KeyMatcher()
     private var triggerIndex: [ShortcutTrigger: AppShortcut] = [:]
     private var permissionTimer: Timer?
     private var lastAccessibilityState: Bool = false
     private var lastInputMonitoringState: Bool = false
+    private var lastAvailableShortcutBundleIdentifiers: Set<String> = []
     private var hyperKeyEnabled = false
     private var lastCaptureBlockedMessages: Set<String> = []
     private var hasStarted = false
@@ -34,6 +36,7 @@ final class ShortcutManager {
         captureCoordinator: ShortcutCaptureCoordinator = ShortcutCaptureCoordinator(),
         permissionService: any PermissionServicing = AccessibilityPermissionService(),
         usageTracker: UsageTracker? = nil,
+        appBundleLocator: AppBundleLocator = AppBundleLocator(),
         diagnosticClient: DiagnosticClient
     ) {
         self.shortcutStore = shortcutStore
@@ -42,6 +45,7 @@ final class ShortcutManager {
         self.captureCoordinator = captureCoordinator
         self.permissionService = permissionService
         self.usageTracker = usageTracker
+        self.appBundleLocator = appBundleLocator
         self.diagnosticClient = diagnosticClient
     }
 
@@ -125,6 +129,7 @@ final class ShortcutManager {
         let snapshot = captureCoordinator.snapshot()
         let accessibilityChanged = axGranted != lastAccessibilityState
         let inputMonitoringChanged = imGranted != lastInputMonitoringState
+        let inputMonitoringWasRequired = captureCoordinator.inputMonitoringRequired
 
         logger.info(
             "checkPermission: ax=\(axGranted) im=\(imGranted) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive)"
@@ -167,7 +172,11 @@ final class ShortcutManager {
             return
         }
 
-        if accessibilityChanged
+        let availabilityChanged = refreshShortcutAvailabilityIfNeeded()
+        let inputMonitoringRequirementChanged = !inputMonitoringWasRequired
+            && captureCoordinator.inputMonitoringRequired
+
+        if (accessibilityChanged || inputMonitoringRequirementChanged)
             && captureCoordinator.inputMonitoringRequired
             && !imGranted
         {
@@ -189,7 +198,7 @@ final class ShortcutManager {
             inputMonitoringGranted: imGranted
         )
         let captureNeedsResync = !currentStatus.standardShortcutsReady || !currentStatus.hyperShortcutsReady
-        guard accessibilityChanged || inputMonitoringChanged || captureNeedsResync else {
+        guard accessibilityChanged || inputMonitoringChanged || captureNeedsResync || availabilityChanged else {
             return
         }
 
@@ -260,8 +269,41 @@ final class ShortcutManager {
     // MARK: - Key handling
 
     private func rebuildIndex() {
-        triggerIndex = keyMatcher.buildIndex(for: shortcutStore.shortcuts)
-        captureCoordinator.updateShortcuts(shortcutStore.shortcuts)
+        applyAvailabilitySnapshot(availabilitySnapshot())
+    }
+
+    private func refreshShortcutAvailabilityIfNeeded() -> Bool {
+        let snapshot = availabilitySnapshot()
+        guard snapshot.availableBundleIdentifiers != lastAvailableShortcutBundleIdentifiers else {
+            return false
+        }
+
+        applyAvailabilitySnapshot(snapshot)
+        return true
+    }
+
+    private func availabilitySnapshot() -> (activeShortcuts: [AppShortcut], availableBundleIdentifiers: Set<String>) {
+        var activeShortcuts: [AppShortcut] = []
+        var availableBundleIdentifiers = Set<String>()
+
+        for shortcut in shortcutStore.shortcuts where shortcut.isEnabled {
+            guard appBundleLocator.applicationURL(for: shortcut.bundleIdentifier) != nil else {
+                continue
+            }
+
+            activeShortcuts.append(shortcut)
+            availableBundleIdentifiers.insert(shortcut.bundleIdentifier)
+        }
+
+        return (activeShortcuts, availableBundleIdentifiers)
+    }
+
+    private func applyAvailabilitySnapshot(
+        _ snapshot: (activeShortcuts: [AppShortcut], availableBundleIdentifiers: Set<String>)
+    ) {
+        lastAvailableShortcutBundleIdentifiers = snapshot.availableBundleIdentifiers
+        triggerIndex = keyMatcher.buildIndex(for: snapshot.activeShortcuts)
+        captureCoordinator.updateShortcuts(snapshot.activeShortcuts)
     }
 
     /// Returns `true` if the key press matched a shortcut (so the event should be consumed).

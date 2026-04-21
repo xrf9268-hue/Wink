@@ -9,6 +9,7 @@ final class AppController {
     private let persistenceService = PersistenceService()
     private let usageTracker = UsageTracker()
     private let hyperKeyService = HyperKeyService()
+    private let appBundleLocator = AppBundleLocator()
     private let userDefaults: UserDefaults
     private lazy var appSwitcher = AppSwitcher()
     private lazy var shortcutManager = ShortcutManager(
@@ -16,6 +17,7 @@ final class AppController {
         persistenceService: persistenceService,
         appSwitcher: appSwitcher,
         usageTracker: usageTracker,
+        appBundleLocator: appBundleLocator,
         diagnosticClient: .live
     )
     private lazy var menuBarController = MenuBarController(

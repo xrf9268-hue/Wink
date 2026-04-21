@@ -48,20 +48,11 @@ final class AppListProvider {
     }
 
     func refreshIfNeeded() {
-        if let lastScan = lastScanTime, client.now().timeIntervalSince(lastScan) < 60 {
-            return
-        }
-        guard !isScanning else { return }
-        isScanning = true
-        refreshTask = Task { [client] in
-            let scanned = await client.scanInstalledApps()
-            let runningApplications = client.runningApplications()
-            applyRefresh(
-                scanned: scanned,
-                runningApplications: runningApplications,
-                now: client.now()
-            )
-        }
+        refresh(force: false)
+    }
+
+    func forceRefresh() {
+        refresh(force: true)
     }
 
     func noteRecentApp(bundleIdentifier: String) {
@@ -77,6 +68,16 @@ final class AppListProvider {
         await refreshTask?.value
     }
 
+    func refreshAndWaitIfNeeded() async {
+        refreshIfNeeded()
+        await waitForRefreshForTesting()
+    }
+
+    func forceRefreshAndWait() async {
+        forceRefresh()
+        await waitForRefreshForTesting()
+    }
+
     func filteredApps(query: String) -> [AppEntry] {
         guard !query.isEmpty else { return allApps }
         let lowered = query.lowercased()
@@ -86,7 +87,47 @@ final class AppListProvider {
         }
     }
 
+    func app(for bundleIdentifier: String) -> AppEntry? {
+        allAppsByID[bundleIdentifier]
+    }
+
+    func apps(named appName: String) -> [AppEntry] {
+        allApps.filter {
+            $0.name.compare(
+                appName,
+                options: [.caseInsensitive, .diacriticInsensitive]
+            ) == .orderedSame
+        }
+    }
+
+    var hasScannedApps: Bool {
+        lastScanTime != nil
+    }
+
+    func isInstalled(bundleIdentifier: String) -> Bool {
+        allAppsByID[bundleIdentifier] != nil
+    }
+
     // MARK: - Scanning
+
+    private func refresh(force: Bool) {
+        if !force,
+           let lastScan = lastScanTime,
+           client.now().timeIntervalSince(lastScan) < 60 {
+            return
+        }
+        guard !isScanning else { return }
+        isScanning = true
+        refreshTask = Task { [client] in
+            let scanned = await client.scanInstalledApps()
+            let runningApplications = client.runningApplications()
+            applyRefresh(
+                scanned: scanned,
+                runningApplications: runningApplications,
+                now: client.now()
+            )
+        }
+    }
 
     nonisolated private static func scanInstalledApps() -> [AppEntry] {
         let searchDirs = [

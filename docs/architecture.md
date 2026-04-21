@@ -95,6 +95,8 @@ Responsibilities:
 - choose target applications
 - record shortcuts
 - display saved bindings with inline usage stats
+- export/import shareable shortcut recipes from Settings
+- preview import conflicts and unresolved targets before mutating persisted shortcuts
 - surface truthful shortcut readiness via `ShortcutCaptureStatus`
 - surface launch-at-login state via `LaunchAtLoginStatus`
 - show conflicts before saving
@@ -110,6 +112,7 @@ Responsibilities:
 Responsibilities:
 - represent saved shortcut bindings
 - represent recorder output
+- represent versioned, human-readable shortcut recipe payloads for export/import
 - detect duplicate/conflicting bindings
 - hold in-memory state used by the event path and UI
 - persist only the current `[AppShortcut]` schema; unsupported or partially corrupted payloads are load failures, not best-effort partial recovery
@@ -121,6 +124,8 @@ Responsibilities:
 - `EventTapCaptureProvider`
 - `KeyMatcher`
 - `KeySymbolMapper`
+- `WinkRecipeCodec`
+- `WinkRecipeImportPlanner`
 
 Responsibilities:
 - route standard shortcuts to Carbon `EventHotKey`
@@ -129,6 +134,8 @@ Responsibilities:
 - normalize captured key events
 - map between key codes and human-readable shortcut symbols
 - match incoming events against stored bindings
+- encode/decode shareable recipe JSON with explicit schema-version checks
+- classify imported recipe entries into ready/conflict/unresolved plans before persistence
 - keep provider callback work lightweight and always hop back to the main actor before app toggling
 - report capture readiness as capability-aware state instead of a single global boolean:
   - Accessibility granted
@@ -192,6 +199,8 @@ Responsibilities:
 - request Input Monitoring only when the current enabled shortcut set actually requires Hyper transport, and defer the request until Accessibility is already available
 - report shortcut readiness from both permissions plus live Carbon/event-tap state
 - recover monitoring after permission changes without relaunch
+- keep persisted unresolved shortcuts in `shortcuts.json`, but only register enabled shortcuts whose target app currently resolves via `NSWorkspace.urlForApplication(withBundleIdentifier:)`
+- re-check target-app availability during the existing permission poll so installs/uninstalls can resync registered shortcuts without another save or relaunch
 - manage launch-at-login state via `SMAppService`, including approval-needed state
 - distinguish `SMAppService.Status.notFound` caused by install location from a real bundle-configuration miss before surfacing launch-at-login guidance
 - provide LSUIElement app bundle scaffold
@@ -230,6 +239,24 @@ User opens settings
   -> PersistenceService.save()
   -> ShortcutCaptureCoordinator refreshes routed shortcuts / provider state
   -> onShortcutConfigurationChange triggers AppPreferences.refreshPermissions()
+```
+
+### 2b. Import / export recipe flow
+```text
+User clicks Export...
+  -> ShortcutEditorState.exportRecipeData()
+  -> WinkRecipeCodec encodes the current [AppShortcut] state into pretty-printed JSON
+  -> NSSavePanel writes a `.winkrecipe` file
+
+User clicks Import...
+  -> AppListProvider refreshes the installed-app catalog
+  -> NSOpenPanel reads `.winkrecipe` / legacy `.quickeyrecipe` / `.json`
+  -> WinkRecipeCodec decodes the payload and validates schemaVersion
+  -> ShortcutEditorState builds an import catalog from the latest app scan plus AppBundleLocator fallback lookups
+  -> WinkRecipeImportPlanner classifies entries into ready / conflict / unresolved preview buckets
+  -> user chooses Skip Conflicts or Replace Existing
+  -> ShortcutManager.save(updated shortcuts)
+  -> persisted shortcuts keep unresolved targets, but ShortcutManager only registers entries whose apps are currently available
 ```
 
 ### 3. Trigger flow

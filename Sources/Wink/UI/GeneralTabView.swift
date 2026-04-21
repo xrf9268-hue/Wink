@@ -5,6 +5,8 @@ struct GeneralTabView: View {
     var editor: ShortcutEditorState
 
     var body: some View {
+        let importPreviewActive = editor.pendingRecipeImport != nil
+
         VStack(alignment: .leading, spacing: 12) {
             // Startup card
             CardView("Startup") {
@@ -45,6 +47,7 @@ struct GeneralTabView: View {
                         get: { editor.allEnabled },
                         set: { editor.setAllEnabled($0) }
                     ))
+                    .disabled(importPreviewActive)
 
                     Divider()
 

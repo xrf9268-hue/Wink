@@ -73,6 +73,30 @@ func refreshIfNeededSkipsRescanUntilSixtySecondsHaveElapsed() async {
 }
 
 @Test @MainActor
+func forceRefreshAndWaitRescansWithinCacheWindow() async {
+    let recorder = AppListProviderRecorder(now: Date(timeIntervalSinceReferenceDate: 250))
+    let provider = AppListProvider(client: .init(
+        now: { recorder.now },
+        scanInstalledApps: {
+            recorder.scanCallCount += 1
+            return []
+        },
+        runningApplications: { [] },
+        loadRecents: { [] },
+        saveRecents: { _ in },
+        mainBundleIdentifier: { nil }
+    ))
+
+    provider.refreshIfNeeded()
+    await provider.waitForRefreshForTesting()
+
+    recorder.now = recorder.now.addingTimeInterval(10)
+    await provider.forceRefreshAndWait()
+
+    #expect(recorder.scanCallCount == 2)
+}
+
+@Test @MainActor
 func noteRecentAppCapsPersistedRecentsAtTenEntries() {
     let recorder = AppListProviderRecorder(now: Date())
     let provider = AppListProvider(client: .init(
@@ -121,6 +145,40 @@ func recentAppsResolvesAgainstAllAppsCacheAndSkipsStaleBundleIDs() async {
 
     let resolved = provider.recentApps.map(\.bundleIdentifier)
     #expect(resolved == ["com.apple.Safari", "com.apple.Finder"])
+}
+
+@Test @MainActor
+func appLookupHelpersSupportBundleIDAndExactNameMatching() async {
+    let recorder = AppListProviderRecorder(now: Date(timeIntervalSinceReferenceDate: 400))
+    let safariURL = URL(fileURLWithPath: "/Applications/Safari.app")
+    let notesOneURL = URL(fileURLWithPath: "/Applications/Notes One.app")
+    let notesTwoURL = URL(fileURLWithPath: "/Applications/Notes Two.app")
+    let provider = AppListProvider(client: .init(
+        now: { recorder.now },
+        scanInstalledApps: {
+            recorder.scanCallCount += 1
+            return [
+                AppEntry(id: "com.apple.Safari", name: "Safari", url: safariURL),
+                AppEntry(id: "com.example.notes.one", name: "Notes", url: notesOneURL),
+                AppEntry(id: "com.example.notes.two", name: "Notes", url: notesTwoURL),
+            ]
+        },
+        runningApplications: { [] },
+        loadRecents: { [] },
+        saveRecents: { _ in },
+        mainBundleIdentifier: { nil }
+    ))
+
+    provider.refreshIfNeeded()
+    await provider.waitForRefreshForTesting()
+
+    #expect(provider.app(for: "com.apple.Safari")?.name == "Safari")
+    #expect(provider.isInstalled(bundleIdentifier: "com.apple.Safari") == true)
+    #expect(provider.isInstalled(bundleIdentifier: "com.example.missing") == false)
+    #expect(provider.apps(named: "notes").map(\.bundleIdentifier).sorted() == [
+        "com.example.notes.one",
+        "com.example.notes.two",
+    ].sorted())
 }
 
 private final class AppListProviderRecorder: @unchecked Sendable {
