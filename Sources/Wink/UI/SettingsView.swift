@@ -27,6 +27,7 @@ struct SettingsView: View {
     var preferences: AppPreferences
     var insightsViewModel: InsightsViewModel
     var appListProvider: AppListProvider
+    var shortcutStatusProvider: ShortcutStatusProvider
     @State private var selectedTab: SettingsTab = .shortcuts
 
     private var lifecycleHandler: SettingsViewLifecycleHandler {
@@ -45,7 +46,12 @@ struct SettingsView: View {
             Group {
                 switch selectedTab {
                 case .shortcuts:
-                    ShortcutsTabView(editor: editor, preferences: preferences, appListProvider: appListProvider)
+                    ShortcutsTabView(
+                        editor: editor,
+                        preferences: preferences,
+                        appListProvider: appListProvider,
+                        shortcutStatusProvider: shortcutStatusProvider
+                    )
                 case .general:
                     GeneralTabView(preferences: preferences, editor: editor)
                 case .insights:

@@ -74,15 +74,93 @@ struct LayoutRegressionTests {
         let presentation = ShortcutsListRowPresentation(
             shortcut: shortcut,
             usageCount: 732,
-            targetInstalled: false
+            runtimeStatus: ShortcutRuntimeStatus(
+                isRunning: false,
+                isUnavailable: true
+            )
         )
 
         #expect(presentation.title == "Missing App")
         #expect(presentation.subtitle == "732× past 7 days")
-        #expect(presentation.missingAppWarning == "App not currently installed")
+        #expect(presentation.contentOpacity == 1.0)
+        #expect(presentation.showsRunningIndicator == false)
+        #expect(presentation.runningStatusText == nil)
+        #expect(presentation.unavailableStatusText == "App unavailable")
+        #expect(presentation.unavailableHelpText == "Couldn't find this app. Rebind it to restore the shortcut.")
         #expect(presentation.title != "com.example.MissingApp")
         #expect(presentation.subtitle != "com.example.MissingApp")
-        #expect(presentation.missingAppWarning != "com.example.MissingApp")
+        #expect(presentation.unavailableStatusText != "com.example.MissingApp")
+        #expect(presentation.unavailableHelpText != "com.example.MissingApp")
+    }
+
+    @Test @MainActor
+    func shortcutsListRowPresentationShowsRunningIndicatorWhenAppIsActive() {
+        let shortcut = AppShortcut(
+            appName: "Safari",
+            bundleIdentifier: "com.apple.Safari",
+            keyEquivalent: "s",
+            modifierFlags: ["command"]
+        )
+        let presentation = ShortcutsListRowPresentation(
+            shortcut: shortcut,
+            usageCount: 12,
+            runtimeStatus: ShortcutRuntimeStatus(
+                isRunning: true,
+                isUnavailable: false
+            )
+        )
+
+        #expect(presentation.showsRunningIndicator == true)
+        #expect(presentation.runningStatusText == nil)
+        #expect(presentation.unavailableHelpText == nil)
+    }
+
+    @Test @MainActor
+    func shortcutsListRowPresentationAddsRunningLabelWhenDifferentiateWithoutColorIsEnabled() {
+        let shortcut = AppShortcut(
+            appName: "Safari",
+            bundleIdentifier: "com.apple.Safari",
+            keyEquivalent: "s",
+            modifierFlags: ["command"]
+        )
+        let presentation = ShortcutsListRowPresentation(
+            shortcut: shortcut,
+            usageCount: 12,
+            runtimeStatus: ShortcutRuntimeStatus(
+                isRunning: true,
+                isUnavailable: false
+            ),
+            accessibilityOptions: ShortcutRowAccessibilityOptions(
+                differentiateWithoutColor: true,
+                reduceMotion: false
+            )
+        )
+
+        #expect(presentation.showsRunningIndicator == true)
+        #expect(presentation.runningStatusText == "Running")
+        #expect(presentation.unavailableStatusText == nil)
+    }
+
+    @Test @MainActor
+    func shortcutsListRowPresentationOnlyDimsDisabledRows() {
+        let shortcut = AppShortcut(
+            appName: "Terminal",
+            bundleIdentifier: "com.apple.Terminal",
+            keyEquivalent: "t",
+            modifierFlags: ["command"],
+            isEnabled: false
+        )
+        let presentation = ShortcutsListRowPresentation(
+            shortcut: shortcut,
+            usageCount: 4,
+            runtimeStatus: ShortcutRuntimeStatus(
+                isRunning: false,
+                isUnavailable: true
+            )
+        )
+
+        #expect(presentation.contentOpacity == 0.65)
+        #expect(presentation.unavailableStatusText == "App unavailable")
     }
 }
 

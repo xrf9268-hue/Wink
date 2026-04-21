@@ -8,6 +8,7 @@ final class SettingsWindowController {
     private let usageTracker: UsageTracker?
     private let hyperKeyService: HyperKeyService?
     private let updateService: UpdateServicing?
+    private let shortcutStatusProvider: ShortcutStatusProvider
     private var window: NSWindow?
 
     init(
@@ -15,13 +16,15 @@ final class SettingsWindowController {
         shortcutManager: ShortcutManager,
         usageTracker: UsageTracker? = nil,
         hyperKeyService: HyperKeyService? = nil,
-        updateService: UpdateServicing? = nil
+        updateService: UpdateServicing? = nil,
+        shortcutStatusProvider: ShortcutStatusProvider = ShortcutStatusProvider()
     ) {
         self.shortcutStore = shortcutStore
         self.shortcutManager = shortcutManager
         self.usageTracker = usageTracker
         self.hyperKeyService = hyperKeyService
         self.updateService = updateService
+        self.shortcutStatusProvider = shortcutStatusProvider
     }
 
     func show() {
@@ -45,7 +48,13 @@ final class SettingsWindowController {
         )
         let insightsViewModel = InsightsViewModel(usageTracker: usageTracker, shortcutStore: shortcutStore)
         let appListProvider = AppListProvider()
-        let contentView = SettingsView(editor: editor, preferences: preferences, insightsViewModel: insightsViewModel, appListProvider: appListProvider)
+        let contentView = SettingsView(
+            editor: editor,
+            preferences: preferences,
+            insightsViewModel: insightsViewModel,
+            appListProvider: appListProvider,
+            shortcutStatusProvider: shortcutStatusProvider
+        )
         let hostingController = NSHostingController(rootView: contentView)
 
         let window = NSWindow(contentViewController: hostingController)
