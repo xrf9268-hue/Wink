@@ -190,6 +190,54 @@ func LaunchAtLoginPresentation_openLoginItemsSettingsDelegatesToService() {
     #expect(recorder.didOpenSettings == true)
 }
 
+@Test @MainActor
+func updatePresentation_exposesVersionAndEnablesManualChecksWhenServiceIsAvailable() {
+    let service = FakeUpdateService(
+        isConfigured: true,
+        canCheckForUpdates: true,
+        currentVersion: "0.3.0",
+        automaticallyChecksForUpdates: true,
+        automaticallyDownloadsUpdates: true
+    )
+    let preferences = makePreferences(updateService: service)
+
+    let presentation = preferences.updatePresentation
+
+    #expect(presentation.currentVersion == "0.3.0")
+    #expect(presentation.isConfigured == true)
+    #expect(presentation.checkForUpdatesEnabled == true)
+    #expect(presentation.automaticChecksEnabledByDefault == true)
+    #expect(presentation.automaticDownloadsEnabledByDefault == true)
+}
+
+@Test @MainActor
+func updatePresentation_defaultsToDisabledChecksWithoutService() {
+    let preferences = makePreferences()
+
+    let presentation = preferences.updatePresentation
+
+    #expect(presentation.isConfigured == false)
+    #expect(presentation.checkForUpdatesEnabled == false)
+    #expect(presentation.automaticChecksEnabledByDefault == true)
+    #expect(presentation.automaticDownloadsEnabledByDefault == true)
+}
+
+@Test @MainActor
+func updatePresentation_checkForUpdatesDelegatesToService() {
+    let service = FakeUpdateService(
+        isConfigured: true,
+        canCheckForUpdates: true,
+        currentVersion: "0.3.0",
+        automaticallyChecksForUpdates: true,
+        automaticallyDownloadsUpdates: true
+    )
+    let preferences = makePreferences(updateService: service)
+
+    preferences.checkForUpdates()
+
+    #expect(service.didRequestManualCheck == true)
+}
+
 private struct FakePermissionService: PermissionServicing {
     let ax: Bool
     let input: Bool
@@ -301,6 +349,34 @@ private final class OpenSettingsRecorder: @unchecked Sendable {
     var didOpenSettings = false
 }
 
+@MainActor
+private final class FakeUpdateService: UpdateServicing {
+    let isConfigured: Bool
+    let canCheckForUpdates: Bool
+    let currentVersion: String
+    let automaticallyChecksForUpdates: Bool
+    let automaticallyDownloadsUpdates: Bool
+    private(set) var didRequestManualCheck = false
+
+    init(
+        isConfigured: Bool,
+        canCheckForUpdates: Bool,
+        currentVersion: String,
+        automaticallyChecksForUpdates: Bool,
+        automaticallyDownloadsUpdates: Bool
+    ) {
+        self.isConfigured = isConfigured
+        self.canCheckForUpdates = canCheckForUpdates
+        self.currentVersion = currentVersion
+        self.automaticallyChecksForUpdates = automaticallyChecksForUpdates
+        self.automaticallyDownloadsUpdates = automaticallyDownloadsUpdates
+    }
+
+    func checkForUpdates() {
+        didRequestManualCheck = true
+    }
+}
+
 private final class MutableLaunchAtLoginState: @unchecked Sendable {
     var status: SMAppService.Status
     var registerError: Error?
@@ -342,7 +418,8 @@ private func makePreferences(
     status: SMAppService.Status = .notRegistered,
     state: MutableLaunchAtLoginState? = nil,
     openSystemSettingsLoginItems: @escaping @Sendable () -> Void = {},
-    bundleURL: URL = URL(fileURLWithPath: "/Applications/Wink.app")
+    bundleURL: URL = URL(fileURLWithPath: "/Applications/Wink.app"),
+    updateService: UpdateServicing? = nil
 ) -> AppPreferences {
     let launchAtLoginState = state ?? MutableLaunchAtLoginState(status: status)
     return AppPreferences(
@@ -372,7 +449,8 @@ private func makePreferences(
                     URL(fileURLWithPath: "/Users/test/Applications", isDirectory: true),
                 ]
             }
-        ))
+        )),
+        updateService: updateService
     )
 }
 

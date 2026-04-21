@@ -37,6 +37,13 @@ jobs:
       - name: Build (release)
         run: swift build -c release
 
+      - name: Generate temporary Sparkle signing keys
+        run: |
+          SPARKLE_KEY_OUTPUT_DIR="$RUNNER_TEMP/sparkle-ci-keys" \
+            bash scripts/export-test-sparkle-keys.sh >> "$GITHUB_ENV"
+          echo "SPARKLE_PUBLIC_BASE_URL=https://example.invalid/wink/" >> "$GITHUB_ENV"
+          echo "SPARKLE_FEED_URL=https://example.invalid/wink/appcast.xml" >> "$GITHUB_ENV"
+
       - name: Package app bundle
         run: bash scripts/package-app.sh
 
@@ -44,7 +51,27 @@ jobs:
         run: |
           test -f build/Wink.app/Contents/MacOS/Wink
           test -f build/Wink.app/Contents/Info.plist
+          test -d build/Wink.app/Contents/Frameworks/Sparkle.framework
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' build/Wink.app/Contents/Info.plist)" = "$SPARKLE_FEED_URL"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' build/Wink.app/Contents/Info.plist)" = "$SPARKLE_PUBLIC_ED_KEY"
           file build/Wink.app/Contents/MacOS/Wink | grep -q "Mach-O"
+
+      - name: Package Sparkle update ZIP
+        run: bash scripts/package-update-zip.sh
+
+      - name: Verify Sparkle update ZIP
+        run: |
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Wink/Resources/Info.plist)"
+          test -f "build/Wink-${VERSION}.zip"
+
+      - name: Generate Sparkle appcast
+        run: bash scripts/generate-appcast.sh
+
+      - name: Verify Sparkle appcast
+        run: |
+          test -f build/appcast.xml
+          grep -q "Wink-" build/appcast.xml
+          grep -q "https://example.invalid/wink/" build/appcast.xml
 
       - name: Package DMG
         run: bash scripts/package-dmg.sh
@@ -53,3 +80,23 @@ jobs:
         run: |
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Wink/Resources/Info.plist)"
           test -f "build/Wink-${VERSION}.dmg"
+
+      - name: Verify R2 upload helper (dry run)
+        run: |
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Wink/Resources/Info.plist)"
+          export R2_ACCOUNT_ID=test-account
+          export R2_ACCESS_KEY_ID=test-access-key
+          export R2_SECRET_ACCESS_KEY=test-secret-key
+          export R2_BUCKET=test-bucket
+          export R2_PUBLIC_BASE_URL="$SPARKLE_PUBLIC_BASE_URL"
+          python3 scripts/upload-r2-object.py "build/Wink-${VERSION}.zip" application/zip --dry-run
+          python3 scripts/upload-r2-object.py build/appcast.xml application/xml --dry-run
+          python3 scripts/upload-r2-object.py "build/Wink-${VERSION}.dmg" application/x-apple-diskimage --dry-run
+
+      - name: Cleanup temporary Sparkle signing key
+        if: always()
+        run: |
+          if [ -n "${SPARKLE_KEY_ACCOUNT:-}" ]; then
+            security delete-generic-password -s https://sparkle-project.org -a "$SPARKLE_KEY_ACCOUNT" >/dev/null 2>&1 || true
+          fi
+          rm -rf "$RUNNER_TEMP/sparkle-ci-keys"

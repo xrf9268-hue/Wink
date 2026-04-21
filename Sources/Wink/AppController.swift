@@ -11,6 +11,7 @@ final class AppController {
     private let hyperKeyService = HyperKeyService()
     private let appBundleLocator = AppBundleLocator()
     private let userDefaults: UserDefaults
+    private lazy var updateService = SparkleUpdateService()
     private lazy var appSwitcher = AppSwitcher()
     private lazy var shortcutManager = ShortcutManager(
         shortcutStore: shortcutStore,
@@ -28,7 +29,8 @@ final class AppController {
         shortcutStore: shortcutStore,
         shortcutManager: shortcutManager,
         usageTracker: usageTracker,
-        hyperKeyService: hyperKeyService
+        hyperKeyService: hyperKeyService,
+        updateService: updateService
     )
 
     init(userDefaults: UserDefaults = .standard) {
@@ -45,6 +47,7 @@ final class AppController {
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1.0)
 
         Self.runStartupSequence(
+            startUpdateService: { _ = updateService },
             loadShortcuts: { try persistenceService.load() },
             replaceShortcuts: { shortcutStore.replaceAll(with: $0) },
             reapplyHyperIfNeeded: { hyperKeyService.reapplyIfNeeded() },
@@ -73,6 +76,7 @@ final class AppController {
     }
 
     static func runStartupSequence(
+        startUpdateService: @MainActor () -> Void,
         loadShortcuts: @MainActor () throws -> [AppShortcut],
         replaceShortcuts: @MainActor ([AppShortcut]) -> Void,
         reapplyHyperIfNeeded: @MainActor () -> Void,
@@ -81,6 +85,7 @@ final class AppController {
         startShortcutManager: @MainActor () -> Void,
         installMenuBar: @MainActor () -> Void
     ) {
+        startUpdateService()
         do {
             replaceShortcuts(try loadShortcuts())
         } catch {

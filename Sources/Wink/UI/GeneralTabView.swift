@@ -6,6 +6,7 @@ struct GeneralTabView: View {
 
     var body: some View {
         let importPreviewActive = editor.pendingRecipeImport != nil
+        let updatePresentation = preferences.updatePresentation
 
         VStack(alignment: .leading, spacing: 12) {
             // Startup card
@@ -74,6 +75,34 @@ struct GeneralTabView: View {
                 .padding(14)
             }
 
+            // Updates card
+            CardView("Updates") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Keep Wink up to date")
+                                .font(.system(size: 13, weight: .medium))
+                            Text("Version \(updatePresentation.currentVersion)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button("Check for Updates…") {
+                            preferences.checkForUpdates()
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(!updatePresentation.checkForUpdatesEnabled)
+                    }
+
+                    Text(updateBehaviorDescription(updatePresentation))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(14)
+            }
+
             Spacer()
 
             // About card
@@ -83,7 +112,7 @@ struct GeneralTabView: View {
                     Text("Wink")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    Text("v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0")")
+                    Text("v\(updatePresentation.currentVersion)")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                     Spacer()
@@ -91,5 +120,20 @@ struct GeneralTabView: View {
                 .padding(10)
             }
         }
+    }
+
+    private func updateBehaviorDescription(_ presentation: UpdatePresentation) -> String {
+        guard presentation.isConfigured else {
+            return "Automatic updates become available after this build is configured with a signed Sparkle appcast feed."
+        }
+
+        let checkBehavior = presentation.automaticChecksEnabledByDefault
+            ? "Wink checks for updates automatically"
+            : "Automatic update checks are disabled by default"
+        let downloadBehavior = presentation.automaticDownloadsEnabledByDefault
+            ? "and downloads them in the background when available."
+            : "and asks before downloading updates."
+
+        return "\(checkBehavior) \(downloadBehavior)"
     }
 }

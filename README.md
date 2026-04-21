@@ -20,6 +20,7 @@ The rename from `Quickey` to `Wink` came out of [issue #183](https://github.com/
 - Accurate shortcut readiness reflects Accessibility, Input Monitoring, Carbon registration, and live Hyper event-tap health
 - Supports letters, modifiers, Hyper Key, F-keys, arrows, and space
 - Launch at login support with system approval surfaced in the app
+- Sparkle-backed automatic updates for signed release builds
 - Insights view for recent usage trends and app ranking
 - Swift 6, AppKit-first, and SPM-first by design
 
@@ -34,6 +35,7 @@ The rename from `Quickey` to `Wink` came out of [issue #183](https://github.com/
 swift build
 swift test
 ./scripts/package-app.sh        # release build + .app bundle
+./scripts/package-update-zip.sh # Sparkle update archive from build/Wink.app
 ./scripts/package-dmg.sh        # drag-install DMG from build/Wink.app
 ./scripts/e2e-full-test.sh      # end-to-end suite using the current saved shortcuts (Accessibility required; Input Monitoring needed when Hyper shortcuts are configured)
 ```
@@ -55,7 +57,7 @@ swift test
 
 `Launch at Login` should be validated from a packaged app installed in `/Applications` or `~/Applications`. Running `build/Wink.app` directly from the repo can surface an install-location warning instead of a real login-item configuration state.
 
-Tagged releases use `v<CFBundleShortVersionString>` and publish `Wink-<version>.dmg` through the release workflow described in [`docs/signing-and-release.md`](./docs/signing-and-release.md). Notarized releases are not yet available; the current [internal prerelease](https://github.com/xrf9268-hue/Wink/releases/tag/internal-downloads) is unsigned, so macOS may warn on first launch.
+Tagged releases use `v<CFBundleShortVersionString>` and the release workflow described in [`docs/signing-and-release.md`](./docs/signing-and-release.md) now packages three artifacts from the same signed app bundle: `Wink-<version>.dmg` for first install, `Wink-<version>.zip` for Sparkle updates, and `appcast.xml` for the signed update feed. The credential-backed release path uploads those artifacts to Cloudflare R2 and still publishes the DMG on GitHub Releases. The rolling [internal prerelease](https://github.com/xrf9268-hue/Wink/releases/tag/internal-downloads) remains unsigned and is for trusted testers only, so macOS may warn on first launch.
 
 ## Documentation
 - [`docs/README.md`](./docs/README.md)
