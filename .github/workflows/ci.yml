@@ -81,9 +81,6 @@ jobs:
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Wink/Resources/Info.plist)"
           test -f "build/Wink-${VERSION}.dmg"
 
-      - name: Install boto3 for R2 upload smoke test
-        run: python3 -m pip install --user boto3
-
       - name: Verify R2 upload helper (dry run)
         run: |
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/Wink/Resources/Info.plist)"

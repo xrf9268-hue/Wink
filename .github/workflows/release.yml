@@ -300,8 +300,11 @@ jobs:
           xcrun stapler validate "$DMG_PATH"
           spctl --assess --type open --context context:primary-signature --verbose "$DMG_PATH"
 
-      - name: Install boto3 for R2 upload
-        run: python3 -m pip install --user boto3
+      - name: Install boto3 in a virtual environment
+        run: |
+          python3 -m venv "$RUNNER_TEMP/r2-upload-venv"
+          "$RUNNER_TEMP/r2-upload-venv/bin/pip" install boto3
+          echo "R2_UPLOAD_PYTHON=$RUNNER_TEMP/r2-upload-venv/bin/python" >> "$GITHUB_ENV"
 
       - name: Upload DMG and Sparkle ZIP to R2
         env:
@@ -310,8 +313,8 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
-          python3 scripts/upload-r2-object.py "$ZIP_PATH" application/zip
-          python3 scripts/upload-r2-object.py "$DMG_PATH" application/x-apple-diskimage
+          "$R2_UPLOAD_PYTHON" scripts/upload-r2-object.py "$ZIP_PATH" application/zip
+          "$R2_UPLOAD_PYTHON" scripts/upload-r2-object.py "$DMG_PATH" application/x-apple-diskimage
 
       - name: Publish GitHub Release
         env:
@@ -331,7 +334,8 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
-        run: python3 scripts/upload-r2-object.py "$APPCAST_PATH" application/xml
+        run: |
+          "$R2_UPLOAD_PYTHON" scripts/upload-r2-object.py "$APPCAST_PATH" application/xml
 
       - name: Cleanup temporary credentials
         if: always()
