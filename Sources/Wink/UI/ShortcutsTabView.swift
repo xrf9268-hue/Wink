@@ -1,5 +1,24 @@
 import SwiftUI
 
+private enum ShortcutRowMetrics {
+    static let spacing: CGFloat = 12
+    static let iconSize: CGFloat = 36
+    static let textSpacing: CGFloat = 2
+    static let verticalPadding: CGFloat = 10
+}
+
+struct ShortcutsListRowPresentation {
+    let title: String
+    let subtitle: String
+    let missingAppWarning: String?
+
+    init(shortcut: AppShortcut, usageCount: Int, targetInstalled: Bool) {
+        title = shortcut.appName
+        subtitle = "\(usageCount)× past 7 days"
+        missingAppWarning = targetInstalled ? nil : "App not currently installed"
+    }
+}
+
 struct ShortcutsTabView: View {
     @Bindable var editor: ShortcutEditorState
     var preferences: AppPreferences
@@ -157,52 +176,19 @@ struct ShortcutsTabView: View {
         let targetInstalled = appBundleLocator.applicationURL(for: shortcut.bundleIdentifier) != nil
         let importPreviewActive = editor.pendingRecipeImport != nil
 
-        HStack(spacing: 10) {
-            AppIconView(bundleIdentifier: shortcut.bundleIdentifier, size: 28)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(shortcut.appName)
-                    .font(.system(size: 13, weight: .medium))
-                Text(shortcut.bundleIdentifier)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if !targetInstalled {
-                    Label("App not currently installed", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-                Text("\(editor.usageCounts[shortcut.id, default: 0])× past 7 days")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-
-            Spacer()
-
-            ShortcutLabel(displayText: shortcut.displayText, isHyper: shortcut.isHyper)
-
-            Toggle("", isOn: Binding(
-                get: { shortcut.isEnabled },
-                set: { _ in editor.toggleShortcutEnabled(id: shortcut.id) }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-            .labelsHidden()
-            .disabled(importPreviewActive)
-
-            Button {
+        ShortcutsListRow(
+            shortcut: shortcut,
+            usageCount: editor.usageCounts[shortcut.id, default: 0],
+            targetInstalled: targetInstalled,
+            importPreviewActive: importPreviewActive,
+            index: index,
+            onToggleEnabled: {
+                editor.toggleShortcutEnabled(id: shortcut.id)
+            },
+            onRemove: {
                 editor.removeShortcut(id: shortcut.id)
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderless)
-            .disabled(importPreviewActive)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .alternatingRowBackground(index: index)
-        .opacity(shortcut.isEnabled ? (targetInstalled ? 1.0 : 0.7) : 0.5)
+        )
     }
 
     @ViewBuilder
@@ -282,5 +268,70 @@ struct ShortcutsTabView: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(tint)
         }
+    }
+}
+
+struct ShortcutsListRow: View {
+    let shortcut: AppShortcut
+    let usageCount: Int
+    let targetInstalled: Bool
+    let importPreviewActive: Bool
+    let index: Int
+    let onToggleEnabled: @MainActor () -> Void
+    let onRemove: @MainActor () -> Void
+
+    private var presentation: ShortcutsListRowPresentation {
+        ShortcutsListRowPresentation(
+            shortcut: shortcut,
+            usageCount: usageCount,
+            targetInstalled: targetInstalled
+        )
+    }
+
+    var body: some View {
+        HStack(spacing: ShortcutRowMetrics.spacing) {
+            AppIconView(
+                bundleIdentifier: shortcut.bundleIdentifier,
+                size: ShortcutRowMetrics.iconSize
+            )
+
+            VStack(alignment: .leading, spacing: ShortcutRowMetrics.textSpacing) {
+                Text(presentation.title)
+                    .font(.system(size: 13, weight: .medium))
+                Text(presentation.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                if let missingAppWarning = presentation.missingAppWarning {
+                    Label(missingAppWarning, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            Spacer()
+
+            ShortcutLabel(displayText: shortcut.displayText, isHyper: shortcut.isHyper)
+
+            Toggle("", isOn: Binding(
+                get: { shortcut.isEnabled },
+                set: { _ in onToggleEnabled() }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .labelsHidden()
+            .disabled(importPreviewActive)
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .disabled(importPreviewActive)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, ShortcutRowMetrics.verticalPadding)
+        .alternatingRowBackground(index: index)
+        .opacity(shortcut.isEnabled ? (targetInstalled ? 1.0 : 0.7) : 0.5)
     }
 }

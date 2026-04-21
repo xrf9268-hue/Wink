@@ -46,6 +46,28 @@ struct LayoutRegressionTests {
 
         #expect(widestDirectSubview >= 660)
     }
+
+    @Test @MainActor
+    func shortcutsListRowPresentationUsesUsageSubtitleWithoutVisibleBundleIdentifier() {
+        let shortcut = AppShortcut(
+            appName: "Missing App",
+            bundleIdentifier: "com.example.MissingApp",
+            keyEquivalent: "m",
+            modifierFlags: ["command", "shift"]
+        )
+        let presentation = ShortcutsListRowPresentation(
+            shortcut: shortcut,
+            usageCount: 732,
+            targetInstalled: false
+        )
+
+        #expect(presentation.title == "Missing App")
+        #expect(presentation.subtitle == "732× past 7 days")
+        #expect(presentation.missingAppWarning == "App not currently installed")
+        #expect(presentation.title != "com.example.MissingApp")
+        #expect(presentation.subtitle != "com.example.MissingApp")
+        #expect(presentation.missingAppWarning != "com.example.MissingApp")
+    }
 }
 
 private actor StaticUsageTracker: UsageTracking {
