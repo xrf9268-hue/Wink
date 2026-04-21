@@ -74,15 +74,40 @@ struct LayoutRegressionTests {
         let presentation = ShortcutsListRowPresentation(
             shortcut: shortcut,
             usageCount: 732,
-            targetInstalled: false
+            runtimeStatus: ShortcutRuntimeStatus(
+                isRunning: false,
+                isUnavailable: true
+            )
         )
 
         #expect(presentation.title == "Missing App")
         #expect(presentation.subtitle == "732× past 7 days")
-        #expect(presentation.missingAppWarning == "App not currently installed")
+        #expect(presentation.showsRunningIndicator == false)
+        #expect(presentation.unavailableHelpText == "Couldn't find this app. Rebind it to restore the shortcut.")
         #expect(presentation.title != "com.example.MissingApp")
         #expect(presentation.subtitle != "com.example.MissingApp")
-        #expect(presentation.missingAppWarning != "com.example.MissingApp")
+        #expect(presentation.unavailableHelpText != "com.example.MissingApp")
+    }
+
+    @Test @MainActor
+    func shortcutsListRowPresentationShowsRunningIndicatorWhenAppIsActive() {
+        let shortcut = AppShortcut(
+            appName: "Safari",
+            bundleIdentifier: "com.apple.Safari",
+            keyEquivalent: "s",
+            modifierFlags: ["command"]
+        )
+        let presentation = ShortcutsListRowPresentation(
+            shortcut: shortcut,
+            usageCount: 12,
+            runtimeStatus: ShortcutRuntimeStatus(
+                isRunning: true,
+                isUnavailable: false
+            )
+        )
+
+        #expect(presentation.showsRunningIndicator == true)
+        #expect(presentation.unavailableHelpText == nil)
     }
 }
 

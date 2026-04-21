@@ -10,12 +10,16 @@ private enum ShortcutRowMetrics {
 struct ShortcutsListRowPresentation {
     let title: String
     let subtitle: String
-    let missingAppWarning: String?
+    let showsRunningIndicator: Bool
+    let unavailableHelpText: String?
 
-    init(shortcut: AppShortcut, usageCount: Int, targetInstalled: Bool) {
+    init(shortcut: AppShortcut, usageCount: Int, runtimeStatus: ShortcutRuntimeStatus) {
         title = shortcut.appName
         subtitle = "\(usageCount)× past 7 days"
-        missingAppWarning = targetInstalled ? nil : "App not currently installed"
+        showsRunningIndicator = runtimeStatus.isRunning
+        unavailableHelpText = runtimeStatus.isUnavailable
+            ? "Couldn't find this app. Rebind it to restore the shortcut."
+            : nil
     }
 }
 
@@ -23,7 +27,7 @@ struct ShortcutsTabView: View {
     @Bindable var editor: ShortcutEditorState
     var preferences: AppPreferences
     var appListProvider: AppListProvider
-    private let appBundleLocator = AppBundleLocator()
+    var shortcutStatusProvider: ShortcutStatusProvider
 
     @State private var showingAppPicker = false
 
@@ -169,17 +173,23 @@ struct ShortcutsTabView: View {
                 }
             }
         }
+        .onAppear {
+            shortcutStatusProvider.track(editor.shortcuts)
+        }
+        .onChange(of: editor.shortcuts) { _, newShortcuts in
+            shortcutStatusProvider.track(newShortcuts)
+        }
     }
 
     @ViewBuilder
     private func shortcutRow(_ shortcut: AppShortcut, index: Int) -> some View {
-        let targetInstalled = appBundleLocator.applicationURL(for: shortcut.bundleIdentifier) != nil
         let importPreviewActive = editor.pendingRecipeImport != nil
+        let runtimeStatus = shortcutStatusProvider.status(for: shortcut)
 
         ShortcutsListRow(
             shortcut: shortcut,
             usageCount: editor.usageCounts[shortcut.id, default: 0],
-            targetInstalled: targetInstalled,
+            runtimeStatus: runtimeStatus,
             importPreviewActive: importPreviewActive,
             index: index,
             onToggleEnabled: {
@@ -274,7 +284,7 @@ struct ShortcutsTabView: View {
 struct ShortcutsListRow: View {
     let shortcut: AppShortcut
     let usageCount: Int
-    let targetInstalled: Bool
+    let runtimeStatus: ShortcutRuntimeStatus
     let importPreviewActive: Bool
     let index: Int
     let onToggleEnabled: @MainActor () -> Void
@@ -284,28 +294,61 @@ struct ShortcutsListRow: View {
         ShortcutsListRowPresentation(
             shortcut: shortcut,
             usageCount: usageCount,
-            targetInstalled: targetInstalled
+            runtimeStatus: runtimeStatus
         )
+    }
+
+    private var rowOpacity: Double {
+        switch (shortcut.isEnabled, runtimeStatus.isUnavailable) {
+        case (false, true):
+            0.4
+        case (false, false):
+            0.5
+        case (true, true):
+            0.65
+        case (true, false):
+            1.0
+        }
     }
 
     var body: some View {
         HStack(spacing: ShortcutRowMetrics.spacing) {
-            AppIconView(
-                bundleIdentifier: shortcut.bundleIdentifier,
-                size: ShortcutRowMetrics.iconSize
-            )
+            ZStack(alignment: .bottomTrailing) {
+                AppIconView(
+                    bundleIdentifier: shortcut.bundleIdentifier,
+                    size: ShortcutRowMetrics.iconSize
+                )
+
+                if let unavailableHelpText = presentation.unavailableHelpText {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.orange)
+                        .background(
+                            Circle()
+                                .fill(Color(nsColor: .windowBackgroundColor))
+                                .frame(width: 14, height: 14)
+                        )
+                        .offset(x: 3, y: 3)
+                        .help(unavailableHelpText)
+                }
+            }
 
             VStack(alignment: .leading, spacing: ShortcutRowMetrics.textSpacing) {
-                Text(presentation.title)
-                    .font(.system(size: 13, weight: .medium))
+                HStack(spacing: 6) {
+                    Text(presentation.title)
+                        .font(.system(size: 13, weight: .medium))
+
+                    if presentation.showsRunningIndicator {
+                        Circle()
+                            .fill(.green)
+                            .frame(width: 8, height: 8)
+                            .help("App is currently running")
+                    }
+                }
+
                 Text(presentation.subtitle)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
-                if let missingAppWarning = presentation.missingAppWarning {
-                    Label(missingAppWarning, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
             }
 
             Spacer()
@@ -332,6 +375,6 @@ struct ShortcutsListRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, ShortcutRowMetrics.verticalPadding)
         .alternatingRowBackground(index: index)
-        .opacity(shortcut.isEnabled ? (targetInstalled ? 1.0 : 0.7) : 0.5)
+        .opacity(rowOpacity)
     }
 }
