@@ -15,6 +15,7 @@ The rename from `Quickey` to `Wink` came out of [issue #183](https://github.com/
 
 ## Highlights
 - Global shortcuts that launch or toggle target apps with a single keystroke
+- Menu bar dropdown overview that lists configured shortcuts, shortcut glyphs, and lightweight running state at a glance
 - Thor-like semantics that activate, re-activate hidden apps, or directly hide the frontmost target depending on state
 - Standard shortcuts use Carbon hotkeys; Hyper shortcuts use the active event tap
 - Accurate shortcut readiness reflects Accessibility, Input Monitoring, Carbon registration, and live Hyper event-tap health

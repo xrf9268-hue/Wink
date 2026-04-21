@@ -22,6 +22,7 @@ final class AppController {
         diagnosticClient: .live
     )
     private lazy var menuBarController = MenuBarController(
+        shortcutStore: shortcutStore,
         onOpenSettings: { [weak self] in self?.openSettings() },
         onQuit: { NSApplication.shared.terminate(nil) }
     )

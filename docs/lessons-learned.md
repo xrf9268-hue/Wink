@@ -1,5 +1,38 @@
 # Wink Troubleshooting Guidance
 
+## Menu Bar Validation Can Use `System Events` Directly
+
+**Issue**
+Menu bar extras are easy to overcomplicate during macOS validation: once the app has no normal window, it is tempting to fall back to pixel guessing, screenshot cropping, or indirect UI probing.
+
+**Cause**
+Status-bar utilities do not behave like normal document apps, so generic desktop automation entrypoints can time out or expose little useful structure. That can hide the simpler path: the status item may still be directly addressable as an accessibility menu-bar extra.
+
+**Practical guidance**
+Before resorting to coordinate guessing, try `System Events` against the target process itself. In Wink's issue #180 validation, the status item was directly visible as `menu bar item 1 of menu bar 1 of process "Wink"` with AX description `Wink` and subrole `AXMenuExtra`, which let us open the menu and inspect real menu items deterministically:
+
+```applescript
+tell application "System Events"
+    tell process "Wink"
+        click menu bar item 1 of menu bar 1
+        get title of every menu item of menu 1 of menu bar item 1 of menu bar 1
+    end tell
+end tell
+```
+
+Treat this as the preferred validation path for menu-bar-only behavior when it works: it is more truthful and repeatable than screenshot-based coordinate guessing.
+
+## View-Backed Menu Items Should Stay Renderable, Not Disabled
+
+**Issue**
+A custom `NSMenuItem.view` can look correct in unit tests yet disappear from the real menu.
+
+**Cause**
+AppKit does not reliably render view-backed menu items when the menu item itself is disabled. In issue #180, the shortcut row views existed in tests and menu composition state, but the packaged app only showed the static menu items until the backing `NSMenuItem` stopped being disabled.
+
+**Practical guidance**
+For read-only custom menu rows, keep the menu item renderable and inert rather than disabled. A no-op target/action is safer than `item.isEnabled = false` when the row uses `item.view`. Validate the packaged app menu after any such change, because this is exactly the kind of AppKit behavior that isolated unit tests can miss.
+
 ## Visual UI Validation Needs The Real Packaged Window
 
 **Issue**
