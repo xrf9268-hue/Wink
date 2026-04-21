@@ -5,7 +5,7 @@ This directory maps the maintainer-facing docs for Wink.
 ## Core Docs
 - [`architecture.md`](./architecture.md)
 - [`github-automation.md`](./github-automation.md) — PR metadata enforcement, deterministic review gating, the checked-in `main` ruleset artifact, Wink Backlog project reconciliation, runtime-validation field sync, and required repository secrets
-- [`signing-and-release.md`](./signing-and-release.md) — local DMG packaging, internal-package artifacts, signing, notarization, release secrets, and tag-driven GitHub Release flow
+- [`signing-and-release.md`](./signing-and-release.md) — local Sparkle-aware packaging, signed appcast generation, Cloudflare R2 upload requirements, internal-package artifacts, signing, notarization, and the tag-driven public release flow
 
 ## Maintainer Notes
 - [`../AGENTS.md`](../AGENTS.md)

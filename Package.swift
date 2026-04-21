@@ -9,9 +9,15 @@ let package = Package(
     products: [
         .executable(name: "Wink", targets: ["Wink"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.1")
+    ],
     targets: [
         .executableTarget(
             name: "Wink",
+            dependencies: [
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
             path: "Sources/Wink",
             exclude: [
                 "Resources/Info.plist",
@@ -23,7 +29,12 @@ let package = Package(
             ],
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
-                .unsafeFlags(["-F/System/Library/PrivateFrameworks", "-framework", "SkyLight"]),
+                .unsafeFlags([
+                    "-F/System/Library/PrivateFrameworks",
+                    "-framework", "SkyLight",
+                    "-Xlinker", "-rpath",
+                    "-Xlinker", "@loader_path/../Frameworks",
+                ]),
             ]
         ),
         .testTarget(

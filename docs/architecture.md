@@ -12,6 +12,7 @@ flowchart LR
     S["S(ShortcutStore)\n内存快捷键"]
     U["U(Settings UI / ShortcutEditorState / AppPreferences)\n编辑快捷键与通用设置"]
     R["R(LaunchAtLoginService)\n登录项状态"]
+    Y["Y(SparkleUpdateService)\n更新检查 / appcast"]
     X["X(UsageTracker)\n使用统计"]
   end
 
@@ -36,6 +37,7 @@ flowchart LR
   U --> S
   U --> H
   U --> R
+  U --> Y
   U --> X
 
   A --> P
@@ -43,6 +45,7 @@ flowchart LR
   A --> H
   A --> M
   A --> R
+  A --> Y
 
   P --> S
   S --> M
@@ -71,9 +74,11 @@ flowchart LR
 - `main.swift`
 - `AppDelegate`
 - `AppController`
+- `SparkleUpdateService`
 
 Responsibilities:
 - start the accessory/menu bar app
+- start the Sparkle updater when feed configuration is present
 - load persisted shortcuts
 - start global shortcut handling
 - install menu bar UI
@@ -84,6 +89,7 @@ Responsibilities:
 - `SettingsView` (tabbed: Shortcuts / General / Insights)
 - `ShortcutEditorState`
 - `AppPreferences`
+- `UpdateServicing`
 - `ShortcutRecorderView`
 - `ShortcutsTabView`
 - `GeneralTabView`
@@ -99,6 +105,7 @@ Responsibilities:
 - preview import conflicts and unresolved targets before mutating persisted shortcuts
 - surface truthful shortcut readiness via `ShortcutCaptureStatus`
 - surface launch-at-login state via `LaunchAtLoginStatus`
+- surface Sparkle update status and the manual `Check for Updates…` entry without leaking Sparkle types into SwiftUI
 - show conflicts before saving
 - display usage trends and app ranking via Insights tab
 
@@ -190,8 +197,12 @@ Responsibilities:
 ### Permissions and packaging
 - `AccessibilityPermissionService`
 - `LaunchAtLoginService`
+- `UpdateServicing`
+- `SparkleUpdateService`
 - `ShortcutCaptureStatus`
 - `scripts/package-app.sh`
+- `scripts/package-update-zip.sh`
+- `scripts/generate-appcast.sh`
 - `Sources/Wink/Resources/Info.plist`
 
 Responsibilities:
@@ -202,9 +213,12 @@ Responsibilities:
 - keep persisted unresolved shortcuts in `shortcuts.json`, but only register enabled shortcuts whose target app currently resolves via `NSWorkspace.urlForApplication(withBundleIdentifier:)`
 - re-check target-app availability during the existing permission poll so installs/uninstalls can resync registered shortcuts without another save or relaunch
 - manage launch-at-login state via `SMAppService`, including approval-needed state
+- start Sparkle only when `SUFeedURL` and `SUPublicEDKey` are present in the packaged app's `Info.plist`
+- keep signed-feed defaults (`SURequireSignedFeed` + `SUVerifyUpdateBeforeExtraction`) in `Info.plist`
 - distinguish `SMAppService.Status.notFound` caused by install location from a real bundle-configuration miss before surfacing launch-at-login guidance
 - provide LSUIElement app bundle scaffold
-- automate `.app` packaging via script
+- embed and re-sign `Sparkle.framework` for packaged builds, removing unused XPC services because Wink is not sandboxed
+- automate `.app`, Sparkle update zip, and signed appcast packaging via scripts
 
 ## Runtime event flow
 
@@ -212,6 +226,7 @@ Responsibilities:
 ```text
 App launch
   -> AppController.start()
+  -> SparkleUpdateService initializes if SUFeedURL + SUPublicEDKey are configured
   -> PersistenceService.load()
   -> ShortcutStore.replaceAll()
   -> HyperKeyService.reapplyIfNeeded()
@@ -257,6 +272,16 @@ User clicks Import...
   -> user chooses Skip Conflicts or Replace Existing
   -> ShortcutManager.save(updated shortcuts)
   -> persisted shortcuts keep unresolved targets, but ShortcutManager only registers entries whose apps are currently available
+```
+
+### 2c. Manual update check flow
+```text
+User opens General tab
+  -> GeneralTabView reads AppPreferences.updatePresentation
+  -> user clicks "Check for Updates…"
+  -> AppPreferences.checkForUpdates()
+  -> SparkleUpdateService.checkForUpdates()
+  -> Sparkle presents the standard update UI if the configured feed has a newer item
 ```
 
 ### 3. Trigger flow
