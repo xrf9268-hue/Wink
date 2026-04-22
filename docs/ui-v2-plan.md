@@ -109,7 +109,7 @@ User 决策（2026-04-22）：
   }
   ```
   - 通过 `appDelegate` 暴露的 service container 注入；`AppDelegate` 在 `applicationDidFinishLaunching` 完成 service 装配。
-  - `AppController` 中"打开设置窗口"的入口改为：在 main actor 上读 `@Environment(\.openSettings)` 并调用 `openSettings()`；为支持菜单栏触发，把 `OpenSettingsAction` 暂存到 service container。
+  - `AppController` 是 AppKit 类，无法直接读 `@Environment(\.openSettings)`（环境值仅在 SwiftUI view 树中可用）。改为：在 `Settings` Scene 的根 view（或挂在 scene 上的辅助 `.background` view）里 `@Environment(\.openSettings) private var openSettings`，`onAppear` 时把这个 `OpenSettingsAction` 写入一个共享 `SettingsLauncher` service（`@MainActor`，存在 service container 里）；`AppController.openSettings()` 通过该 service 触发，菜单栏 / 第一次启动 / 任何 AppKit 触发路径都走相同入口。
 - `Sources/Wink/UI/SettingsView.swift` 重写为：
   ```swift
   NavigationSplitView {
