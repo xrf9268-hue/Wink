@@ -1,6 +1,20 @@
 import Foundation
 import Observation
 
+enum FrontmostTargetBehavior: String, CaseIterable, Equatable, Sendable {
+    case hide
+    case toggle
+    case focus
+
+    var title: String {
+        switch self {
+        case .hide: return "Hide"
+        case .toggle: return "Toggle"
+        case .focus: return "Focus"
+        }
+    }
+}
+
 enum LaunchAtLoginPresentationStyle: Equatable {
     case none
     case informational
@@ -18,10 +32,19 @@ struct LaunchAtLoginPresentation: Equatable {
 @MainActor
 @Observable
 final class AppPreferences {
+    static let frontmostTargetBehaviorDefaultsKey = "frontmostTargetBehavior"
+
     private(set) var shortcutCaptureStatus: ShortcutCaptureStatus
     private(set) var launchAtLoginStatus: LaunchAtLoginStatus = .disabled
     private(set) var launchAtLoginAvailability: LaunchAtLoginAvailability = .available
     var hyperKeyEnabled: Bool = false
+    var frontmostTargetBehavior: FrontmostTargetBehavior {
+        didSet {
+            guard frontmostTargetBehavior != oldValue else { return }
+            userDefaults.set(frontmostTargetBehavior.rawValue, forKey: Self.frontmostTargetBehaviorDefaultsKey)
+            shortcutManager.setFrontmostTargetBehavior(frontmostTargetBehavior)
+        }
+    }
 
     var launchAtLoginEnabled: Bool {
         launchAtLoginStatus.isEnabled
@@ -91,22 +114,32 @@ final class AppPreferences {
     private let hyperKeyService: HyperKeyService?
     private let launchAtLoginService: LaunchAtLoginService
     private let updateService: UpdateServicing?
+    private let userDefaults: UserDefaults
 
     init(
         shortcutManager: ShortcutManager,
         hyperKeyService: HyperKeyService? = nil,
         launchAtLoginService: LaunchAtLoginService = LaunchAtLoginService(),
-        updateService: UpdateServicing? = nil
+        updateService: UpdateServicing? = nil,
+        userDefaults: UserDefaults = .standard
     ) {
         self.shortcutManager = shortcutManager
         self.hyperKeyService = hyperKeyService
         self.launchAtLoginService = launchAtLoginService
         self.updateService = updateService
+        self.userDefaults = userDefaults
         self.shortcutCaptureStatus = shortcutManager.shortcutCaptureStatus()
         let launchAtLoginSnapshot = launchAtLoginService.snapshot
         self.launchAtLoginStatus = launchAtLoginSnapshot.status
         self.launchAtLoginAvailability = launchAtLoginSnapshot.availability
         self.hyperKeyEnabled = hyperKeyService?.isEnabled ?? false
+        if let rawValue = userDefaults.string(forKey: Self.frontmostTargetBehaviorDefaultsKey),
+           let storedBehavior = FrontmostTargetBehavior(rawValue: rawValue) {
+            self.frontmostTargetBehavior = storedBehavior
+        } else {
+            self.frontmostTargetBehavior = .toggle
+        }
+        shortcutManager.setFrontmostTargetBehavior(frontmostTargetBehavior)
     }
 
     func refreshPermissions() {
@@ -114,6 +147,11 @@ final class AppPreferences {
         if current != shortcutCaptureStatus {
             shortcutCaptureStatus = current
         }
+    }
+
+    func requestShortcutPermissions() {
+        shortcutManager.requestPermissions()
+        refreshPermissions()
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {

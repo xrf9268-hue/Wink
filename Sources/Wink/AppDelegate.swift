@@ -2,7 +2,15 @@ import AppKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var appController: AppController?
+    private let appController = AppController()
+
+    var settingsSceneServices: AppController.SettingsSceneServices {
+        appController.settingsSceneServices
+    }
+
+    var settingsLauncher: SettingsLauncher {
+        appController.settingsLauncherService
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // SwiftUI's `Settings` scene defaults the app to `.regular` activation,
@@ -12,15 +20,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the app stays a menu bar resident across show/hide cycles.
         NSApp.setActivationPolicy(.accessory)
 
-        appController = AppController()
-        appController?.start()
+        appController.start()
     }
 
     func openPrimarySettingsWindow() {
-        appController?.openPrimarySettingsWindow()
+        appController.openPrimarySettingsWindow()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        appController?.stop()
+        appController.stop()
     }
 }

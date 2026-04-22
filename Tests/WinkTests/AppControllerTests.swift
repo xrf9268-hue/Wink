@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import Wink
@@ -106,4 +107,48 @@ func startupSequenceStartsUpdateServiceBeforeShortcutManager() {
     #expect(startUpdateIndex != nil)
     #expect(startShortcutIndex != nil)
     #expect(startUpdateIndex! < startShortcutIndex!)
+}
+
+@Test @MainActor
+func openPrimarySettingsWindowUsesInstalledSettingsLauncherHandler() throws {
+    ensureAppKitApplication()
+
+    let suiteName = "AppControllerTests.openPrimarySettingsWindow.installed.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let controller = AppController(userDefaults: defaults)
+    var openCount = 0
+    controller.settingsLauncherService.installOpenSettingsHandler {
+        openCount += 1
+    }
+
+    controller.openPrimarySettingsWindow()
+
+    #expect(openCount == 1)
+}
+
+@Test @MainActor
+func openPrimarySettingsWindowQueuesPendingOpenUntilHandlerInstalls() throws {
+    ensureAppKitApplication()
+
+    let suiteName = "AppControllerTests.openPrimarySettingsWindow.pending.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let controller = AppController(userDefaults: defaults)
+
+    controller.openPrimarySettingsWindow()
+
+    var openCount = 0
+    controller.settingsLauncherService.installOpenSettingsHandler {
+        openCount += 1
+    }
+
+    #expect(openCount == 1)
+}
+
+@MainActor
+private func ensureAppKitApplication() {
+    _ = NSApplication.shared
 }

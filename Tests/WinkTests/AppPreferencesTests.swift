@@ -109,6 +109,43 @@ func setHyperKeyEnabledRefreshesShortcutCaptureStatusForHyperRoutingChanges() {
 }
 
 @Test @MainActor
+func frontmostTargetBehaviorDefaultsToTogglePersistsAndDelegatesToShortcutManager() {
+    let suiteName = "AppPreferencesTests.frontmostTargetBehavior"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+
+    let appSwitcher = RecordingAppSwitcher()
+    let manager = ShortcutManager(
+        shortcutStore: ShortcutStore(),
+        persistenceService: TestPersistenceHarness().makePersistenceService(),
+        appSwitcher: appSwitcher,
+        captureCoordinator: makeCaptureCoordinator(),
+        permissionService: FakePermissionService(ax: true, input: true),
+        diagnosticClient: .live
+    )
+
+    let preferences = AppPreferences(
+        shortcutManager: manager,
+        userDefaults: defaults
+    )
+
+    #expect(preferences.frontmostTargetBehavior == .toggle)
+    #expect(appSwitcher.lastBehavior == .toggle)
+
+    preferences.frontmostTargetBehavior = .focus
+
+    #expect(appSwitcher.lastBehavior == .focus)
+    #expect(defaults.string(forKey: AppPreferences.frontmostTargetBehaviorDefaultsKey) == FrontmostTargetBehavior.focus.rawValue)
+
+    let reloaded = AppPreferences(
+        shortcutManager: manager,
+        userDefaults: defaults
+    )
+
+    #expect(reloaded.frontmostTargetBehavior == .focus)
+}
+
+@Test @MainActor
 func LaunchAtLoginPresentation_enabledMapsToInteractiveOnToggleWithoutMessage() {
     let preferences = makePreferences(status: .enabled)
 
@@ -313,6 +350,20 @@ private struct FakeAppSwitcher: AppSwitching {
     @discardableResult
     func toggleApplication(for shortcut: AppShortcut) -> Bool {
         true
+    }
+}
+
+@MainActor
+private final class RecordingAppSwitcher: AppSwitching {
+    private(set) var lastBehavior: FrontmostTargetBehavior?
+
+    @discardableResult
+    func toggleApplication(for shortcut: AppShortcut) -> Bool {
+        true
+    }
+
+    func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior) {
+        lastBehavior = behavior
     }
 }
 

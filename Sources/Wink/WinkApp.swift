@@ -1,55 +1,53 @@
 import SwiftUI
 
-/// SwiftUI App scene entry point.
+/// SwiftUI app entry for the menu bar utility.
 ///
-/// Wink is a macOS menu bar utility (`LSUIElement=true`); the AppKit-style
-/// `NSApplication.shared.run()` boot has been replaced with the modern
-/// SwiftUI `App` protocol per Apple's macOS 14+ guidance. `AppDelegate`
-/// continues to host service wiring through `@NSApplicationDelegateAdaptor`,
-/// so all existing Carbon / SkyLight / TCC paths remain untouched.
-///
-/// Phase 1 ships the `Settings` Scene as a placeholder. Phase 2 wires the
-/// real `SettingsView`; Phase 3 adds the `MenuBarExtra` popover Scene.
-/// Until Phase 2 lands, the standard app-menu Settings command is rerouted
-/// to the existing AppKit settings window so users never hit the placeholder.
+/// Apple recommends declaring app settings through the `Settings` scene and
+/// presenting them with `openSettings()` on macOS. Wink keeps the runtime in
+/// AppKit-heavy services, but the settings shell now lives entirely in SwiftUI.
 @main
 struct WinkApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         Settings {
-            // Phase 2 replaces this with the real SettingsView.
-            SettingsPlaceholderView()
-                .frame(minWidth: 480, minHeight: 320)
-                .winkChromeRoot()
+            let services = appDelegate.settingsSceneServices
+            SettingsView(
+                editor: services.editor,
+                preferences: services.preferences,
+                insightsViewModel: services.insightsViewModel,
+                appListProvider: services.appListProvider,
+                shortcutStatusProvider: services.shortcutStatusProvider,
+                settingsLauncher: services.settingsLauncher
+            )
+            .frame(minWidth: 760, minHeight: 560)
+            .winkChromeRoot()
         }
         .commands {
-            CommandGroup(replacing: .appSettings) {
-                Button("Settings...") {
-                    appDelegate.openPrimarySettingsWindow()
-                }
-                .keyboardShortcut(",", modifiers: .command)
-            }
+            SettingsCommands(settingsLauncher: appDelegate.settingsLauncher)
         }
     }
 }
 
-/// Temporary settings content for Phase 1. Confirms the Settings scene
-/// is reachable via `openSettings()` and the design system loads cleanly.
-private struct SettingsPlaceholderView: View {
-    @Environment(\.winkPalette) private var palette
+private struct SettingsCommands: Commands {
+    @Environment(\.openSettings) private var openSettings
+    let settingsLauncher: SettingsLauncher
 
-    var body: some View {
-        VStack(spacing: 16) {
-            WinkAppIcon(size: 56)
-            WinkWordmark(size: 22, color: palette.textPrimary)
-            Text("Phase 2 will replace this placeholder with the real settings UI.")
-                .font(WinkType.bodyText)
-                .foregroundStyle(palette.textSecondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 320)
+    var body: some Commands {
+        let _ = installOpenSettingsHandler()
+
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") {
+                settingsLauncher.open()
+            }
+            .keyboardShortcut(",", modifiers: .command)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(palette.windowBg)
+    }
+
+    @MainActor
+    private func installOpenSettingsHandler() {
+        settingsLauncher.installOpenSettingsHandler {
+            openSettings()
+        }
     }
 }

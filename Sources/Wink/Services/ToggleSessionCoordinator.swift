@@ -50,6 +50,7 @@ final class ToggleSessionCoordinator {
     }
 
     let configuration: Configuration
+    private(set) var frontmostTargetBehavior: FrontmostTargetBehavior = .toggle
     private let now: @MainActor () -> CFAbsoluteTime
     private var nextGeneration = 0
     private(set) var sessions: [String: Session] = [:]
@@ -60,6 +61,10 @@ final class ToggleSessionCoordinator {
     ) {
         self.configuration = configuration
         self.now = now
+    }
+
+    func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior) {
+        frontmostTargetBehavior = behavior
     }
 
     // MARK: - Query

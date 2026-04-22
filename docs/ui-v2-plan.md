@@ -139,7 +139,7 @@ User 决策（2026-04-22）：
 - `Sources/Wink/UI/GeneralTabView.swift` 重写：
   - 顶部标题区与 Shortcuts 同风格。
   - 主体优先用 `Form { Section("Startup") { LabeledContent { Toggle } } ... }` + `.formStyle(.grouped)`，靠 macOS Form 自渲染原生 grouped 视觉；仅 Permissions 双状态行用 `WinkCard` 自绘（Form 不能表达"Granted/Needed" trailing label）。
-  - **Startup**：Launch at Login（保留 `LaunchAtLoginPresentation` 的 enabled/requiresApproval/notFound 三态消息行）+ Show Menu Bar Icon（接到新 `AppPreferences.menuBarIconVisible`，默认 true，在 Phase 3 的 `MenuBarExtra` 中读取此值控制 `isInserted`）。
+  - **Startup**：Launch at Login（保留 `LaunchAtLoginPresentation` 的 enabled/requiresApproval/notFound 三态消息行）。`Show Menu Bar Icon` 延后到 Phase 3，在它能够直接驱动 `MenuBarExtra.isInserted` 时再暴露，避免先上线无效控制。
   - **Keyboard**：Enable All Shortcuts / Hyper Key / "When target is frontmost" `Picker(.segmented)` (`Hide / Toggle / Focus`)。新设置：`AppPreferences.frontmostTargetBehavior`，默认 `.toggle`，接到 `ToggleSessionCoordinator`（默认行为不变）。
   - **Permissions** `WinkCard`：Accessibility / Input Monitoring 两 `PermRow`。
   - **Updates** `WinkCard`：`WinkAppIcon(40)` + `Wordmark` + 版本 + `Check for Updates…` + hairline + Automatic Updates `Toggle`。
@@ -149,14 +149,14 @@ User 决策（2026-04-22）：
   - 替换现有 banner 为 `WinkCard("Most used", accessory: "{total} activations · 7 days")` 列表，每行：app icon → 名称 → 进度条（`WinkPalette.current.accent`）→ 数字。
 
 **测试**
-- `Tests/WinkTests/SettingsViewTests.swift` 扩展：
-  - `SettingsView` 不再包含 `NSSegmentedControl` 子节点；包含 `NavigationSplitView` 命中标识；切换 tab 渲染对应组件类型。
-  - `openSettings()` 入口：模拟在 `EnvironmentValues` 中调用 `OpenSettingsAction` 后，AppDelegate 的 settings entry-point 触发计数 +1。
+- `Tests/WinkTests/SettingsViewTests.swift`：保留 Settings 生命周期相关 seam，覆盖 `handleAppear` / app reactivation 对权限与 Launch at Login 状态的刷新。
+- `Tests/WinkTests/SettingsLauncherTests.swift`：覆盖 tab 持久化、pending open replay、以及 handler 已安装时的直接打开行为。
+- `Tests/WinkTests/AppControllerTests.swift`：覆盖 `openPrimarySettingsWindow()` 到 `SettingsLauncher` 的桥接链路，而不是退化成源码字符串断言。
 - `Tests/WinkTests/LayoutRegressionTests.swift`：
   - 把 `cardViewExpandsToFillWidthInsideLeadingStack` 替换为 `WinkCard` 等价断言（detail 列宽 ≥ `760 - sidebar(200) - margins`）。
   - 保留 Insights ranking ScrollView 检测。
   - 新增 `shortcutsListRowPresentationHasNewShortcutCardWithDashedRecorder`。
-- `Tests/WinkTests/AppPreferencesTests.swift`（新建）：覆盖 `frontmostTargetBehavior` 持久化、`menuBarIconVisible` 持久化、`ToggleSessionCoordinator` 接到 `frontmostTargetBehavior` 的三态行为。
+- `Tests/WinkTests/AppPreferencesTests.swift`（新建）：覆盖 `frontmostTargetBehavior` 持久化、`ToggleSessionCoordinator` 接到 `frontmostTargetBehavior` 的三态行为。
 
 **验收**
 - `swift test` 全绿。
@@ -192,8 +192,9 @@ User 决策（2026-04-22）：
       Settings { SettingsView(...) }
   }
   ```
-  - `isInserted` 绑定 Phase 2 引入的 `menuBarIconVisible` 偏好；用户在 General 关掉时菜单栏图标自动消失。
+  - `isInserted` 绑定在 Phase 3 同时引入的 `menuBarIconVisible` 偏好；只有当这个 scene 存在时，General 中的 `Show Menu Bar Icon` 才应该重新暴露。
   - `systemImage` 仍用 `"bolt.square.fill"`，Phase 4 切到 Twin 模板。
+- `Sources/Wink/UI/GeneralTabView.swift`：在本阶段把 `Show Menu Bar Icon` 加回 Startup 区域，但只允许它直接驱动 `MenuBarExtra.isInserted`，不保留无效占位状态。
 - `Sources/Wink/Services/ShortcutManager.swift`：暴露 `setShortcutsPaused(_:)`，flip 时禁用所有 Carbon hotkey 注册 + 关闭 active event tap，但**不**清除 `shortcuts.json`；恢复时 `attemptStart()` 重新注册。Persist 到 `AppPreferences.shortcutsPaused`。
   - 严格遵守 AGENTS 中"persist user-visible state only after underlying op succeeds"：toggle 顺序为 op 成功 → preference update → UI 广播。
 

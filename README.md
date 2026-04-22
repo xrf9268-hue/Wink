@@ -64,6 +64,7 @@ Tagged releases use `v<CFBundleShortVersionString>` and the release workflow des
 - [`docs/README.md`](./docs/README.md)
 - [`docs/architecture.md`](./docs/architecture.md)
 - [`docs/github-automation.md`](./docs/github-automation.md)
+- [`docs/privacy.md`](./docs/privacy.md)
 - [`docs/signing-and-release.md`](./docs/signing-and-release.md)
 
 ## Repository Automation

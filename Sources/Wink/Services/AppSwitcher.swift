@@ -174,6 +174,7 @@ final class AppSwitcher: AppSwitching {
     private let appLookupClient: AppLookupClient
     private let confirmationClient: ConfirmationClient
     private let sessionCoordinator: ToggleSessionCoordinator
+    private var frontmostTargetBehavior: FrontmostTargetBehavior = .toggle
 
     /// Re-entry guard: prevents nested calls to toggleApplication on the same run loop turn.
     private var isToggling = false
@@ -221,6 +222,7 @@ final class AppSwitcher: AppSwitching {
         self.confirmationClient = confirmationClient
         self.sessionCoordinator = sessionCoordinator ?? ToggleSessionCoordinator(now: confirmationClient.now)
         self.sessionCoordinator.startObservingWorkspaceNotifications()
+        self.sessionCoordinator.setFrontmostTargetBehavior(frontmostTargetBehavior)
         workspaceHideObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didHideApplicationNotification,
             object: nil,
@@ -236,6 +238,11 @@ final class AppSwitcher: AppSwitching {
                 _ = self.handleWorkspaceHideNotification(bundleIdentifier: bundle)
             }
         }
+    }
+
+    func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior) {
+        frontmostTargetBehavior = behavior
+        sessionCoordinator.setFrontmostTargetBehavior(behavior)
     }
 
     var pendingActivationState: PendingActivationState? {
@@ -691,6 +698,13 @@ final class AppSwitcher: AppSwitching {
         !snapshot.targetIsObservedFrontmost && (snapshot.targetIsHidden || !snapshot.targetHasVisibleWindows)
     }
 
+    private func isTargetCurrentlyFrontmost(
+        runningApp: NSRunningApplication,
+        snapshot: ActivationObservationSnapshot
+    ) -> Bool {
+        snapshot.targetIsObservedFrontmost || runningApp.isActive
+    }
+
     private func clearActivationTracking(for bundleIdentifier: String, resetPreviousTracking: Bool) {
         if resetPreviousTracking {
             frontmostTracker.resetPreviousAppTracking()
@@ -887,6 +901,64 @@ final class AppSwitcher: AppSwitching {
                 generation: pendingActivationState.generation,
                 snapshot: preActionSnapshot
             )
+        }
+
+        if isTargetCurrentlyFrontmost(runningApp: runningApp, snapshot: preActionSnapshot) {
+            switch frontmostTargetBehavior {
+            case .focus:
+                return performFrontmostFocus(
+                    shortcut: shortcut,
+                    runningApp: runningApp,
+                    windows: preActionWindowObservation.windows,
+                    snapshot: preActionSnapshot,
+                    attemptStartedAt: attemptStartedAt
+                )
+            case .hide:
+                var previousApp = sessionCoordinator.previousBundle(for: shortcut.bundleIdentifier)
+                    ?? stableActivationState?.previousBundleIdentifier
+                    ?? frontmostTracker.lastNonTargetBundleIdentifier
+                if previousApp == shortcut.bundleIdentifier {
+                    previousApp = nil
+                }
+                let activationPath: ActivationPath = stableActivationState?.bundleIdentifier == shortcut.bundleIdentifier
+                    ? .hide
+                    : .hideUntracked
+                let deactivationState = acceptPendingDeactivation(
+                    for: shortcut.bundleIdentifier,
+                    appName: shortcut.appName,
+                    previousBundleIdentifier: previousApp,
+                    activationPath: activationPath,
+                    startedAt: attemptStartedAt,
+                    pid: runningApp.processIdentifier
+                )
+                logToggleTrace(
+                    family: .decision,
+                    bundleIdentifier: shortcut.bundleIdentifier,
+                    event: activationPath == .hide ? "hide_tracked" : "hide_untracked",
+                    reason: "frontmost_behavior_hide",
+                    activationPath: activationPath,
+                    previousBundle: previousApp
+                )
+                let lifecycle: ToggleLifecycle = activationPath == .hide ? .hideAttempt : .hideUntracked
+                logToggleLifecycle(
+                    for: shortcut,
+                    lifecycle: lifecycle,
+                    previousBundle: previousApp,
+                    activationPath: activationPath,
+                    snapshot: preActionSnapshot,
+                    elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
+                )
+                return performHideToggle(
+                    shortcut: shortcut,
+                    runningApp: runningApp,
+                    state: deactivationState,
+                    previousBundle: previousApp,
+                    activationPath: activationPath,
+                    attemptStartedAt: attemptStartedAt
+                )
+            case .toggle:
+                break
+            }
         }
 
         if shouldToggleOff(bundleIdentifier: shortcut.bundleIdentifier, runningAppIsActive: runningApp.isActive),
@@ -1086,6 +1158,37 @@ final class AppSwitcher: AppSwitching {
             }
         )
         return true
+    }
+
+    private func performFrontmostFocus(
+        shortcut: AppShortcut,
+        runningApp: NSRunningApplication,
+        windows: [AXUIElement]?,
+        snapshot: ActivationObservationSnapshot,
+        attemptStartedAt: CFAbsoluteTime
+    ) -> Bool {
+        if runningApp.isHidden {
+            runningApp.unhide()
+        }
+        unminimizeWindows(of: runningApp, windows: windows)
+        let activated = activateViaWindowServer(runningApp, windows: windows)
+        logToggleTrace(
+            family: .decision,
+            bundleIdentifier: shortcut.bundleIdentifier,
+            event: "focus_frontmost",
+            reason: "frontmost_behavior_focus",
+            activationPath: .activate,
+            previousBundle: sessionCoordinator.previousBundle(for: shortcut.bundleIdentifier)
+        )
+        logToggleLifecycle(
+            for: shortcut,
+            lifecycle: .attempt,
+            previousBundle: sessionCoordinator.previousBundle(for: shortcut.bundleIdentifier),
+            activationPath: .activate,
+            snapshot: snapshot,
+            elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
+        )
+        return activated || runningApp.isActive
     }
 
     // MARK: - Toggle-off lanes

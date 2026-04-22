@@ -111,6 +111,22 @@ final class ShortcutManager {
         )
     }
 
+    func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior) {
+        appSwitcher.setFrontmostTargetBehavior(behavior)
+    }
+
+    func requestPermissions() {
+        let inputMonitoringRequired = captureCoordinator.inputMonitoringRequired
+        _ = permissionService.requestIfNeeded(
+            prompt: true,
+            inputMonitoringRequired: inputMonitoringRequired
+        )
+        captureCoordinator.refreshInputMonitoring(
+            granted: permissionService.isInputMonitoringTrusted()
+        )
+        attemptStartIfPermitted()
+    }
+
     // MARK: - Permission monitoring
 
     private func startPermissionMonitoring() {

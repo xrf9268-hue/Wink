@@ -34,23 +34,12 @@ struct LayoutRegressionTests {
     }
 
     @Test @MainActor
-    func insightsSummaryPresentationUsesNarrativeSentenceAndGrouping() {
-        let presentation = InsightsSummaryPresentation(
-            totalCount: 1647,
-            period: .week,
-            locale: Locale(identifier: "en_US")
-        )
-
-        #expect(presentation.formattedTotalCount == "1,647")
-        #expect(presentation.usageUnit == "times")
-        #expect(presentation.periodText == "in the past 7 days")
-        #expect(presentation.narrativeText == "You've used shortcuts 1,647 times in the past 7 days")
-        #expect(String(presentation.attributedNarrativeText.characters) == presentation.narrativeText)
-        #expect(InsightsTabCopy.rankingSectionTitle == "Most Used")
+    func insightsCardUsesUpdatedSectionTitleCopy() {
+        #expect(InsightsTabCopy.rankingSectionTitle == "Most used")
     }
 
     @Test @MainActor
-    func cardViewExpandsToFillWidthInsideLeadingStack() {
+    func winkCardExpandsToFillWidthInsideLeadingStack() {
         let hostingView = makeHostingView(
             CardWidthProbeView(),
             size: NSSize(width: 720, height: 220)
@@ -82,6 +71,7 @@ struct LayoutRegressionTests {
 
         #expect(presentation.title == "Missing App")
         #expect(presentation.subtitle == "732× past 7 days")
+        #expect(presentation.metadataText == "732× past 7 days · Last used —")
         #expect(presentation.contentOpacity == 1.0)
         #expect(presentation.showsRunningIndicator == false)
         #expect(presentation.runningStatusText == nil)
@@ -162,6 +152,12 @@ struct LayoutRegressionTests {
         #expect(presentation.contentOpacity == 0.65)
         #expect(presentation.unavailableStatusText == "App unavailable")
     }
+
+    @Test @MainActor
+    func shortcutComposerUsesExpectedRecorderPlaceholderAndDashSpec() {
+        #expect(ShortcutRecorderIdleField.placeholderText == "Press a key combination…")
+        #expect(ShortcutRecorderIdleField.dashPattern == [4, 4])
+    }
 }
 
 private actor StaticUsageTracker: UsageTracking {
@@ -195,7 +191,7 @@ private actor StaticUsageTracker: UsageTracking {
 private struct CardWidthProbeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            CardView("Startup") {
+            WinkCard(title: { Text("Startup") }) {
                 Text("Launch at Login")
                     .padding(14)
             }

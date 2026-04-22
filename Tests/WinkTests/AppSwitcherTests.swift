@@ -1200,6 +1200,135 @@ func externalUntrackedHideDispatchesHideRequestThroughCoordinatorOwnedSession() 
 }
 
 @Test @MainActor
+func setFrontmostTargetBehaviorUpdatesCoordinatorPreference() {
+    let coordinator = ToggleSessionCoordinator(now: { 100 })
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        sessionCoordinator: coordinator
+    )
+
+    switcher.setFrontmostTargetBehavior(.focus)
+
+    #expect(coordinator.frontmostTargetBehavior == .focus)
+}
+
+@Test @MainActor
+func frontmostHidePreferenceHidesEvenWithoutStableWindowEvidence() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for hide preference test")
+        return
+    }
+
+    let scheduler = ManualConfirmationScheduler()
+    var hideCalls = 0
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: { bundleIdentifier },
+            windowObservation: { _ in
+                .init(
+                    windows: nil,
+                    visibleWindowCount: 0,
+                    hasFocusedWindow: false,
+                    hasMainWindow: false,
+                    windowsReadSucceeded: true,
+                    failureReason: nil
+                )
+            },
+            activationPolicy: { _ in .regular }
+        )),
+        hideRequestClient: .init(hideApplication: { _ in
+            hideCalls += 1
+            return true
+        }),
+        appLookupClient: .init(
+            runningApplications: { _ in [frontmostApp] },
+            applicationURL: { _ in nil }
+        ),
+        confirmationClient: .init(
+            now: { 100 },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        )
+    )
+    switcher.setFrontmostTargetBehavior(.hide)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "h",
+        modifierFlags: ["command", "shift"]
+    )
+
+    let accepted = switcher.toggleApplication(for: shortcut)
+
+    #expect(accepted == true)
+    #expect(switcher.pendingDeactivationState?.activationPath == .hideUntracked)
+
+    scheduler.runNext()
+
+    #expect(hideCalls == 1)
+}
+
+@Test @MainActor
+func frontmostFocusPreferenceKeepsSessionOutOfDeactivation() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for focus preference test")
+        return
+    }
+
+    var psn = ProcessSerialNumber()
+    psn.highLongOfPSN = 1
+    psn.lowLongOfPSN = 2
+    var hideCalls = 0
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: { bundleIdentifier },
+            windowObservation: { _ in
+                .init(
+                    windows: nil,
+                    visibleWindowCount: 1,
+                    hasFocusedWindow: true,
+                    hasMainWindow: true,
+                    windowsReadSucceeded: true,
+                    failureReason: nil
+                )
+            },
+            activationPolicy: { _ in .regular }
+        )),
+        activationClient: .init(activateFrontProcess: { _, _ in
+            .success(psn)
+        }),
+        hideRequestClient: .init(hideApplication: { _ in
+            hideCalls += 1
+            return true
+        }),
+        appLookupClient: .init(
+            runningApplications: { _ in [frontmostApp] },
+            applicationURL: { _ in nil }
+        )
+    )
+    switcher.setFrontmostTargetBehavior(.focus)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "f",
+        modifierFlags: ["command", "option"]
+    )
+
+    let accepted = switcher.toggleApplication(for: shortcut)
+
+    #expect(accepted == true)
+    #expect(switcher.pendingDeactivationState == nil)
+    #expect(hideCalls == 0)
+}
+
+@Test @MainActor
 func clearActivationTrackingResetsCoordinatorSession() {
     let coordinator = ToggleSessionCoordinator(now: { 100 })
     let switcher = AppSwitcher(

@@ -71,22 +71,25 @@ flowchart LR
 ## Main modules
 
 ### App lifecycle
-- `main.swift`
+- `WinkApp`
 - `AppDelegate`
 - `AppController`
+- `SettingsLauncher`
 - `SparkleUpdateService`
 
 Responsibilities:
-- start the accessory/menu bar app
+- declare the SwiftUI `Settings` scene and install the shared `openSettings()` bridge
+- start the accessory/menu bar app via `@NSApplicationDelegateAdaptor`
 - start the Sparkle updater when feed configuration is present
 - load persisted shortcuts
 - start global shortcut handling
 - install menu bar UI
-- open settings window
+- present Settings and reactivate Wink when AppKit entry points request it
 
 ### Settings and user interaction
-- `SettingsWindowController`
-- `SettingsView` (tabbed: Shortcuts / General / Insights)
+- `SettingsLauncher`
+- `SettingsNavigation`
+- `SettingsView` (`NavigationSplitView`: Shortcuts / Insights / General)
 - `ShortcutEditorState`
 - `AppPreferences`
 - `UpdateServicing`
@@ -95,9 +98,10 @@ Responsibilities:
 - `GeneralTabView`
 - `InsightsTabView`
 - `InsightsViewModel`
-- `BarChartView`
 
 Responsibilities:
+- bridge AppKit callers (menu bar, first launch) to SwiftUI `openSettings()` without a custom `NSWindow` host
+- persist the selected Settings tab and reopen that tab on the next Settings launch
 - choose target applications
 - record shortcuts
 - display saved bindings with inline usage stats
@@ -106,6 +110,7 @@ Responsibilities:
 - surface truthful shortcut readiness via `ShortcutCaptureStatus`
 - surface launch-at-login state via `LaunchAtLoginStatus`
 - surface Sparkle update status and the manual `Check for Updates…` entry without leaking Sparkle types into SwiftUI
+- persist General-tab preferences such as `frontmostTargetBehavior`
 - show conflicts before saving
 - display usage trends and app ranking via Insights tab
 
@@ -225,6 +230,10 @@ Responsibilities:
 ### 1. Startup flow
 ```text
 App launch
+  -> WinkApp declares Settings scene + SettingsCommands
+  -> @NSApplicationDelegateAdaptor creates AppDelegate
+  -> AppDelegate.applicationDidFinishLaunching()
+  -> NSApp.setActivationPolicy(.accessory)
   -> AppController.start()
   -> SparkleUpdateService initializes if SUFeedURL + SUPublicEDKey are configured
   -> PersistenceService.load()
@@ -239,12 +248,16 @@ App launch
   -> CarbonHotKeyProvider registers enabled standard shortcuts
   -> EventTapCaptureProvider/EventTapManager starts only when Input Monitoring is granted and Hyper-routed shortcuts exist
   -> MenuBarController.install()
+  -> if this is a fresh install with no saved shortcuts, AppController.openSettings() routes through SettingsLauncher + openSettings()
 ```
 
 ### 2. Add shortcut flow
 ```text
 User opens settings
-  -> SettingsWindowController.show() wires ShortcutEditorState + AppPreferences into SettingsView
+  -> MenuBarController / first-launch path calls AppController.openSettings()
+  -> SettingsLauncher.open(tab: ...) optionally records the desired tab
+  -> SettingsCommands invokes SwiftUI EnvironmentValues.openSettings
+  -> Settings scene presents SettingsView with shared ShortcutEditorState + AppPreferences + InsightsViewModel
   -> user chooses app
   -> ShortcutRecorderView stores RecordedShortcut in ShortcutEditorState
   -> ShortcutEditorState.addShortcut() builds AppShortcut
@@ -314,8 +327,9 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 
 ## Current design choices
 - **SPM-first**: simple repo layout and source organization
-- **AppKit-first with selective SwiftUI**: deliberate architectural decision documented in `docs/archive/app-structure-direction.md`; hard AppKit requirements (`.accessory` policy, raw key capture, CGEvent tap, NSWorkspace) prevent a pure SwiftUI scene-based approach
+- **AppKit-first runtime with a SwiftUI settings shell**: Wink now uses `@main` + `Settings` scene + `openSettings()` for app settings, while shortcut capture, activation, menu bar management, and system integration remain AppKit-heavy
 - **Capability-aware shortcut readiness**: `ShortcutCaptureStatus` separates Accessibility, Input Monitoring, Carbon registration, Hyper event-tap activity, standard-shortcut readiness, and Hyper readiness
+- **Single Settings entry point**: `SettingsLauncher` persists the selected tab and bridges AppKit callers to the SwiftUI environment action instead of maintaining a custom `SettingsWindowController`
 - **On-demand Input Monitoring**: startup and later shortcut-routing changes request Input Monitoring only when the current enabled shortcut set actually needs Hyper transport; standard-only configurations stay on the Carbon/Accessibility path without an eager Input Monitoring prompt, and Hyper-required startup defers the Input Monitoring request until Accessibility has actually been granted
 - **Strict persistence schema**: Wink currently supports only the exact `[AppShortcut]` payload it writes today; if `shortcuts.json` is malformed or missing required fields, loading fails loudly, logs `path` plus `reason`, and preserves a `shortcuts.load-failure-*.json` copy instead of silently treating the state as empty
 - **O(1) trigger index**: `ShortcutSignature` dictionary replaces linear scans in the hot path

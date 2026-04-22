@@ -1,182 +1,128 @@
-import AppKit
 import SwiftUI
 
 enum InsightsTabCopy {
-    static let rankingSectionTitle = "Most Used"
+    static let rankingSectionTitle = "Most used"
     static let emptyRankingText = "No shortcuts used in this period"
 }
 
-enum InsightsVisualStyle {
-    static let accent = Color(
-        nsColor: NSColor(name: nil) { appearance in
-            switch appearance.bestMatch(from: [.darkAqua, .aqua]) {
-            case .darkAqua:
-                return NSColor(srgbRed: 0.44, green: 0.63, blue: 0.79, alpha: 1)
-            default:
-                return NSColor(srgbRed: 0.34, green: 0.53, blue: 0.69, alpha: 1)
-            }
-        }
-    )
-    static let bannerBackground = Color.primary.opacity(0.05)
-    static let listBackground = Color.primary.opacity(0.045)
-    static let separator = Color.primary.opacity(0.07)
-    static let barHeight: CGFloat = 16
-    static let barCornerRadius: CGFloat = 5
-    static let barMinimumVisibleWidth: CGFloat = 30
-}
-
-struct InsightsSummaryPresentation {
-    let formattedTotalCount: String
-    let usageUnit: String
-    let periodText: String
-    let narrativeText: String
-
-    init(totalCount: Int, period: InsightsPeriod, locale: Locale = .autoupdatingCurrent) {
-        formattedTotalCount = totalCount.formatted(
-            .number
-                .locale(locale)
-                .grouping(.automatic)
-        )
-        usageUnit = totalCount == 1 ? "time" : "times"
-        periodText = period.summaryRangeText
-        narrativeText = "You've used shortcuts \(formattedTotalCount) \(usageUnit) \(periodText)"
-    }
-
-    var attributedNarrativeText: AttributedString {
-        var text = AttributedString(narrativeText)
-        text.font = .system(size: 15, weight: .medium, design: .rounded)
-
-        if let range = text.range(of: formattedTotalCount) {
-            text[range].font = .system(size: 15, weight: .bold, design: .rounded)
-        }
-
-        return text
-    }
-}
-
 struct InsightsTabView: View {
+    @Environment(\.winkPalette) private var palette
+
     @Bindable var viewModel: InsightsViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            HStack {
-                Picker("", selection: $viewModel.period) {
-                    ForEach(InsightsPeriod.allCases, id: \.self) { period in
-                        Text(period.rawValue).tag(period)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .bottom, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Insights")
+                            .font(WinkType.tabTitle)
+                            .foregroundStyle(palette.textPrimary)
+                        Text("Usage trends for your saved shortcuts.")
+                            .font(WinkType.bodyText)
+                            .foregroundStyle(palette.textSecondary)
                     }
+
+                    Spacer(minLength: 8)
+
+                    Picker("", selection: $viewModel.period) {
+                        ForEach(InsightsPeriod.allCases, id: \.self) { period in
+                            Text(period.rawValue).tag(period)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 120)
+                    .labelsHidden()
                 }
-                .frame(width: 116)
-                .labelsHidden()
-                .pickerStyle(.segmented)
 
-                Spacer(minLength: 0)
-            }
+                WinkCard(
+                    title: {
+                        Text(InsightsTabCopy.rankingSectionTitle)
+                    },
+                    accessory: {
+                        Text("\(viewModel.totalCount.formatted(.number.grouping(.automatic))) activations")
+                            .font(WinkType.labelSmall)
+                            .foregroundStyle(palette.textTertiary)
+                    }
+                ) {
+                    if viewModel.ranking.isEmpty {
+                        Text(InsightsTabCopy.emptyRankingText)
+                            .font(WinkType.bodyText)
+                            .foregroundStyle(palette.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 18)
+                    } else {
+                        let maxCount = max(viewModel.ranking.map(\.count).max() ?? 0, 1)
 
-            summaryBanner
-
-            if viewModel.ranking.isEmpty {
-                Text(InsightsTabCopy.emptyRankingText)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(InsightsTabCopy.rankingSectionTitle)
-                        .font(.system(size: 17, weight: .semibold))
-
-                    let maxCount = viewModel.ranking.first?.count ?? 1
-
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
+                        VStack(spacing: 0) {
                             ForEach(Array(viewModel.ranking.enumerated()), id: \.element.id) { index, item in
-                                rankingRow(
-                                    item,
+                                InsightsRankingRow(
+                                    item: item,
                                     maxCount: maxCount,
                                     showsDivider: index < viewModel.ranking.count - 1
                                 )
                             }
                         }
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
-                        .background(InsightsVisualStyle.listBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
-                    .frame(maxHeight: .infinity, alignment: .top)
                 }
-                .frame(maxHeight: .infinity, alignment: .top)
             }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 18)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .task { viewModel.scheduleRefresh() }
+        .background(palette.windowBg)
     }
+}
 
-    private var summaryBanner: some View {
-        let summary = InsightsSummaryPresentation(totalCount: viewModel.totalCount, period: viewModel.period)
+private struct InsightsRankingRow: View {
+    @Environment(\.winkPalette) private var palette
 
-        return HStack(spacing: 0) {
-            Text(summary.attributedNarrativeText)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.primary)
+    let item: RankedShortcut
+    let maxCount: Int
+    let showsDivider: Bool
 
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 18)
-        .background(InsightsVisualStyle.bannerBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-
-    @ViewBuilder
-    private func rankingRow(_ item: RankedShortcut, maxCount: Int, showsDivider: Bool) -> some View {
+    var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                AppIconView(bundleIdentifier: item.bundleIdentifier, size: 28)
+                AppIconView(bundleIdentifier: item.bundleIdentifier, size: 30)
 
                 Text(item.appName)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(WinkType.bodyMedium)
+                    .foregroundStyle(palette.textPrimary)
                     .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(minWidth: 104, alignment: .leading)
+                    .frame(minWidth: 110, alignment: .leading)
 
-                rankingBar(progress: progressValue(for: item.count, maxCount: maxCount))
-                    .frame(maxWidth: .infinity)
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(palette.accentBgSoft)
+
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(palette.accent)
+                            .frame(width: filledWidth(totalWidth: geometry.size.width))
+                    }
+                }
+                .frame(height: 12)
 
                 Text(item.count.formatted(.number.grouping(.automatic)))
-                    .font(.system(size: 14, weight: .regular, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 54, alignment: .trailing)
+                    .font(WinkType.monoBadge)
+                    .foregroundStyle(palette.textSecondary)
+                    .frame(minWidth: 48, alignment: .trailing)
             }
-            .padding(.vertical, 16)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
 
             if showsDivider {
                 Divider()
-                    .overlay(InsightsVisualStyle.separator)
-                    .padding(.leading, 42)
+                    .overlay(palette.hairline)
+                    .padding(.leading, 56)
             }
         }
     }
 
-    private func rankingBar(progress: CGFloat) -> some View {
-        GeometryReader { geometry in
-            HStack(alignment: .center, spacing: 0) {
-                RoundedRectangle(cornerRadius: InsightsVisualStyle.barCornerRadius, style: .continuous)
-                    .fill(InsightsVisualStyle.accent)
-                    .frame(width: filledBarWidth(in: geometry.size.width, progress: progress, height: geometry.size.height))
-
-                Spacer(minLength: 0)
-            }
-        }
-        .frame(height: InsightsVisualStyle.barHeight)
-    }
-
-    private func progressValue(for count: Int, maxCount: Int) -> CGFloat {
+    private func filledWidth(totalWidth: CGFloat) -> CGFloat {
         guard maxCount > 0 else { return 0 }
-        return min(max(CGFloat(count) / CGFloat(maxCount), 0), 1)
-    }
-
-    private func filledBarWidth(in totalWidth: CGFloat, progress: CGFloat, height: CGFloat) -> CGFloat {
-        guard progress > 0 else { return 0 }
-        return max(totalWidth * progress, max(InsightsVisualStyle.barMinimumVisibleWidth, height * 1.8))
+        let progress = max(CGFloat(item.count) / CGFloat(maxCount), 0)
+        return max(totalWidth * progress, min(32, totalWidth))
     }
 }

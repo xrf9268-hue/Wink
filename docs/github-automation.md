@@ -82,7 +82,7 @@ The governance harness does **not** change Wink's runtime-validation policy:
 The current automation treats the following areas as runtime-sensitive:
 - shortcut capture transport (`CarbonHotKeyProvider`, `EventTapCaptureProvider`, `ShortcutCaptureCoordinator`, `ShortcutManager`, `EventTapManager`)
 - permissions and activation (`AccessibilityPermissionService`, `AppSwitcher`, `SkyLightBridge`, `ApplicationObservation`)
-- launch and startup flow (`LaunchAtLoginService`, `AppController`, `AppDelegate`, `main.swift`)
+- launch and startup flow (`WinkApp`, `SettingsLauncher`, `LaunchAtLoginService`, `AppController`, `AppDelegate`)
 - packaging/runtime scripts (`package-app.sh`, `package-dmg.sh`, `e2e-*`, `cgevent-helper.swift`)
 - signing/runtime metadata (`entitlements.plist`, `Sources/Wink/Resources/Info.plist`)
 

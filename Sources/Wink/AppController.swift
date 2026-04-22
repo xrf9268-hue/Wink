@@ -3,6 +3,15 @@ import ApplicationServices
 
 @MainActor
 final class AppController {
+    struct SettingsSceneServices {
+        let editor: ShortcutEditorState
+        let preferences: AppPreferences
+        let insightsViewModel: InsightsViewModel
+        let appListProvider: AppListProvider
+        let shortcutStatusProvider: ShortcutStatusProvider
+        let settingsLauncher: SettingsLauncher
+    }
+
     static let firstLaunchCompletedDefaultsKey = "com.wink.firstLaunchCompleted"
 
     private let shortcutStore = ShortcutStore()
@@ -13,6 +22,8 @@ final class AppController {
     private let userDefaults: UserDefaults
     private lazy var updateService = SparkleUpdateService()
     private lazy var appSwitcher = AppSwitcher()
+    private lazy var settingsLauncher = SettingsLauncher(userDefaults: userDefaults)
+    private lazy var settingsShortcutStatusProvider = ShortcutStatusProvider()
     private lazy var shortcutManager = ShortcutManager(
         shortcutStore: shortcutStore,
         persistenceService: persistenceService,
@@ -21,21 +32,49 @@ final class AppController {
         appBundleLocator: appBundleLocator,
         diagnosticClient: .live
     )
+    private lazy var appPreferences = AppPreferences(
+        shortcutManager: shortcutManager,
+        hyperKeyService: hyperKeyService,
+        updateService: updateService,
+        userDefaults: userDefaults
+    )
+    private lazy var shortcutEditor = ShortcutEditorState(
+        shortcutStore: shortcutStore,
+        shortcutManager: shortcutManager,
+        usageTracker: usageTracker,
+        onShortcutConfigurationChange: { [weak self] in
+            self?.appPreferences.refreshPermissions()
+        }
+    )
+    private lazy var insightsViewModel = InsightsViewModel(
+        usageTracker: usageTracker,
+        shortcutStore: shortcutStore
+    )
+    private lazy var appListProvider = AppListProvider()
     private lazy var menuBarController = MenuBarController(
         shortcutStore: shortcutStore,
         onOpenSettings: { [weak self] in self?.openSettings() },
         onQuit: { NSApplication.shared.terminate(nil) }
     )
-    private lazy var settingsWindowController = SettingsWindowController(
-        shortcutStore: shortcutStore,
-        shortcutManager: shortcutManager,
-        usageTracker: usageTracker,
-        hyperKeyService: hyperKeyService,
-        updateService: updateService
+    private lazy var settingsSceneServicesStorage = SettingsSceneServices(
+        editor: shortcutEditor,
+        preferences: appPreferences,
+        insightsViewModel: insightsViewModel,
+        appListProvider: appListProvider,
+        shortcutStatusProvider: settingsShortcutStatusProvider,
+        settingsLauncher: settingsLauncher
     )
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
+    }
+
+    var settingsSceneServices: SettingsSceneServices {
+        settingsSceneServicesStorage
+    }
+
+    var settingsLauncherService: SettingsLauncher {
+        settingsLauncher
     }
 
     func start() {
@@ -76,7 +115,7 @@ final class AppController {
     }
 
     private func openSettings() {
-        settingsWindowController.show()
+        settingsLauncher.open()
         NSApp.activate()
     }
 

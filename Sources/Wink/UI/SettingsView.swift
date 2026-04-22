@@ -1,12 +1,6 @@
 import AppKit
 import SwiftUI
 
-enum SettingsTab: String, CaseIterable {
-    case shortcuts = "Shortcuts"
-    case general = "General"
-    case insights = "Insights"
-}
-
 @MainActor
 struct SettingsViewLifecycleHandler {
     let preferences: AppPreferences
@@ -23,28 +17,33 @@ struct SettingsViewLifecycleHandler {
 }
 
 struct SettingsView: View {
-    var editor: ShortcutEditorState
+    @Environment(\.winkPalette) private var palette
+
+    @Bindable var editor: ShortcutEditorState
     var preferences: AppPreferences
     var insightsViewModel: InsightsViewModel
     var appListProvider: AppListProvider
     var shortcutStatusProvider: ShortcutStatusProvider
-    @State private var selectedTab: SettingsTab = .shortcuts
+    @Bindable var settingsLauncher: SettingsLauncher
 
     private var lifecycleHandler: SettingsViewLifecycleHandler {
         SettingsViewLifecycleHandler(preferences: preferences)
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            Picker("", selection: $selectedTab) {
-                ForEach(SettingsTab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
+        NavigationSplitView {
+            List(SettingsTab.allCases, id: \.self, selection: $settingsLauncher.selectedTab) { tab in
+                Label(tab.title, systemImage: tab.systemImage)
+                    .font(WinkType.bodyMedium)
+                    .tag(tab)
             }
-            .pickerStyle(.segmented)
-
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 220)
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(palette.sidebarBg)
+        } detail: {
             Group {
-                switch selectedTab {
+                switch settingsLauncher.selectedTab {
                 case .shortcuts:
                     ShortcutsTabView(
                         editor: editor,
@@ -52,23 +51,27 @@ struct SettingsView: View {
                         appListProvider: appListProvider,
                         shortcutStatusProvider: shortcutStatusProvider
                     )
-                case .general:
-                    GeneralTabView(preferences: preferences, editor: editor)
                 case .insights:
                     InsightsTabView(viewModel: insightsViewModel)
+                case .general:
+                    GeneralTabView(preferences: preferences, editor: editor)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(palette.windowBg)
         }
-        .padding(20)
-        .frame(minWidth: 680, minHeight: 420)
-        .onChange(of: selectedTab) { _, newTab in
+        .navigationSplitViewStyle(.balanced)
+        .background(palette.windowBg)
+        .onChange(of: settingsLauncher.selectedTab) { _, newTab in
             if newTab == .insights {
                 insightsViewModel.scheduleRefresh()
             }
         }
         .onAppear {
             lifecycleHandler.handleAppear()
+            if settingsLauncher.selectedTab == .insights {
+                insightsViewModel.scheduleRefresh()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             lifecycleHandler.handleAppDidBecomeActive()

@@ -4,7 +4,7 @@ import SwiftUI
 
 private enum ShortcutRowMetrics {
     static let spacing: CGFloat = 12
-    static let iconSize: CGFloat = 36
+    static let iconSize: CGFloat = 30
     static let textSpacing: CGFloat = 2
     static let verticalPadding: CGFloat = 10
 }
@@ -30,7 +30,8 @@ struct ShortcutRowAccessibilityOptions: Equatable {
 
 struct ShortcutsListRowPresentation {
     let title: String
-    let subtitle: String
+    let usageText: String
+    let lastUsedText: String
     let contentOpacity: Double
     let showsRunningIndicator: Bool
     let runningStatusText: String?
@@ -44,7 +45,8 @@ struct ShortcutsListRowPresentation {
         accessibilityOptions: ShortcutRowAccessibilityOptions = .standard
     ) {
         title = shortcut.appName
-        subtitle = "\(usageCount)× past 7 days"
+        usageText = "\(usageCount)× past 7 days"
+        lastUsedText = "Last used —"
         contentOpacity = shortcut.isEnabled ? 1.0 : 0.65
         showsRunningIndicator = runtimeStatus.isRunning
         runningStatusText = runtimeStatus.isRunning && accessibilityOptions.differentiateWithoutColor
@@ -55,159 +57,235 @@ struct ShortcutsListRowPresentation {
             ? "Couldn't find this app. Rebind it to restore the shortcut."
             : nil
     }
+
+    var metadataText: String {
+        "\(usageText) · \(lastUsedText)"
+    }
+
+    var subtitle: String {
+        usageText
+    }
+}
+
+private enum ShortcutBannerPresentation {
+    case success(title: String, message: String)
+    case warning(title: String, message: String, showsAction: Bool)
+
+    init(status: ShortcutCaptureStatus) {
+        if !status.accessibilityGranted {
+            self = .warning(
+                title: "Accessibility permission needed",
+                message: "Wink needs Accessibility access to route global shortcuts.",
+                showsAction: true
+            )
+            return
+        }
+
+        if status.inputMonitoringRequired && !status.inputMonitoringGranted && !status.hyperShortcutsReady {
+            self = .warning(
+                title: "Input Monitoring needed",
+                message: "Hyper shortcuts need Input Monitoring before Wink can capture them.",
+                showsAction: true
+            )
+            return
+        }
+
+        if let warning = status.standardRegistrationWarning {
+            self = .warning(
+                title: "Shortcut capture needs attention",
+                message: warning,
+                showsAction: false
+            )
+            return
+        }
+
+        let title: String
+        if status.standardShortcutsReady && status.hyperShortcutsReady {
+            title = "Shortcut capture ready"
+        } else {
+            title = "Standard shortcuts ready"
+        }
+
+        let message = [status.bannerDetail, status.systemSettingsGuidance]
+            .compactMap { $0 }
+            .joined(separator: " ")
+
+        self = .success(title: title, message: message)
+    }
 }
 
 struct ShortcutsTabView: View {
+    @Environment(\.winkPalette) private var palette
+
     @Bindable var editor: ShortcutEditorState
     var preferences: AppPreferences
     var appListProvider: AppListProvider
     var shortcutStatusProvider: ShortcutStatusProvider
 
     @State private var showingAppPicker = false
+    @State private var filterText = ""
     @State private var accessibilityOptions = ShortcutRowAccessibilityOptions.standard
+
+    private var filteredShortcuts: [AppShortcut] {
+        let query = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            return editor.shortcuts
+        }
+
+        return editor.shortcuts.filter { shortcut in
+            shortcut.appName.localizedCaseInsensitiveContains(query)
+                || shortcut.displayText.localizedCaseInsensitiveContains(query)
+        }
+    }
 
     var body: some View {
         let importPreviewActive = editor.pendingRecipeImport != nil
 
-        VStack(alignment: .leading, spacing: 12) {
-            PermissionStatusBanner(
-                status: preferences.shortcutCaptureStatus,
-                onRefresh: { preferences.refreshPermissions() }
-            )
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsTabHeader(
+                    title: "Shortcuts",
+                    subtitle: "Bind a keystroke to launch, toggle, or hide an app."
+                ) {
+                    WinkButton("Refresh", systemImage: WinkIcon.refresh.systemName) {
+                        preferences.requestShortcutPermissions()
+                    }
+                }
 
-            // New Shortcut card
-            CardView("New Shortcut") {
-                VStack(alignment: .leading, spacing: 10) {
-                    // App chooser row
-                    HStack(spacing: 10) {
-                        Button {
-                            showingAppPicker = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text("Choose App")
-                                Image(systemName: "chevron.down")
-                                    .font(.system(size: 9, weight: .semibold))
+                permissionBanner
+
+                WinkCard(
+                    title: {
+                        Text("New Shortcut")
+                    }
+                ) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                SettingsFieldLabel("Target app")
+                                Button {
+                                    showingAppPicker = true
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        if editor.selectedBundleIdentifier.isEmpty {
+                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                .fill(palette.controlBgRest)
+                                                .frame(width: 20, height: 20)
+                                                .overlay {
+                                                    WinkIcon.app.image(size: 11)
+                                                        .foregroundStyle(palette.textTertiary)
+                                                }
+
+                                            Text("Choose an app…")
+                                                .font(WinkType.bodyText)
+                                                .foregroundStyle(palette.textTertiary)
+                                        } else {
+                                            AppIconView(bundleIdentifier: editor.selectedBundleIdentifier, size: 20)
+                                            Text(editor.selectedAppName)
+                                                .font(WinkType.bodyText)
+                                                .foregroundStyle(palette.textPrimary)
+                                                .lineLimit(1)
+                                        }
+
+                                        Spacer(minLength: 8)
+
+                                        WinkIcon.chevronDown.image(size: 11)
+                                            .foregroundStyle(palette.textSecondary)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .frame(height: 28)
+                                    .background(palette.controlBg)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .stroke(palette.controlBorder, lineWidth: 0.5)
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                                .popover(isPresented: $showingAppPicker, arrowEdge: .bottom) {
+                                    AppPickerPopover(
+                                        appListProvider: appListProvider,
+                                        onSelect: { entry in
+                                            editor.selectedAppName = entry.name
+                                            editor.selectedBundleIdentifier = entry.bundleIdentifier
+                                        },
+                                        onBrowse: {
+                                            editor.chooseApplication()
+                                        }
+                                    )
+                                }
+                                .disabled(importPreviewActive)
                             }
-                        }
-                        .popover(isPresented: $showingAppPicker, arrowEdge: .bottom) {
-                            AppPickerPopover(
-                                appListProvider: appListProvider,
-                                onSelect: { entry in
-                                    editor.selectedAppName = entry.name
-                                    editor.selectedBundleIdentifier = entry.bundleIdentifier
-                                },
-                                onBrowse: { editor.chooseApplication() }
-                            )
-                        }
-                        .disabled(importPreviewActive)
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                        if !editor.selectedAppName.isEmpty {
+                            VStack(alignment: .leading, spacing: 5) {
+                                SettingsFieldLabel("Shortcut", trailing: "Click to record")
+
+                                if editor.isRecordingShortcut {
+                                    ShortcutRecorderView(
+                                        recordedShortcut: $editor.recordedShortcut,
+                                        isRecording: $editor.isRecordingShortcut
+                                    )
+                                    .frame(height: 28)
+                                } else {
+                                    ShortcutRecorderIdleField(recordedShortcut: editor.recordedShortcut) {
+                                        editor.isRecordingShortcut = true
+                                    }
+                                    .disabled(importPreviewActive)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        Divider().overlay(palette.hairline)
+
+                        HStack(alignment: .center, spacing: 10) {
                             HStack(spacing: 6) {
-                                AppIconView(bundleIdentifier: editor.selectedBundleIdentifier, size: 20)
-                                Text(editor.selectedAppName)
-                                    .font(.system(size: 13, weight: .medium))
+                                Text("Tip: hold")
+                                WinkKeycap("Caps Lock", size: .small)
+                                Text("for a Hyper shortcut.")
                             }
-                        } else {
-                            Text("No app selected")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
+                            .font(WinkType.labelSmall)
+                            .foregroundStyle(palette.textTertiary)
+
+                            Spacer(minLength: 8)
+
+                            WinkButton("Clear") {
+                                editor.clearRecordedShortcut()
+                            }
+                            .disabled(importPreviewActive || (editor.recordedShortcut == nil && !editor.isRecordingShortcut))
+
+                            WinkButton("Add Shortcut", variant: .primary) {
+                                editor.addShortcut()
+                            }
+                            .disabled(importPreviewActive || editor.selectedBundleIdentifier.isEmpty || editor.recordedShortcut == nil)
                         }
-                        Spacer()
                     }
-
-                    // Recorder + Clear + Add
-                    HStack(spacing: 10) {
-                        ShortcutRecorderView(
-                            recordedShortcut: $editor.recordedShortcut,
-                            isRecording: $editor.isRecordingShortcut
-                        )
-                        .frame(height: 28)
-
-                        if let recordedShortcut = editor.recordedShortcut {
-                            ShortcutLabel(displayText: recordedShortcut.displayText, isHyper: recordedShortcut.isHyper)
-                        } else if editor.isRecordingShortcut {
-                            Text("Listening…")
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Button("Clear") {
-                            editor.clearRecordedShortcut()
-                        }
-                        .disabled(importPreviewActive || (editor.recordedShortcut == nil && !editor.isRecordingShortcut))
-
-                        Spacer()
-
-                        Button("Add") {
-                            editor.addShortcut()
-                        }
-                        .disabled(importPreviewActive || editor.selectedBundleIdentifier.isEmpty || editor.recordedShortcut == nil)
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                    }
+                    .padding(14)
                 }
-                .padding(14)
-            }
 
-            if let conflictMessage = editor.conflictMessage {
-                Text(conflictMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-
-            if let recipeFeedback = editor.recipeFeedback {
-                Text(recipeFeedback.message)
-                    .font(.caption)
-                    .foregroundStyle(recipeFeedback.isError ? .red : .secondary)
-            }
-
-            if let pendingRecipeImport = editor.pendingRecipeImport {
-                importPreviewCard(pendingRecipeImport)
-            }
-
-            // Shortcuts list card
-            CardView("Shortcuts") {
-                VStack(spacing: 0) {
-                    HStack(spacing: 8) {
-                        Spacer()
-
-                        Button("Export...") {
-                            editor.exportRecipes()
-                        }
-                        .disabled(importPreviewActive)
-                        .controlSize(.small)
-
-                        Button("Import...") {
-                            Task {
-                                await editor.importRecipes(using: appListProvider)
-                            }
-                        }
-                        .disabled(importPreviewActive)
-                        .controlSize(.small)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 12)
-
-                    if editor.shortcuts.isEmpty {
-                        Text("No shortcuts configured")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: .infinity, minHeight: 60)
-                    } else {
-                        List {
-                            ForEach(Array(editor.shortcuts.enumerated()), id: \.element.id) { index, shortcut in
-                                shortcutRow(shortcut, index: index)
-                                    .moveDisabled(importPreviewActive)
-                                    .listRowInsets(EdgeInsets())
-                                    .listRowSeparator(.hidden)
-                            }
-                            .onMove(perform: editor.moveShortcut)
-                        }
-                        .listStyle(.plain)
-                        .frame(minHeight: 140)
-                    }
+                if let conflictMessage = editor.conflictMessage {
+                    Text(conflictMessage)
+                        .font(WinkType.labelSmall)
+                        .foregroundStyle(palette.red)
                 }
+
+                if let recipeFeedback = editor.recipeFeedback {
+                    Text(recipeFeedback.message)
+                        .font(WinkType.labelSmall)
+                        .foregroundStyle(recipeFeedback.isError ? palette.red : palette.textSecondary)
+                }
+
+                if let pendingRecipeImport = editor.pendingRecipeImport {
+                    importPreviewCard(pendingRecipeImport)
+                }
+
+                shortcutsCard(importPreviewActive: importPreviewActive)
             }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 18)
         }
+        .background(palette.windowBg)
         .onAppear {
             accessibilityOptions = .current
             shortcutStatusProvider.track(editor.shortcuts)
@@ -221,6 +299,91 @@ struct ShortcutsTabView: View {
             )
         ) { _ in
             accessibilityOptions = .current
+        }
+    }
+
+    @ViewBuilder
+    private var permissionBanner: some View {
+        switch ShortcutBannerPresentation(status: preferences.shortcutCaptureStatus) {
+        case let .success(title, message):
+            WinkBanner(kind: .success, title: title, message: message)
+        case let .warning(title, message, showsAction):
+            WinkBanner(kind: .warn, title: title, message: message) {
+                if showsAction {
+                    WinkButton("Open Settings", variant: .primary) {
+                        preferences.requestShortcutPermissions()
+                    }
+                } else {
+                    WinkButton("Refresh") {
+                        preferences.refreshPermissions()
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func shortcutsCard(importPreviewActive: Bool) -> some View {
+        WinkCard(
+            title: {
+                Text("Your Shortcuts · \(editor.shortcuts.count)")
+            },
+            accessory: {
+                HStack(spacing: 6) {
+                    WinkTextField(
+                        placeholder: "Filter…",
+                        text: $filterText,
+                        leading: {
+                            WinkIcon.search.image(size: 11)
+                                .foregroundStyle(palette.textTertiary)
+                        }
+                    )
+                    .frame(width: 150)
+
+                    WinkButton("Export…") {
+                        editor.exportRecipes()
+                    }
+                    .disabled(importPreviewActive)
+
+                    WinkButton("Import…") {
+                        Task {
+                            await editor.importRecipes(using: appListProvider)
+                        }
+                    }
+                    .disabled(importPreviewActive)
+                }
+            }
+        ) {
+            if filteredShortcuts.isEmpty {
+                Text(filterText.isEmpty ? "No shortcuts configured" : "No shortcuts match your filter")
+                    .font(WinkType.bodyText)
+                    .foregroundStyle(palette.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 18)
+            } else if filterText.isEmpty {
+                List {
+                    ForEach(Array(editor.shortcuts.enumerated()), id: \.element.id) { index, shortcut in
+                        shortcutRow(shortcut, index: index)
+                            .moveDisabled(importPreviewActive)
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
+                    }
+                    .onMove(perform: editor.moveShortcut)
+                }
+                .listStyle(.plain)
+                .frame(minHeight: 180)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(filteredShortcuts.enumerated()), id: \.element.id) { index, shortcut in
+                        shortcutRow(shortcut, index: index)
+                        if index < filteredShortcuts.count - 1 {
+                            Divider().overlay(palette.hairline)
+                                .padding(.leading, 58)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -247,27 +410,33 @@ struct ShortcutsTabView: View {
 
     @ViewBuilder
     private func importPreviewCard(_ plan: WinkRecipeImportPlanner.ImportPlan) -> some View {
-        CardView("Import Preview") {
+        WinkCard(
+            title: {
+                Text("Import Preview")
+            }
+        ) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
-                    statView(title: "Ready", count: plan.readyEntries.count, tint: .green)
-                    statView(title: "Conflicts", count: plan.conflictEntries.count, tint: .orange)
-                    statView(title: "Unresolved", count: plan.unresolvedEntries.count, tint: .secondary)
+                    statView(title: "Ready", count: plan.readyEntries.count, tint: palette.green)
+                    statView(title: "Conflicts", count: plan.conflictEntries.count, tint: palette.amber)
+                    statView(title: "Unresolved", count: plan.unresolvedEntries.count, tint: palette.textSecondary)
                 }
 
                 if !plan.conflictEntries.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Conflicts")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(WinkType.captionStrong)
+                            .foregroundStyle(palette.textPrimary)
 
                         ForEach(plan.conflictEntries) { entry in
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("\(entry.imported.resolvedAppName) · \(entry.imported.displayText)")
-                                    .font(.caption)
+                                    .font(WinkType.labelSmall)
+                                    .foregroundStyle(palette.textPrimary)
                                 if let conflictingShortcut = entry.conflictingShortcut {
                                     Text("Conflicts with \(conflictingShortcut.appName) · \(conflictingShortcut.displayText)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .font(WinkType.labelSmall)
+                                        .foregroundStyle(palette.textSecondary)
                                 }
                             }
                         }
@@ -276,36 +445,32 @@ struct ShortcutsTabView: View {
 
                 if !plan.unresolvedEntries.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Unresolved apps without conflicts will still be imported using their recipe app name and Bundle ID.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Text("Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.")
+                            .font(WinkType.labelSmall)
+                            .foregroundStyle(palette.textSecondary)
 
                         ForEach(plan.unresolvedEntries) { entry in
                             Text("\(entry.imported.sourceAppName) (\(entry.imported.sourceBundleIdentifier))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(WinkType.labelSmall)
+                                .foregroundStyle(palette.textSecondary)
                         }
                     }
                 }
 
                 HStack(spacing: 8) {
-                    Button("Cancel") {
+                    WinkButton("Cancel") {
                         editor.discardPendingRecipeImport()
                     }
-                    .controlSize(.small)
 
-                    Spacer()
+                    Spacer(minLength: 8)
 
-                    Button("Skip Conflicts") {
+                    WinkButton("Skip Conflicts") {
                         editor.applyPendingImport(strategy: .skipConflicts)
                     }
-                    .controlSize(.small)
 
-                    Button("Replace Existing") {
+                    WinkButton("Replace Existing", variant: .primary) {
                         editor.applyPendingImport(strategy: .replaceExisting)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
                 }
             }
             .padding(14)
@@ -316,16 +481,18 @@ struct ShortcutsTabView: View {
     private func statView(title: String, count: Int, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .font(WinkType.labelSmall)
+                .foregroundStyle(palette.textSecondary)
             Text("\(count)")
-                .font(.system(size: 18, weight: .semibold))
+                .font(WinkType.tabTitle)
                 .foregroundStyle(tint)
         }
     }
 }
 
 struct ShortcutsListRow: View {
+    @Environment(\.winkPalette) private var palette
+
     let shortcut: AppShortcut
     let usageCount: Int
     let runtimeStatus: ShortcutRuntimeStatus
@@ -361,6 +528,9 @@ struct ShortcutsListRow: View {
 
     var body: some View {
         HStack(spacing: ShortcutRowMetrics.spacing) {
+            WinkIcon.grip.image(size: 11, weight: .semibold)
+                .foregroundStyle(palette.textTertiary)
+
             ZStack(alignment: .bottomTrailing) {
                 AppIconView(
                     bundleIdentifier: shortcut.bundleIdentifier,
@@ -369,11 +539,11 @@ struct ShortcutsListRow: View {
 
                 if let unavailableHelpText = presentation.unavailableHelpText {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color(nsColor: .systemOrange))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(palette.amber)
                         .background(
                             Circle()
-                                .fill(Color(nsColor: .windowBackgroundColor))
+                                .fill(palette.cardBg)
                                 .frame(width: 14, height: 14)
                         )
                         .offset(x: 3, y: 3)
@@ -384,55 +554,61 @@ struct ShortcutsListRow: View {
             VStack(alignment: .leading, spacing: ShortcutRowMetrics.textSpacing) {
                 HStack(spacing: 6) {
                     Text(presentation.title)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(WinkType.bodyMedium)
+                        .foregroundStyle(palette.textPrimary)
 
                     if presentation.showsRunningIndicator {
                         HStack(spacing: 4) {
-                            Circle()
-                                .fill(Color(nsColor: .systemGreen))
-                                .frame(width: 8, height: 8)
+                            WinkStatusDot(color: palette.green)
 
                             if let runningStatusText = presentation.runningStatusText {
                                 Text(runningStatusText)
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(.secondary)
+                                    .font(WinkType.labelSmall)
+                                    .foregroundStyle(palette.textSecondary)
                             }
                         }
                         .help("App is currently running")
                     }
                 }
 
-                Text(presentation.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                Text(presentation.metadataText)
+                    .font(WinkType.labelSmall)
+                    .foregroundStyle(palette.textTertiary)
 
                 if let unavailableStatusText = presentation.unavailableStatusText {
                     Label(unavailableStatusText, systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color(nsColor: .systemOrange))
+                        .font(WinkType.labelSmall)
+                        .foregroundStyle(palette.amber)
                         .help(presentation.unavailableHelpText ?? unavailableStatusText)
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            ShortcutLabel(displayText: shortcut.displayText, isHyper: shortcut.isHyper)
+            if shortcut.isHyper {
+                WinkHyperBadge()
+            }
 
-            Toggle("", isOn: Binding(
+            ShortcutKeycapStrip(shortcut: shortcut)
+
+            WinkSwitch(isOn: Binding(
                 get: { shortcut.isEnabled },
                 set: { _ in onToggleEnabled() }
             ))
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-            .labelsHidden()
             .disabled(importPreviewActive)
 
-            Button(action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+            Menu {
+                Button("Delete Shortcut", role: .destructive, action: onRemove)
+            } label: {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.clear)
+                    .frame(width: 22, height: 22)
+                    .overlay {
+                        WinkIcon.more.image(size: 12)
+                            .foregroundStyle(palette.textTertiary)
+                    }
             }
-            .buttonStyle(.borderless)
+            .menuStyle(.borderlessButton)
             .disabled(importPreviewActive)
         }
         .padding(.horizontal, 14)
@@ -448,4 +624,110 @@ private struct ShortcutRowStatusAnimationKey: Equatable {
     let isRunning: Bool
     let isUnavailable: Bool
     let differentiateWithoutColor: Bool
+}
+
+private struct ShortcutKeycapStrip: View {
+    let labels: [String]
+
+    init(shortcut: AppShortcut) {
+        labels = ShortcutKeycapStrip.labels(
+            keyEquivalent: shortcut.keyEquivalent,
+            modifierFlags: shortcut.modifierFlags
+        )
+    }
+
+    init(shortcut: RecordedShortcut) {
+        labels = ShortcutKeycapStrip.labels(
+            keyEquivalent: shortcut.keyEquivalent,
+            modifierFlags: shortcut.modifierFlags
+        )
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(labels, id: \.self) { label in
+                WinkKeycap(label, size: .small)
+            }
+        }
+    }
+
+    nonisolated private static func labels(keyEquivalent: String, modifierFlags: [String]) -> [String] {
+        modifierFlags.map(symbol(for:)) + [keyLabel(for: keyEquivalent)]
+    }
+
+    nonisolated private static func symbol(for modifier: String) -> String {
+        switch modifier {
+        case "command": return "⌘"
+        case "option": return "⌥"
+        case "control": return "⌃"
+        case "shift": return "⇧"
+        case "function": return "fn"
+        default: return modifier.uppercased()
+        }
+    }
+
+    nonisolated private static func keyLabel(for keyEquivalent: String) -> String {
+        keyEquivalent.count == 1 ? keyEquivalent.uppercased() : keyEquivalent
+    }
+}
+
+private struct SettingsFieldLabel: View {
+    @Environment(\.winkPalette) private var palette
+
+    let text: String
+    let trailing: String?
+
+    init(_ text: String, trailing: String? = nil) {
+        self.text = text
+        self.trailing = trailing
+    }
+
+    var body: some View {
+        HStack {
+            Text(text)
+            Spacer(minLength: 8)
+            if let trailing {
+                Text(trailing)
+            }
+        }
+        .font(WinkType.labelSmall)
+        .foregroundStyle(palette.textSecondary)
+    }
+}
+
+struct ShortcutRecorderIdleField: View {
+    nonisolated static let placeholderText = "Press a key combination…"
+    nonisolated static let dashPattern: [CGFloat] = [4, 4]
+
+    @Environment(\.winkPalette) private var palette
+
+    let recordedShortcut: RecordedShortcut?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if let recordedShortcut {
+                    ShortcutKeycapStrip(shortcut: recordedShortcut)
+                    Spacer(minLength: 8)
+                } else {
+                    WinkIcon.record.image(size: 11)
+                        .foregroundStyle(palette.textTertiary)
+                    Text(Self.placeholderText)
+                        .font(WinkType.bodyText)
+                        .foregroundStyle(palette.textTertiary)
+                    Spacer(minLength: 8)
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+            .background(palette.fieldBg)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(palette.controlBorder.opacity(0.8), style: StrokeStyle(lineWidth: 1, dash: Self.dashPattern))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
 }
