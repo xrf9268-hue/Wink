@@ -71,6 +71,10 @@ final class AppController {
         shortcutManager.stop()
     }
 
+    func openPrimarySettingsWindow() {
+        openSettings()
+    }
+
     private func openSettings() {
         settingsWindowController.show()
         NSApp.activate()

@@ -10,6 +10,8 @@ import SwiftUI
 ///
 /// Phase 1 ships the `Settings` Scene as a placeholder. Phase 2 wires the
 /// real `SettingsView`; Phase 3 adds the `MenuBarExtra` popover Scene.
+/// Until Phase 2 lands, the standard app-menu Settings command is rerouted
+/// to the existing AppKit settings window so users never hit the placeholder.
 @main
 struct WinkApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -20,6 +22,14 @@ struct WinkApp: App {
             SettingsPlaceholderView()
                 .frame(minWidth: 480, minHeight: 320)
                 .winkChromeRoot()
+        }
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings...") {
+                    appDelegate.openPrimarySettingsWindow()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
         }
     }
 }

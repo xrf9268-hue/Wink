@@ -16,6 +16,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appController?.start()
     }
 
+    func openPrimarySettingsWindow() {
+        appController?.openPrimarySettingsWindow()
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         appController?.stop()
     }
