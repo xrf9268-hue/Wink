@@ -18,6 +18,7 @@ struct PauseAllShortcutsTests {
             appSwitcher: FakeAppSwitcher(),
             captureCoordinator: coordinator,
             permissionService: FakePermissionService(ax: true, input: true),
+            appBundleLocator: pauseAllShortcutsAppBundleLocator(),
             diagnosticClient: .live
         )
         let shortcuts = [standardShortcut(), hyperShortcut()]
@@ -51,6 +52,7 @@ struct PauseAllShortcutsTests {
             appSwitcher: FakeAppSwitcher(),
             captureCoordinator: coordinator,
             permissionService: FakePermissionService(ax: true, input: true),
+            appBundleLocator: pauseAllShortcutsAppBundleLocator(),
             diagnosticClient: .live
         )
         let shortcuts = [standardShortcut(), hyperShortcut()]
@@ -195,6 +197,13 @@ private func hyperShortcut() -> AppShortcut {
         keyEquivalent: "i",
         modifierFlags: ["command", "option", "control", "shift"]
     )
+}
+
+private func pauseAllShortcutsAppBundleLocator() -> AppBundleLocator {
+    TestAppBundleLocator(entries: [
+        "com.apple.Safari": URL(fileURLWithPath: "/Applications/Safari.app"),
+        "com.colliderli.iina": URL(fileURLWithPath: "/Applications/IINA.app")
+    ]).locator
 }
 
 @MainActor
