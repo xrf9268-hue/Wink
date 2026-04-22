@@ -38,7 +38,7 @@ struct PauseAllShortcutsTests {
     }
 
     @Test @MainActor
-    func unpausingRestartsConfiguredCaptureWithoutRewritingShortcuts() {
+    func unpausingRestartsConfiguredCaptureWithoutRewritingShortcuts() async {
         let standardProvider = FakeCaptureProvider()
         let hyperProvider = FakeHyperCaptureProvider()
         let coordinator = ShortcutCaptureCoordinator(
@@ -62,6 +62,12 @@ struct PauseAllShortcutsTests {
         let startCallsBeforeResume = (standardProvider.startCallCount, hyperProvider.startCallCount)
 
         manager.setShortcutsPaused(false)
+        await waitUntil("shortcut capture resumes after unpausing") {
+            standardProvider.isRunning
+                && hyperProvider.isRunning
+                && standardProvider.startCallCount > startCallsBeforeResume.0
+                && hyperProvider.startCallCount > startCallsBeforeResume.1
+        }
 
         let status = manager.shortcutCaptureStatus()
 
@@ -189,4 +195,22 @@ private func hyperShortcut() -> AppShortcut {
         keyEquivalent: "i",
         modifierFlags: ["command", "option", "control", "shift"]
     )
+}
+
+@MainActor
+private func waitUntil(
+    _ description: String,
+    timeout: Duration = .seconds(2),
+    pollInterval: Duration = .milliseconds(20),
+    condition: @escaping @MainActor () -> Bool
+) async {
+    let clock = ContinuousClock()
+    let deadline = clock.now + timeout
+    while !condition() {
+        if clock.now >= deadline {
+            Issue.record("Timed out waiting for: \(description)")
+            return
+        }
+        try? await Task.sleep(for: pollInterval)
+    }
 }

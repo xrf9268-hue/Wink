@@ -39,7 +39,9 @@ struct MenuBarPopoverViewTests {
             size: NSSize(width: 356, height: 520)
         )
         let placeholders = Set(collectPlaceholders(in: host))
-        try? await Task.sleep(for: .milliseconds(100))
+        await waitUntil("usage refresh populates Today count") {
+            context.model.todayActivationCount == 48
+        }
 
         #expect(placeholders.contains("Search shortcuts"))
         #expect(host.fittingSize.width > 0)
@@ -99,7 +101,11 @@ struct MenuBarPopoverViewTests {
             usageTotal: 24
         )
 
-        try? await Task.sleep(for: .milliseconds(100))
+        await waitUntil("usage refresh populates histogram") {
+            context.model.todayActivationCount == 24
+                && context.model.todayHistogramBars.count == 24
+                && context.model.todayHistogramBars.allSatisfy { $0 == 1 }
+        }
 
         #expect(context.model.todayActivationCount == 24)
         #expect(context.model.todayHistogramBars.count == 24)
@@ -215,6 +221,24 @@ private struct FakePermissionService: PermissionServicing {
     @discardableResult
     func requestIfNeeded(prompt: Bool, inputMonitoringRequired: Bool) -> Bool {
         ax && (!inputMonitoringRequired || input)
+    }
+}
+
+@MainActor
+private func waitUntil(
+    _ description: String,
+    timeout: Duration = .seconds(2),
+    pollInterval: Duration = .milliseconds(20),
+    condition: @escaping @MainActor () -> Bool
+) async {
+    let clock = ContinuousClock()
+    let deadline = clock.now + timeout
+    while !condition() {
+        if clock.now >= deadline {
+            Issue.record("Timed out waiting for: \(description)")
+            return
+        }
+        try? await Task.sleep(for: pollInterval)
     }
 }
 
