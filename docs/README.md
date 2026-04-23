@@ -18,6 +18,7 @@ This directory maps the maintainer-facing docs for Wink.
 - [`pr-governance-rollout.md`](./pr-governance-rollout.md) — one-time rollout runbook for the review gate and `main` ruleset apply sequence
 - [`loop-prompt.md`](./loop-prompt.md) — reference and migration note; active automation is the `/babysit-prs` skill
 - [`loop-job-guide.md`](./loop-job-guide.md) — how to run and manage loop jobs with `/loop 30m /babysit-prs`
+- [`agent-workflow-harnesses`](https://github.com/xrf9268-hue/agent-workflow-harnesses) — external maintainer workflow harness repo for cross-session issue handoff, PR watch, and reusable automation templates across Wink and related repos
 
 ## Historical and Process Docs
 - [`archive/`](./archive/)
