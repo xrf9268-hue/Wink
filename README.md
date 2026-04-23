@@ -37,7 +37,7 @@ swift build
 swift test
 ./scripts/package-app.sh        # release build + .app bundle
 ./scripts/package-update-zip.sh # Sparkle update archive from build/Wink.app
-./scripts/package-dmg.sh        # drag-install DMG from build/Wink.app
+./scripts/package-dmg.sh        # branded drag-install DMG from build/Wink.app
 ./scripts/e2e-full-test.sh      # end-to-end suite using the current saved shortcuts (Accessibility required; Input Monitoring needed when Hyper shortcuts are configured)
 ```
 

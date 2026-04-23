@@ -97,6 +97,9 @@ This creates `build/Wink-<CFBundleShortVersionString>.dmg` containing:
 
 - `Wink.app`
 - `Applications` symlink for drag-install
+- a branded Finder installer window backed by `assets/dmg/wink-dmg-background.png`
+
+`scripts/package-dmg.sh` intentionally stays on built-in macOS tooling. It stages `assets/dmg/wink-dmg-background.svg` / `.png`, creates a writable HFS+ image with `hdiutil`, uses Finder scripting to save the icon-view layout into `.DS_Store`, then converts the result to the final compressed DMG. No extra Homebrew or Python DMG-packaging dependency is required for CI or release.
 
 ## Required GitHub Secrets
 
@@ -189,7 +192,7 @@ The internal package path is for trusted testers only. It does not:
 6. Tag the release: `git tag vX.Y.Z && git push origin vX.Y.Z`
 7. If you need to rerun automation manually, open `Release`, keep the branch on the default branch, and set `release_tag` to the existing `vX.Y.Z`
 8. Confirm the `Release` workflow succeeds for both the DMG and the Sparkle feed upload
-9. Validate the published DMG and Sparkle update path on a clean macOS machine
+9. Validate the published DMG and Sparkle update path on a clean macOS machine, including the Finder background, icon layout, and drag-install affordance
 
 ## Validation Commands
 

@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" width="640" height="400">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="640" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F7F1FD" />
+      <stop offset="55%" stop-color="#F0E6FB" />
+      <stop offset="100%" stop-color="#F5F0F8" />
+    </linearGradient>
+    <radialGradient id="blueGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+      gradientTransform="translate(512 28) rotate(30) scale(242 232)">
+      <stop offset="0%" stop-color="#5B8DEF" stop-opacity="0.30" />
+      <stop offset="60%" stop-color="#8A6CF0" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#8A6CF0" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="violetGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+      gradientTransform="translate(114 362) rotate(-12) scale(286 244)">
+      <stop offset="0%" stop-color="#B86CD9" stop-opacity="0.22" />
+      <stop offset="55%" stop-color="#8A6CF0" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#8A6CF0" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="centerWash" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+      gradientTransform="translate(320 212) scale(290 164)">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.92" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="iconHaloLeft" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+      gradientTransform="translate(172 220) scale(108 108)">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.86" />
+      <stop offset="78%" stop-color="#FFFFFF" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="iconHaloRight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+      gradientTransform="translate(468 220) scale(108 108)">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.86" />
+      <stop offset="78%" stop-color="#FFFFFF" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="arrowStroke" x1="238" y1="0" x2="402" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5B8DEF" stop-opacity="0.72" />
+      <stop offset="55%" stop-color="#8A6CF0" stop-opacity="0.84" />
+      <stop offset="100%" stop-color="#B86CD9" stop-opacity="0.72" />
+    </linearGradient>
+    <filter id="softBlur" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="22" />
+    </filter>
+    <filter id="arrowShadow" x="-20%" y="-100%" width="160%" height="300%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#7150C8" flood-opacity="0.18" />
+    </filter>
+  </defs>
+
+  <rect width="640" height="400" rx="0" fill="url(#paper)" />
+  <rect width="640" height="400" fill="url(#blueGlow)" />
+  <rect width="640" height="400" fill="url(#violetGlow)" />
+  <rect width="640" height="400" fill="url(#centerWash)" />
+
+  <ellipse cx="166" cy="220" rx="118" ry="118" fill="url(#iconHaloLeft)" />
+  <ellipse cx="474" cy="220" rx="118" ry="118" fill="url(#iconHaloRight)" />
+  <ellipse cx="166" cy="220" rx="84" ry="84" fill="#FFFFFF" opacity="0.24" />
+  <ellipse cx="474" cy="220" rx="84" ry="84" fill="#FFFFFF" opacity="0.24" />
+
+  <g filter="url(#softBlur)" opacity="0.42">
+    <ellipse cx="166" cy="220" rx="74" ry="14" fill="#8A6CF0" />
+    <ellipse cx="474" cy="220" rx="74" ry="14" fill="#5B8DEF" />
+  </g>
+
+  <g font-family="SF Pro Text, SF Pro Display, -apple-system, BlinkMacSystemFont, Helvetica Neue, Arial, sans-serif"
+    text-anchor="middle">
+    <text x="320" y="70" font-size="31" font-weight="640" fill="#2F2348" letter-spacing="-0.6">
+      Drag Wink to Applications
+    </text>
+    <text x="320" y="98" font-size="14" font-weight="500" fill="#5F507C">
+      Install in one step from the mounted disk image.
+    </text>
+  </g>
+
+  <g filter="url(#arrowShadow)">
+    <path
+      d="M238 220 C272 229 313 229 360 220 C379 216 392 214 402 214"
+      fill="none"
+      stroke="url(#arrowStroke)"
+      stroke-width="4.2"
+      stroke-linecap="round"
+    />
+    <path
+      d="M387 203 L406 214 L387 225"
+      fill="none"
+      stroke="url(#arrowStroke)"
+      stroke-width="4.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </g>
+
+  <g opacity="0.26">
+    <path
+      d="M232 176 C266 164 299 158 334 158 C363 158 390 162 417 172"
+      fill="none"
+      stroke="#FFFFFF"
+      stroke-width="2.4"
+      stroke-linecap="round"
+      stroke-dasharray="1 10"
+    />
+  </g>
+
+  <g font-family="SF Pro Text, SF Pro Display, -apple-system, BlinkMacSystemFont, Helvetica Neue, Arial, sans-serif"
+    text-anchor="middle">
+    <text x="320" y="354" font-size="12" font-weight="520" fill="#746487" letter-spacing="0.08">
+      Menu bar app switching in the wink of an eye.
+    </text>
+  </g>
+</svg>
