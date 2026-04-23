@@ -30,6 +30,7 @@ APPLESCRIPT_FILE=""
 DEVICE_NAME=""
 MOUNT_DIR=""
 STAGING_DIR=""
+MOUNTED_VOLUME_NAME=""
 
 detach_device() {
     local target="$1"
@@ -116,6 +117,7 @@ if [ -z "$DEVICE_NAME" ] || [ -z "$MOUNT_DIR" ]; then
     exit 1
 fi
 
+MOUNTED_VOLUME_NAME="$(basename "$MOUNT_DIR")"
 chflags hidden "$MOUNT_DIR/.background" || true
 
 APPLESCRIPT_FILE="$(mktemp "$BUILD_DIR/package-dmg.XXXXXX.applescript")"
@@ -198,7 +200,7 @@ EOF
 
 echo "==> Configuring Finder window layout..."
 sleep "$APPLE_SCRIPT_DELAY"
-/usr/bin/osascript "$APPLESCRIPT_FILE" "$VOLUME_NAME"
+/usr/bin/osascript "$APPLESCRIPT_FILE" "$MOUNTED_VOLUME_NAME"
 
 echo "==> Finalizing DMG..."
 chmod -Rf go-w "$MOUNT_DIR" >/dev/null 2>&1 || true
