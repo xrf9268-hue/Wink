@@ -264,6 +264,7 @@ struct MenuBarPopoverView: View {
                 Text("Shortcuts")
             }
         ) {
+            let filteredRows = model.filteredShortcutRows
             if model.shortcutRows.isEmpty {
                 Text("No shortcuts configured")
                     .font(WinkType.bodyText)
@@ -272,7 +273,7 @@ struct MenuBarPopoverView: View {
                     .padding(.horizontal, 14)
                     .padding(.top, 14)
                     .padding(.bottom, 10)
-            } else if model.filteredShortcutRows.isEmpty {
+            } else if filteredRows.isEmpty {
                 Text("No shortcuts match your search")
                     .font(WinkType.bodyText)
                     .foregroundStyle(palette.textSecondary)
@@ -282,10 +283,10 @@ struct MenuBarPopoverView: View {
                     .padding(.bottom, 10)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(model.filteredShortcutRows.enumerated()), id: \.element.id) { index, row in
+                    ForEach(Array(filteredRows.enumerated()), id: \.element.id) { index, row in
                         MenuBarShortcutRow(row: row)
 
-                        if index < model.filteredShortcutRows.count - 1 {
+                        if index < filteredRows.count - 1 {
                             Divider()
                                 .overlay(palette.hairline)
                                 .padding(.leading, 48)

@@ -231,6 +231,80 @@ struct UsageDatabaseBootstrapTests {
                 && $0.contains("oldUserVersion=1")
         })
     }
+
+    @Test
+    func recordUsageRollsBackDailyWriteWhenHourlyInsertFails() async throws {
+        let harness = TestPersistenceHarness()
+        defer { harness.cleanup() }
+
+        let databaseURL = harness.directory.appendingPathComponent("usage.db")
+        let tracker = UsageTracker(
+            databasePath: databaseURL.path,
+            timeZoneProvider: { TimeZone(secondsFromGMT: 0)! }
+        )
+        let shortcutID = UUID()
+
+        try withSQLiteDatabase(at: databaseURL) { db in
+            try executeSQL(
+                """
+                CREATE TRIGGER fail_usage_hourly_insert
+                BEFORE INSERT ON usage_hourly
+                BEGIN
+                    SELECT RAISE(FAIL, 'forced hourly insert failure');
+                END;
+                """,
+                in: db
+            )
+        }
+
+        await tracker.recordUsage(shortcutId: shortcutID, on: isoDateTime("2026-04-22T09:15:00Z"))
+
+        #expect(try rowCount("SELECT COUNT(*) FROM daily_usage", at: databaseURL) == 0)
+        #expect(try rowCount("SELECT COUNT(*) FROM usage_hourly", at: databaseURL) == 0)
+    }
+
+    @Test
+    func deleteUsageRollsBackDailyDeleteWhenHourlyDeleteFails() async throws {
+        let harness = TestPersistenceHarness()
+        defer { harness.cleanup() }
+
+        let databaseURL = harness.directory.appendingPathComponent("usage.db")
+        let tracker = UsageTracker(
+            databasePath: databaseURL.path,
+            timeZoneProvider: { TimeZone(secondsFromGMT: 0)! }
+        )
+        let shortcutID = UUID()
+
+        await tracker.recordUsage(shortcutId: shortcutID, on: isoDateTime("2026-04-22T09:15:00Z"))
+
+        try withSQLiteDatabase(at: databaseURL) { db in
+            try executeSQL(
+                """
+                CREATE TRIGGER fail_usage_hourly_delete
+                BEFORE DELETE ON usage_hourly
+                BEGIN
+                    SELECT RAISE(FAIL, 'forced hourly delete failure');
+                END;
+                """,
+                in: db
+            )
+        }
+
+        await tracker.deleteUsage(shortcutId: shortcutID)
+
+        #expect(
+            try rowCount(
+                "SELECT COUNT(*) FROM daily_usage WHERE shortcut_id = '\(shortcutID.uuidString)'",
+                at: databaseURL
+            ) == 1
+        )
+        #expect(
+            try rowCount(
+                "SELECT COUNT(*) FROM usage_hourly WHERE shortcut_id = '\(shortcutID.uuidString)'",
+                at: databaseURL
+            ) == 1
+        )
+    }
 }
 
 private func isoDateTime(_ value: String) -> Date {
@@ -242,6 +316,12 @@ private func isoDateTime(_ value: String) -> Date {
 private func userVersion(at url: URL) throws -> Int {
     try withSQLiteDatabase(at: url) { db in
         try integerResult(for: "PRAGMA user_version", in: db)
+    }
+}
+
+private func rowCount(_ sql: String, at url: URL) throws -> Int {
+    try withSQLiteDatabase(at: url) { db in
+        try integerResult(for: sql, in: db)
     }
 }
 

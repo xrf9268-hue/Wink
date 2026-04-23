@@ -160,6 +160,9 @@ private actor SearchNoopUsageTracker: UsageTracking {
             HourlyUsageBucket(date: date, hour: hour, count: 0)
         }
     }
+    func previousPeriodTotal(days: Int, relativeTo now: Date) async -> Int { 0 }
+    func streakDays(relativeTo now: Date) async -> Int { 0 }
+    func usageTimeZone() async -> TimeZone { .current }
 }
 
 private struct SearchFakePermissionService: PermissionServicing {

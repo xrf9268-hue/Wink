@@ -325,6 +325,18 @@ private actor StaticUsageTracker: UsageTracking {
             )
         }
     }
+
+    func previousPeriodTotal(days: Int, relativeTo now: Date) async -> Int {
+        0
+    }
+
+    func streakDays(relativeTo now: Date) async -> Int {
+        0
+    }
+
+    func usageTimeZone() async -> TimeZone {
+        .current
+    }
 }
 
 private struct FakePermissionService: PermissionServicing {

@@ -85,16 +85,6 @@ actor UsageTracker: UsageTracking {
             return
         }
 
-        sqlite3_bind_text(dailyStmt, 1, (shortcutID as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
-        sqlite3_bind_text(dailyStmt, 2, (bucket.date as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
-
-        if sqlite3_step(dailyStmt) != SQLITE_DONE {
-            let message = "Failed to record daily usage: \(String(cString: sqlite3_errmsg(db)))"
-            logger.error("\(message, privacy: .public)")
-            DiagnosticLog.log(message)
-            return
-        }
-
         let hourlySQL = """
             INSERT INTO usage_hourly (shortcut_id, date, hour, count)
             VALUES (?, ?, ?, 1)
@@ -104,14 +94,29 @@ actor UsageTracker: UsageTracking {
             return
         }
 
-        sqlite3_bind_text(hourlyStmt, 1, (shortcutID as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
-        sqlite3_bind_text(hourlyStmt, 2, (bucket.date as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
-        sqlite3_bind_int(hourlyStmt, 3, Int32(bucket.hour))
+        performTransaction(named: "record usage", in: db) {
+            sqlite3_bind_text(dailyStmt, 1, (shortcutID as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
+            sqlite3_bind_text(dailyStmt, 2, (bucket.date as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
-        if sqlite3_step(hourlyStmt) != SQLITE_DONE {
-            let message = "Failed to record hourly usage: \(String(cString: sqlite3_errmsg(db)))"
-            logger.error("\(message, privacy: .public)")
-            DiagnosticLog.log(message)
+            guard sqlite3_step(dailyStmt) == SQLITE_DONE else {
+                let message = "Failed to record daily usage: \(String(cString: sqlite3_errmsg(db)))"
+                logger.error("\(message, privacy: .public)")
+                DiagnosticLog.log(message)
+                return false
+            }
+
+            sqlite3_bind_text(hourlyStmt, 1, (shortcutID as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
+            sqlite3_bind_text(hourlyStmt, 2, (bucket.date as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
+            sqlite3_bind_int(hourlyStmt, 3, Int32(bucket.hour))
+
+            guard sqlite3_step(hourlyStmt) == SQLITE_DONE else {
+                let message = "Failed to record hourly usage: \(String(cString: sqlite3_errmsg(db)))"
+                logger.error("\(message, privacy: .public)")
+                DiagnosticLog.log(message)
+                return false
+            }
+
+            return true
         }
     }
 
@@ -126,24 +131,29 @@ actor UsageTracker: UsageTracking {
             return
         }
 
-        sqlite3_bind_text(dailyStmt, 1, (shortcutID as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
-        if sqlite3_step(dailyStmt) != SQLITE_DONE {
-            let message = "Failed to delete daily usage: \(String(cString: sqlite3_errmsg(db)))"
-            logger.error("\(message, privacy: .public)")
-            DiagnosticLog.log(message)
-            return
-        }
-
         let hourlySQL = "DELETE FROM usage_hourly WHERE shortcut_id = ?"
         guard let hourlyStmt = cachedStatement(&deleteHourlyUsageStmt, sql: hourlySQL) else {
             return
         }
 
-        sqlite3_bind_text(hourlyStmt, 1, (shortcutID as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
-        if sqlite3_step(hourlyStmt) != SQLITE_DONE {
-            let message = "Failed to delete hourly usage: \(String(cString: sqlite3_errmsg(db)))"
-            logger.error("\(message, privacy: .public)")
-            DiagnosticLog.log(message)
+        performTransaction(named: "delete usage", in: db) {
+            sqlite3_bind_text(dailyStmt, 1, (shortcutID as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
+            guard sqlite3_step(dailyStmt) == SQLITE_DONE else {
+                let message = "Failed to delete daily usage: \(String(cString: sqlite3_errmsg(db)))"
+                logger.error("\(message, privacy: .public)")
+                DiagnosticLog.log(message)
+                return false
+            }
+
+            sqlite3_bind_text(hourlyStmt, 1, (shortcutID as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
+            guard sqlite3_step(hourlyStmt) == SQLITE_DONE else {
+                let message = "Failed to delete hourly usage: \(String(cString: sqlite3_errmsg(db)))"
+                logger.error("\(message, privacy: .public)")
+                DiagnosticLog.log(message)
+                return false
+            }
+
+            return true
         }
     }
 
@@ -329,25 +339,29 @@ actor UsageTracker: UsageTracking {
         }
 
         let tz = timeZoneProvider()
-        let calendar = self.calendar(for: tz)
-        var activeDates = Set<String>()
+        let calendar = UsageWindowMath.calendar(timeZone: tz)
+        var expectedDate = calendar.startOfDay(for: now)
+        var streak = 0
+
         while sqlite3_step(stmt) == SQLITE_ROW {
             guard let datePtr = sqlite3_column_text(stmt, 0) else {
                 continue
             }
 
-            activeDates.insert(String(cString: datePtr))
-        }
+            let activeDate = String(cString: datePtr)
+            guard activeDate == dateString(for: expectedDate, in: tz) else {
+                break
+            }
 
-        var expectedDate = calendar.startOfDay(for: now)
-        var streak = 0
-
-        while activeDates.contains(dateString(for: expectedDate, in: tz)) {
             streak += 1
             expectedDate = calendar.date(byAdding: .day, value: -1, to: expectedDate) ?? expectedDate
         }
 
         return streak
+    }
+
+    func usageTimeZone() async -> TimeZone {
+        timeZoneProvider()
     }
 
     private static func defaultDatabasePath() -> String {
@@ -435,43 +449,62 @@ actor UsageTracker: UsageTracking {
         return stmt
     }
 
-    private func windowDateRange(days: Int, relativeTo now: Date, in tz: TimeZone) -> (start: String, end: String, dateKeys: [String]) {
-        let clampedDays = max(days, 1)
-        let calendar = self.calendar(for: tz)
-        let endDate = calendar.startOfDay(for: now)
-        let startDate = calendar.date(byAdding: .day, value: -(clampedDays - 1), to: endDate) ?? endDate
-
-        let dateKeys = (0..<clampedDays).compactMap { offset -> String? in
-            guard let date = calendar.date(byAdding: .day, value: offset, to: startDate) else {
-                return nil
-            }
-
-            return dateString(for: date, in: tz)
+    private func performTransaction(
+        named name: String,
+        in db: OpaquePointer,
+        operation: () -> Bool
+    ) {
+        guard execute(sql: "BEGIN IMMEDIATE", in: db, failurePrefix: "Failed to begin \(name) transaction") else {
+            return
         }
 
+        guard operation() else {
+            _ = execute(sql: "ROLLBACK", in: db, failurePrefix: "Failed to roll back \(name) transaction")
+            return
+        }
+
+        guard execute(sql: "COMMIT", in: db, failurePrefix: "Failed to commit \(name) transaction") else {
+            _ = execute(sql: "ROLLBACK", in: db, failurePrefix: "Failed to roll back \(name) transaction after commit error")
+            return
+        }
+    }
+
+    private func execute(sql: String, in db: OpaquePointer, failurePrefix: String) -> Bool {
+        var errorMessage: UnsafeMutablePointer<CChar>?
+        let result = sqlite3_exec(db, sql, nil, nil, &errorMessage)
+        guard result == SQLITE_OK else {
+            let messageBody = errorMessage.map { String(cString: $0) } ?? String(cString: sqlite3_errmsg(db))
+            let message = "\(failurePrefix): \(messageBody)"
+            logger.error("\(message, privacy: .public)")
+            DiagnosticLog.log(message)
+            sqlite3_free(errorMessage)
+            return false
+        }
+
+        sqlite3_free(errorMessage)
+        return true
+    }
+
+    private func windowDateRange(days: Int, relativeTo now: Date, in tz: TimeZone) -> (start: String, end: String, dateKeys: [String]) {
+        let window = UsageWindowMath.windowDates(days: days, relativeTo: now, in: tz)
+        let dateKeys = window.days.map { dateString(for: $0, in: tz) }
+
         return (
-            start: dateString(for: startDate, in: tz),
-            end: dateString(for: endDate, in: tz),
+            start: dateString(for: window.start, in: tz),
+            end: dateString(for: window.end, in: tz),
             dateKeys: dateKeys
         )
     }
 
     private func previousWindowDateRange(days: Int, relativeTo now: Date, in tz: TimeZone) -> (start: String, end: String, dateKeys: [String]) {
-        let calendar = self.calendar(for: tz)
-        let previousReference = calendar.date(byAdding: .day, value: -max(days, 1), to: now) ?? now
+        let previousReference = UsageWindowMath.previousWindowReference(days: days, relativeTo: now, in: tz)
         return windowDateRange(days: days, relativeTo: previousReference, in: tz)
     }
 
     private func bucketComponents(for date: Date, in tz: TimeZone) -> (date: String, hour: Int) {
         let dateKey = dateString(for: date, in: tz)
-        let hour = calendar(for: tz).component(.hour, from: date)
+        let hour = UsageWindowMath.calendar(timeZone: tz).component(.hour, from: date)
         return (date: dateKey, hour: hour)
-    }
-
-    private func calendar(for tz: TimeZone) -> Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = tz
-        return calendar
     }
 
     private func dateString(for date: Date, in tz: TimeZone) -> String {

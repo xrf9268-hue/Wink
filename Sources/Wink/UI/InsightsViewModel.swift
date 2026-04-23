@@ -64,12 +64,18 @@ final class InsightsViewModel {
 
     private let usageTracker: (any UsageTracking)?
     private let shortcutStore: ShortcutStore
+    private let nowProvider: @Sendable () -> Date
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshGeneration: UInt64 = 0
 
-    init(usageTracker: (any UsageTracking)?, shortcutStore: ShortcutStore) {
+    init(
+        usageTracker: (any UsageTracking)?,
+        shortcutStore: ShortcutStore,
+        nowProvider: @escaping @Sendable () -> Date = Date.init
+    ) {
         self.usageTracker = usageTracker
         self.shortcutStore = shortcutStore
+        self.nowProvider = nowProvider
     }
 
     func scheduleRefresh() {
@@ -93,7 +99,7 @@ final class InsightsViewModel {
     }
 
     private func doRefresh(for period: InsightsPeriod, generation: UInt64) async {
-        let now = Date()
+        let now = nowProvider()
 
         guard let usageTracker else {
             guard generation == refreshGeneration else { return }
@@ -110,7 +116,12 @@ final class InsightsViewModel {
 
         let days = period.days
         let appSparklineDays = max(days, 7)
-        let previousReference = Self.previousWindowReference(relativeTo: now, days: days)
+        let reportingTimeZone = await usageTracker.usageTimeZone()
+        let previousReference = UsageWindowMath.previousWindowReference(
+            days: days,
+            relativeTo: now,
+            in: reportingTimeZone
+        )
 
         async let totalCountResult = usageTracker.totalSwitches(days: days, relativeTo: now)
         async let previousPeriodTotalResult = usageTracker.previousPeriodTotal(days: days, relativeTo: now)
@@ -177,6 +188,7 @@ final class InsightsViewModel {
                 for: item.id.uuidString,
                 days: appSparklineDays,
                 relativeTo: now,
+                timeZone: reportingTimeZone,
                 dailyCounts: dailyCounts
             )
 
@@ -193,10 +205,6 @@ final class InsightsViewModel {
                 sparklinePoints: sparklinePoints
             )
         }
-    }
-
-    private static func previousWindowReference(relativeTo now: Date, days: Int) -> Date {
-        gregorianCalendar(timeZone: .current).date(byAdding: .day, value: -max(days, 1), to: now) ?? now
     }
 
     private static func activationSparklinePoints(
@@ -226,9 +234,10 @@ final class InsightsViewModel {
         for shortcutID: String,
         days: Int,
         relativeTo now: Date,
+        timeZone: TimeZone,
         dailyCounts: [String: [(date: String, count: Int)]]
     ) -> [Int] {
-        let keys = dateKeys(days: days, relativeTo: now)
+        let keys = dateKeys(days: days, relativeTo: now, timeZone: timeZone)
         let countsByDate = Dictionary(
             uniqueKeysWithValues: dailyCounts[shortcutID, default: []].map { ($0.date, $0.count) }
         )
@@ -236,28 +245,15 @@ final class InsightsViewModel {
         return keys.map { countsByDate[$0] ?? 0 }
     }
 
-    private static func dateKeys(days: Int, relativeTo now: Date) -> [String] {
-        let clampedDays = max(days, 1)
-        let calendar = gregorianCalendar(timeZone: .current)
-        let endDate = calendar.startOfDay(for: now)
-        let startDate = calendar.date(byAdding: .day, value: -(clampedDays - 1), to: endDate) ?? endDate
+    private static func dateKeys(days: Int, relativeTo now: Date, timeZone: TimeZone) -> [String] {
+        let window = UsageWindowMath.windowDates(days: days, relativeTo: now, in: timeZone)
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = .current
+        formatter.timeZone = timeZone
 
-        return (0..<clampedDays).compactMap { offset in
-            guard let date = calendar.date(byAdding: .day, value: offset, to: startDate) else {
-                return nil
-            }
-
-            return formatter.string(from: date)
+        return window.days.map { date in
+            formatter.string(from: date)
         }
-    }
-
-    private static func gregorianCalendar(timeZone: TimeZone) -> Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = timeZone
-        return calendar
     }
 }

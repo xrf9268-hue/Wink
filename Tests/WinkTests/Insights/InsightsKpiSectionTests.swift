@@ -15,10 +15,28 @@ struct InsightsKpiSectionTests {
     }
 
     @Test
-    func timeSavedFormatterSwitchesFromSecondsToMinutes() {
+    func timeSavedFormatterRollsUpAcrossSecondsMinutesAndHours() {
         #expect(InsightsKpiFormatter.timeSavedText(totalActivations: 12) == "36s")
         #expect(InsightsKpiFormatter.timeSavedText(totalActivations: 20) == "1m")
         #expect(InsightsKpiFormatter.timeSavedText(totalActivations: 61) == "3m")
+        #expect(InsightsKpiFormatter.timeSavedText(totalActivations: 1_200) == "1h")
+        #expect(InsightsKpiFormatter.timeSavedText(totalActivations: 10_000) == "8h 20m")
+    }
+
+    @Test
+    func activationSubtitleReadsNaturallyAcrossSpecialCases() {
+        #expect(
+            InsightsKpiFormatter.activationSubtitle(change: InsightsChange(text: "+20%", tone: .positive))
+                == "+20% versus the previous period."
+        )
+        #expect(
+            InsightsKpiFormatter.activationSubtitle(change: InsightsChange(text: "New activity", tone: .positive))
+                == "New activity versus the previous period."
+        )
+        #expect(
+            InsightsKpiFormatter.activationSubtitle(change: InsightsChange(text: "No change", tone: .neutral))
+                == "No change versus the previous period."
+        )
     }
 
     @Test

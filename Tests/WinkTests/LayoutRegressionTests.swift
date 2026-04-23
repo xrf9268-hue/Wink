@@ -186,6 +186,22 @@ private actor StaticUsageTracker: UsageTracking {
     func totalSwitches(days: Int, relativeTo now: Date) async -> Int {
         1647
     }
+
+    func hourlyCounts(days: Int, relativeTo now: Date) async -> [HourlyUsageBucket] {
+        []
+    }
+
+    func previousPeriodTotal(days: Int, relativeTo now: Date) async -> Int {
+        0
+    }
+
+    func streakDays(relativeTo now: Date) async -> Int {
+        0
+    }
+
+    func usageTimeZone() async -> TimeZone {
+        .current
+    }
 }
 
 private struct CardWidthProbeView: View {

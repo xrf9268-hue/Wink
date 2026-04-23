@@ -34,11 +34,34 @@ struct InsightsChange: Equatable {
 enum InsightsKpiFormatter {
     static func timeSavedText(totalActivations: Int) -> String {
         let totalSeconds = totalActivations * 3
+        if totalSeconds >= 86_400 {
+            let days = totalSeconds / 86_400
+            let hours = (totalSeconds % 86_400) / 3_600
+            return hours == 0 ? "\(days)d" : "\(days)d \(hours)h"
+        }
+
+        if totalSeconds >= 3_600 {
+            let hours = totalSeconds / 3_600
+            let minutes = (totalSeconds % 3_600) / 60
+            return minutes == 0 ? "\(hours)h" : "\(hours)h \(minutes)m"
+        }
+
         if totalSeconds >= 60 {
             return "\(totalSeconds / 60)m"
         }
 
         return "\(totalSeconds)s"
+    }
+
+    static func activationSubtitle(change: InsightsChange) -> String {
+        switch change.text {
+        case "New activity":
+            return "New activity versus the previous period."
+        case "No change":
+            return "No change versus the previous period."
+        default:
+            return "\(change.text) versus the previous period."
+        }
     }
 }
 
@@ -62,7 +85,7 @@ struct InsightsKpiSection: View {
             metricCard(
                 title: "Activations",
                 value: totalCount.formatted(.number.grouping(.automatic)),
-                subtitle: "vs previous \(activationDelta.text.lowercased())"
+                subtitle: InsightsKpiFormatter.activationSubtitle(change: activationDelta)
             ) {
                 VStack(alignment: .leading, spacing: 10) {
                     InsightsChangeBadge(change: activationDelta)
