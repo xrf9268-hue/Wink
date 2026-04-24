@@ -44,6 +44,40 @@ SwiftUI structure and regression tests are necessary, but they do not replace th
 **Practical guidance**
 For presentation-sensitive work, validate the packaged app itself and capture the real `Wink` window before closing the task. Before trusting a screenshot, make sure only the intended `build/Wink.app` instance is running; otherwise you may end up comparing the issue reference against stale UI from an older process. Treat synthetic rendering as a helper, not the sign-off artifact.
 
+## SwiftUI Row Alignment Needs A Layout Contract
+
+**Issue**
+A row can still look misaligned even after individual controls get fixed widths. In PR #226, the `Your Shortcuts` keycaps, switches, and row action menus continued to drift because the row accessory controls were fixed locally but the row content itself did not have a reliable width contract inside the scroll view.
+
+**Cause**
+SwiftUI stacks only align children within the space the parent proposes. A trailing `Spacer` or per-control `.frame(width:)` is not enough when the row content is still allowed to size to its intrinsic content inside a scroll view. Different app names, metadata, and optional badges can then move the entire accessory cluster, even if each accessory has a fixed width.
+
+**Practical guidance**
+For table-like rows, make the layout contract explicit:
+- Size the scroll content to the viewport width.
+- Let the primary text column expand with `.frame(maxWidth: .infinity, alignment: .leading)` and truncate text there.
+- Put trailing controls in one fixed-width accessory group, with fixed subcolumns for optional badges, keycaps, switches, and menus.
+- Give the accessory group enough layout priority that narrow widths compress text before controls drift.
+- Prefer `LazyVStack` for repeated rows inside `ScrollView`, and consult Apple SwiftUI layout documentation (`frame`, `LazyVStack`, `layoutPriority`, and stack layout behavior) when the layout semantics are unclear.
+
+Do not sign off row alignment from code inspection alone. Capture the final packaged Settings window and check several rows with different content shapes, including at least one Hyper row and one non-Hyper row.
+
+## UI Checklists Must Retire Bad Evidence
+
+**Issue**
+A validation report can accidentally keep citing an older screenshot as "final" even after that screenshot visibly contains the bug under discussion.
+
+**Cause**
+Long UI validation passes often produce multiple screenshots: exploratory captures, pre-rebase captures, post-rebase captures, and final captures. If the report only records "screenshot exists" instead of a checklist of expected facts, stale evidence can survive after the implementation changes.
+
+**Practical guidance**
+For visual regressions, write the checklist at the start of the fix, before editing code or taking the final screenshot. The checklist should come directly from the user's reported issues plus any review-thread risks, and it should drive implementation, screenshots, and PR closeout. Update it as findings appear, but do not wait until the end to invent it from memory. Each claimed screenshot should state the expected UI facts and whether they were observed. If a later inspection proves a screenshot is stale or wrong, mark it as superseded or invalid in the validation artifact instead of leaving it in the evidence chain. In PR #226 the useful checklist should have been created up front with:
+- no outer Shortcuts page scrollbar
+- stable right-side columns for keycaps, switches, and ellipsis menus
+- import preview details own their internal scroller
+- row action menu exposes only `Delete Shortcut`
+- sidebar width matches the design target while the system sidebar toggle remains intentionally visible
+
 ## Remove Dead Presentation Data When The UI No Longer Needs It
 
 **Issue**
