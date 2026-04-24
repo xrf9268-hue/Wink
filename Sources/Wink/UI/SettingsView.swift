@@ -37,27 +37,24 @@ struct SettingsView: View {
                     .font(WinkType.bodyMedium)
                     .tag(tab)
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 220)
+            .navigationSplitViewColumnWidth(
+                min: SettingsSidebarMetrics.width,
+                ideal: SettingsSidebarMetrics.width,
+                max: SettingsSidebarMetrics.width
+            )
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
             .background(palette.sidebarBg)
         } detail: {
-            Group {
-                switch settingsLauncher.selectedTab {
-                case .shortcuts:
-                    ShortcutsTabView(
-                        editor: editor,
-                        preferences: preferences,
-                        appListProvider: appListProvider,
-                        shortcutStatusProvider: shortcutStatusProvider
+            GeometryReader { proxy in
+                selectedTabView
+                    .frame(
+                        width: proxy.size.width,
+                        height: proxy.size.height,
+                        alignment: .topLeading
                     )
-                case .insights:
-                    InsightsTabView(viewModel: insightsViewModel)
-                case .general:
-                    GeneralTabView(preferences: preferences, editor: editor)
-                }
+                    .background(palette.windowBg)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(palette.windowBg)
         }
         .navigationSplitViewStyle(.balanced)
@@ -77,4 +74,25 @@ struct SettingsView: View {
             lifecycleHandler.handleAppDidBecomeActive()
         }
     }
+
+    @ViewBuilder
+    private var selectedTabView: some View {
+        switch settingsLauncher.selectedTab {
+        case .shortcuts:
+            ShortcutsTabView(
+                editor: editor,
+                preferences: preferences,
+                appListProvider: appListProvider,
+                shortcutStatusProvider: shortcutStatusProvider
+            )
+        case .insights:
+            InsightsTabView(viewModel: insightsViewModel)
+        case .general:
+            GeneralTabView(preferences: preferences, editor: editor)
+        }
+    }
+}
+
+private enum SettingsSidebarMetrics {
+    static let width: CGFloat = 180
 }

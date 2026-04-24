@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wink · Logo Options</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --ink: #14110c;
+    --ink-2: #4a453b;
+    --ink-3: #807869;
+    --paper: #f5f2ec;
+    --paper-2: #ebe7df;
+    --rule: #d9d3c6;
+    --card: #ffffff;
+    --accent: #0064E0;
+  }
+  html, body { margin: 0; padding: 0; background: var(--paper); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  .page { max-width: 1280px; margin: 0 auto; padding: 72px 56px 120px; }
+
+  h1 { font-size: 44px; letter-spacing: -0.02em; margin: 0 0 8px; font-weight: 600; }
+  .sub { color: var(--ink-2); font-size: 15px; max-width: 640px; line-height: 1.55; margin: 0 0 56px; }
+
+  .section-title { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); margin: 0 0 20px; font-weight: 600; }
+
+  .row { display: grid; grid-template-columns: 220px 1fr; gap: 56px; align-items: stretch;
+    padding: 32px 0; border-top: 1px solid var(--rule); }
+  .row:first-of-type { border-top: none; }
+
+  .meta h2 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 8px; }
+  .meta p { font-size: 13px; line-height: 1.55; color: var(--ink-2); margin: 0 0 12px; }
+  .meta .tag { display: inline-block; font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+
+  .swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .cell { border-radius: 14px; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden; }
+  .cell .caption { position: absolute; bottom: 10px; left: 12px; font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.55; font-weight: 600; }
+
+  /* cell variants */
+  .cell.mono-light { background: var(--card); border: 1px solid var(--rule); color: var(--ink); }
+  .cell.mono-dark  { background: #18171a; color: #f4f1ea; }
+  .cell.tile       { background: linear-gradient(150deg, var(--accent), #5a9cff 80%); color: #fff;
+                     box-shadow: 0 10px 30px -12px rgba(0,100,224,0.45),
+                                 inset 0 1px 0 rgba(255,255,255,0.35);
+                     border-radius: 22%; }
+  .cell.lockup     { background: var(--card); border: 1px solid var(--rule); color: var(--ink);
+                     aspect-ratio: auto; padding: 24px 22px; justify-content: flex-start; gap: 14px; }
+
+  .lockup .wordmark { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+  .lockup .wordmark .sub2 { font-size: 12px; font-weight: 500; color: var(--ink-3);
+    letter-spacing: 0.12em; text-transform: uppercase; display: block; margin-top: 2px; }
+
+  /* menubar strip */
+  .menubar { display: flex; align-items: center; gap: 10px; height: 28px;
+    background: rgba(245,242,236,0.95); backdrop-filter: blur(12px);
+    border: 1px solid var(--rule); border-radius: 8px; padding: 0 10px;
+    font-size: 13px; color: var(--ink); width: 100%; aspect-ratio: auto; justify-content: flex-start; }
+  .menubar .dot { width: 1px; height: 12px; background: var(--rule); margin: 0 4px; }
+  .menubar .clock { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 12px; }
+  .menubar svg { flex: 0 0 auto; }
+  .menubar-dark { background: #1d1c1f; border-color: #2a282d; color: #f4f1ea; }
+  .menubar-dark .dot { background: #34323a; }
+  .menubar-dark .clock { color: #a8a4ae; }
+
+  /* size ladder */
+  .ladder { display: flex; align-items: center; gap: 18px; padding: 14px 18px;
+    background: var(--card); border: 1px solid var(--rule); border-radius: 14px;
+    aspect-ratio: auto; width: 100%; justify-content: flex-start; }
+  .ladder .rung { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .ladder .rung .lbl { font-size: 10px; color: var(--ink-3); letter-spacing: 0.06em; }
+
+  footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--rule);
+    font-size: 12px; color: var(--ink-3); }
+
+  /* ---------- Feature: Apple-style Crescent ---------- */
+  .feature { margin: 0 0 72px; padding: 0 0 56px; border-bottom: 1px solid var(--rule); }
+  .feature .eyebrow { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin: 0 0 10px; }
+  .feature h2 { font-size: 32px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 10px; }
+  .feature .lede { font-size: 14px; line-height: 1.6; color: var(--ink-2); max-width: 640px; margin: 0 0 32px; }
+
+  .hero-tile { width: 260px; height: 260px; border-radius: 58px;
+    background: radial-gradient(120% 120% at 25% 15%, #3aa0ff 0%, #0064E0 55%, #0049a8 100%);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.45) inset,
+      0 -1px 0 rgba(0,0,0,0.15) inset,
+      0 30px 60px -20px rgba(0,70,180,0.45),
+      0 8px 20px -10px rgba(0,70,180,0.35);
+    display: flex; align-items: center; justify-content: center; position: relative; }
+  .hero-tile::after { content: ''; position: absolute; inset: 1px; border-radius: 57px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0) 40%);
+    pointer-events: none; }
+
+  .feature-grid { display: grid; grid-template-columns: 260px 1fr; gap: 48px; align-items: start; }
+  .finishes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .finish { border-radius: 16px; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden; }
+  .finish .lbl { position: absolute; bottom: 10px; left: 12px; font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; opacity: 0.55; }
+  .finish.f-paper { background: var(--card); border: 1px solid var(--rule); color: var(--ink); }
+  .finish.f-ink { background: #18171a; color: #f4f1ea; }
+  .finish.f-tint { background: #eaf2ff; color: var(--accent); }
+
+  /* Construction diagram */
+  .construction { background: var(--card); border: 1px solid var(--rule); border-radius: 16px;
+    padding: 20px; display: grid; grid-template-columns: 260px 1fr; gap: 28px; align-items: center; }
+  .construction h3 { font-size: 13px; margin: 0 0 10px; font-weight: 600; letter-spacing: 0.02em; }
+  .construction p { font-size: 12.5px; line-height: 1.6; color: var(--ink-2); margin: 0 0 8px; }
+  .construction ul { margin: 0; padding: 0 0 0 16px; font-size: 12.5px; line-height: 1.7; color: var(--ink-2); }
+  .construction code { font-family: 'SF Mono', ui-monospace, monospace; font-size: 11.5px;
+    color: var(--ink); background: var(--paper-2); padding: 1px 6px; border-radius: 4px; }
+
+  /* Dock in-situ */
+  .dock { display: flex; gap: 12px; padding: 14px 16px; border-radius: 22px;
+    background: rgba(245,242,236,0.7); backdrop-filter: blur(20px);
+    border: 1px solid rgba(0,0,0,0.06); width: fit-content; margin: 0 auto;
+    box-shadow: 0 20px 40px -20px rgba(0,0,0,0.25); }
+  .dock .app { width: 56px; height: 56px; border-radius: 14px; }
+  .dock .app.placeholder { background: linear-gradient(160deg, #fff, #e6e1d6); border: 1px solid var(--rule); }
+  .dock .app.p2 { background: linear-gradient(160deg, #34c759, #1a8f3e); }
+  .dock .app.p3 { background: linear-gradient(160deg, #ff9500, #d97500); }
+  .dock .app.p4 { background: linear-gradient(160deg, #af52de, #7a2db0); }
+  .dock .app.wink { background: radial-gradient(120% 120% at 25% 15%, #3aa0ff 0%, #0064E0 55%, #0049a8 100%);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.45) inset, 0 6px 14px -6px rgba(0,70,180,0.5); }
+
+  .stage { background:
+      linear-gradient(180deg, #f5f2ec 0%, #ece7dd 100%);
+    border: 1px solid var(--rule); border-radius: 20px; padding: 48px 24px; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="logos.jsx"></script>
+<script type="text/babel">
+  const { useState } = React;
+
+  // ---------- Row primitive ----------
+  function LogoRow({ id, name, idea, Logo }) {
+    return (
+      <section className="row">
+        <div className="meta">
+          <span className="tag">Mark {id}</span>
+          <h2>{name}</h2>
+          <p>{idea}</p>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* tile row */}
+          <div className="swatches">
+            <div className="cell mono-light">
+              <Logo size={84} color="#14110c" />
+              <span className="caption">Light</span>
+            </div>
+            <div className="cell mono-dark">
+              <Logo size={84} color="#f4f1ea" />
+              <span className="caption">Dark</span>
+            </div>
+            <div className="cell tile">
+              <Logo size={84} color="#ffffff" />
+              <span className="caption">App icon</span>
+            </div>
+            <div className="cell lockup">
+              <Logo size={44} color="#14110c" />
+              <div className="wordmark">
+                Wink
+                <span className="sub2">眨眼之间</span>
+              </div>
+            </div>
+          </div>
+
+          {/* menubar + ladder */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="menubar">
+              <Logo size={16} color="#14110c" />
+              <span>Wink</span>
+              <span className="dot" />
+              <span style={{ color: 'var(--ink-2)' }}>File</span>
+              <span style={{ color: 'var(--ink-2)' }}>Edit</span>
+              <span style={{ color: 'var(--ink-2)' }}>View</span>
+              <span className="clock">9:41 AM</span>
+            </div>
+            <div className="menubar menubar-dark">
+              <Logo size={16} color="#f4f1ea" />
+              <span>Wink</span>
+              <span className="dot" />
+              <span style={{ color: '#a8a4ae' }}>File</span>
+              <span style={{ color: '#a8a4ae' }}>Edit</span>
+              <span style={{ color: '#a8a4ae' }}>View</span>
+              <span className="clock">9:41 AM</span>
+            </div>
+          </div>
+
+          {/* size ladder */}
+          <div className="ladder">
+            {[14, 18, 24, 32, 48, 72].map(sz => (
+              <div key={sz} className="rung">
+                <Logo size={sz} color="#14110c" />
+                <span className="lbl">{sz}px</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  function App() {
+    const options = [
+      { id: 'A', name: 'Crescent', Logo: Logo_WinkCrescent,
+        idea: 'Crescent closed-eye paired with a dot — the most literal "winking eye." Solid fills, so it holds up at menu-bar size. Safe default.' },
+      { id: 'B', name: 'Face', Logo: Logo_WinkFace,
+        idea: 'Soft slit eye next to an oval — unmistakably a winking face, still purely geometric. Friendliest of the set without tipping into emoji.' },
+      { id: 'C', name: 'Monogram W', Logo: Logo_WinkW,
+        idea: 'A W where the right half is a curved V — the letter is literally winking. Half angular, half soft. Strong as a wordmark companion.' },
+      { id: 'D', name: 'Keycap', Logo: Logo_WinkKeycap,
+        idea: 'Rounded keycap holding a crescent + dot face. Leans into the shortcut product metaphor; looks like an app that lives on your keyboard.' },
+      { id: 'E', name: 'Dot-i', Logo: Logo_WinkDotI,
+        idea: 'Typographic: a lowercase i whose tittle becomes a winking crescent. Reads as "i" — meaning "me" — with a wink. Best inline with wordmark.' },
+      { id: 'F', name: 'Lashes', Logo: Logo_WinkLashes,
+        idea: 'A crescent eye and a dot eye with a tiny lash tick — the most illustrated option. Playful, still held together by pure geometry.' },
+    ];
+
+    return (
+      <div className="page">
+        <h1>Wink · logo options</h1>
+        <p className="sub">
+          Six marks for <b>Wink</b>（眨眼之间）— "in the blink of an eye."
+          Every mark is built around the same idea: one closed eye, one open —
+          the actual shape of a wink. Shown monochrome, on an app-icon tile,
+          in a wordmark lockup, and in-situ at menu-bar size + a full size ladder.
+        </p>
+
+        {/* ---------- Feature: Apple-style Crescent ---------- */}
+        <section className="feature">
+          <p className="eyebrow">Mark A · redesign</p>
+          <h2>Crescent, reconstructed</h2>
+          <p className="lede">
+            Rebuilt in the Apple system-icon idiom: a crescent that is
+            the <i>boolean subtraction of two perfect circles</i>, paired
+            with a true disc of matching optical weight. One gesture,
+            no arbitrary curves, designed to live on a squircle tile in
+            a Sonoma dock and template-tint in a menu bar.
+          </p>
+
+          <div className="feature-grid">
+            <div className="stage" style={{ display: 'flex', justifyContent: 'center' }}>
+              <div className="hero-tile">
+                <Logo_WinkCrescent size={168} color="#ffffff" variant="dimensional" idPrefix="hero" />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div className="construction">
+                <svg viewBox="0 0 32 32" width="220" height="220"
+                     style={{ background: '#fafaf7', border: '1px solid var(--rule)', borderRadius: 12 }}>
+                  {/* grid */}
+                  <g stroke="#e4e0d4" strokeWidth="0.08">
+                    {Array.from({length: 33}).map((_, i) => (
+                      <line key={'h'+i} x1="0" y1={i} x2="32" y2={i} />
+                    ))}
+                    {Array.from({length: 33}).map((_, i) => (
+                      <line key={'v'+i} x1={i} y1="0" x2={i} y2="32" />
+                    ))}
+                  </g>
+                  {/* keyline (safe area) */}
+                  <rect x="3" y="3" width="26" height="26" rx="6"
+                        fill="none" stroke="#0064E0" strokeWidth="0.12" strokeDasharray="0.6 0.4" opacity="0.6" />
+                  {/* construction circles */}
+                  <circle cx="12" cy="16" r="9" fill="none" stroke="#0064E0" strokeWidth="0.18" opacity="0.55" />
+                  <circle cx="15.2" cy="13.4" r="8" fill="none" stroke="#0064E0" strokeWidth="0.18" strokeDasharray="0.6 0.4" opacity="0.55" />
+                  <circle cx="25" cy="16" r="2.2" fill="none" stroke="#0064E0" strokeWidth="0.18" opacity="0.55" />
+                  {/* centers */}
+                  <circle cx="12" cy="16" r="0.25" fill="#0064E0" />
+                  <circle cx="15.2" cy="13.4" r="0.25" fill="#0064E0" />
+                  <circle cx="25" cy="16" r="0.25" fill="#0064E0" />
+                  {/* optical baseline */}
+                  <line x1="1" y1="16" x2="31" y2="16" stroke="#0064E0" strokeWidth="0.08" strokeDasharray="0.4 0.4" opacity="0.5" />
+                  {/* the mark itself, overlaid */}
+                  <Logo_WinkCrescent size={0} />
+                  <g fill="#14110c" opacity="0.92">
+                    <path
+                      d="M12 7 a9 9 0 1 0 0 18 a9 9 0 1 0 0 -18 Z M15.2 5.4 a8 8 0 1 1 0 16 a8 8 0 1 1 0 -16 Z"
+                      fillRule="evenodd"
+                    />
+                    <circle cx="25" cy="16" r="2.2" />
+                  </g>
+                </svg>
+                <div>
+                  <h3>Construction</h3>
+                  <ul>
+                    <li>Outer disc <code>r 9</code> at <code>(12, 16)</code></li>
+                    <li>Cutter disc <code>r 8</code> at <code>(15.2, 13.4)</code> — even-odd hole</li>
+                    <li>Open eye <code>r 2.2</code> at <code>(25, 16)</code></li>
+                    <li>Crescent waist (4.4) = open-eye diameter (4.4)</li>
+                    <li>Optical baseline <code>y = 16</code>, shared</li>
+                    <li>26u safe area inside 32u grid — Apple keyline</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="finishes">
+                <div className="finish f-paper">
+                  <Logo_WinkCrescent size={96} color="#14110c" idPrefix="fp" />
+                  <span className="lbl">Flat · light</span>
+                </div>
+                <div className="finish f-ink">
+                  <Logo_WinkCrescent size={96} color="#f4f1ea" idPrefix="fi" />
+                  <span className="lbl">Flat · dark</span>
+                </div>
+                <div className="finish f-tint">
+                  <Logo_WinkCrescent size={96} color="#0064E0" idPrefix="ft" />
+                  <span className="lbl">Template tint</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* In-situ: dock + menu bar + wordmark + ladder */}
+          <div style={{ marginTop: 32, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div className="stage" style={{ padding: '56px 24px' }}>
+              <div className="dock">
+                <div className="app placeholder" />
+                <div className="app p2" />
+                <div className="app wink">
+                  <Logo_WinkCrescent size={36} color="#ffffff" variant="dimensional" idPrefix="dock" />
+                </div>
+                <div className="app p3" />
+                <div className="app p4" />
+                <div className="app placeholder" />
+              </div>
+              <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--ink-3)',
+                          letterSpacing: '0.08em', textTransform: 'uppercase',
+                          marginTop: 24, marginBottom: 0 }}>
+                Dock · 56px tile
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, justifyContent: 'center' }}>
+              <div className="menubar">
+                <Logo_WinkCrescent size={16} color="#14110c" idPrefix="mbl" />
+                <span>Wink</span>
+                <span className="dot" />
+                <span style={{ color: 'var(--ink-2)' }}>File</span>
+                <span style={{ color: 'var(--ink-2)' }}>Edit</span>
+                <span style={{ color: 'var(--ink-2)' }}>Shortcut</span>
+                <span style={{ color: 'var(--ink-2)' }}>Window</span>
+                <span className="clock">9:41 AM</span>
+              </div>
+              <div className="menubar menubar-dark">
+                <Logo_WinkCrescent size={16} color="#f4f1ea" idPrefix="mbd" />
+                <span>Wink</span>
+                <span className="dot" />
+                <span style={{ color: '#a8a4ae' }}>File</span>
+                <span style={{ color: '#a8a4ae' }}>Edit</span>
+                <span style={{ color: '#a8a4ae' }}>Shortcut</span>
+                <span style={{ color: '#a8a4ae' }}>Window</span>
+                <span className="clock">9:41 AM</span>
+              </div>
+              <div className="ladder">
+                {[13, 16, 20, 28, 40, 64].map(sz => (
+                  <div key={sz} className="rung">
+                    <Logo_WinkCrescent size={sz} color="#14110c" idPrefix={`ld${sz}`} />
+                    <span className="lbl">{sz}px</span>
+                  </div>
+                ))}
+              </div>
+              <div className="cell lockup" style={{ marginTop: 4 }}>
+                <Logo_WinkCrescent size={52} color="#14110c" idPrefix="lk" />
+                <div className="wordmark">
+                  Wink
+                  <span className="sub2">眨眼之间</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <p className="section-title">Six directions</p>
+        {options.map(o => <LogoRow key={o.id} {...o} />)}
+
+        <footer>
+          Notes · Marks 1, 3, 5 are "typographic" and quiet. Marks 4 and 6 lean illustrative.
+          Mark 2 is the most abstract/system-flavored. All use `currentColor` so tint is controlled by CSS.
+        </footer>
+      </div>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

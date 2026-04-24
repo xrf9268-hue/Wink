@@ -4,9 +4,31 @@ import SwiftUI
 
 private enum ShortcutRowMetrics {
     static let spacing: CGFloat = 12
+    static let gripColumnWidth: CGFloat = 12
     static let iconSize: CGFloat = 30
     static let textSpacing: CGFloat = 2
     static let verticalPadding: CGFloat = 10
+    static let standardRowHeight: CGFloat = 50
+    static let unavailableRowHeight: CGFloat = 68
+    static let minimumListHeight: CGFloat = 150
+    static let listViewportHeight: CGFloat = 180
+    static let hyperBadgeColumnWidth: CGFloat = 58
+    static let shortcutColumnWidth: CGFloat = 112
+    static let switchColumnWidth: CGFloat = 36
+    static let actionButtonSize: CGFloat = 22
+    static let accessorySpacing: CGFloat = 8
+
+    static var accessoryGroupWidth: CGFloat {
+        hyperBadgeColumnWidth + shortcutColumnWidth + switchColumnWidth + actionButtonSize + accessorySpacing * 3
+    }
+
+    static func listViewportHeight(rowHeights: [CGFloat]) -> CGFloat {
+        max(minimumListHeight, min(listViewportHeight, rowHeights.reduce(0, +)))
+    }
+}
+
+private enum ShortcutImportPreviewMetrics {
+    static let detailsMaxHeight: CGFloat = 128
 }
 
 struct ShortcutRowAccessibilityOptions: Equatable {
@@ -177,150 +199,149 @@ struct ShortcutsTabView: View {
     var body: some View {
         let importPreviewActive = editor.pendingRecipeImport != nil
 
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                SettingsTabHeader(
-                    title: "Shortcuts",
-                    subtitle: "Bind a keystroke to launch, toggle, or hide an app."
-                ) {
-                    WinkButton("Refresh", systemImage: WinkIcon.refresh.systemName) {
-                        preferences.requestShortcutPermissions()
-                    }
+        VStack(alignment: .leading, spacing: 14) {
+            SettingsTabHeader(
+                title: "Shortcuts",
+                subtitle: "Bind a keystroke to launch, toggle, or hide an app."
+            ) {
+                WinkButton("Refresh", systemImage: WinkIcon.refresh.systemName) {
+                    preferences.requestShortcutPermissions()
                 }
+            }
 
-                permissionBanner
+            permissionBanner
 
-                WinkCard(
-                    title: {
-                        Text("New Shortcut")
-                    }
-                ) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 5) {
-                                SettingsFieldLabel("Target app")
-                                Button {
-                                    showingAppPicker = true
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        if editor.selectedBundleIdentifier.isEmpty {
-                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                .fill(palette.controlBgRest)
-                                                .frame(width: 20, height: 20)
-                                                .overlay {
-                                                    WinkIcon.app.image(size: 11)
-                                                        .foregroundStyle(palette.textTertiary)
-                                                }
+            WinkCard(
+                title: {
+                    Text("New Shortcut")
+                }
+            ) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            SettingsFieldLabel("Target app")
+                            Button {
+                                showingAppPicker = true
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if editor.selectedBundleIdentifier.isEmpty {
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .fill(palette.controlBgRest)
+                                            .frame(width: 20, height: 20)
+                                            .overlay {
+                                                WinkIcon.app.image(size: 11)
+                                                    .foregroundStyle(palette.textTertiary)
+                                            }
 
-                                            Text("Choose an app…")
-                                                .font(WinkType.bodyText)
-                                                .foregroundStyle(palette.textTertiary)
-                                        } else {
-                                            AppIconView(bundleIdentifier: editor.selectedBundleIdentifier, size: 20)
-                                            Text(editor.selectedAppName)
-                                                .font(WinkType.bodyText)
-                                                .foregroundStyle(palette.textPrimary)
-                                                .lineLimit(1)
-                                        }
-
-                                        Spacer(minLength: 8)
-
-                                        WinkIcon.chevronDown.image(size: 11)
-                                            .foregroundStyle(palette.textSecondary)
+                                        Text("Choose an app…")
+                                            .font(WinkType.bodyText)
+                                            .foregroundStyle(palette.textTertiary)
+                                    } else {
+                                        AppIconView(bundleIdentifier: editor.selectedBundleIdentifier, size: 20)
+                                        Text(editor.selectedAppName)
+                                            .font(WinkType.bodyText)
+                                            .foregroundStyle(palette.textPrimary)
+                                            .lineLimit(1)
                                     }
-                                    .padding(.horizontal, 8)
-                                    .frame(height: 28)
-                                    .background(palette.controlBg)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                            .stroke(palette.controlBorder, lineWidth: 0.5)
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                                    Spacer(minLength: 8)
+
+                                    WinkIcon.chevronDown.image(size: 11)
+                                        .foregroundStyle(palette.textSecondary)
                                 }
-                                .buttonStyle(.plain)
-                                .popover(isPresented: $showingAppPicker, arrowEdge: .bottom) {
-                                    AppPickerPopover(
-                                        appListProvider: appListProvider,
-                                        onSelect: { entry in
-                                            editor.selectedAppName = entry.name
-                                            editor.selectedBundleIdentifier = entry.bundleIdentifier
-                                        },
-                                        onBrowse: {
-                                            editor.chooseApplication()
-                                        }
-                                    )
+                                .padding(.horizontal, 8)
+                                .frame(height: 28)
+                                .background(palette.controlBg)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .stroke(palette.controlBorder, lineWidth: 0.5)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .popover(isPresented: $showingAppPicker, arrowEdge: .bottom) {
+                                AppPickerPopover(
+                                    appListProvider: appListProvider,
+                                    onSelect: { entry in
+                                        editor.selectedAppName = entry.name
+                                        editor.selectedBundleIdentifier = entry.bundleIdentifier
+                                    },
+                                    onBrowse: {
+                                        editor.chooseApplication()
+                                    }
+                                )
+                            }
+                            .disabled(importPreviewActive)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            SettingsFieldLabel("Shortcut", trailing: "Click to record")
+
+                            if editor.isRecordingShortcut {
+                                ShortcutRecorderView(
+                                    recordedShortcut: $editor.recordedShortcut,
+                                    isRecording: $editor.isRecordingShortcut
+                                )
+                                .frame(height: 28)
+                            } else {
+                                ShortcutRecorderIdleField(recordedShortcut: editor.recordedShortcut) {
+                                    editor.isRecordingShortcut = true
                                 }
                                 .disabled(importPreviewActive)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                            VStack(alignment: .leading, spacing: 5) {
-                                SettingsFieldLabel("Shortcut", trailing: "Click to record")
-
-                                if editor.isRecordingShortcut {
-                                    ShortcutRecorderView(
-                                        recordedShortcut: $editor.recordedShortcut,
-                                        isRecording: $editor.isRecordingShortcut
-                                    )
-                                    .frame(height: 28)
-                                } else {
-                                    ShortcutRecorderIdleField(recordedShortcut: editor.recordedShortcut) {
-                                        editor.isRecordingShortcut = true
-                                    }
-                                    .disabled(importPreviewActive)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-
-                        Divider().overlay(palette.hairline)
-
-                        HStack(alignment: .center, spacing: 10) {
-                            HStack(spacing: 6) {
-                                Text("Tip: hold")
-                                WinkKeycap("Caps Lock", size: .small)
-                                Text("for a Hyper shortcut.")
-                            }
-                            .font(WinkType.labelSmall)
-                            .foregroundStyle(palette.textTertiary)
-
-                            Spacer(minLength: 8)
-
-                            WinkButton("Clear") {
-                                editor.clearRecordedShortcut()
-                            }
-                            .disabled(importPreviewActive || (editor.recordedShortcut == nil && !editor.isRecordingShortcut))
-
-                            WinkButton("Add Shortcut", variant: .primary) {
-                                editor.addShortcut()
-                            }
-                            .disabled(importPreviewActive || editor.selectedBundleIdentifier.isEmpty || editor.recordedShortcut == nil)
-                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(14)
-                }
 
-                if let conflictMessage = editor.conflictMessage {
-                    Text(conflictMessage)
+                    Divider().overlay(palette.hairline)
+
+                    HStack(alignment: .center, spacing: 10) {
+                        HStack(spacing: 6) {
+                            Text("Tip: hold")
+                            WinkKeycap("Caps Lock", size: .small)
+                            Text("for a Hyper shortcut.")
+                        }
                         .font(WinkType.labelSmall)
-                        .foregroundStyle(palette.red)
-                }
+                        .foregroundStyle(palette.textTertiary)
 
-                if let recipeFeedback = editor.recipeFeedback {
-                    Text(recipeFeedback.message)
-                        .font(WinkType.labelSmall)
-                        .foregroundStyle(recipeFeedback.isError ? palette.red : palette.textSecondary)
-                }
+                        Spacer(minLength: 8)
 
-                if let pendingRecipeImport = editor.pendingRecipeImport {
-                    importPreviewCard(pendingRecipeImport)
-                }
+                        WinkButton("Clear") {
+                            editor.clearRecordedShortcut()
+                        }
+                        .disabled(importPreviewActive || (editor.recordedShortcut == nil && !editor.isRecordingShortcut))
 
-                shortcutsCard(importPreviewActive: importPreviewActive)
+                        WinkButton("Add Shortcut", variant: .primary) {
+                            editor.addShortcut()
+                        }
+                        .disabled(importPreviewActive || editor.selectedBundleIdentifier.isEmpty || editor.recordedShortcut == nil)
+                    }
+                }
+                .padding(14)
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 18)
+
+            if let conflictMessage = editor.conflictMessage {
+                Text(conflictMessage)
+                    .font(WinkType.labelSmall)
+                    .foregroundStyle(palette.red)
+            }
+
+            if let recipeFeedback = editor.recipeFeedback {
+                Text(recipeFeedback.message)
+                    .font(WinkType.labelSmall)
+                    .foregroundStyle(recipeFeedback.isError ? palette.red : palette.textSecondary)
+            }
+
+            if let pendingRecipeImport = editor.pendingRecipeImport {
+                importPreviewCard(pendingRecipeImport)
+            }
+
+            shortcutsCard(importPreviewActive: importPreviewActive)
         }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(palette.windowBg)
         .onAppear {
             accessibilityOptions = .current
@@ -428,15 +449,21 @@ struct ShortcutsTabView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 18)
             } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(filteredShortcuts.enumerated()), id: \.element.id) { index, shortcut in
-                        reorderableRow(shortcut, index: index, canReorder: canReorder)
-                        if index < filteredShortcuts.count - 1 {
-                            Divider().overlay(palette.hairline)
-                                .padding(.leading, 58)
+                GeometryReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(filteredShortcuts.enumerated()), id: \.element.id) { index, shortcut in
+                                reorderableRow(shortcut, index: index, canReorder: canReorder)
+                                if index < filteredShortcuts.count - 1 {
+                                    Divider().overlay(palette.hairline)
+                                        .padding(.leading, 58)
+                                }
+                            }
                         }
+                        .frame(width: proxy.size.width, alignment: .leading)
                     }
                 }
+                .frame(height: shortcutListViewportHeight(for: filteredShortcuts))
             }
         }
     }
@@ -460,6 +487,15 @@ struct ShortcutsTabView: View {
         } else {
             shortcutRow(shortcut, index: index)
         }
+    }
+
+    private func shortcutListViewportHeight(for shortcuts: [AppShortcut]) -> CGFloat {
+        let rowHeights = shortcuts.map { shortcut in
+            shortcutStatusProvider.status(for: shortcut).isUnavailable
+                ? ShortcutRowMetrics.unavailableRowHeight
+                : ShortcutRowMetrics.standardRowHeight
+        }
+        return ShortcutRowMetrics.listViewportHeight(rowHeights: rowHeights)
     }
 
     @ViewBuilder
@@ -498,40 +534,7 @@ struct ShortcutsTabView: View {
                     statView(title: "Unresolved", count: plan.unresolvedEntries.count, tint: palette.textSecondary)
                 }
 
-                if !plan.conflictEntries.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Conflicts")
-                            .font(WinkType.captionStrong)
-                            .foregroundStyle(palette.textPrimary)
-
-                        ForEach(plan.conflictEntries) { entry in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("\(entry.imported.resolvedAppName) · \(entry.imported.displayText)")
-                                    .font(WinkType.labelSmall)
-                                    .foregroundStyle(palette.textPrimary)
-                                if let conflictingShortcut = entry.conflictingShortcut {
-                                    Text("Conflicts with \(conflictingShortcut.appName) · \(conflictingShortcut.displayText)")
-                                        .font(WinkType.labelSmall)
-                                        .foregroundStyle(palette.textSecondary)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if !plan.unresolvedEntries.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.")
-                            .font(WinkType.labelSmall)
-                            .foregroundStyle(palette.textSecondary)
-
-                        ForEach(plan.unresolvedEntries) { entry in
-                            Text("\(entry.imported.sourceAppName) (\(entry.imported.sourceBundleIdentifier))")
-                                .font(WinkType.labelSmall)
-                                .foregroundStyle(palette.textSecondary)
-                        }
-                    }
-                }
+                importPreviewDetails(plan)
 
                 HStack(spacing: 8) {
                     WinkButton("Cancel") {
@@ -550,6 +553,52 @@ struct ShortcutsTabView: View {
                 }
             }
             .padding(14)
+        }
+    }
+
+    @ViewBuilder
+    private func importPreviewDetails(_ plan: WinkRecipeImportPlanner.ImportPlan) -> some View {
+        if !plan.conflictEntries.isEmpty || !plan.unresolvedEntries.isEmpty {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    if !plan.conflictEntries.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Conflicts")
+                                .font(WinkType.captionStrong)
+                                .foregroundStyle(palette.textPrimary)
+
+                            ForEach(plan.conflictEntries) { entry in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(entry.imported.resolvedAppName) · \(entry.imported.displayText)")
+                                        .font(WinkType.labelSmall)
+                                        .foregroundStyle(palette.textPrimary)
+                                    if let conflictingShortcut = entry.conflictingShortcut {
+                                        Text("Conflicts with \(conflictingShortcut.appName) · \(conflictingShortcut.displayText)")
+                                            .font(WinkType.labelSmall)
+                                            .foregroundStyle(palette.textSecondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !plan.unresolvedEntries.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.")
+                                .font(WinkType.labelSmall)
+                                .foregroundStyle(palette.textSecondary)
+
+                            ForEach(plan.unresolvedEntries) { entry in
+                                Text("\(entry.imported.sourceAppName) (\(entry.imported.sourceBundleIdentifier))")
+                                    .font(WinkType.labelSmall)
+                                    .foregroundStyle(palette.textSecondary)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: ShortcutImportPreviewMetrics.detailsMaxHeight)
         }
     }
 
@@ -608,6 +657,7 @@ struct ShortcutsListRow: View {
         HStack(spacing: ShortcutRowMetrics.spacing) {
             WinkIcon.grip.image(size: 11, weight: .semibold)
                 .foregroundStyle(palette.textTertiary)
+                .frame(width: ShortcutRowMetrics.gripColumnWidth)
 
             ZStack(alignment: .bottomTrailing) {
                 AppIconView(
@@ -634,6 +684,8 @@ struct ShortcutsListRow: View {
                     Text(presentation.title)
                         .font(WinkType.bodyMedium)
                         .foregroundStyle(palette.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
                     if presentation.showsRunningIndicator {
                         HStack(spacing: 4) {
@@ -648,6 +700,7 @@ struct ShortcutsListRow: View {
                         .help("App is currently running")
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(presentation.metadataText)
                     .font(WinkType.labelSmall)
@@ -663,18 +716,39 @@ struct ShortcutsListRow: View {
                 }
             }
 
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            if shortcut.isHyper {
-                WinkHyperBadge()
+            shortcutAccessoryGroup
+                .layoutPriority(1)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, ShortcutRowMetrics.verticalPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .alternatingRowBackground(index: index)
+        .opacity(presentation.contentOpacity)
+        .animation(statusAnimation, value: statusAnimationKey)
+    }
+
+    private var shortcutAccessoryGroup: some View {
+        HStack(spacing: ShortcutRowMetrics.accessorySpacing) {
+            Group {
+                if shortcut.isHyper {
+                    WinkHyperBadge()
+                } else {
+                    Color.clear
+                        .accessibilityHidden(true)
+                }
             }
+            .frame(width: ShortcutRowMetrics.hyperBadgeColumnWidth, alignment: .trailing)
 
             ShortcutKeycapStrip(shortcut: shortcut)
+                .frame(width: ShortcutRowMetrics.shortcutColumnWidth, alignment: .trailing)
 
             WinkSwitch(isOn: Binding(
                 get: { shortcut.isEnabled },
                 set: { _ in onToggleEnabled() }
             ))
+            .frame(width: ShortcutRowMetrics.switchColumnWidth)
             .disabled(importPreviewActive)
 
             Menu {
@@ -682,20 +756,18 @@ struct ShortcutsListRow: View {
             } label: {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(Color.clear)
-                    .frame(width: 22, height: 22)
+                    .frame(width: ShortcutRowMetrics.actionButtonSize, height: ShortcutRowMetrics.actionButtonSize)
                     .overlay {
                         WinkIcon.more.image(size: 12)
                             .foregroundStyle(palette.textTertiary)
                     }
             }
             .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .frame(width: ShortcutRowMetrics.actionButtonSize, height: ShortcutRowMetrics.actionButtonSize)
             .disabled(importPreviewActive)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, ShortcutRowMetrics.verticalPadding)
-        .alternatingRowBackground(index: index)
-        .opacity(presentation.contentOpacity)
-        .animation(statusAnimation, value: statusAnimationKey)
+        .frame(width: ShortcutRowMetrics.accessoryGroupWidth, alignment: .trailing)
     }
 }
 

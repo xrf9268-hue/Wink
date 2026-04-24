@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wink · DMG Installer v2</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html, body { margin: 0; padding: 0; background: #e8e6e1; overflow: hidden; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="v2/tokens.jsx"></script>
+<script type="text/babel" src="v2/logos.jsx"></script>
+<script type="text/babel" src="v2/primitives.jsx"></script>
+<script type="text/babel" src="v2/design-canvas.jsx"></script>
+
+<script type="text/babel">
+/*
+  Wink · DMG install window — v2 refinements
+  -----------------------------------------
+  Critique addressed from v1:
+  • Less copy: removed the version/system-requirement tag (belongs on the
+    download page, not the installer). Headline does the job alone.
+  • Finder-accurate icon labels (11px, weak weight, light letter-spacing).
+  • Applications folder redrawn closer to Sequoia (translucent front flap,
+    subtle inner highlight, paper tab on the back).
+  • Arrow is now tapered ink with soft spark dots — feels hand-drawn.
+  • New E · Editorial hero: image-led, off-center composition.
+  • New F · Bottom anchor: headline up top, drag row at the baseline — a
+    common "poster" layout used by premium Mac apps.
+  • Each artboard gets a realistic empty Finder toolbar row (~28px) because
+    real DMG windows usually include it; removing it would require custom
+    window settings that most users won't actually ship.
+*/
+
+const ARROW_W = 170;
+
+// ---------- Shared chrome ----------
+function FinderChrome({ title, tone, children, width = 680, height = 460, showToolbar = true }) {
+  const dark = tone === 'dark';
+  return (
+    <div style={{
+      width, height, borderRadius: 10, overflow: 'hidden',
+      fontFamily: window.SF,
+      boxShadow: dark
+        ? '0 0 0 0.5px rgba(255,255,255,0.08), 0 30px 60px rgba(0,0,0,0.45)'
+        : '0 0 0 0.5px rgba(0,0,0,0.12), 0 30px 60px rgba(0,0,0,0.18)',
+      display: 'flex', flexDirection: 'column', position: 'relative',
+    }}>
+      {/* Title bar */}
+      <div style={{
+        height: 38, flexShrink: 0,
+        background: dark ? '#2C2C2E' : '#ECECEC',
+        borderBottom: `0.5px solid ${dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.10)'}`,
+        display: 'flex', alignItems: 'center', position: 'relative',
+      }}>
+        <window.TrafficLights />
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: dark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.80)',
+          fontSize: 13, fontWeight: 500, letterSpacing: 0.1, pointerEvents: 'none',
+        }}>{title}</div>
+      </div>
+      {/* Empty Finder toolbar row (realistic — most DMGs keep it) */}
+      {showToolbar && (
+        <div style={{
+          height: 28, flexShrink: 0,
+          background: dark ? '#262628' : '#E4E4E4',
+          borderBottom: `0.5px solid ${dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+        }} />
+      )}
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>{children}</div>
+    </div>
+  );
+}
+
+// ---------- Wink app tile ----------
+function AppTile({ size = 112, label = 'Wink', finderLabel }) {
+  const radius = Math.round(size * 0.225);
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+      width: size + 48, userSelect: 'none',
+    }}>
+      <div style={{
+        width: size, height: size, borderRadius: radius,
+        background: 'linear-gradient(135deg, #8A5BE3 0%, #5E3FC7 55%, #4A7BE8 100%)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#fff',
+        boxShadow:
+          '0 1px 2px rgba(0,0,0,0.14), ' +
+          '0 16px 28px rgba(74,54,130,0.32), ' +
+          'inset 0 1px 0 rgba(255,255,255,0.20), ' +
+          'inset 0 -8px 20px rgba(0,0,0,0.12)',
+        position: 'relative',
+      }}>
+        <window.Logo_WinkTwin size={Math.round(size * 0.62)} color="#fff" variant="dimensional" idPrefix="dmg-tile" />
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: radius,
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 42%)',
+          pointerEvents: 'none',
+        }} />
+      </div>
+      <FinderLabel {...finderLabel}>{label}</FinderLabel>
+    </div>
+  );
+}
+
+// Real Finder label — tight, 11px, faint selection-bg on dark mode.
+function FinderLabel({ children, color, bg }) {
+  return (
+    <div style={{
+      fontSize: 11, fontWeight: 400,
+      color: color || 'rgba(0,0,0,0.82)',
+      letterSpacing: 0.05,
+      padding: bg ? '1px 6px' : '1px 2px',
+      borderRadius: 3,
+      background: bg || 'transparent',
+      lineHeight: 1.25,
+    }}>{children}</div>
+  );
+}
+
+// ---------- Applications folder — Sequoia-ish, not Apple artwork ----------
+function AppsFolder({ size = 112, label = 'Applications', finderLabel }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+      width: size + 60, userSelect: 'none',
+    }}>
+      <svg width={size} height={size} viewBox="0 0 116 116" style={{
+        filter: 'drop-shadow(0 14px 24px rgba(30,80,160,0.28)) drop-shadow(0 1px 1px rgba(0,0,0,0.18))',
+      }}>
+        <defs>
+          <linearGradient id="fBack2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#7FB7FF" />
+            <stop offset="100%" stopColor="#3D8BE8" />
+          </linearGradient>
+          <linearGradient id="fFront2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(191,215,248,0.92)" />
+            <stop offset="100%" stopColor="rgba(136,178,238,0.85)" />
+          </linearGradient>
+          <linearGradient id="fTab2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#9EC8FF" />
+            <stop offset="100%" stopColor="#6CA3EC" />
+          </linearGradient>
+        </defs>
+        {/* Paper tab on the back flap */}
+        <path d="M18 26 Q18 22 22 22 L48 22 Q52 22 54 25 L57 30 L100 30 Q104 30 104 34 L104 44 L18 44 Z"
+              fill="url(#fTab2)" />
+        {/* Back flap */}
+        <path d="M14 34 Q14 30 18 30 L98 30 Q104 30 104 36 L104 90 Q104 96 98 96 L18 96 Q14 96 14 92 Z"
+              fill="url(#fBack2)" />
+        {/* Translucent front face (Sequoia-style) */}
+        <path d="M14 46 Q14 42 18 42 L100 42 Q106 42 106 48 L106 90 Q106 96 100 96 L18 96 Q14 96 14 92 Z"
+              fill="url(#fFront2)" />
+        {/* Top highlight on front */}
+        <path d="M14 46 Q14 42 18 42 L100 42 Q106 42 106 48 L106 52 L14 52 Z"
+              fill="rgba(255,255,255,0.28)" />
+        {/* Bottom edge shadow on front */}
+        <path d="M14 90 L106 90 L106 96 Q106 96 100 96 L18 96 Q14 96 14 92 Z"
+              fill="rgba(40,90,180,0.10)" />
+      </svg>
+      <FinderLabel {...finderLabel}>{label}</FinderLabel>
+    </div>
+  );
+}
+
+// ---------- Tapered ink arrow with spark dots ----------
+function DragArrow({ color = 'rgba(0,0,0,0.42)', width = ARROW_W, dotColor }) {
+  const h = 48;
+  const w = width;
+  const headX = w - 8;
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ overflow: 'visible' }}>
+      <defs>
+        <linearGradient id={`arrInk-${color.replace(/[^a-z0-9]/gi,'')}`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={color} stopOpacity="0.0" />
+          <stop offset="25%" stopColor={color} stopOpacity="0.55" />
+          <stop offset="100%" stopColor={color} stopOpacity="1" />
+        </linearGradient>
+      </defs>
+      {/* Three spark dots leading into the shaft */}
+      {[0.04, 0.10, 0.17].map((t, i) => (
+        <circle key={i} cx={w * t} cy={h / 2} r={1.4 + i * 0.3}
+                fill={dotColor || color} opacity={0.35 + i * 0.15} />
+      ))}
+      {/* Tapered shaft: stroke-width varies via two overlapping strokes */}
+      <path
+        d={`M ${w * 0.22} ${h/2 + 1} Q ${w * 0.55} ${h/2 + 6}, ${headX - 6} ${h/2}`}
+        stroke={`url(#arrInk-${color.replace(/[^a-z0-9]/gi,'')})`}
+        strokeWidth={2.6} strokeLinecap="round" fill="none"
+      />
+      {/* Arrowhead — two short strokes, hand-drawn feel */}
+      <path d={`M ${headX - 12} ${h/2 - 8} L ${headX} ${h/2}`}
+            stroke={color} strokeWidth={2.6} strokeLinecap="round" fill="none" />
+      <path d={`M ${headX - 12} ${h/2 + 8} L ${headX} ${h/2}`}
+            stroke={color} strokeWidth={2.6} strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
+
+// ---------- Scenes ----------
+
+// Layout A — Clean editorial: headline top-left, drag row centered
+function SceneCentered({
+  bg, titleColor, subtitleColor, arrowColor, headline, subhead,
+  iconLabelColor, iconLabelBg, decoration,
+}) {
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, background: bg,
+      display: 'flex', flexDirection: 'column',
+      padding: '26px 44px 30px',
+      overflow: 'hidden',
+    }}>
+      {decoration}
+      <div style={{
+        textAlign: 'center',
+        fontSize: 19, fontWeight: 600,
+        color: titleColor, letterSpacing: -0.2, marginTop: 4,
+      }}>{headline}</div>
+      {subhead && (
+        <div style={{
+          textAlign: 'center', fontSize: 12.5, color: subtitleColor,
+          marginTop: 5, letterSpacing: 0.05,
+        }}>{subhead}</div>
+      )}
+      <div style={{
+        flex: 1, display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', paddingInline: 12,
+      }}>
+        <AppTile finderLabel={{ color: iconLabelColor, bg: iconLabelBg }} />
+        <DragArrow color={arrowColor} width={ARROW_W} />
+        <AppsFolder finderLabel={{ color: iconLabelColor, bg: iconLabelBg }} />
+      </div>
+    </div>
+  );
+}
+
+// Layout B — Bottom anchor: big headline & visual identity up top, drag row at baseline
+function SceneBottomAnchor({
+  bg, titleColor, subtitleColor, arrowColor, headline, subhead,
+  iconLabelColor, iconLabelBg, decoration, kicker, kickerColor,
+}) {
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, background: bg,
+      display: 'flex', flexDirection: 'column',
+      padding: '34px 44px 28px',
+      overflow: 'hidden',
+    }}>
+      {decoration}
+      <div style={{ position: 'relative' }}>
+        {kicker && (
+          <div style={{
+            textAlign: 'left', fontSize: 10.5, fontWeight: 600,
+            color: kickerColor || subtitleColor, letterSpacing: 1.4,
+            textTransform: 'uppercase', marginBottom: 6,
+          }}>{kicker}</div>
+        )}
+        <div style={{
+          textAlign: 'left', fontSize: 30, fontWeight: 600,
+          color: titleColor, letterSpacing: -0.8, lineHeight: 1.05,
+          maxWidth: 360,
+        }}>{headline}</div>
+        {subhead && (
+          <div style={{
+            textAlign: 'left', fontSize: 13, color: subtitleColor,
+            marginTop: 8, letterSpacing: 0.05, maxWidth: 360, lineHeight: 1.45,
+          }}>{subhead}</div>
+        )}
+      </div>
+      <div style={{
+        marginTop: 'auto', display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', paddingInline: 6,
+      }}>
+        <AppTile size={96} finderLabel={{ color: iconLabelColor, bg: iconLabelBg }} />
+        <DragArrow color={arrowColor} width={ARROW_W} />
+        <AppsFolder size={96} finderLabel={{ color: iconLabelColor, bg: iconLabelBg }} />
+      </div>
+    </div>
+  );
+}
+
+// ---------- Variations ----------
+
+// A · Cream minimal — poster-simple, one line of copy
+function DMG_A() {
+  return (
+    <FinderChrome title="Wink">
+      <SceneCentered
+        bg="linear-gradient(180deg, #F5F1EA 0%, #ECE7DD 100%)"
+        titleColor="rgba(42,32,33,0.88)"
+        subtitleColor="rgba(42,32,33,0.50)"
+        arrowColor="rgba(94,63,199,0.55)"
+        headline="Drag Wink to Applications"
+      />
+    </FinderChrome>
+  );
+}
+
+// B · Violet hero — soft atmospheric wash, tile sits in its own color field
+function DMG_B() {
+  return (
+    <FinderChrome title="Wink">
+      <SceneCentered
+        bg="radial-gradient(130% 140% at 20% 0%, #F6EEFF 0%, #ECE0FF 35%, #DDCBF6 75%, #CDB6EE 100%)"
+        titleColor="#2D1A55"
+        subtitleColor="rgba(45,26,85,0.58)"
+        arrowColor="rgba(94,63,199,0.65)"
+        headline="Drag Wink to Applications"
+        decoration={
+          <>
+            <div style={{
+              position: 'absolute', width: 520, height: 520, borderRadius: '50%',
+              left: -180, bottom: -220,
+              background: 'radial-gradient(circle, rgba(138,91,227,0.28) 0%, rgba(138,91,227,0) 60%)',
+              pointerEvents: 'none',
+            }} />
+            <div style={{
+              position: 'absolute', width: 440, height: 440, borderRadius: '50%',
+              right: -160, top: -140,
+              background: 'radial-gradient(circle, rgba(74,123,232,0.24) 0%, rgba(74,123,232,0) 60%)',
+              pointerEvents: 'none',
+            }} />
+          </>
+        }
+      />
+    </FinderChrome>
+  );
+}
+
+// C · Winking motif — faint repeated Twin marks; vignette keeps center readable
+function WinkPattern({ color = 'rgba(94,63,199,0.09)' }) {
+  const pts = [
+    [52, 82], [142, 140], [244, 96], [332, 168], [436, 104],
+    [548, 152], [92, 232], [214, 284], [326, 250], [428, 316],
+    [540, 272], [76, 356], [192, 396], [312, 372], [432, 414],
+  ];
+  return (
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {pts.map(([x, y], i) => {
+        const r = ((i * 37) % 20) - 10;
+        const s = 22 + ((i * 11) % 9);
+        return (
+          <div key={i} style={{
+            position: 'absolute', left: x, top: y,
+            transform: `rotate(${r}deg)`, color,
+          }}>
+            <window.Logo_WinkTwin size={s} color="currentColor" />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+function DMG_C() {
+  return (
+    <FinderChrome title="Wink">
+      <SceneCentered
+        bg="linear-gradient(180deg, #F5F1EA 0%, #EFE7D8 100%)"
+        titleColor="rgba(42,32,33,0.88)"
+        subtitleColor="rgba(42,32,33,0.52)"
+        arrowColor="rgba(94,63,199,0.55)"
+        headline="Drag Wink to Applications"
+        decoration={
+          <>
+            <WinkPattern color="rgba(94,63,199,0.11)" />
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'radial-gradient(60% 52% at 50% 55%, rgba(245,241,234,0.92) 0%, rgba(245,241,234,0) 80%)',
+              pointerEvents: 'none',
+            }} />
+          </>
+        }
+      />
+    </FinderChrome>
+  );
+}
+
+// D · Dark — calmer version of B for night appearance
+function DMG_D() {
+  return (
+    <FinderChrome title="Wink" tone="dark">
+      <SceneCentered
+        bg="radial-gradient(130% 140% at 20% 0%, #2A2230 0%, #1B1820 50%, #141218 100%)"
+        titleColor="rgba(245,240,252,0.92)"
+        subtitleColor="rgba(245,240,252,0.55)"
+        arrowColor="rgba(166,137,240,0.65)"
+        iconLabelColor="rgba(245,240,252,0.90)"
+        iconLabelBg="rgba(255,255,255,0.06)"
+        headline="Drag Wink to Applications"
+        decoration={
+          <>
+            <div style={{
+              position: 'absolute', width: 480, height: 480, borderRadius: '50%',
+              left: -160, bottom: -200,
+              background: 'radial-gradient(circle, rgba(138,91,227,0.32) 0%, rgba(138,91,227,0) 60%)',
+              pointerEvents: 'none',
+            }} />
+            <div style={{
+              position: 'absolute', width: 380, height: 380, borderRadius: '50%',
+              right: -130, top: -110,
+              background: 'radial-gradient(circle, rgba(74,123,232,0.26) 0%, rgba(74,123,232,0) 60%)',
+              pointerEvents: 'none',
+            }} />
+          </>
+        }
+      />
+    </FinderChrome>
+  );
+}
+
+// E · Editorial — off-center composition with oversized brand mark watermark
+function DMG_E() {
+  return (
+    <FinderChrome title="Wink">
+      <SceneBottomAnchor
+        bg="linear-gradient(180deg, #F5F1EA 0%, #ECE6D8 100%)"
+        titleColor="rgba(42,32,33,0.92)"
+        subtitleColor="rgba(42,32,33,0.55)"
+        arrowColor="rgba(94,63,199,0.60)"
+        kicker="Install"
+        kickerColor="rgba(94,63,199,0.85)"
+        headline="Drag Wink to your Applications folder."
+        subhead="Wink lives in your menu bar. Always a wink away."
+        decoration={
+          <div style={{
+            position: 'absolute', right: -60, top: -30,
+            color: 'rgba(94,63,199,0.08)', pointerEvents: 'none',
+          }}>
+            <window.Logo_WinkTwin size={280} color="currentColor" />
+          </div>
+        }
+      />
+    </FinderChrome>
+  );
+}
+
+// F · Bottom anchor dark — same layout as E, darker mood
+function DMG_F() {
+  return (
+    <FinderChrome title="Wink" tone="dark">
+      <SceneBottomAnchor
+        bg="radial-gradient(140% 120% at 80% 100%, #2A2138 0%, #19161F 55%, #0F0D14 100%)"
+        titleColor="rgba(245,240,252,0.95)"
+        subtitleColor="rgba(245,240,252,0.58)"
+        arrowColor="rgba(176,150,245,0.70)"
+        iconLabelColor="rgba(245,240,252,0.90)"
+        iconLabelBg="rgba(255,255,255,0.06)"
+        kicker="Install"
+        kickerColor="rgba(176,150,245,0.95)"
+        headline="Drag Wink to your Applications folder."
+        subhead="Wink lives in your menu bar. Always a wink away."
+        decoration={
+          <div style={{
+            position: 'absolute', right: -80, top: -40,
+            color: 'rgba(176,150,245,0.10)', pointerEvents: 'none',
+          }}>
+            <window.Logo_WinkTwin size={300} color="currentColor" />
+          </div>
+        }
+      />
+    </FinderChrome>
+  );
+}
+
+// G · Arrival preview — after drag, small menu-bar vignette shows the payoff
+function MenuBarPreview({ dark = false }) {
+  const bg = dark ? 'rgba(30,28,36,0.82)' : 'rgba(255,255,255,0.78)';
+  const fg = dark ? 'rgba(245,240,252,0.85)' : 'rgba(42,32,33,0.80)';
+  const fgDim = dark ? 'rgba(245,240,252,0.50)' : 'rgba(42,32,33,0.50)';
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 14,
+      padding: '5px 10px 5px 12px',
+      background: bg,
+      backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)',
+      borderRadius: 8,
+      boxShadow: dark
+        ? '0 1px 0 rgba(255,255,255,0.05) inset, 0 4px 16px rgba(0,0,0,0.4)'
+        : '0 1px 0 rgba(255,255,255,0.6) inset, 0 4px 16px rgba(0,0,0,0.12)',
+      fontSize: 11.5, color: fg, fontFamily: window.SF,
+      letterSpacing: 0.1,
+    }}>
+      <span style={{ color: fgDim }}>􀍠</span>
+      <span style={{ color: fgDim }}>🔋</span>
+      <span style={{ color: fgDim }}>􀙇</span>
+      <div style={{
+        width: 16, height: 16, borderRadius: 4,
+        background: 'linear-gradient(135deg, #8A5BE3 0%, #5E3FC7 55%, #4A7BE8 100%)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        boxShadow: '0 0 0 0.5px rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.2)',
+      }}>
+        <window.Logo_WinkTwin size={11} color="#fff" idPrefix="mbar" />
+      </div>
+      <span style={{ fontWeight: 500, color: fg }}>9:41</span>
+    </div>
+  );
+}
+
+function DMG_G() {
+  return (
+    <FinderChrome title="Wink">
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'linear-gradient(180deg, #F5F1EA 0%, #ECE7DD 100%)',
+        display: 'flex', flexDirection: 'column',
+        padding: '26px 44px 30px', overflow: 'hidden',
+      }}>
+        <div style={{
+          textAlign: 'center', fontSize: 19, fontWeight: 600,
+          color: 'rgba(42,32,33,0.88)', letterSpacing: -0.2,
+        }}>Drag Wink to Applications</div>
+        <div style={{
+          flex: 1, display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', paddingInline: 12,
+        }}>
+          <AppTile size={100} />
+          <DragArrow color="rgba(94,63,199,0.55)" width={ARROW_W} />
+          <AppsFolder size={100} />
+        </div>
+        {/* Arrival hint */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: 10, paddingTop: 4,
+        }}>
+          <div style={{
+            fontSize: 11, color: 'rgba(42,32,33,0.45)', letterSpacing: 0.2,
+          }}>Then look for Wink here →</div>
+          <MenuBarPreview />
+        </div>
+      </div>
+    </FinderChrome>
+  );
+}
+
+// ---------- App shell ----------
+function App() {
+  return (
+    <window.DesignCanvas>
+      <window.DCSection
+        id="intro"
+        title="Wink · DMG installer (v2)"
+        subtitle="Fewer words, Finder-accurate labels, better Sequoia folder, tapered ink arrow. Same drag scene across all — atmosphere and composition vary."
+      >
+        <window.DCArtboard id="dmg-a" label="A · Cream minimal" width={740} height={520}
+          style={{ background: '#E6DFD1', padding: 30 }}>
+          <DMG_A />
+        </window.DCArtboard>
+
+        <window.DCArtboard id="dmg-b" label="B · Violet hero (recommended)" width={740} height={520}
+          style={{ background: '#DED1EC', padding: 30 }}>
+          <DMG_B />
+        </window.DCArtboard>
+
+        <window.DCArtboard id="dmg-c" label="C · Winking motif" width={740} height={520}
+          style={{ background: '#E6DFD1', padding: 30 }}>
+          <DMG_C />
+        </window.DCArtboard>
+
+        <window.DCArtboard id="dmg-d" label="D · Dark" width={740} height={520}
+          style={{ background: '#1E1A22', padding: 30 }}>
+          <DMG_D />
+        </window.DCArtboard>
+      </window.DCSection>
+
+      <window.DCSection
+        id="new"
+        title="New in v2"
+        subtitle="Layouts worth considering over the centered scene."
+      >
+        <window.DCArtboard id="dmg-e" label="E · Editorial (bottom anchor)" width={740} height={520}
+          style={{ background: '#E6DFD1', padding: 30 }}>
+          <DMG_E />
+        </window.DCArtboard>
+
+        <window.DCArtboard id="dmg-f" label="F · Editorial dark" width={740} height={520}
+          style={{ background: '#1E1A22', padding: 30 }}>
+          <DMG_F />
+        </window.DCArtboard>
+
+        <window.DCArtboard id="dmg-g" label="G · With arrival preview" width={740} height={520}
+          style={{ background: '#E6DFD1', padding: 30 }}>
+          <DMG_G />
+        </window.DCArtboard>
+      </window.DCSection>
+
+      <window.DCSection
+        id="critique"
+        title="What changed from v1"
+        subtitle="A running list so it's clear what was improved, and why."
+      >
+        <window.DCArtboard id="critique-1" label="Changelog" width={900} height={520}
+          style={{ background: '#F5F1EA', padding: 36 }}>
+          <div style={{
+            fontFamily: window.SF, color: 'rgba(42,32,33,0.85)',
+            fontSize: 13, lineHeight: 1.65, maxWidth: 820,
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 14, color: 'rgba(42,32,33,0.95)' }}>
+              v1 → v2 critique
+            </div>
+            <ol style={{ margin: 0, paddingLeft: 20 }}>
+              <li>
+                <b>Cut the version tag.</b> "Version 1.0 · macOS 14 or later" belongs on the
+                download page, not inside the installer. The DMG's job is to get the app into
+                Applications — one instruction, not three.
+              </li>
+              <li>
+                <b>Finder‑accurate icon labels.</b> Real Finder labels are 11px, regular weight,
+                slightly letter‑spaced. v1 used 13px/500 which read like a button label. Dark mode
+                now also gets the faint selection‑pill background Finder uses.
+              </li>
+              <li>
+                <b>Rebuilt the Applications folder.</b> v1's folder was a solid blue slab. v2's is
+                closer to Sequoia: a darker back flap with a small paper tab, a translucent front
+                face, and a thin top highlight. Still generic — we're not recreating Apple art.
+              </li>
+              <li>
+                <b>New arrow.</b> v1's wavy line + triangle head felt mechanical. v2 uses a tapered
+                ink stroke (starts faint, thickens into the head) preceded by three spark dots —
+                reads as motion, not a UI control.
+              </li>
+              <li>
+                <b>Added the Finder toolbar row.</b> Most real DMGs ship with the empty toolbar
+                visible. Hiding it requires extra <code>.DS_Store</code> work and isn't worth the
+                fidelity. Better to design around it.
+              </li>
+              <li>
+                <b>Two new layouts (E, F).</b> Bottom‑anchor "poster" composition — headline up top,
+                drag row at the baseline, oversized brand watermark. Used by Linear/Raycast/Arc.
+              </li>
+              <li>
+                <b>New: arrival preview (G).</b> After the drag, the payoff is "where does Wink
+                actually show up?" Option G answers visually: a tiny frosted menu bar with the Wink
+                tile slotted in. Strong emotional close.
+              </li>
+            </ol>
+            <div style={{ marginTop: 20, fontSize: 12, color: 'rgba(42,32,33,0.55)' }}>
+              My pick: <b>B for download‑page hero screenshots</b>, <b>A for the actual shipped DMG</b>
+              (reads fastest, least likely to fight Finder's chrome). G is worth prototyping as the
+              download‑page marketing shot rather than the installer itself.
+            </div>
+          </div>
+        </window.DCArtboard>
+      </window.DCSection>
+    </window.DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

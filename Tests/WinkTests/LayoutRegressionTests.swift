@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import SwiftUI
 import Testing
 @testable import Wink
@@ -226,6 +227,94 @@ struct LayoutRegressionTests {
         #expect(ShortcutRecorderIdleField.placeholderText == "Press a key combination…")
         #expect(ShortcutRecorderIdleField.dashPattern == [4, 4])
     }
+
+    @Test @MainActor
+    func shortcutsTabExposesSingleVerticalScroller() {
+        let context = ShortcutsTabLayoutContext(shortcutCount: 4)
+        defer { context.harness.cleanup() }
+
+        let hostingView = makeHostingView(
+            ShortcutsTabView(
+                editor: context.editor,
+                preferences: context.preferences,
+                appListProvider: context.appListProvider,
+                shortcutStatusProvider: context.shortcutStatusProvider
+            ),
+            size: NSSize(width: 700, height: 430)
+        )
+
+        let scrollViewsWithVerticalScrollers = descendants(in: hostingView)
+            .compactMap { $0 as? NSScrollView }
+            .filter(\.hasVerticalScroller)
+
+        #expect(scrollViewsWithVerticalScrollers.count == 1)
+    }
+
+    @Test @MainActor
+    func importPreviewUsesDedicatedScrollerWithoutRestoringPageScroller() throws {
+        let context = ShortcutsTabLayoutContext(shortcutCount: 4)
+        defer { context.harness.cleanup() }
+
+        let keyEquivalents = [
+            "e", "f", "g", "h", "i", "j", "k", "l",
+            "m", "n", "o", "p", "q", "r", "u", "v",
+            "w", "x", "y", "z", "1", "2", "3", "4",
+        ]
+        let recipe = WinkRecipe(shortcuts: keyEquivalents.enumerated().map { index, keyEquivalent in
+            WinkRecipeShortcut(
+                appName: "Imported \(index + 1)",
+                bundleIdentifier: "com.example.imported\(index + 1)",
+                keyEquivalent: keyEquivalent,
+                modifierFlags: ["command", "shift"],
+                isEnabled: true
+            )
+        })
+        let data = try WinkRecipeCodec().encode(recipe)
+        try context.editor.beginImport(from: data, installedApps: [])
+
+        let hostingView = makeHostingView(
+            ShortcutsTabView(
+                editor: context.editor,
+                preferences: context.preferences,
+                appListProvider: context.appListProvider,
+                shortcutStatusProvider: context.shortcutStatusProvider
+            ),
+            size: NSSize(width: 700, height: 430)
+        )
+
+        let scrollViewsWithVerticalScrollers = descendants(in: hostingView)
+            .compactMap { $0 as? NSScrollView }
+            .filter(\.hasVerticalScroller)
+
+        #expect(scrollViewsWithVerticalScrollers.count == 2)
+    }
+
+    @Test @MainActor
+    func settingsViewUsesDesignSidebarColumnWidth() throws {
+        let context = SettingsViewLayoutContext()
+        defer { context.harness.cleanup() }
+
+        let hostingView = makeHostingView(
+            SettingsView(
+                editor: context.editor,
+                preferences: context.preferences,
+                insightsViewModel: context.insightsViewModel,
+                appListProvider: context.appListProvider,
+                shortcutStatusProvider: context.shortcutStatusProvider,
+                settingsLauncher: context.settingsLauncher
+            ),
+            size: NSSize(width: 900, height: 640)
+        )
+
+        let splitViews = descendants(in: hostingView)
+            .compactMap { $0 as? NSSplitView }
+        let splitView = try #require(splitViews.first)
+        let sidebarWidth = splitView.arrangedSubviews.first?.frame.width ?? 0
+
+        #expect(abs(sidebarWidth - 180) < 1)
+        #expect(splitView.frame.minY >= -1)
+        #expect(splitView.frame.height <= hostingView.bounds.height + 1)
+    }
 }
 
 private actor StaticUsageTracker: UsageTracking {
@@ -285,6 +374,212 @@ private struct CardWidthProbeView: View {
         .frame(width: 680, height: 180)
         .padding(20)
     }
+}
+
+@MainActor
+private final class ShortcutsTabLayoutContext {
+    let harness = TestPersistenceHarness()
+    let shortcutStore = ShortcutStore()
+    let editor: ShortcutEditorState
+    let preferences: AppPreferences
+    let appListProvider: AppListProvider
+    let shortcutStatusProvider: ShortcutStatusProvider
+
+    init(shortcutCount: Int) {
+        let shortcuts = (0..<shortcutCount).map { index in
+            AppShortcut(
+                appName: "App \(index + 1)",
+                bundleIdentifier: "com.example.app\(index + 1)",
+                keyEquivalent: String(UnicodeScalar(97 + index)!),
+                modifierFlags: index == 0
+                    ? ["command", "option", "control", "shift"]
+                    : ["command", "option"]
+            )
+        }
+        shortcutStore.replaceAll(with: shortcuts)
+
+        let manager = ShortcutManager(
+            shortcutStore: shortcutStore,
+            persistenceService: harness.makePersistenceService(),
+            appSwitcher: LayoutFakeAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: LayoutFakeCaptureProvider(),
+                hyperProvider: LayoutFakeHyperCaptureProvider()
+            ),
+            permissionService: LayoutFakePermissionService(),
+            diagnosticClient: .live
+        )
+
+        editor = ShortcutEditorState(
+            shortcutStore: shortcutStore,
+            shortcutManager: manager
+        )
+        preferences = AppPreferences(
+            shortcutManager: manager,
+            launchAtLoginService: LaunchAtLoginService(client: .init(
+                status: { .notRegistered },
+                register: {},
+                unregister: {},
+                openSystemSettingsLoginItems: {}
+            ))
+        )
+        appListProvider = AppListProvider(client: .init(
+            now: { Date() },
+            scanInstalledApps: { [] },
+            runningApplications: { [] },
+            loadRecents: { [] },
+            saveRecents: { _ in },
+            mainBundleIdentifier: { "dev.wink.tests" }
+        ))
+        shortcutStatusProvider = ShortcutStatusProvider(
+            client: .init(
+                applicationURL: { _ in URL(fileURLWithPath: "/Applications/Fake.app") },
+                runningBundleIdentifiers: { [] }
+            ),
+            workspaceNotificationCenter: NotificationCenter(),
+            appNotificationCenter: NotificationCenter()
+        )
+    }
+}
+
+@MainActor
+private final class SettingsViewLayoutContext {
+    let harness = TestPersistenceHarness()
+    let shortcutStore = ShortcutStore()
+    let editor: ShortcutEditorState
+    let preferences: AppPreferences
+    let insightsViewModel: InsightsViewModel
+    let appListProvider: AppListProvider
+    let shortcutStatusProvider: ShortcutStatusProvider
+    let settingsLauncher = SettingsLauncher(userDefaults: UserDefaults(suiteName: UUID().uuidString)!)
+
+    init() {
+        let shortcut = AppShortcut(
+            appName: "Safari",
+            bundleIdentifier: "com.apple.Safari",
+            keyEquivalent: "s",
+            modifierFlags: ["command", "option"]
+        )
+        shortcutStore.replaceAll(with: [shortcut])
+
+        let manager = ShortcutManager(
+            shortcutStore: shortcutStore,
+            persistenceService: harness.makePersistenceService(),
+            appSwitcher: LayoutFakeAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: LayoutFakeCaptureProvider(),
+                hyperProvider: LayoutFakeHyperCaptureProvider()
+            ),
+            permissionService: LayoutFakePermissionService(),
+            diagnosticClient: .live
+        )
+
+        editor = ShortcutEditorState(
+            shortcutStore: shortcutStore,
+            shortcutManager: manager
+        )
+        preferences = AppPreferences(
+            shortcutManager: manager,
+            launchAtLoginService: LaunchAtLoginService(client: .init(
+                status: { .notRegistered },
+                register: {},
+                unregister: {},
+                openSystemSettingsLoginItems: {}
+            ))
+        )
+        insightsViewModel = InsightsViewModel(
+            usageTracker: StaticUsageTracker(shortcutId: shortcut.id),
+            shortcutStore: shortcutStore
+        )
+        appListProvider = AppListProvider(client: .init(
+            now: { Date() },
+            scanInstalledApps: { [] },
+            runningApplications: { [] },
+            loadRecents: { [] },
+            saveRecents: { _ in },
+            mainBundleIdentifier: { "dev.wink.tests" }
+        ))
+        shortcutStatusProvider = ShortcutStatusProvider(
+            client: .init(
+                applicationURL: { _ in URL(fileURLWithPath: "/Applications/Fake.app") },
+                runningBundleIdentifiers: { [] }
+            ),
+            workspaceNotificationCenter: NotificationCenter(),
+            appNotificationCenter: NotificationCenter()
+        )
+    }
+}
+
+@MainActor
+private struct LayoutFakeAppSwitcher: AppSwitching {
+    @discardableResult
+    func toggleApplication(for shortcut: AppShortcut) -> Bool {
+        true
+    }
+}
+
+@MainActor
+private final class LayoutFakeCaptureProvider: ShortcutCaptureProvider {
+    var isRunning = false
+
+    var registrationState: ShortcutCaptureRegistrationState {
+        ShortcutCaptureRegistrationState(
+            desiredShortcutCount: isRunning ? 1 : 0,
+            registeredShortcutCount: isRunning ? 1 : 0,
+            failures: []
+        )
+    }
+
+    func start(onKeyPress: @escaping @MainActor @Sendable (Wink.KeyPress) -> Void) {
+        isRunning = true
+    }
+
+    func stop() {
+        isRunning = false
+    }
+
+    func updateRegisteredShortcuts(_ keyPresses: Set<Wink.KeyPress>) {}
+}
+
+@MainActor
+private final class LayoutFakeHyperCaptureProvider: HyperShortcutCaptureProvider {
+    var isRunning = false
+
+    var registrationState: ShortcutCaptureRegistrationState {
+        ShortcutCaptureRegistrationState(
+            desiredShortcutCount: isRunning ? 1 : 0,
+            registeredShortcutCount: isRunning ? 1 : 0,
+            failures: []
+        )
+    }
+
+    func start(onKeyPress: @escaping @MainActor @Sendable (Wink.KeyPress) -> Void) {
+        isRunning = true
+    }
+
+    func stop() {
+        isRunning = false
+    }
+
+    func updateRegisteredShortcuts(_ keyPresses: Set<Wink.KeyPress>) {}
+
+    func setHyperKeyEnabled(_ enabled: Bool) {}
+}
+
+private struct LayoutFakePermissionService: PermissionServicing {
+    func isTrusted() -> Bool { true }
+    func isAccessibilityTrusted() -> Bool { true }
+    func isInputMonitoringTrusted() -> Bool { true }
+
+    @discardableResult
+    func requestIfNeeded(prompt: Bool, inputMonitoringRequired: Bool) -> Bool {
+        true
+    }
+}
+
+@MainActor
+private func descendants(in view: NSView) -> [NSView] {
+    view.subviews + view.subviews.flatMap { descendants(in: $0) }
 }
 
 @MainActor

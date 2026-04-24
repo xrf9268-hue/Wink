@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wink · UI v2</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html, body { margin: 0; padding: 0; background: #f0eee9; overflow: hidden; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<template id="__bundler_thumbnail" data-bg-color="#f0eee9">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#f0eee9"/>
+    <g transform="translate(600 400)" fill="none" stroke="#6B48C9" stroke-width="28" stroke-linecap="round">
+      <path d="M -180 -40 Q -120 80 -60 -40"/>
+      <path d="M 60 -40 Q 120 80 180 -40"/>
+    </g>
+  </svg>
+</template>
+<div id="root"></div>
+
+<script type="text/babel" src="v2/tokens.jsx"></script>
+<script type="text/babel" src="v2/logos.jsx"></script>
+<script type="text/babel" src="v2/primitives.jsx"></script>
+<script type="text/babel" src="v2/chrome.jsx"></script>
+<script type="text/babel" src="v2/menubar.jsx"></script>
+<script type="text/babel" src="v2/tab-shortcuts.jsx"></script>
+<script type="text/babel" src="v2/tab-general.jsx"></script>
+<script type="text/babel" src="v2/tab-insights.jsx"></script>
+<script type="text/babel" src="v2/mainwindow.jsx"></script>
+<script type="text/babel" src="v2/design-canvas.jsx"></script>
+
+<script type="text/babel">
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "blue",
+  "permissionGranted": true
+}/*EDITMODE-END*/;
+
+function hexToRgb(hex) {
+  const h = hex.replace('#','');
+  const n = parseInt(h.length === 3 ? h.split('').map(c=>c+c).join('') : h, 16);
+  return `${(n>>16)&255},${(n>>8)&255},${n&255}`;
+}
+function applyAccent(accent) {
+  const L = window.lightTheme, D = window.darkTheme;
+  const presets = {
+    blue:   { l: '#0064E0', d: '#2A8FFF' },
+    green:  { l: '#2E8B45', d: '#40C060' },
+    violet: { l: '#6B48C9', d: '#A689F0' },
+    warm:   { l: '#C46A2E', d: '#F09455' },
+  };
+  const p = presets[accent] || presets.blue;
+  L.accent = p.l; L.accentHover = p.l;
+  L.accentRgb = hexToRgb(p.l);
+  L.accentBgSoft = `${p.l}14`;
+  L.accentBorderSoft = `${p.l}2E`;
+  L.heatmapBase = `${p.l}1A`;
+  L.focusRing = `${p.l}59`;
+  D.accent = p.d; D.accentHover = p.d;
+  D.accentRgb = hexToRgb(p.d);
+  D.accentBgSoft = `${p.d}28`;
+  D.accentBorderSoft = `${p.d}48`;
+  D.heatmapBase = `${p.d}33`;
+  D.focusRing = `${p.d}73`;
+}
+
+// === Logo audit row ===
+// Shows each mark in the three contexts we actually ship it in,
+// at the sizes it actually appears at. Helps judge which mark survives
+// shrinkage best.
+function LogoAuditCell({ name, Mark, label, variant }) {
+  const L = window.lightTheme, D = window.darkTheme;
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 10,
+      padding: 16, background: '#fff',
+      border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 10,
+      minWidth: 190,
+    }}>
+      <div style={{
+        fontSize: 11, fontWeight: 600, color: 'rgba(0,0,0,0.7)',
+        letterSpacing: 0.3, textTransform: 'uppercase',
+      }}>{label}</div>
+      <div style={{ fontSize: 14, color: 'rgba(0,0,0,0.85)', fontWeight: 600 }}>{name}</div>
+
+      {/* Menu bar — 16px, mono on both light + dark chrome */}
+      <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.5)', marginTop: 4 }}>Menu bar · 16px</div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 28, height: 22,
+          background: 'linear-gradient(180deg, #E8E8E8, #DFDFDF)',
+          borderRadius: 4, color: 'rgba(0,0,0,0.82)',
+        }}><Mark size={16} color="currentColor" /></div>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 28, height: 22,
+          background: '#1A1A1C', borderRadius: 4, color: 'rgba(255,255,255,0.9)',
+        }}><Mark size={16} color="currentColor" /></div>
+      </div>
+
+      {/* Dock / App icon — 52px, colored tile */}
+      <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.5)', marginTop: 2 }}>Dock · 52px</div>
+      <div>
+        <TileIcon Mark={Mark} variant={variant} />
+      </div>
+
+      {/* Large — for splash / about */}
+      <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.5)', marginTop: 2 }}>Hero · 72px</div>
+      <div style={{ color: '#1A1A1C' }}>
+        <Mark size={72} color="currentColor" />
+      </div>
+    </div>
+  );
+}
+
+function TileIcon({ Mark, variant }) {
+  const bgs = {
+    violet: 'linear-gradient(135deg, #8A5BE3 0%, #5E3FC7 60%, #4A7BE8 100%)',
+    ink:    'linear-gradient(135deg, #2E2630 0%, #18141A 100%)',
+    warm:   'linear-gradient(135deg, #E8945B 0%, #C46A2E 100%)',
+    cream:  'linear-gradient(135deg, #F5F1E8 0%, #E6DFCF 100%)',
+  };
+  const isLight = variant === 'cream';
+  return (
+    <div style={{
+      width: 52, height: 52, borderRadius: 12,
+      background: bgs[variant] || bgs.violet,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: isLight ? '#2A2021' : '#fff',
+      boxShadow: '0 1px 2px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.15)',
+    }}>
+      <Mark size={32} color="currentColor" variant="dimensional" idPrefix="tile" />
+    </div>
+  );
+}
+
+function App() {
+  const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
+  const [editing, setEditing] = React.useState(false);
+  // Apply accent as a memoized effect — still writes to the shared theme
+  // tokens (so every component sees new values on next render) but runs
+  // deterministically once per accent change rather than on every render.
+  React.useMemo(() => applyAccent(tweaks.accent), [tweaks.accent]);
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const d = e.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === '__activate_edit_mode') setEditing(true);
+      if (d.type === '__deactivate_edit_mode') setEditing(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const set = (k, v) => {
+    const next = { ...tweaks, [k]: v };
+    setTweaks(next);
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [k]: v } }, '*');
+  };
+
+  const L = 'light', D = 'dark';
+  const perm = tweaks.permissionGranted;
+
+  return (
+    <>
+      <window.DesignCanvas>
+
+        {/* ---------- Logo marks ---------- */}
+        <window.DCSection
+          id="logos"
+          title="Logo · 6 directions"
+          subtitle="Each mark shown in its real usage contexts. v1's crescent frowned — all v2 marks smile."
+        >
+          <window.DCArtboard id="logo-twin" label="A · Twin (anchor)" width={220} height={430}>
+            <LogoAuditCell name="Wink Twin" label="A" variant="violet" Mark={window.Logo_WinkTwin} />
+          </window.DCArtboard>
+          <window.DCArtboard id="logo-lash" label="B · Lash (character)" width={220} height={430}>
+            <LogoAuditCell name="Wink Lash" label="B" variant="violet" Mark={window.Logo_WinkLash} />
+          </window.DCArtboard>
+          <window.DCArtboard id="logo-keycap" label="C · Keycap (product)" width={220} height={430}>
+            <LogoAuditCell name="Wink Keycap" label="C" variant="ink" Mark={window.Logo_WinkKeycap} />
+          </window.DCArtboard>
+          <window.DCArtboard id="logo-w" label="D · Wink W (monogram)" width={220} height={430}>
+            <LogoAuditCell name="Wink W" label="D" variant="warm" Mark={window.Logo_WinkW} />
+          </window.DCArtboard>
+          <window.DCArtboard id="logo-doti" label="E · Dot-i (typographic)" width={220} height={430}>
+            <LogoAuditCell name="Wink Dot-i" label="E" variant="cream" Mark={window.Logo_WinkDotI} />
+          </window.DCArtboard>
+          <window.DCArtboard id="logo-pair" label="F · Pair (literal)" width={220} height={430}>
+            <LogoAuditCell name="Wink Pair" label="F" variant="violet" Mark={window.Logo_WinkPair} />
+          </window.DCArtboard>
+        </window.DCSection>
+
+        {/* ---------- Menu bar popover ---------- */}
+        <window.DCSection id="menubar" title="Menu bar popover"
+          subtitle="Search · today mini-chart · pause-all · running indicators in-row. Fits 340px.">
+          <window.DCArtboard id="mb-light" label="Light" width={340} height={520}
+            style={{ background: '#F2EFEA', padding: 20 }}>
+            <window.MenubarPopover theme={L} />
+          </window.DCArtboard>
+          <window.DCArtboard id="mb-dark" label="Dark" width={340} height={520}
+            style={{ background: '#1A1A1C', padding: 20 }}>
+            <window.MenubarPopover theme={D} />
+          </window.DCArtboard>
+        </window.DCSection>
+
+        {/* ---------- Shortcuts ---------- */}
+        <window.DCSection id="shortcuts" title="Main window · Shortcuts"
+          subtitle="Sidebar nav · System-Settings grouped cards · idle record field · status + last-used per row.">
+          <window.DCArtboard id="sc-light" label={`Light · ${perm ? 'Permission granted' : 'Needs permission'}`}
+            width={860} height={860} style={{ background: '#E8E6E1', padding: 20 }}>
+            <window.MainWindow theme={L} tab="shortcuts" permissionGranted={perm} height={820} />
+          </window.DCArtboard>
+          <window.DCArtboard id="sc-dark" label={`Dark · ${perm ? 'Permission granted' : 'Needs permission'}`}
+            width={860} height={860} style={{ background: '#141416', padding: 20 }}>
+            <window.MainWindow theme={D} tab="shortcuts" permissionGranted={perm} height={820} />
+          </window.DCArtboard>
+        </window.DCSection>
+
+        {/* ---------- Insights ---------- */}
+        <window.DCSection id="insights" title="Main window · Insights"
+          subtitle="KPIs · hourly heatmap (with aligned axis) · per-app sparklines · unused-shortcut nudge.">
+          <window.DCArtboard id="in-light" label="Light" width={860} height={1020}
+            style={{ background: '#E8E6E1', padding: 20 }}>
+            <window.MainWindow theme={L} tab="insights" permissionGranted={true} height={980} />
+          </window.DCArtboard>
+          <window.DCArtboard id="in-dark" label="Dark" width={860} height={1020}
+            style={{ background: '#141416', padding: 20 }}>
+            <window.MainWindow theme={D} tab="insights" permissionGranted={true} height={980} />
+          </window.DCArtboard>
+        </window.DCSection>
+
+        {/* ---------- General ---------- */}
+        <window.DCSection id="general" title="Main window · General"
+          subtitle="System Settings vocabulary — all rows live inside grouped cards.">
+          <window.DCArtboard id="ge-light" label="Light" width={860} height={820}
+            style={{ background: '#E8E6E1', padding: 20 }}>
+            <window.MainWindow theme={L} tab="general" permissionGranted={true} height={780} />
+          </window.DCArtboard>
+          <window.DCArtboard id="ge-dark" label="Dark" width={860} height={820}
+            style={{ background: '#141416', padding: 20 }}>
+            <window.MainWindow theme={D} tab="general" permissionGranted={true} height={780} />
+          </window.DCArtboard>
+        </window.DCSection>
+
+      </window.DesignCanvas>
+
+      {editing && (
+        <div style={{
+          position: 'fixed', bottom: 16, right: 16, zIndex: 1000,
+          width: 240,
+          background: '#2A2521', color: '#F2EFEA',
+          borderRadius: 10,
+          boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+          fontSize: 12,
+          padding: 12,
+          fontFamily: 'inherit',
+        }}>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>Tweaks</div>
+
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ opacity: .7, fontSize: 11, marginBottom: 6 }}>Accent color</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[
+                { k: 'blue',   c: '#2A8FFF' },
+                { k: 'green',  c: '#40C060' },
+                { k: 'violet', c: '#A689F0' },
+                { k: 'warm',   c: '#F09455' },
+              ].map(o => (
+                <div key={o.k} onClick={() => set('accent', o.k)} style={{
+                  width: 28, height: 28, borderRadius: 6,
+                  background: o.c, cursor: 'pointer',
+                  border: tweaks.accent === o.k ? '2px solid #fff' : '2px solid transparent',
+                  boxSizing: 'border-box',
+                }} />
+              ))}
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={tweaks.permissionGranted}
+              onChange={(e) => set('permissionGranted', e.target.checked)} />
+            Permission granted (Shortcuts tab)
+          </label>
+
+          <div style={{
+            fontSize: 10.5, opacity: .55, marginTop: 10, lineHeight: 1.4,
+          }}>Drag artboards to reorder · click a label to focus one</div>
+        </div>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
