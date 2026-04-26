@@ -341,7 +341,7 @@ System Settings still shows a `Wink` row, but a freshly rebuilt packaged app lau
 The visible row can still point at an older bundle path or a previous ad-hoc signature identity. After rebuilding `build/Wink.app`, macOS may keep showing a `Wink` entry even though that record no longer matches the exact current app bundle.
 
 **Practical guidance**
-If a newly packaged build still looks untrusted, do not treat the visible `Wink` row as proof that TCC matches the current app. Remove the existing `Wink` row, add the exact current `build/Wink.app` again in the relevant panes, and relaunch the bundle via `open`. For standard-only fixtures that means Accessibility; for Hyper validation, re-add Input Monitoring too.
+If a newly packaged build still looks untrusted, do not treat the visible `Wink` row as proof that TCC matches the current app. Remove the existing `Wink` row, add the exact current `build/Wink.app` again in the relevant panes, and relaunch the bundle via `open`. For standard-only fixtures that means Accessibility; for Hyper validation, re-add Input Monitoring too. If the row is stale but still checked, use `tccutil reset Accessibility com.wink.app` and `tccutil reset ListenEvent com.wink.app`, then add the exact app copy back through System Settings' add-app control. Verify the result from `~/.config/Wink/debug.log` (`ax=true im=true carbon=true eventTap=true` for mixed fixtures) before rerunning packaged E2E.
 
 ## Launch Via `open`
 
