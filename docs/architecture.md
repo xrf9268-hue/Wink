@@ -92,8 +92,8 @@ Responsibilities:
 - `ShortcutStatusProvider`
 
 Responsibilities:
-- host `MenuBarExtra(.window)` with the generated Wink Twin menu bar template image instead of the older SF Symbol shell
-- load the menu bar image from packaged PNG resources that preserve template semantics for light/dark menu bar rendering
+- host `MenuBarExtra(.window)` with a custom SwiftUI label backed by the generated Wink Twin menu bar template image instead of the older SF Symbol shell
+- load the menu bar image from packaged PNG resources, mark the backing `NSImage` as template, and render it through `Image(nsImage:)` so light/dark and highlighted menu bar states use AppKit's template tinting path
 - show the v2 popover shell (wordmark, version, Ready/Paused pill, real search filter, Today hourly histogram, shortcut rows, action rows)
 - reuse `ShortcutStore` and `ShortcutStatusProvider` so the popover reflects saved ordering plus running/unavailable state
 - route `Manage…` to `Settings > Shortcuts`, `Settings…` to the shared Settings bridge, `Check for Updates…` to Sparkle, and `Quit Wink` to app termination
@@ -247,7 +247,7 @@ Responsibilities:
 ### 1. Startup flow
 ```text
 App launch
-  -> WinkApp declares MenuBarExtra(.window) + Settings scenes + SettingsCommands
+  -> WinkApp declares MenuBarExtra(.window) with a custom template-image label + Settings scenes + SettingsCommands
   -> MenuBarExtra insertion is bound to `menuBarIconVisible`
   -> @NSApplicationDelegateAdaptor creates AppDelegate
   -> AppDelegate.applicationDidFinishLaunching()

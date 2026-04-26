@@ -7,6 +7,7 @@ struct WinkMenuBarSceneDescriptor: Equatable {
     let imageName: String
     let usesWindowStyle: Bool
     let isInserted: Bool
+    let usesCustomTemplateLabel: Bool
 }
 
 enum WinkMenuBarTemplateAsset {
@@ -14,12 +15,15 @@ enum WinkMenuBarTemplateAsset {
     static let imageResource = ImageResource(name: name, bundle: .module)
 
     static var image: NSImage {
-        NSImage(resource: imageResource)
+        let image = NSImage(resource: imageResource)
+        image.isTemplate = true
+        return image
     }
 }
 
 private enum WinkMenuBarSceneConstants {
     static let title = "Wink"
+    static let templatePointSize: CGFloat = 18
 }
 
 struct WinkMenuBarScene<Content: View>: Scene {
@@ -39,18 +43,31 @@ struct WinkMenuBarScene<Content: View>: Scene {
             title: WinkMenuBarSceneConstants.title,
             imageName: WinkMenuBarTemplateAsset.name,
             usesWindowStyle: true,
-            isInserted: isInserted
+            isInserted: isInserted,
+            usesCustomTemplateLabel: true
         )
     }
 
     var body: some Scene {
-        MenuBarExtra(
-            WinkMenuBarSceneConstants.title,
-            image: WinkMenuBarTemplateAsset.imageResource,
-            isInserted: $isInserted
-        ) {
+        MenuBarExtra(isInserted: $isInserted) {
             content()
+        } label: {
+            WinkMenuBarTemplateLabel()
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+private struct WinkMenuBarTemplateLabel: View {
+    var body: some View {
+        Image(nsImage: WinkMenuBarTemplateAsset.image)
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(
+                width: WinkMenuBarSceneConstants.templatePointSize,
+                height: WinkMenuBarSceneConstants.templatePointSize
+            )
+            .accessibilityLabel(Text(WinkMenuBarSceneConstants.title))
     }
 }

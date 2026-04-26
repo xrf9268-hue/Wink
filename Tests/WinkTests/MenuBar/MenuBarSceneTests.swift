@@ -11,6 +11,7 @@ struct MenuBarSceneTests {
         #expect(descriptor.title == "Wink")
         #expect(descriptor.imageName == "MenuBarTemplate")
         #expect(descriptor.usesWindowStyle == true)
+        #expect(descriptor.usesCustomTemplateLabel == true)
     }
 
     @Test

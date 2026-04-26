@@ -22,6 +22,35 @@ end tell
 
 Treat this as the preferred validation path for menu-bar-only behavior when it works: it is more truthful and repeatable than screenshot-based coordinate guessing.
 
+## Template Menu Bar Icons Must Be Checked In Highlighted State
+
+**Issue**
+A menu bar icon can pass the wrong checks and still look blank to the user. In issue #228, the template resource was non-empty, the packaged app exposed an `AXMenuExtra`, and the status item could be clicked, but the selected menu bar slot still rendered as an empty gray placeholder.
+
+**Cause**
+Those checks proved that a status item existed, not that the exact reported visual state was correct. The missing check was the opened/highlighted menu bar state. The high-level `MenuBarExtra` image overload also left too little control over the AppKit template-image path for this case, so regenerating PNGs alone did not fix the runtime rendering. The fix needed the official custom-label initializer path, with an explicit AppKit `NSImage` marked as a template image and rendered through SwiftUI as a template label.
+
+**Practical guidance**
+For menu bar icon changes, validate four separate things before signing off:
+- the generated resource is not empty, using alpha/bounds metrics as a regression guard
+- the packaged app uses the intended runtime API path, not just the intended files
+- the closed menu bar item is visibly correct
+- the opened/highlighted menu bar item is visibly correct
+
+When template rendering matters, prefer `MenuBarExtra(isInserted:content:label:)` with a custom label so Wink can explicitly set `NSImage.isTemplate = true`, use `Image(nsImage:)`, apply `.renderingMode(.template)`, and provide the accessibility label. Consult Apple's `MenuBarExtra` and `NSImage.isTemplate` documentation before changing overloads or asset semantics.
+
+Keep using `System Events` for structure, but do not treat it as visual signoff by itself. It is useful to confirm the item identity and geometry:
+
+```applescript
+tell application "System Events"
+    tell process "Wink"
+        get {role, subrole, description, name, position, size} of every menu bar item of menu bar 2
+    end tell
+end tell
+```
+
+For the final evidence, open the popover and capture the highlighted menu bar item. The issue #228 regression was only obvious in that state. A resource coverage test prevents shipping an empty image; a highlighted-state screenshot proves the user-visible bug is actually gone.
+
 ## View-Backed Menu Items Should Stay Renderable, Not Disabled
 
 **Issue**
