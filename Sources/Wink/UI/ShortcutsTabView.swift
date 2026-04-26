@@ -11,7 +11,6 @@ private enum ShortcutRowMetrics {
     static let standardRowHeight: CGFloat = 50
     static let unavailableRowHeight: CGFloat = 68
     static let minimumListHeight: CGFloat = 150
-    static let listViewportHeight: CGFloat = 180
     static let hyperBadgeColumnWidth: CGFloat = 58
     static let shortcutColumnWidth: CGFloat = 112
     static let switchColumnWidth: CGFloat = 36
@@ -20,10 +19,6 @@ private enum ShortcutRowMetrics {
 
     static var accessoryGroupWidth: CGFloat {
         hyperBadgeColumnWidth + shortcutColumnWidth + switchColumnWidth + actionButtonSize + accessorySpacing * 3
-    }
-
-    static func listViewportHeight(rowHeights: [CGFloat]) -> CGFloat {
-        max(minimumListHeight, min(listViewportHeight, rowHeights.reduce(0, +)))
     }
 }
 
@@ -341,7 +336,7 @@ struct ShortcutsTabView: View {
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 18)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(palette.windowBg)
         .onAppear {
             accessibilityOptions = .current
@@ -446,6 +441,7 @@ struct ShortcutsTabView: View {
                     .font(WinkType.bodyText)
                     .foregroundStyle(palette.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxHeight: .infinity, alignment: .topLeading)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 18)
             } else {
@@ -461,11 +457,18 @@ struct ShortcutsTabView: View {
                             }
                         }
                         .frame(width: proxy.size.width, alignment: .leading)
+                        .frame(minHeight: proxy.size.height, alignment: .top)
                     }
                 }
-                .frame(height: shortcutListViewportHeight(for: filteredShortcuts))
+                .frame(
+                    minHeight: ShortcutRowMetrics.minimumListHeight,
+                    maxHeight: .infinity,
+                    alignment: .top
+                )
             }
         }
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .layoutPriority(1)
     }
 
     // Drag-to-reorder lives on the row via `.draggable` + `.dropDestination`. We gate
@@ -487,15 +490,6 @@ struct ShortcutsTabView: View {
         } else {
             shortcutRow(shortcut, index: index)
         }
-    }
-
-    private func shortcutListViewportHeight(for shortcuts: [AppShortcut]) -> CGFloat {
-        let rowHeights = shortcuts.map { shortcut in
-            shortcutStatusProvider.status(for: shortcut).isUnavailable
-                ? ShortcutRowMetrics.unavailableRowHeight
-                : ShortcutRowMetrics.standardRowHeight
-        }
-        return ShortcutRowMetrics.listViewportHeight(rowHeights: rowHeights)
     }
 
     @ViewBuilder

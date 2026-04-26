@@ -84,6 +84,29 @@ struct LayoutRegressionTests {
     }
 
     @Test @MainActor
+    func insightsHeatmapWeekdayLabelsDoNotIncreaseRowHeight() throws {
+        let hostingView = makeHostingView(
+            InsightsHourlyHeatmap(buckets: makeHeatmapBuckets()),
+            size: NSSize(width: 680, height: 220)
+        )
+
+        let cells: [CGRect] = descendants(in: hostingView)
+            .map(\.frame)
+            .filter { frame in
+                abs(frame.height - 14) < 1 && frame.minX > 40 && frame.width > 18 && frame.width < 40
+            }
+        let rowOrigins = Dictionary(grouping: cells, by: { Int($0.minY.rounded()) })
+            .filter { _, rowCells in rowCells.count >= 20 }
+            .keys
+            .sorted()
+            .map(CGFloat.init)
+        let rowGaps = zip(rowOrigins, rowOrigins.dropFirst()).map { $1 - $0 }
+
+        #expect(rowOrigins.count == 7)
+        #expect((rowGaps.max() ?? 0) <= 18)
+    }
+
+    @Test @MainActor
     func insightsMostUsedRowUsesCompactDesignColumns() {
         let hostingView = makeHostingView(
             InsightsAppRow(
@@ -360,6 +383,59 @@ struct LayoutRegressionTests {
             .filter(\.hasVerticalScroller)
 
         #expect(scrollViewsWithVerticalScrollers.count == 1)
+    }
+
+    @Test @MainActor
+    func shortcutsListUsesAvailableHeightInsteadOfFixedCap() throws {
+        let context = ShortcutsTabLayoutContext(shortcutCount: 4)
+        defer { context.harness.cleanup() }
+
+        let hostingView = makeHostingView(
+            ShortcutsTabView(
+                editor: context.editor,
+                preferences: context.preferences,
+                appListProvider: context.appListProvider,
+                shortcutStatusProvider: context.shortcutStatusProvider
+            ),
+            size: NSSize(width: 700, height: 640)
+        )
+
+        let listScrollerHeight = try #require(
+            descendants(in: hostingView)
+                .compactMap { $0 as? NSScrollView }
+                .filter(\.hasVerticalScroller)
+                .map(\.frame.height)
+                .max()
+        )
+
+        #expect(listScrollerHeight > 220)
+    }
+
+    @Test @MainActor
+    func shortcutsLongListStaysInsideAvailableHeight() throws {
+        let context = ShortcutsTabLayoutContext(shortcutCount: 24)
+        defer { context.harness.cleanup() }
+
+        let hostingView = makeHostingView(
+            ShortcutsTabView(
+                editor: context.editor,
+                preferences: context.preferences,
+                appListProvider: context.appListProvider,
+                shortcutStatusProvider: context.shortcutStatusProvider
+            ),
+            size: NSSize(width: 700, height: 640)
+        )
+
+        let listScrollerHeight = try #require(
+            descendants(in: hostingView)
+                .compactMap { $0 as? NSScrollView }
+                .filter(\.hasVerticalScroller)
+                .map(\.frame.height)
+                .max()
+        )
+
+        #expect(listScrollerHeight > 220)
+        #expect(listScrollerHeight < 430)
     }
 
     @Test @MainActor
