@@ -157,6 +157,23 @@ Visual parity and accessibility semantics are separate surfaces. A custom SwiftU
 **Practical guidance**
 When replacing native macOS controls with custom design-system primitives, preserve the native accessibility model explicitly. For segmented controls, use an accessibility representation backed by a native `Picker` with `.pickerStyle(.segmented)` and provide a meaningful label at the call site. Keep the visual layer custom only if the accessibility layer remains equivalent to the native control being replaced. Treat review feedback in this area as functional, not cosmetic.
 
+## Async View-Model Tests Should Await The Work They Need
+
+**Issue**
+A test can pass locally and fail repeatedly in CI even when the product code is fine. In PR #236, two `MenuBarPopoverViewTests` cases waited up to two seconds for `todayActivationCount` / histogram state to change after `MenuBarPopoverModel` started an internal usage refresh task. Focused local runs passed quickly, but full CI runs repeatedly timed out with the model still showing the initial zero values.
+
+**Cause**
+The test was polling an observed side effect with a short wall-clock timeout instead of awaiting the actual async work it depended on. Under full-suite CI scheduling, the main-actor task did not always finish inside the polling window. That made the test timing-sensitive even though the model had a clear internal task boundary.
+
+**Practical guidance**
+For view models that start internal refresh tasks, expose a narrow testing seam that awaits the task directly, following the existing `AppListProvider.waitForRefreshForTesting()` pattern. Prefer:
+
+```swift
+await model.waitForUsageRefreshForTesting()
+```
+
+over repeated `Task.sleep` polling of observable properties. Polling is still useful for UI effects with no owned task boundary, but when the code owns a refresh task, wait on that task. This makes CI failures point at real work failures instead of scheduler timing.
+
 ## Cancelled Review Gate Runs Can Look Like Current Failures
 
 **Issue**
