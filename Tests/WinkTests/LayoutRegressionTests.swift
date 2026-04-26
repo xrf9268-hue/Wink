@@ -37,6 +37,141 @@ struct LayoutRegressionTests {
     @Test @MainActor
     func insightsCardUsesUpdatedSectionTitleCopy() {
         #expect(InsightsTabCopy.rankingSectionTitle == "Most used")
+        #expect(InsightsTabCopy.rankingAccessoryText(totalCount: 112, period: .week) == "112 activations · 7 days")
+    }
+
+    @Test @MainActor
+    func insightsKpiCardsUseEqualDesignHeight() {
+        let hostingView = makeHostingView(
+            InsightsKpiSection(
+                totalCount: 1647,
+                previousPeriodTotal: 1000,
+                currentStreakDays: 12,
+                sparklinePoints: [6, 9, 14, 11, 18, 21, 16]
+            ),
+            size: NSSize(width: 680, height: 220)
+        )
+
+        let cardFrames = hostingView.subviews
+            .map(\.frame)
+            .filter { $0.width > 150 && $0.height > 50 }
+        let cardHeights = cardFrames.map(\.height)
+
+        #expect(cardFrames.count == 3)
+        #expect((cardHeights.max() ?? 0) - (cardHeights.min() ?? 0) <= 1)
+    }
+
+    @Test @MainActor
+    func insightsHeatmapCellsExpandAcrossAvailableWidth() throws {
+        let hostingView = makeHostingView(
+            InsightsHourlyHeatmap(buckets: makeHeatmapBuckets()),
+            size: NSSize(width: 680, height: 220)
+        )
+
+        let frames = descendants(in: hostingView).map { view in view.frame }
+        let cells: [CGRect] = frames.filter { frame in
+            abs(frame.height - 14) < 1 && frame.minX > 40 && frame.width > 18 && frame.width < 40
+        }
+        let firstRowY = try #require(cells.map { frame in frame.minY }.min())
+        let firstRowCells = cells
+            .filter { frame in abs(frame.minY - firstRowY) < 1 }
+            .sorted { lhs, rhs in lhs.minX < rhs.minX }
+        let first = try #require(firstRowCells.first)
+        let last = try #require(firstRowCells.last)
+
+        #expect(firstRowCells.count == 24)
+        #expect(last.maxX - first.minX >= 580)
+    }
+
+    @Test @MainActor
+    func insightsHeatmapWeekdayLabelsDoNotIncreaseRowHeight() throws {
+        let hostingView = makeHostingView(
+            InsightsHourlyHeatmap(buckets: makeHeatmapBuckets()),
+            size: NSSize(width: 680, height: 220)
+        )
+
+        let cells: [CGRect] = descendants(in: hostingView)
+            .map(\.frame)
+            .filter { frame in
+                abs(frame.height - 14) < 1 && frame.minX > 40 && frame.width > 18 && frame.width < 40
+            }
+        let rowOrigins = Dictionary(grouping: cells, by: { Int($0.minY.rounded()) })
+            .filter { _, rowCells in rowCells.count >= 20 }
+            .keys
+            .sorted()
+            .map(CGFloat.init)
+        let rowGaps = zip(rowOrigins, rowOrigins.dropFirst()).map { $1 - $0 }
+
+        #expect(rowOrigins.count == 7)
+        #expect((rowGaps.max() ?? 0) <= 18)
+    }
+
+    @Test @MainActor
+    func insightsMostUsedRowUsesCompactDesignColumns() {
+        let hostingView = makeHostingView(
+            InsightsAppRow(
+                item: InsightsAppRowModel(
+                    id: UUID(),
+                    appName: "Safari",
+                    bundleIdentifier: "com.apple.Safari",
+                    count: 70,
+                    progress: 0.62,
+                    delta: InsightsChange(text: "+18%", tone: .positive),
+                    sparklinePoints: [4, 6, 8, 7, 12, 14, 11, 8]
+                ),
+                showsDivider: false
+            ),
+            size: NSSize(width: 660, height: 80)
+        )
+
+        let rootHeight = hostingView.subviews.first?.frame.height ?? 0
+        let longProgressBars = descendants(in: hostingView)
+            .map { view in view.frame }
+            .filter { frame in frame.height <= 8 && frame.width >= 280 }
+
+        #expect(rootHeight <= 56)
+        #expect(!longProgressBars.isEmpty)
+    }
+
+    @Test @MainActor
+    func generalTabDoesNotCreateNestedFormScroller() {
+        let context = SettingsViewLayoutContext()
+        defer { context.harness.cleanup() }
+
+        let hostingView = makeHostingView(
+            GeneralTabView(preferences: context.preferences, editor: context.editor),
+            size: NSSize(width: 700, height: 560)
+        )
+
+        let scrollViewsWithVerticalScrollers = descendants(in: hostingView)
+            .compactMap { $0 as? NSScrollView }
+            .filter(\.hasVerticalScroller)
+
+        #expect(scrollViewsWithVerticalScrollers.count == 1)
+    }
+
+    @Test @MainActor
+    func generalKeyboardCardMatchesDesignRowDensity() {
+        let context = SettingsViewLayoutContext()
+        defer { context.harness.cleanup() }
+
+        let hostingView = makeHostingView(
+            GeneralTabView(preferences: context.preferences, editor: context.editor),
+            size: NSSize(width: 700, height: 620)
+        )
+
+        let candidateCardHeights = hostingView.subviews
+            .flatMap { descendants(in: $0) + [$0] }
+            .map(\.frame.height)
+            .filter { $0 >= 120 && $0 <= 180 }
+
+        #expect(candidateCardHeights.contains { abs($0 - 138) <= 18 })
+    }
+
+    @Test
+    func settingsWindowUsesGeneralDesignReferenceHeight() {
+        #expect(SettingsWindowMetrics.width == 860)
+        #expect(SettingsWindowMetrics.height == 780)
     }
 
     @Test @MainActor
@@ -251,6 +386,91 @@ struct LayoutRegressionTests {
     }
 
     @Test @MainActor
+    func shortcutsListUsesAvailableHeightInsteadOfFixedCap() throws {
+        let context = ShortcutsTabLayoutContext(shortcutCount: 4)
+        defer { context.harness.cleanup() }
+
+        let hostingView = makeHostingView(
+            ShortcutsTabView(
+                editor: context.editor,
+                preferences: context.preferences,
+                appListProvider: context.appListProvider,
+                shortcutStatusProvider: context.shortcutStatusProvider
+            ),
+            size: NSSize(width: 700, height: 640)
+        )
+
+        let listScrollerHeight = try #require(
+            descendants(in: hostingView)
+                .compactMap { $0 as? NSScrollView }
+                .filter(\.hasVerticalScroller)
+                .map(\.frame.height)
+                .max()
+        )
+
+        #expect(listScrollerHeight > 220)
+    }
+
+    @Test @MainActor
+    func shortcutsLongListStaysInsideAvailableHeight() throws {
+        let context = ShortcutsTabLayoutContext(shortcutCount: 24)
+        defer { context.harness.cleanup() }
+
+        let hostingView = makeHostingView(
+            ShortcutsTabView(
+                editor: context.editor,
+                preferences: context.preferences,
+                appListProvider: context.appListProvider,
+                shortcutStatusProvider: context.shortcutStatusProvider
+            ),
+            size: NSSize(width: 700, height: 640)
+        )
+
+        let listScrollerHeight = try #require(
+            descendants(in: hostingView)
+                .compactMap { $0 as? NSScrollView }
+                .filter(\.hasVerticalScroller)
+                .map(\.frame.height)
+                .max()
+        )
+
+        #expect(listScrollerHeight > 220)
+        #expect(listScrollerHeight < 430)
+    }
+
+    @Test @MainActor
+    func insightsTabExposesSinglePageScroller() async {
+        let shortcutId = UUID()
+        let store = ShortcutStore()
+        store.replaceAll(with: [
+            AppShortcut(
+                id: shortcutId,
+                appName: "Safari",
+                bundleIdentifier: "com.apple.Safari",
+                keyEquivalent: "s",
+                modifierFlags: ["command"]
+            )
+        ])
+
+        let viewModel = InsightsViewModel(
+            usageTracker: StaticUsageTracker(shortcutId: shortcutId),
+            shortcutStore: store
+        )
+        await viewModel.refresh(for: .week)
+
+        let hostingView = makeHostingView(
+            InsightsTabView(viewModel: viewModel),
+            size: NSSize(width: 700, height: 430)
+        )
+
+        let scrollViewsWithVerticalScrollers = descendants(in: hostingView)
+            .compactMap { $0 as? NSScrollView }
+            .filter(\.hasVerticalScroller)
+
+        #expect(scrollViewsWithVerticalScrollers.count == 1)
+    }
+
+    @Test @MainActor
     func importPreviewUsesDedicatedScrollerWithoutRestoringPageScroller() throws {
         let context = ShortcutsTabLayoutContext(shortcutCount: 4)
         defer { context.harness.cleanup() }
@@ -373,6 +593,18 @@ private struct CardWidthProbeView: View {
         }
         .frame(width: 680, height: 180)
         .padding(20)
+    }
+}
+
+private func makeHeatmapBuckets() -> [HourlyUsageBucket] {
+    (0..<7).flatMap { day in
+        (0..<24).map { hour in
+            HourlyUsageBucket(
+                date: "2026-04-\(String(format: "%02d", 20 + day))",
+                hour: hour,
+                count: (day + hour) % 5
+            )
+        }
     }
 }
 

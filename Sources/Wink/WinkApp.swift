@@ -1,5 +1,10 @@
 import SwiftUI
 
+enum SettingsWindowMetrics {
+    static let width: CGFloat = 860
+    static let height: CGFloat = 780
+}
+
 /// SwiftUI app entry for the menu bar utility.
 ///
 /// Apple recommends declaring app settings through the `Settings` scene and
@@ -38,7 +43,10 @@ struct WinkApp: App {
                 shortcutStatusProvider: services.shortcutStatusProvider,
                 settingsLauncher: services.settingsLauncher
             )
-            .frame(minWidth: 760, minHeight: 560)
+            .frame(
+                width: SettingsWindowMetrics.width,
+                height: SettingsWindowMetrics.height
+            )
             .winkChromeRoot()
         }
         .commands {

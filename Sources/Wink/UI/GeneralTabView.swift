@@ -20,111 +20,15 @@ struct GeneralTabView: View {
         let updatePresentation = preferences.updatePresentation
 
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 14) {
                 SettingsTabHeader(
                     title: "General",
                     subtitle: "Startup, keyboard behavior, and updates."
                 )
 
-                Form {
-                    Section("Startup") {
-                        SettingsToggleRow(
-                            title: "Launch at Login",
-                            subtitle: "Open Wink in the menu bar when you sign in.",
-                            isOn: Binding(
-                                get: { preferences.launchAtLoginPresentation.toggleIsOn },
-                                set: { preferences.setLaunchAtLogin($0) }
-                            )
-                        )
-                        .disabled(!preferences.launchAtLoginPresentation.toggleIsEnabled)
+                startupCard
 
-                        SettingsToggleRow(
-                            title: "Show Menu Bar Icon",
-                            subtitle: "Keep Wink visible in the macOS menu bar.",
-                            isOn: $menuBarIconVisible
-                        )
-
-                        if let message = preferences.launchAtLoginPresentation.message {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(message)
-                                    .font(WinkType.labelSmall)
-                                    .foregroundStyle(
-                                        preferences.launchAtLoginPresentation.messageStyle == .error
-                                            ? palette.red
-                                            : palette.textSecondary
-                                    )
-
-                                if preferences.launchAtLoginPresentation.showsOpenSettingsButton {
-                                    WinkButton("Open Login Items Settings") {
-                                        preferences.openLoginItemsSettings()
-                                    }
-                                }
-                            }
-                            .padding(.leading, 4)
-                        }
-
-                    }
-
-                    Section("Keyboard") {
-                        SettingsToggleRow(
-                            title: "Enable All Shortcuts",
-                            subtitle: "Master switch for global shortcut routing.",
-                            isOn: Binding(
-                                get: { editor.allEnabled },
-                                set: { editor.setAllEnabled($0) }
-                            )
-                        )
-                        .disabled(importPreviewActive)
-
-                        SettingsToggleRow(
-                            title: "Hyper Key",
-                            subtitleView: {
-                                HStack(spacing: 6) {
-                                    Text("Hold")
-                                    WinkKeycap("Caps Lock", size: .small)
-                                    Text("to act as")
-                                    WinkKeycap("⌃⌥⇧⌘", size: .small)
-                                    Text(".")
-                                }
-                            },
-                            isOn: Binding(
-                                get: { preferences.hyperKeyEnabled },
-                                set: { preferences.setHyperKeyEnabled($0) }
-                            )
-                        )
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(alignment: .center, spacing: 16) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("When target is frontmost")
-                                        .font(WinkType.bodyMedium)
-                                        .foregroundStyle(palette.textPrimary)
-                                    Text("How Wink reacts when the target app is already active.")
-                                        .font(WinkType.labelSmall)
-                                        .foregroundStyle(palette.textSecondary)
-                                }
-
-                                Spacer(minLength: 12)
-
-                                Picker("", selection: Binding(
-                                    get: { preferences.frontmostTargetBehavior },
-                                    set: { preferences.frontmostTargetBehavior = $0 }
-                                )) {
-                                    ForEach(FrontmostTargetBehavior.allCases, id: \.self) { behavior in
-                                        Text(behavior.title).tag(behavior)
-                                    }
-                                }
-                                .pickerStyle(.segmented)
-                                .frame(width: 210)
-                                .labelsHidden()
-                            }
-                            .padding(.vertical, 4)
-                        }
-                    }
-                }
-                .formStyle(.grouped)
-                .scrollContentBackground(.hidden)
-                .background(Color.clear)
+                keyboardCard(importPreviewActive: importPreviewActive)
 
                 WinkCard(
                     title: {
@@ -188,15 +92,13 @@ struct GeneralTabView: View {
 
                         SettingsToggleRow(
                             title: "Automatic Updates",
-                            subtitle: "Reflects the current Sparkle feed defaults for automatic checks and downloads.",
+                            subtitle: "Download and install new versions in the background.",
                             isOn: .constant(
                                 updatePresentation.automaticChecksEnabledByDefault
                                     && updatePresentation.automaticDownloadsEnabledByDefault
                             )
                         )
                         .disabled(true)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
                     }
                 }
 
@@ -216,8 +118,108 @@ struct GeneralTabView: View {
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 18)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .background(palette.windowBg)
+    }
+
+    private var startupCard: some View {
+        WinkCard {
+            VStack(alignment: .leading, spacing: 0) {
+                SettingsToggleRow(
+                    title: "Launch at Login",
+                    subtitle: "Opens Wink in the menu bar when you sign in.",
+                    isOn: Binding(
+                        get: { preferences.launchAtLoginPresentation.toggleIsOn },
+                        set: { preferences.setLaunchAtLogin($0) }
+                    )
+                )
+                .disabled(!preferences.launchAtLoginPresentation.toggleIsEnabled)
+
+                Divider().overlay(palette.hairline)
+
+                SettingsToggleRow(
+                    title: "Show Menu Bar Icon",
+                    subtitle: "Hide the icon if you prefer a minimal menu bar.",
+                    isOn: $menuBarIconVisible
+                )
+
+                if let message = preferences.launchAtLoginPresentation.message {
+                    Divider().overlay(palette.hairline)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(message)
+                            .font(WinkType.labelSmall)
+                            .foregroundStyle(
+                                preferences.launchAtLoginPresentation.messageStyle == .error
+                                    ? palette.red
+                                    : palette.textSecondary
+                            )
+
+                        if preferences.launchAtLoginPresentation.showsOpenSettingsButton {
+                            WinkButton("Open Login Items Settings") {
+                                preferences.openLoginItemsSettings()
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                }
+            }
+        }
+    }
+
+    private func keyboardCard(importPreviewActive: Bool) -> some View {
+        WinkCard {
+            VStack(alignment: .leading, spacing: 0) {
+                SettingsToggleRow(
+                    title: "Enable All Shortcuts",
+                    subtitle: "Master switch for global shortcut routing.",
+                    isOn: Binding(
+                        get: { editor.allEnabled },
+                        set: { editor.setAllEnabled($0) }
+                    )
+                )
+                .disabled(importPreviewActive)
+
+                Divider().overlay(palette.hairline)
+
+                SettingsToggleRow(
+                    title: "Hyper Key",
+                    subtitleView: {
+                        HStack(spacing: 6) {
+                            Text("Hold")
+                            WinkKeycap("Caps Lock", size: .small)
+                            Text("to act as")
+                            WinkKeycap("⌃⌥⇧⌘", size: .small)
+                            Text(". Tap alone to keep its original behavior.")
+                        }
+                    },
+                    isOn: Binding(
+                        get: { preferences.hyperKeyEnabled },
+                        set: { preferences.setHyperKeyEnabled($0) }
+                    )
+                )
+
+                Divider().overlay(palette.hairline)
+
+                SettingsRow(
+                    title: "When target is frontmost",
+                    subtitle: "How Wink reacts when the target app is already active."
+                ) {
+                    WinkSegmented(
+                        options: FrontmostTargetBehavior.allCases.map { behavior in
+                            (label: behavior.title, value: behavior)
+                        },
+                        selection: Binding(
+                            get: { preferences.frontmostTargetBehavior },
+                            set: { preferences.frontmostTargetBehavior = $0 }
+                        ),
+                        accessibilityLabel: "When target is frontmost"
+                    )
+                    .frame(width: 172)
+                }
+            }
+        }
     }
 
     private func inputMonitoringPresentationState(for status: ShortcutCaptureStatus) -> PermissionSummaryState {
@@ -351,7 +353,47 @@ private struct SettingsToggleRow<SubtitleView: View>: View {
     }
 
     var body: some View {
-        Toggle(isOn: isOn) {
+        SettingsRow(
+            title: title,
+            subtitleView: subtitleView,
+            trailing: {
+                WinkSwitch(isOn: isOn, size: .medium)
+            }
+        )
+    }
+}
+
+private struct SettingsRow<SubtitleView: View, Trailing: View>: View {
+    @Environment(\.winkPalette) private var palette
+
+    let title: String
+    @ViewBuilder let subtitleView: () -> SubtitleView
+    @ViewBuilder let trailing: () -> Trailing
+
+    init(
+        title: String,
+        subtitle: String,
+        @ViewBuilder trailing: @escaping () -> Trailing
+    ) where SubtitleView == Text {
+        self.title = title
+        self.subtitleView = {
+            Text(subtitle)
+        }
+        self.trailing = trailing
+    }
+
+    init(
+        title: String,
+        @ViewBuilder subtitleView: @escaping () -> SubtitleView,
+        @ViewBuilder trailing: @escaping () -> Trailing
+    ) {
+        self.title = title
+        self.subtitleView = subtitleView
+        self.trailing = trailing
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(WinkType.bodyMedium)
@@ -360,7 +402,11 @@ private struct SettingsToggleRow<SubtitleView: View>: View {
                     .font(WinkType.labelSmall)
                     .foregroundStyle(palette.textSecondary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            trailing()
         }
-        .toggleStyle(.switch)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 }

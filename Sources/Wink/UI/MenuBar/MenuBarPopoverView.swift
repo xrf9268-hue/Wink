@@ -116,6 +116,10 @@ final class MenuBarPopoverModel {
         refreshUsage()
     }
 
+    func waitForUsageRefreshForTesting() async {
+        await usageRefreshTask?.value
+    }
+
     func setShortcutsPaused(_ paused: Bool) {
         preferences.setShortcutsPaused(paused)
     }

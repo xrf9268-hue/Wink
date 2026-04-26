@@ -280,6 +280,17 @@ struct WinkSegmented<Value: Hashable>: View {
     @Environment(\.colorScheme) private var colorScheme
     let options: [(label: String, value: Value)]
     @Binding var selection: Value
+    let accessibilityLabel: String?
+
+    init(
+        options: [(label: String, value: Value)],
+        selection: Binding<Value>,
+        accessibilityLabel: String? = nil
+    ) {
+        self.options = options
+        self._selection = selection
+        self.accessibilityLabel = accessibilityLabel
+    }
 
     var body: some View {
         HStack(spacing: 2) {
@@ -313,6 +324,17 @@ struct WinkSegmented<Value: Hashable>: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .stroke(colorScheme == .dark ? Color.winkWhite(0.08) : Color.winkBlack(0.08), lineWidth: 0.5)
         )
+        .accessibilityRepresentation {
+            Picker(selection: $selection) {
+                ForEach(options, id: \.value) { option in
+                    Text(option.label).tag(option.value)
+                }
+            } label: {
+                Text(accessibilityLabel ?? "")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
     }
 }
 

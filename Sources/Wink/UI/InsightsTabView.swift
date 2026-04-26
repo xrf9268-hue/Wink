@@ -3,6 +3,21 @@ import SwiftUI
 enum InsightsTabCopy {
     static let rankingSectionTitle = "Most used"
     static let emptyRankingText = "No shortcuts used in this period"
+
+    static func rankingAccessoryText(totalCount: Int, period: InsightsPeriod) -> String {
+        "\(totalCount.formatted(.number.grouping(.automatic))) activations · \(compactRangeText(for: period))"
+    }
+
+    private static func compactRangeText(for period: InsightsPeriod) -> String {
+        switch period {
+        case .day:
+            return "today"
+        case .week:
+            return "7 days"
+        case .month:
+            return "30 days"
+        }
+    }
 }
 
 struct InsightsTabView: View {
@@ -12,7 +27,7 @@ struct InsightsTabView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 14) {
                 header
 
                 InsightsUnusedNudge(appNames: viewModel.unusedShortcutNames)
@@ -31,7 +46,7 @@ struct InsightsTabView: View {
                         Text(InsightsTabCopy.rankingSectionTitle)
                     },
                     accessory: {
-                        Text("\(viewModel.totalCount.formatted(.number.grouping(.automatic))) activations")
+                        Text(InsightsTabCopy.rankingAccessoryText(totalCount: viewModel.totalCount, period: viewModel.period))
                             .font(WinkType.labelSmall)
                             .foregroundStyle(palette.textTertiary)
                     }
@@ -57,6 +72,7 @@ struct InsightsTabView: View {
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 18)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .background(palette.windowBg)
     }

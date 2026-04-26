@@ -1,6 +1,6 @@
 # Wink Troubleshooting Guidance
 
-> **Last reviewed:** 2026-04-25 (issue #230 documentation audit). **Last updated:** 2026-04-26 (issue #184 DMG installer design update). **Next audit due:** 2026-07-25.
+> **Last reviewed:** 2026-04-25 (issue #230 documentation audit). **Last updated:** 2026-04-26 (PR #236 UI v2 settings layout parity follow-up). **Next audit due:** 2026-07-25.
 >
 > This file accumulates operational lessons over time. Without periodic pruning it becomes another archive. When a section's lesson no longer reflects current code, move it to `archive/lessons-learned-historical.md` (create on first prune) rather than rewriting it in place — the original framing is part of the evidence.
 
@@ -127,6 +127,71 @@ For visual regressions, write the checklist at the start of the fix, before edit
 - import preview details own their internal scroller
 - row action menu exposes only `Delete Shortcut`
 - sidebar width matches the design target while the system sidebar toggle remains intentionally visible
+
+## Design Parity Needs Layout Contracts, Not Just Visual Tweaks
+
+**Issue**
+Small design mismatches can keep reappearing after an apparently correct UI polish pass. In PR #236, the Settings UI still had four concrete misses after the first pass: the Insights weekday label `MON` wrapped and increased heatmap row height, `Your Shortcuts` kept a fixed 180pt viewport that left a large empty region below the card, the heatmap needed to keep spanning the card width, and the General page needed to avoid nested/right-side scrolling.
+
+**Cause**
+These were not color or spacing-only issues. They were missing layout contracts. A narrow weekday label let SwiftUI wrap text. A fixed shortcut-list height capped the card even when the detail pane had more vertical space. Screenshot inspection caught the symptom, but only regression tests that assert row spacing, scroll-view count, and list viewport bounds keep the same bug from returning.
+
+**Practical guidance**
+For UI v2 parity work, turn each screenshot complaint into a concrete layout invariant before signoff:
+- Labels that must not wrap should have a single-line contract and enough fixed label width.
+- Repeated content should fill the proposed viewport width/height when the design expects it, then scroll internally only when content exceeds that region.
+- For fixed-format visual blocks like heatmaps, assert both row compactness and horizontal span in layout tests.
+- For pages that should not show an extra scrollbar, assert the expected number of vertical `NSScrollView`s.
+- Re-capture the final packaged app after the last source change, then reopen the saved screenshots and verify the named facts again.
+
+Static design comparison tells the direction; a packaged-window screenshot plus layout regression tests are the closeout evidence.
+
+## Custom SwiftUI Controls Need Native Accessibility Semantics
+
+**Issue**
+Replacing a native control with a custom visual primitive can quietly regress accessibility. In PR #236, `WinkSegmented` looked like the design's segmented control, but it was implemented as plain buttons. A reviewer correctly flagged that VoiceOver and keyboard users would not get the same selected-state and segmented-control semantics as the previous native segmented picker.
+
+**Cause**
+Visual parity and accessibility semantics are separate surfaces. A custom SwiftUI `HStack` of buttons can match the mock visually while exposing the wrong role, selected state, and navigation model to assistive technology.
+
+**Practical guidance**
+When replacing native macOS controls with custom design-system primitives, preserve the native accessibility model explicitly. For segmented controls, use an accessibility representation backed by a native `Picker` with `.pickerStyle(.segmented)` and provide a meaningful label at the call site. Keep the visual layer custom only if the accessibility layer remains equivalent to the native control being replaced. Treat review feedback in this area as functional, not cosmetic.
+
+## Async View-Model Tests Should Await The Work They Need
+
+**Issue**
+A test can pass locally and fail repeatedly in CI even when the product code is fine. In PR #236, two `MenuBarPopoverViewTests` cases waited up to two seconds for `todayActivationCount` / histogram state to change after `MenuBarPopoverModel` started an internal usage refresh task. Focused local runs passed quickly, but full CI runs repeatedly timed out with the model still showing the initial zero values.
+
+**Cause**
+The test was polling an observed side effect with a short wall-clock timeout instead of awaiting the actual async work it depended on. Under full-suite CI scheduling, the main-actor task did not always finish inside the polling window. That made the test timing-sensitive even though the model had a clear internal task boundary.
+
+**Practical guidance**
+For view models that start internal refresh tasks, expose a narrow testing seam that awaits the task directly, following the existing `AppListProvider.waitForRefreshForTesting()` pattern. Prefer:
+
+```swift
+await model.waitForUsageRefreshForTesting()
+```
+
+over repeated `Task.sleep` polling of observable properties. Polling is still useful for UI effects with no owned task boundary, but when the code owns a refresh task, wait on that task. This makes CI failures point at real work failures instead of scheduler timing.
+
+## Cancelled Review Gate Runs Can Look Like Current Failures
+
+**Issue**
+The PR checks panel can show "1 failing check" for `Review Gate / Validate review state (pull_request_review)` even after the review thread has been fixed, resolved, and a later Review Gate run has passed.
+
+**Cause**
+The Review Gate workflow uses a per-PR concurrency group with `cancel-in-progress: true`. Replying to and resolving a review thread can trigger multiple events close together, such as `pull_request_review` and `pull_request_review_comment`. The older run can be cancelled while a newer run on the same head SHA completes successfully. GitHub's UI may still surface the cancelled run in the rollup, which looks like a failure at first glance.
+
+**Practical guidance**
+Do not diagnose this from the PR sidebar alone. Check the run event, head SHA, conclusion, and any later run for the same workflow:
+
+```bash
+gh pr view <pr> --json headRefOid,statusCheckRollup
+gh run list --branch <branch> --limit 12 \
+  --json databaseId,event,headSha,status,conclusion,workflowName,createdAt,url
+```
+
+If the failed/cancelled run is superseded by a successful Review Gate run on the same head SHA and unresolved actionable review threads are zero, the remaining blocker is not code. The PR may still be `REVIEW_REQUIRED`, but that is an external approval gate rather than an actionable Review Gate failure.
 
 ## DMG Mock Chrome Must Be Reconciled With Real Finder Chrome
 
@@ -276,7 +341,7 @@ System Settings still shows a `Wink` row, but a freshly rebuilt packaged app lau
 The visible row can still point at an older bundle path or a previous ad-hoc signature identity. After rebuilding `build/Wink.app`, macOS may keep showing a `Wink` entry even though that record no longer matches the exact current app bundle.
 
 **Practical guidance**
-If a newly packaged build still looks untrusted, do not treat the visible `Wink` row as proof that TCC matches the current app. Remove the existing `Wink` row, add the exact current `build/Wink.app` again in the relevant panes, and relaunch the bundle via `open`. For standard-only fixtures that means Accessibility; for Hyper validation, re-add Input Monitoring too.
+If a newly packaged build still looks untrusted, do not treat the visible `Wink` row as proof that TCC matches the current app. Remove the existing `Wink` row, add the exact current `build/Wink.app` again in the relevant panes, and relaunch the bundle via `open`. For standard-only fixtures that means Accessibility; for Hyper validation, re-add Input Monitoring too. If the row is stale but still checked, use `tccutil reset Accessibility com.wink.app` and `tccutil reset ListenEvent com.wink.app`, then add the exact app copy back through System Settings' add-app control. Verify the result from `~/.config/Wink/debug.log` (`ax=true im=true carbon=true eventTap=true` for mixed fixtures) before rerunning packaged E2E.
 
 ## Launch Via `open`
 

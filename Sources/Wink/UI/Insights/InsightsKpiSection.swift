@@ -65,6 +65,11 @@ enum InsightsKpiFormatter {
     }
 }
 
+private enum InsightsKpiLayout {
+    static let cardMinHeight: CGFloat = 124
+    static let bottomSlotHeight: CGFloat = 28
+}
+
 struct InsightsKpiSection: View {
     @Environment(\.winkPalette) private var palette
 
@@ -85,63 +90,90 @@ struct InsightsKpiSection: View {
             metricCard(
                 title: "Activations",
                 value: totalCount.formatted(.number.grouping(.automatic)),
-                subtitle: InsightsKpiFormatter.activationSubtitle(change: activationDelta)
-            ) {
-                VStack(alignment: .leading, spacing: 10) {
+                subtitle: "vs previous period",
+                help: InsightsKpiFormatter.activationSubtitle(change: activationDelta),
+                badge: {
                     InsightsChangeBadge(change: activationDelta)
+                },
+                bottom: {
                     WinkSparkline(
                         points: sparklinePoints,
                         stroke: palette.accent,
                         fill: palette.accent.opacity(0.12)
                     )
-                    .frame(height: 42)
                 }
-            }
+            )
 
             metricCard(
                 title: "Time saved",
                 value: InsightsKpiFormatter.timeSavedText(totalActivations: totalCount),
-                subtitle: "Assumes ~3 seconds per activation."
-            ) {
-                EmptyView()
-            }
+                subtitle: "~3 seconds each",
+                help: "Assumes ~3 seconds per activation.",
+                badge: {
+                    EmptyView()
+                },
+                bottom: {
+                    Color.clear
+                }
+            )
 
             metricCard(
                 title: "Streak",
                 value: "\(currentStreakDays)d",
-                subtitle: "Consecutive days with at least one activation."
-            ) {
-                EmptyView()
-            }
+                subtitle: "Consecutive active days",
+                help: "Consecutive days with at least one activation.",
+                badge: {
+                    EmptyView()
+                },
+                bottom: {
+                    Color.clear
+                }
+            )
         }
     }
 
-    private func metricCard<Extra: View>(
+    private func metricCard<Badge: View, Bottom: View>(
         title: String,
         value: String,
         subtitle: String,
-        @ViewBuilder extra: @escaping () -> Extra
+        help: String,
+        @ViewBuilder badge: @escaping () -> Badge,
+        @ViewBuilder bottom: @escaping () -> Bottom
     ) -> some View {
         WinkCard {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 0) {
                 Text(title)
                     .font(WinkType.labelSmall)
                     .foregroundStyle(palette.textTertiary)
 
-                Text(value)
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(palette.textPrimary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(value)
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(palette.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
 
-                extra()
+                    badge()
+                }
+                .padding(.top, 5)
 
                 Text(subtitle)
                     .font(WinkType.labelSmall)
                     .foregroundStyle(palette.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .help(help)
+                    .padding(.top, 4)
+
+                Spacer(minLength: 8)
+
+                bottom()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: InsightsKpiLayout.bottomSlotHeight)
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: InsightsKpiLayout.cardMinHeight, alignment: .topLeading)
         }
     }
 }

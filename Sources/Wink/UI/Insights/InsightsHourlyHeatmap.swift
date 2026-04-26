@@ -1,5 +1,14 @@
 import SwiftUI
 
+private enum InsightsHeatmapLayout {
+    static let dayLabelWidth: CGFloat = 32
+    static let labelGridSpacing: CGFloat = 8
+    static let columnSpacing: CGFloat = 2
+    static let rowSpacing: CGFloat = 3
+    static let cellHeight: CGFloat = 14
+    static let cellCornerRadius: CGFloat = 2
+}
+
 struct InsightsHourlyHeatmap: View {
     @Environment(\.winkPalette) private var palette
 
@@ -37,53 +46,54 @@ struct InsightsHourlyHeatmap: View {
             }
         ) {
             VStack(alignment: .leading, spacing: 8) {
-                hourScale
-
-                VStack(spacing: 4) {
+                VStack(spacing: InsightsHeatmapLayout.rowSpacing) {
                     ForEach(groupedRows, id: \.date) { row in
-                        HStack(spacing: 6) {
+                        HStack(spacing: InsightsHeatmapLayout.labelGridSpacing) {
                             Text(dayLabel(for: row.date))
                                 .font(WinkType.labelSmall)
                                 .foregroundStyle(palette.textTertiary)
-                                .frame(width: 28, alignment: .leading)
+                                .textCase(.uppercase)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(width: InsightsHeatmapLayout.dayLabelWidth, alignment: .leading)
 
-                            HStack(spacing: 2) {
+                            HStack(spacing: InsightsHeatmapLayout.columnSpacing) {
                                 ForEach(Array(row.counts.enumerated()), id: \.offset) { _, count in
-                                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    RoundedRectangle(cornerRadius: InsightsHeatmapLayout.cellCornerRadius, style: .continuous)
                                         .fill(fill(for: count))
-                                        .frame(width: 10, height: 12)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: InsightsHeatmapLayout.cellHeight)
                                 }
                             }
+                            .frame(maxWidth: .infinity)
                         }
                     }
                 }
+
+                hourScale
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private var hourScale: some View {
-        HStack(spacing: 0) {
-            Spacer()
-                .frame(width: 34)
+        HStack(spacing: InsightsHeatmapLayout.labelGridSpacing) {
+            Color.clear
+                .frame(width: InsightsHeatmapLayout.dayLabelWidth)
 
-            HStack(spacing: 0) {
+            HStack(spacing: InsightsHeatmapLayout.columnSpacing) {
                 ForEach(0..<24, id: \.self) { hour in
-                    Group {
-                        if [0, 6, 12, 18].contains(hour) {
-                            Text("\(hour)")
-                                .font(WinkType.labelSmall)
-                                .foregroundStyle(palette.textTertiary)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .frame(width: 12, alignment: .leading)
-                        } else {
-                            Color.clear.frame(width: 12)
-                        }
-                    }
+                    Text(hourLabel(for: hour))
+                        .font(WinkType.labelSmall)
+                        .foregroundStyle(palette.textTertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -111,5 +121,22 @@ struct InsightsHourlyHeatmap: View {
         weekdayFormatter.dateFormat = "EEE"
         weekdayFormatter.timeZone = .current
         return weekdayFormatter.string(from: date)
+    }
+
+    private func hourLabel(for hour: Int) -> String {
+        guard hour % 3 == 0 else {
+            return ""
+        }
+
+        if hour == 0 {
+            return "12a"
+        }
+        if hour == 12 {
+            return "12p"
+        }
+        if hour < 12 {
+            return "\(hour)a"
+        }
+        return "\(hour - 12)p"
     }
 }
