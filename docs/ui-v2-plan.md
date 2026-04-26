@@ -223,7 +223,7 @@ User 决策（2026-04-22）：
 
 **Logo / Branding**
 - `Sources/Wink/Resources/AppIcon.svg` 替换为 `WinkAppIcon` 渲染规格（violet→blue gradient + Twin）；新建 `scripts/build-app-icon.sh` 用 `rsvg-convert`/`sips` 从 SVG 导出 1024/512/256/128/64/32/16 → 重新生成 `AppIcon.icns`，更新 Info.plist 引用（`CFBundleIconFile=AppIcon`）。
-- `WinkApp.body` 中 `MenuBarExtra(systemImage:)` 切到 `MenuBarExtra(image:)` 用 `Image("MenuBarTemplate")`，资源是 `Logo_WinkTwin` 渲染的 16pt template PNG（带 `@2x`），`isTemplate = true` 让亮/暗模式自动反转。
+- `WinkMenuBarScene` 使用 `MenuBarExtra(isInserted:content:label:)` 的自定义 label；label 从 `MenuBarTemplate` packaged PNG 创建 `NSImage`，显式设置 `isTemplate = true`，再通过 `Image(nsImage:)` + `.renderingMode(.template)` 渲染，避免高亮态出现空占位符。
 - About 卡（General → Updates）使用 `WinkAppIcon(40)`。
 
 **Insights 高级图表**
