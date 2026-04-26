@@ -26,24 +26,27 @@ struct SettingsView: View {
     var shortcutStatusProvider: ShortcutStatusProvider
     @Bindable var settingsLauncher: SettingsLauncher
 
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
     private var lifecycleHandler: SettingsViewLifecycleHandler {
         SettingsViewLifecycleHandler(preferences: preferences)
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             List(SettingsTab.allCases, id: \.self, selection: $settingsLauncher.selectedTab) { tab in
                 Label(tab.title, systemImage: tab.systemImage)
                     .font(WinkType.bodyMedium)
+                    .padding(.leading, SettingsSidebarMetrics.rowContentLeadingAdjustment)
                     .tag(tab)
             }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
             .navigationSplitViewColumnWidth(
                 min: SettingsSidebarMetrics.width,
                 ideal: SettingsSidebarMetrics.width,
                 max: SettingsSidebarMetrics.width
             )
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
             .background(palette.sidebarBg)
         } detail: {
             GeometryReader { proxy in
@@ -59,6 +62,11 @@ struct SettingsView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .background(palette.windowBg)
+        .onReceive(NotificationCenter.default.publisher(for: .settingsSidebarToggleRequested)) { _ in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                toggleSidebar()
+            }
+        }
         .onChange(of: settingsLauncher.selectedTab) { _, newTab in
             if newTab == .insights {
                 insightsViewModel.scheduleRefresh()
@@ -73,6 +81,10 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             lifecycleHandler.handleAppDidBecomeActive()
         }
+    }
+
+    private func toggleSidebar() {
+        columnVisibility = columnVisibility == .all ? .detailOnly : .all
     }
 
     @ViewBuilder
@@ -94,5 +106,6 @@ struct SettingsView: View {
 }
 
 private enum SettingsSidebarMetrics {
-    static let width: CGFloat = 180
+    static let width: CGFloat = 150
+    static let rowContentLeadingAdjustment: CGFloat = -2
 }

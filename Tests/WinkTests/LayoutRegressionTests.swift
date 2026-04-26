@@ -510,7 +510,7 @@ struct LayoutRegressionTests {
     }
 
     @Test @MainActor
-    func settingsViewUsesDesignSidebarColumnWidth() throws {
+    func settingsViewUsesCompactSidebarColumnWidth() throws {
         let context = SettingsViewLayoutContext()
         defer { context.harness.cleanup() }
 
@@ -531,9 +531,46 @@ struct LayoutRegressionTests {
         let splitView = try #require(splitViews.first)
         let sidebarWidth = splitView.arrangedSubviews.first?.frame.width ?? 0
 
-        #expect(abs(sidebarWidth - 180) < 1)
+        #expect(abs(sidebarWidth - 150) < 1)
         #expect(splitView.frame.minY >= -1)
         #expect(splitView.frame.height <= hostingView.bounds.height + 1)
+    }
+
+    @Test @MainActor
+    func settingsWindowChromeConfiguratorGrowsTitlebarToDesignHeight() throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: SettingsWindowMetrics.width, height: SettingsWindowMetrics.height),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        let coordinator = SettingsWindowChromeCoordinator()
+
+        coordinator.attach(to: window)
+        window.layoutIfNeeded()
+
+        let topInset = window.frame.height - window.contentLayoutRect.maxY
+        let accessory = try #require(window.titlebarAccessoryViewControllers.first)
+        let closeButton = try #require(window.standardWindowButton(.closeButton))
+        let titlebarView = try #require(closeButton.superview)
+        let sidebarToggle = try #require(titlebarView.subviews.first {
+            $0.identifier == SettingsTitlebarLayout.sidebarToggleIdentifier
+        })
+        let customTitle = try #require(titlebarView.subviews.first {
+            $0.identifier == SettingsTitlebarLayout.titleIdentifier
+        })
+        let toggleCenterYFromTop = titlebarView.bounds.height - sidebarToggle.frame.midY
+        let titleCenterYFromTop = titlebarView.bounds.height - customTitle.frame.midY
+
+        #expect(abs(topInset - SettingsTitlebarLayout.height) < 0.5)
+        #expect(abs(titlebarView.bounds.height - SettingsTitlebarLayout.height) < 0.5)
+        #expect(accessory.layoutAttribute == .bottom)
+        #expect(accessory.automaticallyAdjustsSize == false)
+        #expect(abs(accessory.view.frame.height - SettingsTitlebarLayout.titlebarAccessoryHeight) < 0.5)
+        #expect(abs(sidebarToggle.frame.minX - SettingsTitlebarLayout.toggleLeadingX) < 0.5)
+        #expect(abs(toggleCenterYFromTop - SettingsTitlebarLayout.baselineCenterY) < 0.5)
+        #expect(abs(customTitle.frame.midX - titlebarView.bounds.midX) < 0.5)
+        #expect(abs(titleCenterYFromTop - SettingsTitlebarLayout.baselineCenterY) < 0.5)
     }
 }
 

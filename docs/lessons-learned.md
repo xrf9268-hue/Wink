@@ -751,3 +751,37 @@ A two-layer mitigation is in place:
 1. Skill-level circuit breaker in Iteration Guard reads `logs/loop-circuit-breaker.json` and skips iterations during cooldown (exponential backoff up to 4 hours)
 2. Stop hook (`.claude/hooks/rate-limit-detector.sh`) detects rate-limit signals in the session transcript and writes cooldown state for the next iteration
 This handles soft limits and post-recovery transitions. Full quota exhaustion still causes empty fires — this is a `/loop` infrastructure limitation that requires upstream improvement.
+
+## Settings Titlebar Polish Requires Treating Design CSS As Source-Of-Truth
+
+**Issue**
+The macOS Settings titlebar UI was iterated through ~17 rejected screenshots over a single session before landing the right approach. The recurring failure mode was inventing values (top inset 14, container height 44, etc.) instead of reading the existing design source verbatim.
+
+**Cause**
+- `docs/design/reference/chrome.jsx` already specified `height: 36`, `align-items: center`, `border-bottom: 0.5px solid chromeBorder` and `primitives.jsx` already specified `padding: 0 16px; gap: 8` with `12x12` dots. Every position is exactly determined by those values.
+- The implementer kept proposing native macOS defaults (28pt titlebar, traffic lights at default inset) instead of the design's 36pt row with traffic-light dots at top-left (16, 12). "Native default" was the wrong baseline because the design intentionally diverges from it.
+- Earlier iterations also conflated "don't move traffic lights unnaturally" (user's actual complaint) with "never call `setFrameOrigin` on traffic lights at all". When the design dictates a 36pt row, traffic lights *must* be repositioned to land at design coordinates — that is alignment, not stylistic offset.
+
+**Practical guidance**
+- For any chrome polish work, **read the JSX/CSS in `docs/design/reference/` first** and translate values verbatim. Do not start from "what does macOS do by default" — start from "what does the design say".
+- SwiftUI's layout primitives have direct CSS-flex equivalents — `HStack(spacing:)` for `gap`, `.padding(.horizontal:)` for `padding: 0 X`, `.frame(maxWidth: .infinity)` + `.overlay { ... }` for `position: absolute; inset: 0; justify-content: center`. Prefer SwiftUI translations over hand-positioned `NSTextField` / `NSButton` for anything that is purely visual.
+- Reserve NSWindow-level customization for things SwiftUI cannot do: `titlebarAppearsTransparent`, `.fullSizeContentView`, `titlebarSeparatorStyle`, and repositioning the three native `standardWindowButton`s. Prefer SwiftUI for purely visual chrome only after verifying it is actually in the window's top 36pt coordinate space; SwiftUI Settings scenes may still respect the titlebar safe area and render the row below native chrome.
+- When the design specifies a non-native chrome height (36pt vs native ~28pt), the native `titlebarSeparatorStyle = .line` will draw at the wrong y. Set `.none` and draw the hairline yourself in SwiftUI at the design's y.
+- Reference apps screenshots (Chrome / Codex) are useful for **adjacent-control patterns** like the gap between traffic lights and a sidebar toggle — measure with PIL/numpy and follow the gap, not the absolute coords (their windows have different chrome heights).
+- Validation must be evidence-driven: `swift /Users/yvan/.codex/skills/macos-runtime-validation/scripts/capture_window_screenshot.swift` to capture, then a Python+PIL pixel measurement that asserts dot center coords, hairline y, and title center x against the spec. "Looks right" is not acceptable; the user has rejected ~17 "looks right" passes in this category.
+
+## SwiftUI Settings Safe Area Can Hide a Correct-Looking Chrome Row Below the Titlebar
+
+**Issue**
+After the traffic-light dots were correctly repositioned to the design coordinates, the SwiftUI `SettingsTitlebarChrome` row still rendered below the native titlebar. The screenshot looked close at a glance, but the sidebar toggle landed around y=41-53 and collided with the detail heading instead of sharing the traffic-light baseline at y=18.
+
+**Cause**
+- `.fullSizeContentView` makes the AppKit content view span the full window, but the SwiftUI `Settings` scene can still apply the window titlebar safe-area/content-layout inset to the SwiftUI root. A top `VStack` chrome row therefore starts below the native titlebar instead of at window y=0.
+- `.ignoresSafeArea(.container, edges: .top)` and `safeAreaInset(edge: .top)` are risky in this Settings scene: earlier attempts stopped the Settings window from appearing at all.
+- On macOS 15, a compact SwiftUI Settings titlebar starts with a 28pt `contentLayoutRect` top inset. Adding an 8pt bottom `NSTitlebarAccessoryViewController` with `layoutAttribute = .bottom` grows the titlebar/content inset to the design's 36pt row using documented AppKit API.
+
+**Practical guidance**
+- Treat `NSTitlebarAccessoryViewController` as the first tool for making a native Settings titlebar a precise non-default height. Set `.layoutAttribute = .bottom`, `.automaticallyAdjustsSize = false`, and give the accessory view the exact extra height needed to reach the design row.
+- If the title/sidebar-toggle must share a baseline with native traffic lights, place them in the `titlebarView` as AppKit controls after the accessory has grown the titlebar view to the target height. A SwiftUI row below the safe area cannot share y=18 with controls living in the native titlebar.
+- Keep the `NavigationSplitView` content out of the fake chrome row. Once the titlebar accessory makes `contentLayoutRect` start at y=36, the sidebar first row naturally begins below the hairline instead of needing a compensating top spacer.
+- Validate with pixels, not assumptions: assert the traffic-light bboxes, sidebar-toggle y centroid, hairline y, and sidebar first-row icon x alignment from the saved packaged-app screenshot.
