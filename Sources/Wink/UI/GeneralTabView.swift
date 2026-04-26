@@ -213,7 +213,8 @@ struct GeneralTabView: View {
                         selection: Binding(
                             get: { preferences.frontmostTargetBehavior },
                             set: { preferences.frontmostTargetBehavior = $0 }
-                        )
+                        ),
+                        accessibilityLabel: "When target is frontmost"
                     )
                     .frame(width: 172)
                 }
