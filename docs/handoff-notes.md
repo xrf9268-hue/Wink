@@ -165,7 +165,7 @@ On 2026-04-09, packaged-app runtime validation moved past the original TCC block
 - Stable toggle-off no longer restores the previous app first for normal app-level hides.
 - Toggle-off now uses the official `NSRunningApplication.hide()` request, then keeps the session in `deactivating` until hide is actually confirmed.
 - Deactivation confirmation is notification-first: `NSWorkspace.didHideApplicationNotification` completes the session immediately when available, with a short observation window as a bounded backstop.
-- A target is not considered toggled off merely because another app became frontmost; confirmation requires the target to be not frontmost and either hidden or windowless, which closes the Safari-visible-behind-Finder gap documented in `docs/handoff-safari-hide-bug.md`.
+- A target is not considered toggled off merely because another app became frontmost; confirmation requires the target to be not frontmost and either hidden or windowless, which closes the Safari-visible-behind-Finder gap documented in `docs/archive/handoff-safari-hide-bug.md`.
 - Repeat presses while the target is still deactivating no longer clear stable state or reactivate the target.
 
 ## Implemented Behavioral Guarantees

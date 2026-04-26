@@ -1,5 +1,26 @@
 # Wink Troubleshooting Guidance
 
+> **Last reviewed:** 2026-04-25 (issue #230 documentation audit). **Next audit due:** 2026-07-25.
+>
+> This file accumulates operational lessons over time. Without periodic pruning it becomes another archive. When a section's lesson no longer reflects current code, move it to `archive/lessons-learned-historical.md` (create on first prune) rather than rewriting it in place — the original framing is part of the evidence.
+
+## Documentation Drift Produces High-Confidence Reviewer Errors
+
+**Issue**
+During the 2026-04-25 review cycle, an `Explore` agent flagged a missing self-reference guard on `previousBundle` as a 🔴 Critical "violates AGENTS.md hard constraint" finding. The judgement was logically consistent with the then-current `AGENTS.md` wording, but the underlying field had already degraded from "runtime decision input" to "telemetry field," so the worst-case impact was a malformed log line, not a critical bug. Issue #229 later removed the stale previous-app telemetry entirely.
+
+**Cause**
+`AGENTS.md` and several entries under `docs/` describe behavior that the code no longer implements. Reviewers (human or AI) build their mental model from those documents and then map it onto the code. When the doc is wrong, the review is confidently wrong. The same review cycle also surfaced a fictitious type name (`ActivationObservationClientCallbacks`, when the actual type is `ApplicationObservation.Client`) being repeated downstream because nobody re-grepped before quoting it.
+
+**Practical guidance**
+- When a code reviewer (especially an agent) cites an `AGENTS.md` "hard constraint," cross-check that the constraint still matches the code before acting on the finding. If it does not, fix the doc as part of the same change set.
+- Before forwarding an agent report, `grep` every type / file / line reference it cites. "Agent gave a `file:line` pointer" is not the same as "agent verified the code." Treat unverified citations as hypotheses.
+- For state-machine fields, do not judge the impact of a missing guard from declaration + assignment alone. Trace the value to the sink it flows into (log? activate call? persistence?). The downstream consumer determines the severity, not the field's name or the doc's tone.
+- The Explore agent is well-suited to "find all places matching pattern X." It is not well-suited to "verify that the code obeys constraint list Y" — surface-level pattern matches will miss whether a value actually drives behavior. Keep constraint-vs-code judgements with a reader who is also tracing the data flow.
+- Doc bloat is itself a contributor: when there are 14 top-level files and several subdirectories without a one-line role description, "which doc is current?" becomes ambiguous, and the failure mode above repeats. Maintaining `docs/README.md` as a navigation index with explicit current/historical separation is part of preventing this class of bug.
+
+(See issue #230 for the systemic write-up that produced this lesson, and issue #229 for the follow-up that removed the stale `previousBundle` / `previousApp` telemetry.)
+
 ## Menu Bar Validation Can Use `System Events` Directly
 
 **Issue**

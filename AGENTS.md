@@ -37,7 +37,7 @@ If working from a non-macOS host: state clearly that build/runtime validation is
 ## Architecture expectations
 
 The codebase is feature-complete. Key architectural decisions:
-- AppKit-first, selective SwiftUI (documented in `docs/archive/app-structure-direction.md`); for new app-shell work, evaluate `MenuBarExtra`/`Settings`/`openSettings` first
+- AppKit-first, selective SwiftUI (current architecture documented in `docs/architecture.md`; see `docs/archive/app-structure-direction.md` only for the historical decision record). The app shell is already migrated to SwiftUI `MenuBarExtra` / `Settings` / `openSettings` (PRs #207 / #209 / #210); use those primitives for any new app-shell work and treat `NSApplication`-based menu bar/window scaffolding as legacy
 - O(1) precompiled trigger index for hot-path matching
 - Standard shortcuts use Carbon `EventHotKey`; Hyper-dependent shortcuts use the active event tap
 - EventTap lifecycle hardened with auto-recovery
