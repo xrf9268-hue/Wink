@@ -6,7 +6,6 @@ final class FrontmostApplicationTracker {
         let currentFrontmostBundleIdentifier: @MainActor () -> String?
     }
 
-    private(set) var lastNonTargetBundleIdentifier: String?
     private let client: Client
 
     init(client: Client = .live) {
@@ -15,17 +14,6 @@ final class FrontmostApplicationTracker {
 
     func currentFrontmostBundleIdentifier() -> String? {
         client.currentFrontmostBundleIdentifier()
-    }
-
-    func noteCurrentFrontmostApp(excluding targetBundleIdentifier: String) {
-        guard let current = currentFrontmostBundleIdentifier(), current != targetBundleIdentifier else {
-            return
-        }
-        lastNonTargetBundleIdentifier = current
-    }
-
-    func resetPreviousAppTracking() {
-        lastNonTargetBundleIdentifier = nil
     }
 }
 

@@ -36,7 +36,6 @@ func launchPathCreatesOwnedPendingStateForNotRunningTarget() {
     #expect(accepted == true)
     #expect(openedURLs == [appURL])
     #expect(switcher.pendingActivationState?.bundleIdentifier == shortcut.bundleIdentifier)
-    #expect(switcher.pendingActivationState?.previousBundleIdentifier == "com.apple.Terminal")
     #expect(coordinator.session(for: shortcut.bundleIdentifier)?.phase == .launching)
 }
 
@@ -135,7 +134,6 @@ func terminationImmediatelyClearsStableActivationState() {
 
     let pending = switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: "com.apple.Terminal",
         startedAt: clock.time
     )
     clock.time = 201

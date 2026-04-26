@@ -61,8 +61,8 @@ Before making large structural changes, read `docs/architecture.md`.
 
 - Apps can become frontmost through paths Wink does not control (Dock click, Cmd-Tab, macOS choosing the next app after a hide, or another app flow returning them). Do not assume every frontmost app was activated by Wink.
 - The `ACTIVE_UNTRACKED` path handles apps that are active+frontmost but have no `stableActivationState` or `pendingActivationState`. It hides the app and lets macOS choose the next foreground app. This is the correct fallback when tracking state is missing.
-- `previousApp` session context can self-reference the target bundle. Always guard `previousApp != shortcut.bundleIdentifier` before recording or using it.
-- Session-owned `previousBundle` in `ToggleSessionCoordinator` is durable activation/deactivation context. `FrontmostApplicationTracker` captures snapshots; the coordinator owns the value across phases.
+- Wink does not restore a captured "previous app" during normal toggle-off. Toggle-off sends a hide request and confirms the result through workspace notifications plus observation; macOS chooses the next foreground app.
+- `ToggleSessionCoordinator` owns attempt identity, pid, phase, activation path, and timing only. Do not reintroduce `previousBundle` / `previousApp` as state-machine inputs or telemetry fields unless a new runtime decision actually consumes them.
 - Toggle cooldown (400ms per-bundle) and debounce (200ms) are safety nets behind the primary Layer 1 autorepeat filter (`kCGKeyboardEventAutorepeat`). Changes to these values require verification via `scripts/e2e-full-test.sh` and physical key repeat testing.
 
 ## Concurrency and actor boundaries

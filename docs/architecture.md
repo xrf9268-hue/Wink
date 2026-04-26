@@ -193,11 +193,10 @@ Responsibilities:
 - re-evaluate app classification per toggle attempt instead of caching it globally
 - keep per-target toggle sessions on the main actor and let `ToggleSessionCoordinator` own the full pid-aware lifecycle for `launching`, `activating`, `activeStable`, `degraded`, `deactivating`, and `idle`
 - treat `ToggleSessionCoordinator` as the canonical lifecycle owner; `AppSwitcher` only exposes derived pending/stable views instead of keeping a second mutable toggle owner
-- keep durable `previousBundle`, `attemptID`, `pid`, and activation path on the coordinator session so relaunches and pid rollover stay traceable
+- keep `attemptID`, `pid`, phase, timing, and activation path on the coordinator session so relaunches and pid rollover stay traceable
 - attach the `NSRunningApplication` returned by `NSWorkspace.openApplication` back onto the existing `launching` session so launch and activate share the same confirmation pipeline
 - invalidate or clear sessions from `NSWorkspace.didActivateApplicationNotification` and `NSWorkspace.didTerminateApplicationNotification` instead of polling
 - only allow toggle-off from a confirmed stable state; repeat triggers during pending or degraded activation re-confirm the session instead of restoring away
-- use `FrontmostApplicationTracker` only to snapshot the current non-target frontmost bundle before a session is accepted, and let session-owned `previousBundle` remain the source of truth after that point
 - only allow windowless stable success for non-regular targets; regular apps must show visible/focused/main-window evidence before toggle-on can become `activeStable`
 - keep the hot activation path to front-process activation only, then escalate to `makeKeyWindow`, `AXRaise`, and window recovery only when observation shows activation is not yet settled
 - toggle off by requesting `NSRunningApplication.hide()`, then confirm deactivation asynchronously from `NSWorkspace.didHideApplicationNotification` plus a short observation window before clearing session state
@@ -322,8 +321,7 @@ Global shortcut event
   -> KeyMatcher normalizes KeyPress into ShortcutTrigger and triggerIndex finds the matching AppShortcut
   -> ShortcutManager emits `SHORTCUT_TRACE_DECISION event=matched`
   -> AppSwitcher.toggleApplication()
-  -> if no owned session exists yet, FrontmostApplicationTracker snapshots the current non-target frontmost bundle
-  -> ToggleSessionCoordinator creates/updates the pid-aware attempt session and owns durable `previousBundle`
+  -> ToggleSessionCoordinator creates/updates the pid-aware attempt session
   -> ApplicationObservation captures frontmost/window evidence
   -> activate / confirm / recover stage-by-stage
   -> `TOGGLE_TRACE_*` lines record branch reason, reset reason, and confirmation outcome for that attempt
@@ -353,7 +351,7 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **O(1) trigger index**: `ShortcutSignature` dictionary replaces linear scans in the hot path
 - **Observation-first toggle truth**: `ApplicationObservation` snapshots gate stable-state promotion from frontmost/window evidence instead of trusting `isActive` alone
 - **Single-source toggle ownership**: `ToggleSessionCoordinator` is the only mutable lifecycle owner; `AppSwitcher` derives pending/stable views from coordinator state instead of dual-writing local activation state
-- **Session-owned previous-app memory**: `ToggleSessionCoordinator` holds the durable `previousBundle` once a toggle session is accepted; `FrontmostApplicationTracker` only seeds that value from the currently frontmost non-target bundle before session ownership exists
+- **No previous-app restore state**: normal toggle-off requests `NSRunningApplication.hide()` and confirms the target is no longer foreground/visible; Wink does not store a durable previous-app bundle or use one to decide what should become frontmost next
 - **Pid-aware attempt sessions**: launch / relaunch / termination recovery use attempt-scoped sessions that track `attemptID`, `pid`, `activationPath`, and current phase so process-lifetime boundaries cannot silently desynchronize ownership
 - **No-window success policy**: regular apps require usable window evidence before `activeStable`; only `activationPolicy != .regular` targets may succeed while windowless
 - **Attempt-scoped diagnostics**: `TOGGLE_TRACE_*` and `SHORTCUT_TRACE_*` explain branch choice and failure boundaries without adding detailed logs to unrelated key events
@@ -370,7 +368,7 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **Launch-at-login status modeling**: `LaunchAtLoginStatus` preserves enabled / approval-needed / disabled / not-found states
 
 ## Known architectural gaps
-- No dedicated per-shortcut toggle history stack beyond the tracker seed plus the active session's single `previousBundle`
+- No dedicated per-shortcut foreground-history stack. Current toggle-off semantics intentionally let macOS choose the next foreground app after `hide()`.
 - No test seam around event-tap capture itself (core logic is testable; tap infrastructure requires real macOS)
 - Signed/notarized release build not yet produced (workflow documented in `docs/signing-and-release.md`)
 - Targeted manual macOS validation is still required for the 2026-04-08 capture/activation/hide redesign and the 2026-04-22 `MenuBarExtra(.window)` migration, especially Safari-only toggle-off, standard-shortcut vs Hyper parity, permission-state transitions, menu bar popover open/close behavior, hidden-icon reopen behavior, paused-shortcut suppression, system apps, hidden/minimized window paths, and timeout-stress behavior
