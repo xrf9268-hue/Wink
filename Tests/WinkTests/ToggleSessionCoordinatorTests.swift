@@ -10,7 +10,7 @@ func activeStableExpiresWhenAnotherAppBecomesFrontmost() {
     let clock = CoordinatorTestClock(time: 100)
     let coordinator = ToggleSessionCoordinator(now: { clock.time })
 
-    coordinator.beginActivation(for: "com.apple.Safari", previousBundle: "com.apple.Terminal")
+    coordinator.beginActivation(for: "com.apple.Safari")
     clock.time = 101
     coordinator.markStable(for: "com.apple.Safari")
 
@@ -29,7 +29,7 @@ func degradedSessionReturnsToIdleAfterRetryCap() {
         now: { clock.time }
     )
 
-    coordinator.beginActivation(for: "com.apple.Home", previousBundle: "com.apple.Terminal")
+    coordinator.beginActivation(for: "com.apple.Home")
     coordinator.markDegraded(for: "com.apple.Home", reason: "no visible windows")
 
     // First reconfirm — accepted
@@ -55,7 +55,7 @@ func degradedSessionReturnsToIdleAfterRetryCap() {
 func terminatedTargetClearsPendingSession() {
     let coordinator = ToggleSessionCoordinator(now: { 100 })
 
-    coordinator.beginActivation(for: "com.apple.Safari", previousBundle: "com.apple.Terminal")
+    coordinator.beginActivation(for: "com.apple.Safari")
     #expect(coordinator.session(for: "com.apple.Safari")?.phase == .activating)
 
     coordinator.handleTermination(bundleIdentifier: "com.apple.Safari")
@@ -72,21 +72,21 @@ func sessionStoreEvictsStalestIdleOrExpiredSessionAtConfiguredCap() {
     )
 
     // Create 3 sessions that become idle
-    coordinator.beginActivation(for: "com.app.A", previousBundle: nil)
+    coordinator.beginActivation(for: "com.app.A")
     clock.time = 101
     coordinator.resetSession(for: "com.app.A")
 
     clock.time = 200
-    coordinator.beginActivation(for: "com.app.B", previousBundle: nil)
+    coordinator.beginActivation(for: "com.app.B")
     clock.time = 201
     coordinator.resetSession(for: "com.app.B")
 
     clock.time = 300
-    coordinator.beginActivation(for: "com.app.C", previousBundle: nil)
+    coordinator.beginActivation(for: "com.app.C")
 
     // Cap is 3, we have 3 sessions. Adding one more should evict stalest idle.
     clock.time = 400
-    coordinator.beginActivation(for: "com.app.D", previousBundle: nil)
+    coordinator.beginActivation(for: "com.app.D")
 
     // A was stalest idle → evicted
     #expect(coordinator.session(for: "com.app.A") == nil)
@@ -106,7 +106,7 @@ func degradedReconfirmResetsIdleExpiryTimer() {
         now: { clock.time }
     )
 
-    coordinator.beginActivation(for: "com.apple.Home", previousBundle: "com.apple.Terminal")
+    coordinator.beginActivation(for: "com.apple.Home")
     coordinator.markDegraded(for: "com.apple.Home", reason: "no windows")
 
     // Advance 1.5s (under 2s idle expiry)
@@ -136,7 +136,7 @@ func degradedReconfirmDoesNotResetAbsoluteActivationCeiling() {
         now: { clock.time }
     )
 
-    coordinator.beginActivation(for: "com.apple.Home", previousBundle: "com.apple.Terminal")
+    coordinator.beginActivation(for: "com.apple.Home")
     coordinator.markDegraded(for: "com.apple.Home", reason: "no windows")
 
     // Reconfirm at 1.5s
@@ -166,7 +166,7 @@ func sameSessionRetriesCountAgainstSameRetryCap() {
         now: { clock.time }
     )
 
-    coordinator.beginActivation(for: "com.apple.Home", previousBundle: nil)
+    coordinator.beginActivation(for: "com.apple.Home")
     coordinator.markDegraded(for: "com.apple.Home", reason: "no windows")
 
     // Reconfirm 1
@@ -190,12 +190,12 @@ func sameSessionRetriesCountAgainstSameRetryCap() {
 // MARK: - Additional coordinator behavior
 
 @Test @MainActor
-func beginActivationStoresPreviousBundleInSession() {
+func beginActivationCreatesActivatingSession() {
     let coordinator = ToggleSessionCoordinator(now: { 100 })
 
-    coordinator.beginActivation(for: "com.apple.Safari", previousBundle: "com.apple.Terminal")
+    coordinator.beginActivation(for: "com.apple.Safari")
 
-    #expect(coordinator.previousBundle(for: "com.apple.Safari") == "com.apple.Terminal")
+    #expect(coordinator.session(for: "com.apple.Safari")?.phase == .activating)
 }
 
 @Test @MainActor
@@ -206,7 +206,7 @@ func activatingSessionExpiresAfterIdleTimeout() {
         now: { clock.time }
     )
 
-    coordinator.beginActivation(for: "com.apple.Safari", previousBundle: nil)
+    coordinator.beginActivation(for: "com.apple.Safari")
     #expect(coordinator.session(for: "com.apple.Safari")?.phase == .activating)
 
     clock.time = 102.5
@@ -221,7 +221,7 @@ func activatingSessionExpiresAfterAbsoluteCeiling() {
         now: { clock.time }
     )
 
-    coordinator.beginActivation(for: "com.apple.Safari", previousBundle: nil)
+    coordinator.beginActivation(for: "com.apple.Safari")
 
     // Simulate activity within idle expiry but past absolute ceiling
     clock.time = 103
@@ -235,7 +235,7 @@ func handleFrontmostChangeDoesNotExpireCurrentFrontmostApp() {
     let clock = CoordinatorTestClock(time: 100)
     let coordinator = ToggleSessionCoordinator(now: { clock.time })
 
-    coordinator.beginActivation(for: "com.apple.Safari", previousBundle: "com.apple.Terminal")
+    coordinator.beginActivation(for: "com.apple.Safari")
     clock.time = 101
     coordinator.markStable(for: "com.apple.Safari")
 
@@ -254,16 +254,16 @@ func evictionPrefersIdleOverExpiredNonIdle() {
     )
 
     // A: activating (will become expired non-idle)
-    coordinator.beginActivation(for: "com.app.A", previousBundle: nil)
+    coordinator.beginActivation(for: "com.app.A")
 
     // B: idle
     clock.time = 200
-    coordinator.beginActivation(for: "com.app.B", previousBundle: nil)
+    coordinator.beginActivation(for: "com.app.B")
     coordinator.resetSession(for: "com.app.B")
 
     // C: triggers eviction — B (idle) should be evicted before A (expired non-idle)
     clock.time = 300
-    coordinator.beginActivation(for: "com.app.C", previousBundle: nil)
+    coordinator.beginActivation(for: "com.app.C")
 
     #expect(coordinator.session(for: "com.app.B") == nil)
     #expect(coordinator.session(for: "com.app.A") != nil)
@@ -278,14 +278,14 @@ func evictionDoesNotEvictCurrentlyMutatingSession() {
         now: { clock.time }
     )
 
-    coordinator.beginActivation(for: "com.app.A", previousBundle: nil)
+    coordinator.beginActivation(for: "com.app.A")
     clock.time = 200
-    coordinator.beginActivation(for: "com.app.B", previousBundle: nil)
+    coordinator.beginActivation(for: "com.app.B")
 
     // Both sessions are activating (non-idle). Adding C should evict stalest non-idle,
     // but NOT the currently mutating session (C itself).
     clock.time = 300
-    coordinator.beginActivation(for: "com.app.C", previousBundle: nil)
+    coordinator.beginActivation(for: "com.app.C")
 
     // A is stalest, should be evicted
     #expect(coordinator.session(for: "com.app.A") == nil)
@@ -297,7 +297,7 @@ func evictionDoesNotEvictCurrentlyMutatingSession() {
 func terminatedTargetClearsDegradedSession() {
     let coordinator = ToggleSessionCoordinator(now: { 100 })
 
-    coordinator.beginActivation(for: "com.apple.Home", previousBundle: nil)
+    coordinator.beginActivation(for: "com.apple.Home")
     coordinator.markDegraded(for: "com.apple.Home", reason: "no windows")
 
     coordinator.handleTermination(bundleIdentifier: "com.apple.Home")
@@ -310,7 +310,7 @@ func deactivationResetsSessionToIdle() {
     let clock = CoordinatorTestClock(time: 100)
     let coordinator = ToggleSessionCoordinator(now: { clock.time })
 
-    coordinator.beginActivation(for: "com.apple.Safari", previousBundle: "com.apple.Terminal")
+    coordinator.beginActivation(for: "com.apple.Safari")
     clock.time = 101
     coordinator.markStable(for: "com.apple.Safari")
     coordinator.beginDeactivation(for: "com.apple.Safari")
@@ -330,7 +330,7 @@ func activeStableIdleExpiryAppliesLazily() {
         now: { clock.time }
     )
 
-    coordinator.beginActivation(for: "com.apple.Safari", previousBundle: nil)
+    coordinator.beginActivation(for: "com.apple.Safari")
     clock.time = 101
     coordinator.markStable(for: "com.apple.Safari")
 
@@ -349,7 +349,7 @@ func deactivatingSessionExpiresAfterIdleTimeout() {
         now: { clock.time }
     )
 
-    coordinator.beginActivation(for: "com.apple.Safari", previousBundle: nil)
+    coordinator.beginActivation(for: "com.apple.Safari")
     clock.time = 101
     coordinator.markStable(for: "com.apple.Safari")
     coordinator.beginDeactivation(for: "com.apple.Safari")
@@ -365,7 +365,7 @@ func handleFrontmostChangeKeepsDeactivatingSessionAliveUntilHideConfirmation() {
     let clock = CoordinatorTestClock(time: 100)
     let coordinator = ToggleSessionCoordinator(now: { clock.time })
 
-    coordinator.beginActivation(for: "com.apple.Safari", previousBundle: nil)
+    coordinator.beginActivation(for: "com.apple.Safari")
     clock.time = 101
     coordinator.markStable(for: "com.apple.Safari")
     coordinator.beginDeactivation(for: "com.apple.Safari")

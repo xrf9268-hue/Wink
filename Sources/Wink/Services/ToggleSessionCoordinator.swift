@@ -22,7 +22,6 @@ final class ToggleSessionCoordinator {
         var appName: String?
         var phase: Phase
         var activationPath: AppSwitcher.ActivationPath
-        var previousBundle: String?
         var activationStartedAt: CFAbsoluteTime
         var phaseStartedAt: CFAbsoluteTime
         var lastActivityAt: CFAbsoluteTime
@@ -77,14 +76,6 @@ final class ToggleSessionCoordinator {
         return session
     }
 
-    func previousBundle(for bundleIdentifier: String) -> String? {
-        session(for: bundleIdentifier)?.previousBundle
-    }
-
-    func durablePreviousBundle(for bundleIdentifier: String) -> String? {
-        session(for: bundleIdentifier)?.previousBundle
-    }
-
     func pendingActivationSession(for bundleIdentifier: String? = nil) -> Session? {
         session(for: bundleIdentifier, matching: [.launching, .activating, .degraded])
     }
@@ -93,7 +84,7 @@ final class ToggleSessionCoordinator {
         session(for: bundleIdentifier, matching: [.deactivating])
     }
 
-    func stableSession(for bundleIdentifier: String? = nil) -> Session? {
+    func stableOrDeactivatingSession(for bundleIdentifier: String? = nil) -> Session? {
         session(for: bundleIdentifier, matching: [.activeStable, .deactivating])
     }
 
@@ -111,7 +102,6 @@ final class ToggleSessionCoordinator {
     func beginLaunch(
         for bundleIdentifier: String,
         appName: String? = nil,
-        previousBundle: String?,
         startedAt: CFAbsoluteTime? = nil
     ) -> Session {
         makeSession(
@@ -119,7 +109,6 @@ final class ToggleSessionCoordinator {
             appName: appName,
             phase: .launching,
             activationPath: .launch,
-            previousBundle: previousBundle,
             pid: nil,
             startedAt: startedAt
         )
@@ -128,7 +117,6 @@ final class ToggleSessionCoordinator {
     @discardableResult
     func beginActivation(
         for bundleIdentifier: String,
-        previousBundle: String?,
         appName: String? = nil,
         activationPath: AppSwitcher.ActivationPath = .activate,
         pid: pid_t? = nil,
@@ -139,7 +127,6 @@ final class ToggleSessionCoordinator {
             appName: appName,
             phase: .activating,
             activationPath: activationPath,
-            previousBundle: previousBundle,
             pid: pid,
             startedAt: startedAt
         )
@@ -159,8 +146,7 @@ final class ToggleSessionCoordinator {
                 phase: session.phase,
                 event: "session_cleared",
                 activationPath: session.activationPath,
-                reason: "pid_rollover",
-                previousBundleIdentifier: session.previousBundle
+                reason: "pid_rollover"
             ).logMessage
             DiagnosticLog.log(rolloverMessage)
 
@@ -169,7 +155,6 @@ final class ToggleSessionCoordinator {
                 appName: session.appName,
                 phase: .activating,
                 activationPath: session.activationPath,
-                previousBundle: session.previousBundle,
                 pid: pid,
                 startedAt: now()
             )
@@ -263,7 +248,6 @@ final class ToggleSessionCoordinator {
     func beginDeactivation(
         for bundleIdentifier: String,
         appName: String? = nil,
-        previousBundle: String? = nil,
         activationPath: AppSwitcher.ActivationPath = .hide,
         pid: pid_t? = nil,
         startedAt: CFAbsoluteTime? = nil
@@ -274,7 +258,6 @@ final class ToggleSessionCoordinator {
                 appName: appName,
                 phase: .deactivating,
                 activationPath: activationPath,
-                previousBundle: previousBundle,
                 pid: pid,
                 startedAt: startedAt
             )
@@ -287,9 +270,6 @@ final class ToggleSessionCoordinator {
         let currentTime = now()
         if let appName {
             session.appName = appName
-        }
-        if let previousBundle {
-            session.previousBundle = previousBundle
         }
         if let pid {
             session.pid = pid
@@ -365,8 +345,7 @@ final class ToggleSessionCoordinator {
                 phase: session.phase,
                 event: "session_cleared",
                 activationPath: session.activationPath,
-                reason: "termination",
-                previousBundleIdentifier: session.previousBundle
+                reason: "termination"
             ).logMessage
         )
         sessions.removeValue(forKey: bundleIdentifier)
@@ -538,7 +517,6 @@ final class ToggleSessionCoordinator {
         appName: String?,
         phase: Session.Phase,
         activationPath: AppSwitcher.ActivationPath,
-        previousBundle: String?,
         pid: pid_t?,
         startedAt: CFAbsoluteTime?
     ) -> Session {
@@ -554,7 +532,6 @@ final class ToggleSessionCoordinator {
             appName: appName,
             phase: phase,
             activationPath: activationPath,
-            previousBundle: previousBundle,
             activationStartedAt: startedAt,
             phaseStartedAt: startedAt,
             lastActivityAt: currentTime,

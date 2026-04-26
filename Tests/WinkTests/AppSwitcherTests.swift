@@ -223,7 +223,7 @@ func hideRequestLogUsesRequestNaming() {
 }
 
 @Test
-func toggleTraceLogMessageIncludesAttemptIdentityAndReason() {
+func toggleTraceLogMessageIncludesAttemptIdentityAndReasonWithoutPreviousBundleTelemetry() {
     let event = ToggleDiagnosticEvent(
         family: .decision,
         attemptID: UUID(uuidString: "12345678-1234-1234-1234-1234567890AB"),
@@ -232,8 +232,7 @@ func toggleTraceLogMessageIncludesAttemptIdentityAndReason() {
         phase: .activating,
         event: "blocked",
         activationPath: .launch,
-        reason: "activation_pending_not_stable",
-        previousBundleIdentifier: "com.apple.Terminal"
+        reason: "activation_pending_not_stable"
     )
 
     let message = event.logMessage
@@ -246,7 +245,7 @@ func toggleTraceLogMessageIncludesAttemptIdentityAndReason() {
     #expect(message.contains("event=blocked"))
     #expect(message.contains("activationPath=launch"))
     #expect(message.contains("reason=\"activation_pending_not_stable\""))
-    #expect(message.contains("previousBundle=\"com.apple.Terminal\""))
+    #expect(!message.contains("previousBundle="))
 }
 
 @Test
@@ -260,7 +259,7 @@ func postHidePhaseUsesHideNaming() {
 }
 
 @Test @MainActor
-func toggleLifecycleLogMessageIncludesStructuredObservationFields() {
+func toggleLifecycleLogMessageIncludesStructuredObservationFieldsWithoutPreviousBundleTelemetry() {
     let switcher = AppSwitcher(frontmostTracker: makeTrackerForAppSwitcherTests())
     let shortcut = AppShortcut(
         appName: "Safari",
@@ -285,14 +284,13 @@ func toggleLifecycleLogMessageIncludesStructuredObservationFields() {
     let message = switcher.toggleLifecycleLogMessage(
         for: shortcut,
         lifecycle: .confirmation,
-        previousBundle: "com.openai.codex",
         activationPath: .activate,
         snapshot: snapshot,
         elapsedMilliseconds: 75
     )
 
     #expect(message.contains("TOGGLE_CONFIRMATION"))
-    #expect(message.contains("previous=com.openai.codex"))
+    #expect(!message.contains("previous="))
     #expect(message.contains("activationPath=activate"))
     #expect(message.contains("elapsedMs=75"))
     #expect(message.contains("classification=\"regularWindowed\""))
@@ -310,7 +308,6 @@ func secondTriggerDuringPendingActivationDoesNotToggleOff() {
 
     let first = switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: "com.openai.codex",
         startedAt: clock.time
     )
 
@@ -319,7 +316,6 @@ func secondTriggerDuringPendingActivationDoesNotToggleOff() {
     clock.time = 11
     let second = switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: "com.openai.codex",
         startedAt: clock.time
     )
 
@@ -340,13 +336,11 @@ func staleConfirmationGenerationCannotPromoteState() {
     )
     let first = switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: "com.openai.codex",
         startedAt: clock.time
     )
     clock.time = 21
     let second = switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: "com.openai.codex",
         startedAt: clock.time
     )
     let stableSnapshot = ActivationObservationSnapshot(
@@ -385,7 +379,6 @@ func confirmationWithoutVisibleWindowEvidenceDoesNotPromoteStable() {
     )
     let pending = switcher.acceptPendingActivation(
         for: "com.apple.Home",
-        previousBundleIdentifier: "com.openai.codex",
         startedAt: clock.time
     )
     let windowlessSnapshot = ActivationObservationSnapshot(
@@ -425,7 +418,6 @@ func acceptedTriggerStillReturnsTrueWhileConfirmationIsPending() {
 
     let accepted = switcher.recordAcceptedTrigger(
         bundleIdentifier: "com.apple.Safari",
-        previousBundleIdentifier: "com.openai.codex",
         startedAt: clock.time
     )
 
@@ -448,7 +440,6 @@ func recoverWindowlessAppStageCompletionHappensBeforeNextConfirmation() {
     )
     let state = switcher.acceptPendingActivation(
         for: "com.apple.Home",
-        previousBundleIdentifier: "com.openai.codex",
         startedAt: 40
     )
     let shortcut = AppShortcut(
@@ -523,7 +514,6 @@ func visibleWindowEvidencePromotesStableWithoutRecoveryEscalation() {
     )
     let state = switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: "com.apple.Terminal",
         startedAt: 50
     )
     let shortcut = AppShortcut(
@@ -584,7 +574,6 @@ func hiddenLagWithCompleteWindowEvidenceRetriesObservationBeforeWindowRecovery()
     )
     let state = switcher.acceptPendingActivation(
         for: "dev.zed.Zed",
-        previousBundleIdentifier: "com.mitchellh.ghostty",
         startedAt: 75
     )
     let shortcut = AppShortcut(
@@ -659,7 +648,6 @@ func hiddenLagOnlyRetriesObservationOnceBeforeRecoveryEscalation() {
     )
     let state = switcher.acceptPendingActivation(
         for: "dev.zed.Zed",
-        previousBundleIdentifier: "com.mitchellh.ghostty",
         startedAt: 80
     )
     let shortcut = AppShortcut(
@@ -751,12 +739,11 @@ func acceptPendingActivationNotifiesCoordinator() {
 
     switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: "com.apple.Terminal",
         startedAt: 100
     )
 
     #expect(coordinator.session(for: "com.apple.Safari")?.phase == .activating)
-    #expect(coordinator.previousBundle(for: "com.apple.Safari") == "com.apple.Terminal")
+    #expect(coordinator.session(for: "com.apple.Safari")?.generation == 1)
 }
 
 @Test @MainActor
@@ -771,7 +758,6 @@ func promotionToStableNotifiesCoordinator() {
 
     let pending = switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: "com.apple.Terminal",
         startedAt: clock.time
     )
     clock.time = 101
@@ -811,7 +797,6 @@ func shouldToggleOffReturnsFalseWhenCoordinatorInvalidatesSession() {
 
     let pending = switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: "com.apple.Terminal",
         startedAt: clock.time
     )
     clock.time = 101
@@ -853,7 +838,6 @@ func shouldToggleOffKeepsStableStateWhileDeactivationIsPending() {
 
     let pending = switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: "com.apple.Terminal",
         startedAt: clock.time
     )
     clock.time = 101
@@ -879,7 +863,6 @@ func shouldToggleOffKeepsStableStateWhileDeactivationIsPending() {
     let deactivation = switcher.acceptPendingDeactivation(
         for: "com.apple.Safari",
         appName: "Safari",
-        previousBundleIdentifier: "com.apple.Terminal",
         activationPath: .hide,
         startedAt: clock.time
     )
@@ -909,7 +892,6 @@ func deactivationConfirmationWaitsUntilTargetIsActuallyHidden() {
 
     let pending = switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: "com.apple.Terminal",
         startedAt: clock.time
     )
     clock.time = 201
@@ -935,7 +917,6 @@ func deactivationConfirmationWaitsUntilTargetIsActuallyHidden() {
     let deactivation = switcher.acceptPendingDeactivation(
         for: "com.apple.Safari",
         appName: "Safari",
-        previousBundleIdentifier: "com.apple.Terminal",
         activationPath: .hide,
         startedAt: clock.time
     )
@@ -978,7 +959,6 @@ func deactivationConfirmationWaitsUntilTargetIsActuallyHidden() {
     switcher.schedulePendingDeactivation(
         state: deactivation,
         shortcut: shortcut,
-        previousBundle: "com.apple.Terminal",
         activationPath: .hide,
         observe: {
             snapshots.removeFirst()
@@ -1017,7 +997,6 @@ func deactivationConfirmationRevertsToStableWhenHideDoesNotSettleBeforeDeadline(
 
     let pending = switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: "com.apple.Terminal",
         startedAt: clock.time
     )
     clock.time = 301
@@ -1043,7 +1022,6 @@ func deactivationConfirmationRevertsToStableWhenHideDoesNotSettleBeforeDeadline(
     let deactivation = switcher.acceptPendingDeactivation(
         for: "com.apple.Safari",
         appName: "Safari",
-        previousBundleIdentifier: "com.apple.Terminal",
         activationPath: .hide,
         startedAt: clock.time
     )
@@ -1057,7 +1035,6 @@ func deactivationConfirmationRevertsToStableWhenHideDoesNotSettleBeforeDeadline(
     switcher.schedulePendingDeactivation(
         state: deactivation,
         shortcut: shortcut,
-        previousBundle: "com.apple.Terminal",
         activationPath: .hide,
         observe: {
             ActivationObservationSnapshot(
@@ -1101,7 +1078,6 @@ func workspaceHideNotificationCompletesPendingDeactivationWithHideConfirmedLog()
 
     let pending = switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: "com.apple.Terminal",
         startedAt: clock.time
     )
     clock.time = 501
@@ -1127,7 +1103,6 @@ func workspaceHideNotificationCompletesPendingDeactivationWithHideConfirmedLog()
     switcher.acceptPendingDeactivation(
         for: "com.apple.Safari",
         appName: "Safari",
-        previousBundleIdentifier: "com.apple.Terminal",
         activationPath: .hide,
         startedAt: clock.time
     )
@@ -1398,7 +1373,6 @@ func clearActivationTrackingResetsCoordinatorSession() {
 
     switcher.acceptPendingActivation(
         for: "com.apple.Safari",
-        previousBundleIdentifier: nil,
         startedAt: 100
     )
     #expect(coordinator.session(for: "com.apple.Safari")?.phase == .activating)
@@ -1406,7 +1380,6 @@ func clearActivationTrackingResetsCoordinatorSession() {
     // recordAcceptedTrigger for a different app clears the previous one
     switcher.recordAcceptedTrigger(
         bundleIdentifier: "com.apple.Terminal",
-        previousBundleIdentifier: nil,
         startedAt: 100
     )
 

@@ -16,7 +16,6 @@ struct ToggleDiagnosticEvent: Sendable {
     let event: String
     let activationPath: AppSwitcher.ActivationPath?
     let reason: String?
-    let previousBundleIdentifier: String?
 
     var logMessage: String {
         [
@@ -27,8 +26,7 @@ struct ToggleDiagnosticEvent: Sendable {
             Self.stringField("phase", phase?.rawValue ?? "nil"),
             Self.stringField("event", event),
             Self.stringField("activationPath", activationPath?.rawValue ?? "nil"),
-            Self.quotedField("reason", reason),
-            Self.quotedField("previousBundle", previousBundleIdentifier)
+            Self.quotedField("reason", reason)
         ].joined(separator: " ")
     }
 

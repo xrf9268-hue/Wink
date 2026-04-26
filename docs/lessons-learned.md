@@ -304,16 +304,16 @@ The first trigger may only have started activation, while the second trigger arr
 **Practical guidance**
 Do not let "activation requested" mean "activation complete". Require a short post-activation confirmation pass and only allow toggle-off from a stable active state. During pending or degraded activation, a repeat trigger should re-confirm or re-attempt activation instead of making hide/reactivate decisions from a transient snapshot.
 
-## Session-Owned Previous App Memory
+## Retiring Previous-App Memory When It Stops Driving Behavior
 
 **Issue**
-Session context becomes incoherent if previous-app memory is cleared as soon as activation is accepted.
+State-machine fields become review traps when they no longer feed runtime decisions but still look authoritative in code and docs.
 
 **Cause**
-Even after removing restore-first toggle-off, the same `previousBundle` still needs to survive activation, pending confirmation, stable state, and deactivation as durable session context. A destructive read from a lightweight tracker loses that ownership too early.
+Wink used to need previous-app memory for restore-oriented toggle-off designs. After the runtime moved to `NSRunningApplication.hide()` plus observation-based confirmation, that value only flowed into logs and snapshots. Keeping it made reviewers treat telemetry drift as a behavior bug.
 
 **Practical guidance**
-Let the toggle session own the durable `previousBundle` once a trigger is accepted. Use `FrontmostApplicationTracker` to capture current frontmost context, but keep the authoritative previous-app value on the coordinator session until the session is reset. Treat it as session context and observability metadata, not as a reason to reintroduce restore-first toggle-off.
+Trace state-machine values to their final sink before assigning severity. If a field only feeds diagnostics and no runtime branch consumes it, either rename it as telemetry or remove it outright. Do not keep a compatibility field just because older plans mention it.
 
 ## Bundle-Only Tracking Fails Across Process Lifetimes
 
@@ -324,7 +324,7 @@ Launch -> quit -> relaunch flows can leave Wink believing a target is both "stab
 When bundle-keyed session tracking is duplicated across multiple owners, termination or pid rollover can clear one owner while the other still holds stale stable/pending state. That is how relaunch paths degrade into `phase=no_session`, `hide_untracked`, or other ownership confusion right after an otherwise valid launch.
 
 **Practical guidance**
-Make `ToggleSessionCoordinator` the only lifecycle owner. Keep pid, attempt id, phase, and durable `previousBundle` on that single session object, and reset or replace the session on termination and pid rollover. `AppSwitcher` may expose derived read-only views, but it must not become a second mutable lifecycle owner.
+Make `ToggleSessionCoordinator` the only lifecycle owner. Keep pid, attempt id, phase, activation path, and timing on that single session object, and reset or replace the session on termination and pid rollover. `AppSwitcher` may expose derived read-only views, but it must not become a second mutable lifecycle owner.
 
 Do not throw away the `NSRunningApplication` returned by `NSWorkspace.openApplication`. The launch completion is the cleanest process-identity seam Wink gets for a just-launched target. Attach that pid back onto the existing `launching` session immediately and run the same confirmation pipeline used by activate/unhide, or the next press can still fall through to `hide_untracked` despite an otherwise successful launch.
 
@@ -348,7 +348,7 @@ Outcome logs such as `TOGGLE_STABLE` or `TOGGLE_HIDE_DEGRADED` are not enough to
 Without an attempt-level identifier, log readers have to infer which launch, confirmation, and reset lines belong together. That breaks down quickly around relaunches, pid changes, or repeated key presses.
 
 **Practical guidance**
-Emit trace logs with `attemptId`, `bundle`, `pid`, `phase`, `event`, `activationPath`, `reason`, and `previousBundle`. Keep them at the matched-shortcut and lifecycle-transition boundaries, not on every raw key event. The goal is that one failed attempt window in `~/.config/Wink/debug.log` is enough to reconstruct the branch choice end-to-end.
+Emit trace logs with `attemptId`, `bundle`, `pid`, `phase`, `event`, `activationPath`, and `reason`. Keep them at the matched-shortcut and lifecycle-transition boundaries, not on every raw key event. The goal is that one failed attempt window in `~/.config/Wink/debug.log` is enough to reconstruct the branch choice end-to-end.
 
 ## Notification-Driven Toggle Invalidation
 
@@ -381,7 +381,7 @@ An app can be frontmost and apparently stable even though Wink has no active sta
 Apps can become frontmost through paths Wink does not own: Dock click, Cmd-Tab, macOS choosing the next app after a hide, or another app flow returning them to the foreground. `stableActivationState` only exists for apps Wink itself recently stabilized, so these externally surfaced apps may otherwise fall through to the activate path.
 
 **Practical guidance**
-When the target app is already active and frontmost but has no tracking state, treat it as an untracked toggle-off: hide the app and let macOS bring the next app forward. Guard against self-referencing `previousApp` (target == previous) by explicitly clearing it. Log the `ACTIVE_UNTRACKED` path with coordinator phase and tracker state for post-hoc analysis.
+When the target app is already active and frontmost but has no tracking state, treat it as an untracked toggle-off: hide the app and let macOS bring the next app forward. Log the `hide_untracked` path with coordinator phase and observation state for post-hoc analysis.
 
 The hide-untracked branch still needs a real owned deactivation session. Logging `hide_untracked` alone is not enough: if the branch does not allocate a coordinator-owned `deactivating` session first, later `HIDE_REQUEST` / hide-confirmation guards can no-op and the target will remain frontmost even though Wink chose the correct branch in logs.
 
@@ -441,16 +441,16 @@ Some test helpers built `ShortcutManager` or `AppPreferences` with a default `Pe
 **Practical guidance**
 Treat the default `PersistenceService()` initializer as runtime-only. Any test that exercises save/load behavior through `ShortcutManager`, `AppPreferences`, or related helpers must inject an isolated persistence service backed by a temporary directory. Reuse a shared test harness instead of open-coding ad hoc temp paths so new tests inherit isolation by default. When verifying this boundary, compare the real `shortcuts.json` checksum before and after `swift test`; unchanged bytes are the acceptance signal.
 
-## Previous App Self-Reference in Tracker
+## Previous-App Self-Reference Was A Symptom, Not The Runtime Contract
 
 **Issue**
-`previousApp` resolves to the target app's own bundle identifier, poisoning activation context and making later toggle decisions misleading.
+Old previous-app telemetry could self-reference the target bundle and make review output sound more severe than the runtime effect actually was.
 
 **Cause**
-When App A is frontmost and App B is toggled on, `noteCurrentFrontmostApp(excluding: B)` correctly records A. But after App B is hidden and macOS brings App A back, `noteCurrentFrontmostApp(excluding: A)` sees A as frontmost and skips the update, so a stale self-reference can persist into the next activation cycle.
+The previous-app field had drifted from a decision input to a log-only value. Once normal toggle-off stopped restoring that bundle, self-reference no longer changed behavior; it only made diagnostics noisy and docs misleading.
 
 **Practical guidance**
-Always check `previousApp != shortcut.bundleIdentifier` before recording it. If a self-reference is detected, treat `previousApp` as nil and log the anomaly.
+Do not solve telemetry-only drift with more guard logic unless the telemetry is still worth keeping. In issue #229 the correct fix was to remove the previous-app field from sessions, pending state, and trace/lifecycle logs.
 
 ## DiagnosticLog.log() Uses queue.async to Avoid Blocking
 
