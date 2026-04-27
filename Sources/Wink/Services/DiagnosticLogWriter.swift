@@ -81,7 +81,12 @@ final class DiagnosticLogWriter: @unchecked Sendable {
             FileManager.default.createFile(atPath: logPath, contents: nil)
         }
         guard let newHandle = FileHandle(forWritingAtPath: logPath) else { return nil }
-        try? newHandle.seekToEnd()
+        do {
+            _ = try newHandle.seekToEnd()
+        } catch {
+            try? newHandle.close()
+            return nil
+        }
         handle = newHandle
         return newHandle
     }
