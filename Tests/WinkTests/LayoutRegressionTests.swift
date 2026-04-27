@@ -35,6 +35,49 @@ struct LayoutRegressionTests {
     }
 
     @Test @MainActor
+    func menuBarPopoverShortcutsRegionOwnsVerticalScroller() throws {
+        let context = MenuBarPopoverLayoutContext(shortcutCount: 18)
+        defer { context.harness.cleanup() }
+
+        let hostingView = makeHostingView(
+            MenuBarPopoverView(model: context.model).winkChromeRoot(),
+            size: NSSize(width: 356, height: 520)
+        )
+
+        let scrollViews = verticalScrollViews(in: hostingView)
+        let scroller = try #require(scrollViews.first)
+
+        #expect(scrollViews.count == 1)
+        #expect(scroller.frame.height < hostingView.bounds.height - 120)
+        #expect(scroller.frame.height > 80)
+    }
+
+    @Test @MainActor
+    func insightsMostUsedRegionOwnsVerticalScroller() async throws {
+        let store = ShortcutStore()
+        let shortcuts = makeInsightShortcuts(count: 20)
+        store.replaceAll(with: shortcuts)
+
+        let viewModel = InsightsViewModel(
+            usageTracker: MultiShortcutUsageTracker(shortcuts: shortcuts),
+            shortcutStore: store
+        )
+        await viewModel.refresh(for: .week)
+
+        let hostingView = makeHostingView(
+            InsightsTabView(viewModel: viewModel),
+            size: NSSize(width: 700, height: 640)
+        )
+
+        let scrollViews = verticalScrollViews(in: hostingView)
+        let scroller = try #require(scrollViews.first)
+
+        #expect(scrollViews.count == 1)
+        #expect(scroller.frame.height < hostingView.bounds.height - 180)
+        #expect(scroller.frame.height > 120)
+    }
+
+    @Test @MainActor
     func insightsCardUsesUpdatedSectionTitleCopy() {
         #expect(InsightsTabCopy.rankingSectionTitle == "Most used")
         #expect(InsightsTabCopy.rankingAccessoryText(totalCount: 112, period: .week) == "112 activations · 7 days")
@@ -439,7 +482,7 @@ struct LayoutRegressionTests {
     }
 
     @Test @MainActor
-    func insightsTabExposesSinglePageScroller() async {
+    func insightsMostUsedExposesSingleVerticalScroller() async {
         let shortcutId = UUID()
         let store = ShortcutStore()
         store.replaceAll(with: [
@@ -463,9 +506,7 @@ struct LayoutRegressionTests {
             size: NSSize(width: 700, height: 430)
         )
 
-        let scrollViewsWithVerticalScrollers = descendants(in: hostingView)
-            .compactMap { $0 as? NSScrollView }
-            .filter(\.hasVerticalScroller)
+        let scrollViewsWithVerticalScrollers = verticalScrollViews(in: hostingView)
 
         #expect(scrollViewsWithVerticalScrollers.count == 1)
     }
@@ -618,6 +659,68 @@ private actor StaticUsageTracker: UsageTracking {
     }
 }
 
+private actor MultiShortcutUsageTracker: UsageTracking {
+    private let counts: [UUID: Int]
+    private let dailyCountsByShortcut: [String: [(date: String, count: Int)]]
+    private let hourlyBuckets: [HourlyUsageBucket]
+
+    init(shortcuts: [AppShortcut]) {
+        counts = Dictionary(
+            uniqueKeysWithValues: shortcuts.enumerated().map { index, shortcut in
+                (shortcut.id, shortcuts.count - index)
+            }
+        )
+        dailyCountsByShortcut = Dictionary(
+            uniqueKeysWithValues: shortcuts.enumerated().map { index, shortcut in
+                (
+                    shortcut.id.uuidString,
+                    [
+                        (date: "2026-04-20", count: 1),
+                        (date: "2026-04-21", count: shortcuts.count - index),
+                    ]
+                )
+            }
+        )
+        hourlyBuckets = (0..<7).flatMap { day in
+            (0..<24).map { hour in
+                HourlyUsageBucket(
+                    date: "2026-04-\(String(format: "%02d", 20 + day))",
+                    hour: hour,
+                    count: (day + hour) % 4
+                )
+            }
+        }
+    }
+
+    func usageCounts(days: Int, relativeTo now: Date) async -> [UUID: Int] {
+        counts
+    }
+
+    func dailyCounts(days: Int, relativeTo now: Date) async -> [String: [(date: String, count: Int)]] {
+        dailyCountsByShortcut
+    }
+
+    func totalSwitches(days: Int, relativeTo now: Date) async -> Int {
+        counts.values.reduce(0, +)
+    }
+
+    func hourlyCounts(days: Int, relativeTo now: Date) async -> [HourlyUsageBucket] {
+        hourlyBuckets
+    }
+
+    func previousPeriodTotal(days: Int, relativeTo now: Date) async -> Int {
+        0
+    }
+
+    func streakDays(relativeTo now: Date) async -> Int {
+        7
+    }
+
+    func usageTimeZone() async -> TimeZone {
+        .current
+    }
+}
+
 private struct CardWidthProbeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -633,6 +736,17 @@ private struct CardWidthProbeView: View {
     }
 }
 
+private func makeInsightShortcuts(count: Int) -> [AppShortcut] {
+    (0..<count).map { index in
+        AppShortcut(
+            appName: "Insight App \(index + 1)",
+            bundleIdentifier: "com.example.insight\(index + 1)",
+            keyEquivalent: String(UnicodeScalar(97 + (index % 26))!),
+            modifierFlags: ["command", "option"]
+        )
+    }
+}
+
 private func makeHeatmapBuckets() -> [HourlyUsageBucket] {
     (0..<7).flatMap { day in
         (0..<24).map { hour in
@@ -642,6 +756,65 @@ private func makeHeatmapBuckets() -> [HourlyUsageBucket] {
                 count: (day + hour) % 5
             )
         }
+    }
+}
+
+@MainActor
+private final class MenuBarPopoverLayoutContext {
+    let harness = TestPersistenceHarness()
+    let model: MenuBarPopoverModel
+
+    init(shortcutCount: Int) {
+        let shortcutStore = ShortcutStore()
+        let shortcuts = (0..<shortcutCount).map { index in
+            AppShortcut(
+                appName: "Menu App \(index + 1)",
+                bundleIdentifier: "com.example.menu\(index + 1)",
+                keyEquivalent: String(UnicodeScalar(97 + (index % 26))!),
+                modifierFlags: ["command", "option", "control", "shift"]
+            )
+        }
+        shortcutStore.replaceAll(with: shortcuts)
+
+        let manager = ShortcutManager(
+            shortcutStore: shortcutStore,
+            persistenceService: harness.makePersistenceService(),
+            appSwitcher: LayoutFakeAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: LayoutFakeCaptureProvider(),
+                hyperProvider: LayoutFakeHyperCaptureProvider()
+            ),
+            permissionService: LayoutFakePermissionService(),
+            diagnosticClient: .live
+        )
+
+        let preferences = AppPreferences(
+            shortcutManager: manager,
+            launchAtLoginService: LaunchAtLoginService(client: .init(
+                status: { .notRegistered },
+                register: {},
+                unregister: {},
+                openSystemSettingsLoginItems: {}
+            ))
+        )
+        let statusProvider = ShortcutStatusProvider(
+            client: .init(
+                applicationURL: { _ in URL(fileURLWithPath: "/Applications/Fake.app") },
+                runningBundleIdentifiers: { [] }
+            ),
+            workspaceNotificationCenter: NotificationCenter(),
+            appNotificationCenter: NotificationCenter()
+        )
+        model = MenuBarPopoverModel(
+            shortcutStore: shortcutStore,
+            preferences: preferences,
+            shortcutStatusProvider: statusProvider,
+            usageTracker: StaticUsageTracker(shortcutId: shortcuts.first?.id ?? UUID()),
+            workspaceNotificationCenter: NotificationCenter(),
+            appNotificationCenter: NotificationCenter(),
+            openSettings: { _ in },
+            quit: {}
+        )
     }
 }
 
@@ -859,6 +1032,13 @@ private func makeHostingView<Content: View>(_ rootView: Content, size: NSSize) -
     RunLoop.current.run(until: Date().addingTimeInterval(0.05))
     hostingView.layoutSubtreeIfNeeded()
     return hostingView
+}
+
+@MainActor
+private func verticalScrollViews(in view: NSView) -> [NSScrollView] {
+    descendants(in: view)
+        .compactMap { $0 as? NSScrollView }
+        .filter(\.hasVerticalScroller)
 }
 
 @MainActor

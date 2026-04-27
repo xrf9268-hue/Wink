@@ -198,16 +198,15 @@ struct MenuBarPopoverView: View {
     @Bindable var model: MenuBarPopoverModel
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                header
-                search
-                todayCard
-                shortcutsCard
-                actionsCard
-            }
-            .padding(12)
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            search
+            todayCard
+            shortcutsCard
+            actionsCard
         }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(palette.windowBg)
         .onAppear {
             model.refresh()
@@ -286,17 +285,25 @@ struct MenuBarPopoverView: View {
                     .padding(.top, 14)
                     .padding(.bottom, 10)
             } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(filteredRows.enumerated()), id: \.element.id) { index, row in
-                        MenuBarShortcutRow(row: row)
+                GeometryReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(filteredRows.enumerated()), id: \.element.id) { index, row in
+                                MenuBarShortcutRow(row: row)
 
-                        if index < filteredRows.count - 1 {
-                            Divider()
-                                .overlay(palette.hairline)
-                                .padding(.leading, 48)
+                                if index < filteredRows.count - 1 {
+                                    Divider()
+                                        .overlay(palette.hairline)
+                                        .padding(.leading, 48)
+                                }
+                            }
                         }
+                        .frame(width: proxy.size.width, alignment: .leading)
+                        .frame(minHeight: proxy.size.height, alignment: .top)
                     }
+                    .scrollIndicators(.automatic, axes: .vertical)
                 }
+                .frame(minHeight: 120, maxHeight: .infinity, alignment: .top)
             }
 
             Divider().overlay(palette.hairline)
@@ -314,6 +321,8 @@ struct MenuBarPopoverView: View {
             }
             .buttonStyle(.plain)
         }
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .layoutPriority(1)
     }
 
     private var actionsCard: some View {

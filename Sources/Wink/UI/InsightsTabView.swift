@@ -26,54 +26,25 @@ struct InsightsTabView: View {
     @Bindable var viewModel: InsightsViewModel
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 14) {
-                header
+        VStack(alignment: .leading, spacing: 14) {
+            header
 
-                InsightsUnusedNudge(appNames: viewModel.unusedShortcutNames)
+            InsightsUnusedNudge(appNames: viewModel.unusedShortcutNames)
 
-                InsightsKpiSection(
-                    totalCount: viewModel.totalCount,
-                    previousPeriodTotal: viewModel.previousPeriodTotal,
-                    currentStreakDays: viewModel.currentStreakDays,
-                    sparklinePoints: viewModel.activationSparklinePoints
-                )
+            InsightsKpiSection(
+                totalCount: viewModel.totalCount,
+                previousPeriodTotal: viewModel.previousPeriodTotal,
+                currentStreakDays: viewModel.currentStreakDays,
+                sparklinePoints: viewModel.activationSparklinePoints
+            )
 
-                InsightsHourlyHeatmap(buckets: viewModel.heatmapBuckets)
+            InsightsHourlyHeatmap(buckets: viewModel.heatmapBuckets)
 
-                WinkCard(
-                    title: {
-                        Text(InsightsTabCopy.rankingSectionTitle)
-                    },
-                    accessory: {
-                        Text(InsightsTabCopy.rankingAccessoryText(totalCount: viewModel.totalCount, period: viewModel.period))
-                            .font(WinkType.labelSmall)
-                            .foregroundStyle(palette.textTertiary)
-                    }
-                ) {
-                    if viewModel.appRows.isEmpty {
-                        Text(InsightsTabCopy.emptyRankingText)
-                            .font(WinkType.bodyText)
-                            .foregroundStyle(palette.textSecondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 18)
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(Array(viewModel.appRows.enumerated()), id: \.element.id) { index, item in
-                                InsightsAppRow(
-                                    item: item,
-                                    showsDivider: index < viewModel.appRows.count - 1
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 18)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            mostUsedCard
         }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(palette.windowBg)
     }
 
@@ -99,5 +70,47 @@ struct InsightsTabView: View {
             .frame(width: 120)
             .labelsHidden()
         }
+    }
+
+    private var mostUsedCard: some View {
+        WinkCard(
+            title: {
+                Text(InsightsTabCopy.rankingSectionTitle)
+            },
+            accessory: {
+                Text(InsightsTabCopy.rankingAccessoryText(totalCount: viewModel.totalCount, period: viewModel.period))
+                    .font(WinkType.labelSmall)
+                    .foregroundStyle(palette.textTertiary)
+            }
+        ) {
+            if viewModel.appRows.isEmpty {
+                Text(InsightsTabCopy.emptyRankingText)
+                    .font(WinkType.bodyText)
+                    .foregroundStyle(palette.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 18)
+            } else {
+                GeometryReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(viewModel.appRows.enumerated()), id: \.element.id) { index, item in
+                                InsightsAppRow(
+                                    item: item,
+                                    showsDivider: index < viewModel.appRows.count - 1
+                                )
+                            }
+                        }
+                        .frame(width: proxy.size.width, alignment: .leading)
+                        .frame(minHeight: proxy.size.height, alignment: .top)
+                    }
+                    .scrollIndicators(.automatic, axes: .vertical)
+                }
+                .frame(minHeight: 140, maxHeight: .infinity, alignment: .top)
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .layoutPriority(1)
     }
 }

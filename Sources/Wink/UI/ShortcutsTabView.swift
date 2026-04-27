@@ -459,6 +459,7 @@ struct ShortcutsTabView: View {
                         .frame(width: proxy.size.width, alignment: .leading)
                         .frame(minHeight: proxy.size.height, alignment: .top)
                     }
+                    .scrollIndicators(.automatic, axes: .vertical)
                 }
                 .frame(
                     minHeight: ShortcutRowMetrics.minimumListHeight,
@@ -592,6 +593,7 @@ struct ShortcutsTabView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .scrollIndicators(.automatic, axes: .vertical)
             .frame(maxHeight: ShortcutImportPreviewMetrics.detailsMaxHeight)
         }
     }
