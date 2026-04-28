@@ -1,64 +1,51 @@
 # Wink
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Wink" width="600">
+  <img src="docs/screenshot.png" alt="Wink settings showing shortcut capture ready" width="720">
 </p>
 
-Wink is a macOS menu bar app that binds global shortcuts to target apps, with Thor-like toggle behavior, fast activation, and lightweight usage insights.
+Wink is a macOS menu bar app for opening, focusing, and hiding apps with global shortcuts. It keeps the interaction deliberately small: press a shortcut once to bring an app forward, press it again to get it out of the way.
 
 ## Why "Wink"?
-The rename from `Quickey` to `Wink` came out of [issue #183](https://github.com/xrf9268-hue/Wink/issues/183): the old name explained the mechanism ("quick keys"), while the new name tries to capture the feeling. The goal is app switching that happens "in the wink of an eye" rather than a tool name that only describes hotkeys.
-
-- It emphasizes the experience: fast, almost instant switching
-- It keeps the product short, lightweight, and a little more human than a purely functional utility name
-- It mirrors the same naming instinct that inspired tools like [Shun](https://blog.sorrycc.com/release-shun): name the sensation, not just the implementation
+The name comes from the rename discussion in [issue #183](https://github.com/xrf9268-hue/Wink/issues/183). The old name described quick keys; Wink describes the experience: app switching that happens in the wink of an eye.
 
 ## Highlights
-- Global shortcuts that launch or toggle target apps with a single keystroke
-- Menu bar dropdown overview that lists configured shortcuts, shortcut glyphs, and lightweight running state at a glance
-- Thor-like semantics that activate, re-activate hidden apps, or directly hide the frontmost target depending on state
-- Standard shortcuts use Carbon hotkeys; Hyper shortcuts use the active event tap
-- Accurate shortcut readiness reflects Accessibility, Input Monitoring, Carbon registration, and live Hyper event-tap health
-- Supports letters, modifiers, Hyper Key, F-keys, arrows, and space
-- Launch at login support with system approval surfaced in the app
-- Sparkle-backed automatic updates for signed release builds
-- Insights view for recent usage trends and app ranking
-- Swift 6, AppKit-first, and SPM-first by design
+- Bind letters, function keys, arrows, or Space to target apps.
+- Use normal modifier shortcuts or a Hyper shortcut path based on Caps Lock.
+- Launch missing apps, focus running apps, or hide the frontmost target with Thor-like toggle semantics.
+- Review shortcuts, readiness, and recent usage from the menu bar and Settings.
+- Import and export `.winkrecipe` shortcut sets.
+- Launch at login and automatic updates are surfaced through native macOS controls.
 
-## Requirements and Constraints
-- macOS 15+
-- Swift 6 / SPM-first
-- macOS runtime behavior must be validated on macOS
-- SkyLight is a private API dependency for activation reliability
+## Requirements
+- macOS 15 or later.
+- Accessibility permission for global shortcut routing.
+- Input Monitoring only when Hyper-routed shortcuts are enabled.
+- Swift 6 when building from source.
 
-## Build and Run
+## Build
 ```bash
 swift build
 swift test
-./scripts/package-app.sh        # release build + .app bundle
-./scripts/package-update-zip.sh # Sparkle update archive from build/Wink.app
-./scripts/package-dmg.sh        # branded drag-install DMG from build/Wink.app
-./scripts/e2e-full-test.sh      # end-to-end suite using the current saved shortcuts (Accessibility required; Input Monitoring needed when Hyper shortcuts are configured)
+./scripts/package-app.sh
+open build/Wink.app
 ```
 
-## Permissions / First Launch
-- Wink needs `Accessibility` to intercept and route all shortcuts.
-- Wink needs `Input Monitoring` only when the current enabled shortcut set includes Hyper-routed shortcuts.
-- Grant permissions in:
-  `System Settings > Privacy & Security > Accessibility`
-  `System Settings > Privacy & Security > Input Monitoring`
-- When testing a newly built `build/Wink.app`, do not assume an older `/Applications/Wink.app` grant will carry over. If macOS is still pointing at the wrong app copy, remove the old `Wink` entry and add the current app bundle again.
-- After changing `Input Monitoring`, quit and reopen Wink so the active event tap is recreated under the new permission state.
-- Prefer `open build/Wink.app` over launching the binary directly so macOS tracks the correct app identity for TCC.
-- To confirm the grant actually took effect, inspect `~/.config/Wink/debug.log`:
-  - `ax=true` is the Accessibility signal
-  - `im=true` is the Input Monitoring signal
-  - `carbon=true` means standard shortcuts registered successfully
-  - `eventTap=true` means the Hyper capture path is active
+Useful packaging commands:
 
-`Launch at Login` should be validated from a packaged app installed in `/Applications` or `~/Applications`. Running `build/Wink.app` directly from the repo can surface an install-location warning instead of a real login-item configuration state.
+```bash
+./scripts/package-update-zip.sh
+./scripts/package-dmg.sh
+./scripts/e2e-full-test.sh
+```
 
-Tagged releases use `v<CFBundleShortVersionString>` and the release workflow described in [`docs/signing-and-release.md`](./docs/signing-and-release.md) now packages three artifacts from the same signed app bundle: `Wink-<version>.dmg` for first install, `Wink-<version>.zip` for Sparkle updates, and `appcast.xml` for the signed update feed. The credential-backed release path uploads those artifacts to Cloudflare R2 and still publishes the DMG on GitHub Releases. The rolling [internal prerelease](https://github.com/xrf9268-hue/Wink/releases/tag/internal-downloads) remains unsigned and is for trusted testers only, so macOS may warn on first launch.
+Always launch the packaged app with `open build/Wink.app` when testing permissions. macOS ties Accessibility and Input Monitoring grants to the app identity, signature, and bundle path; launching the raw binary is not equivalent.
+
+## Technical Notes
+- Standard shortcuts use Carbon hotkeys.
+- Hyper-routed shortcuts use an active event tap.
+- Reliable activation for an accessory app depends on SkyLight, a private macOS API. See [`docs/architecture.md`](./docs/architecture.md) for the platform trade-offs.
+- Runtime-sensitive behavior must be validated on macOS, not inferred from source inspection alone.
 
 ## Documentation
 - [`docs/README.md`](./docs/README.md)
@@ -66,6 +53,3 @@ Tagged releases use `v<CFBundleShortVersionString>` and the release workflow des
 - [`docs/github-automation.md`](./docs/github-automation.md)
 - [`docs/privacy.md`](./docs/privacy.md)
 - [`docs/signing-and-release.md`](./docs/signing-and-release.md)
-
-## Repository Automation
-GitHub Actions now enforce PR issue linkage (`Fixes #...`) and keep the `Wink Backlog` project's `Status` / `Runtime Validation` fields synchronized. See [`docs/github-automation.md`](./docs/github-automation.md) for the required `PROJECT_AUTOMATION_TOKEN` secret and the recommended branch-protection check.
