@@ -12,7 +12,7 @@ struct WinkMenuBarSceneDescriptor: Equatable {
 
 enum WinkMenuBarTemplateAsset {
     static let name = "MenuBarTemplate"
-    static let imageResource = ImageResource(name: name, bundle: .module)
+    static let imageResource = ImageResource(name: name, bundle: WinkResourceBundle.bundle)
 
     static var image: NSImage {
         let image = NSImage(resource: imageResource)

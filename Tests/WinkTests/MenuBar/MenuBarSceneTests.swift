@@ -19,4 +19,10 @@ struct MenuBarSceneTests {
         #expect(WinkMenuBarScene<EmptyView>.descriptor(isInserted: true).isInserted == true)
         #expect(WinkMenuBarScene<EmptyView>.descriptor(isInserted: false).isInserted == false)
     }
+
+    @Test
+    func resourceBundleResolvesToANonNilBundle() {
+        let bundlePath = WinkResourceBundle.bundle.bundlePath
+        #expect(!bundlePath.isEmpty)
+    }
 }
