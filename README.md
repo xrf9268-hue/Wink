@@ -7,7 +7,7 @@
 Wink is a macOS menu bar app for opening, focusing, and hiding apps with global shortcuts. It keeps the interaction deliberately small: press a shortcut once to bring an app forward, press it again to get it out of the way.
 
 ## Why "Wink"?
-The name comes from the rename discussion in [issue #183](https://github.com/xrf9268-hue/Wink/issues/183). The old name described quick keys; Wink describes the experience: app switching that happens in the wink of an eye.
+Wink suggests a quick, subtle signal: something that happens almost instantly and then gets out of the way. That is the feeling Wink aims for when switching apps.
 
 ## Highlights
 - Bind letters, function keys, arrows, or Space to target apps.
