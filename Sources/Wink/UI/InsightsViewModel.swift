@@ -98,6 +98,10 @@ final class InsightsViewModel {
         await doRefresh(for: period, generation: refreshGeneration)
     }
 
+    func waitForRefreshForTesting() async {
+        await refreshTask?.value
+    }
+
     private func doRefresh(for period: InsightsPeriod, generation: UInt64) async {
         let now = nowProvider()
 

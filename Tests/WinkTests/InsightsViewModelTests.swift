@@ -142,11 +142,7 @@ func latestPeriodWinsWhenRefreshesOverlap() async {
     viewModel.period = .month
     viewModel.period = .day
 
-    await waitForRefreshResult {
-        viewModel.totalCount == 1 &&
-        viewModel.ranking.first?.id == shortcutId &&
-        viewModel.ranking.first?.count == 1
-    }
+    await viewModel.waitForRefreshForTesting()
 
     #expect(viewModel.period == .day)
     #expect(viewModel.totalCount == 1)
@@ -243,20 +239,3 @@ private func timeZoneDistinctFromCurrent(relativeTo now: Date) -> TimeZone {
     }) ?? TimeZone(secondsFromGMT: 0)!
 }
 
-@MainActor
-private func waitForRefreshResult(
-    timeout: Duration = .seconds(5),
-    pollInterval: Duration = .milliseconds(10),
-    condition: @escaping @MainActor () -> Bool
-) async {
-    let clock = ContinuousClock()
-    let deadline = clock.now.advanced(by: timeout)
-
-    while clock.now < deadline {
-        if condition() {
-            return
-        }
-
-        try? await Task.sleep(for: pollInterval)
-    }
-}
