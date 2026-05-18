@@ -59,6 +59,20 @@ test('classifyRuntimeSensitivity marks capture and packaging paths as runtime-se
   ]);
 });
 
+test('classifyRuntimeSensitivity marks current SwiftUI app shell paths as runtime-sensitive', () => {
+  const classification = classifyRuntimeSensitivity([
+    'Sources/Wink/WinkApp.swift',
+    'Sources/Wink/UI/SettingsNavigation.swift',
+    'README.md',
+  ]);
+
+  assert.equal(classification.runtimeSensitive, true);
+  assert.deepEqual(classification.matches, [
+    'Sources/Wink/WinkApp.swift',
+    'Sources/Wink/UI/SettingsNavigation.swift',
+  ]);
+});
+
 test('computeProjectStatus prefers Done for closed issues', () => {
   assert.equal(
     computeProjectStatus({ issueState: 'CLOSED', hasOpenLinkedPullRequest: true }),
