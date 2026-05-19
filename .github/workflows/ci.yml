@@ -43,6 +43,7 @@ jobs:
             bash scripts/export-test-sparkle-keys.sh >> "$GITHUB_ENV"
           echo "SPARKLE_PUBLIC_BASE_URL=https://example.invalid/wink/" >> "$GITHUB_ENV"
           echo "SPARKLE_FEED_URL=https://example.invalid/wink/appcast.xml" >> "$GITHUB_ENV"
+          echo "MACOS_MINIMUM_SYSTEM_VERSION=15.0" >> "$GITHUB_ENV"
 
       - name: Package app bundle
         run: bash scripts/package-app.sh
@@ -52,6 +53,7 @@ jobs:
           test -f build/Wink.app/Contents/MacOS/Wink
           test -f build/Wink.app/Contents/Info.plist
           test -d build/Wink.app/Contents/Frameworks/Sparkle.framework
+          test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' build/Wink.app/Contents/Info.plist)" = "$MACOS_MINIMUM_SYSTEM_VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' build/Wink.app/Contents/Info.plist)" = "$SPARKLE_FEED_URL"
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' build/Wink.app/Contents/Info.plist)" = "$SPARKLE_PUBLIC_ED_KEY"
           file build/Wink.app/Contents/MacOS/Wink | grep -q "Mach-O"
