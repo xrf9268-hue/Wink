@@ -16,16 +16,25 @@ final class ShortcutStatusProvider {
         let runningBundleIdentifiers: () -> Set<String>
     }
 
-    private struct ObservationToken {
+    private final class ObservationToken {
         let center: NotificationCenter
         let token: NSObjectProtocol
+
+        init(center: NotificationCenter, token: NSObjectProtocol) {
+            self.center = center
+            self.token = token
+        }
+
+        deinit {
+            center.removeObserver(token)
+        }
     }
 
     private let client: Client
     private let workspaceNotificationCenter: NotificationCenter
     private let appNotificationCenter: NotificationCenter
     private var trackedShortcuts: [AppShortcut] = []
-    private nonisolated(unsafe) var observationTokens: [ObservationToken] = []
+    @ObservationIgnored private var observationTokens: [ObservationToken] = []
 
     private(set) var statusesByShortcutID: [UUID: ShortcutRuntimeStatus] = [:]
 
@@ -38,12 +47,6 @@ final class ShortcutStatusProvider {
         self.workspaceNotificationCenter = workspaceNotificationCenter
         self.appNotificationCenter = appNotificationCenter
         observeNotifications()
-    }
-
-    deinit {
-        for observation in observationTokens {
-            observation.center.removeObserver(observation.token)
-        }
     }
 
     func track(_ shortcuts: [AppShortcut]) {

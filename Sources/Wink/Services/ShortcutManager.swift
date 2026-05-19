@@ -289,7 +289,7 @@ final class ShortcutManager {
             content.title = "Wink: Permission Lost"
             content.body = "\(permission) permission was revoked. Wink needs this permission to work. Please re-enable it in System Settings > Privacy & Security > \(permission)."
             let request = UNNotificationRequest(identifier: "wink-permission-\(permission)", content: content, trigger: nil)
-            center.add(request)
+            UNUserNotificationCenter.current().add(request)
         }
     }
 
