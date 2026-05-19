@@ -5,9 +5,18 @@ import SwiftUI
 @MainActor
 @Observable
 final class MenuBarPopoverModel {
-    private struct ObservationToken {
+    private final class ObservationToken {
         let center: NotificationCenter
         let token: NSObjectProtocol
+
+        init(center: NotificationCenter, token: NSObjectProtocol) {
+            self.center = center
+            self.token = token
+        }
+
+        deinit {
+            center.removeObserver(token)
+        }
     }
 
     struct ShortcutRow: Identifiable, Equatable {
@@ -42,7 +51,7 @@ final class MenuBarPopoverModel {
     private let workspaceNotificationCenter: NotificationCenter
     private let appNotificationCenter: NotificationCenter
     private var usageRefreshTask: Task<Void, Never>?
-    private nonisolated(unsafe) var observationTokens: [ObservationToken] = []
+    @ObservationIgnored private var observationTokens: [ObservationToken] = []
 
     var searchText = ""
     private(set) var shortcutRows: [ShortcutRow] = []
@@ -69,12 +78,6 @@ final class MenuBarPopoverModel {
         self.quitAction = quit
         observeNotifications()
         refresh()
-    }
-
-    deinit {
-        for observation in observationTokens {
-            observation.center.removeObserver(observation.token)
-        }
     }
 
     var versionText: String {
