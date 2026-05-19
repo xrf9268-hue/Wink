@@ -20,6 +20,7 @@ func startupSequenceAppliesPersistedHyperStateBeforeStartingShortcutManager() {
         },
         reapplyHyperIfNeeded: {
             events.append("reapplyHyper")
+            return true
         },
         isHyperEnabled: {
             events.append("readHyperEnabled")
@@ -37,9 +38,51 @@ func startupSequenceAppliesPersistedHyperStateBeforeStartingShortcutManager() {
         "startUpdateService",
         "load",
         "replace",
-        "reapplyHyper",
         "readHyperEnabled",
+        "reapplyHyper",
         "setHyper:true",
+        "startShortcutManager",
+    ])
+}
+
+@Test @MainActor
+func startupSequenceDisablesHyperRoutingWhenPersistedReapplyFails() {
+    var events: [String] = []
+
+    AppController.runStartupSequence(
+        startUpdateService: {
+            events.append("startUpdateService")
+        },
+        loadShortcuts: {
+            events.append("load")
+            return []
+        },
+        replaceShortcuts: { _ in
+            events.append("replace")
+        },
+        reapplyHyperIfNeeded: {
+            events.append("reapplyHyper")
+            return false
+        },
+        isHyperEnabled: {
+            events.append("readHyperEnabled")
+            return true
+        },
+        setHyperKeyEnabled: { enabled in
+            events.append("setHyper:\(enabled)")
+        },
+        startShortcutManager: {
+            events.append("startShortcutManager")
+        }
+    )
+
+    #expect(events == [
+        "startUpdateService",
+        "load",
+        "replace",
+        "readHyperEnabled",
+        "reapplyHyper",
+        "setHyper:false",
         "startShortcutManager",
     ])
 }
@@ -81,6 +124,7 @@ func startupSequenceStartsUpdateServiceBeforeShortcutManager() {
         },
         reapplyHyperIfNeeded: {
             events.append("reapplyHyper")
+            return false
         },
         isHyperEnabled: {
             events.append("readHyperEnabled")
@@ -119,6 +163,7 @@ func startupSequenceAppliesPersistedPreferencesBeforeStartingShortcutManager() {
         },
         reapplyHyperIfNeeded: {
             events.append("reapplyHyper")
+            return false
         },
         isHyperEnabled: {
             events.append("readHyperEnabled")

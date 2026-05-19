@@ -75,11 +75,17 @@ final class HyperKeyService {
     }
 
     /// Re-apply mapping on app launch if previously enabled (hidutil mappings don't survive reboot).
-    func reapplyIfNeeded() {
-        guard isEnabled else { return }
-        guard applyMapping() else { return }
+    /// Returns whether the Hyper key mapping is actually applied after the call.
+    func reapplyIfNeeded() -> Bool {
+        guard isEnabled else { return false }
+        guard applyMapping() else {
+            logger.error("Failed to re-apply Hyper Key mapping on launch")
+            DiagnosticLog.log("Failed to re-apply Hyper Key mapping on launch")
+            return false
+        }
         logger.info("Hyper Key mapping re-applied on launch")
         DiagnosticLog.log("Hyper Key mapping re-applied on launch")
+        return true
     }
 
     /// Clear mapping on app exit to restore normal Caps Lock behavior.

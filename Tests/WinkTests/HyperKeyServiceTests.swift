@@ -36,6 +36,24 @@ func disableDoesNotClearPersistedStateWhenHidutilFails() {
 }
 
 @Test @MainActor
+func reapplyFailurePreservesPreferenceButReportsMappingUnavailable() {
+    let suiteName = "HyperKeyServiceTests.reapply.failure"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+    defaults.set(true, forKey: "hyperKeyEnabled")
+
+    let service = HyperKeyService(
+        runner: { _ in false },
+        defaults: defaults
+    )
+
+    let didApply = service.reapplyIfNeeded()
+
+    #expect(didApply == false)
+    #expect(service.isEnabled == true)
+}
+
+@Test @MainActor
 func disableRestoresCapsLockDelayOverrideDefault() {
     let suiteName = "HyperKeyServiceTests.disable.capsLockDelay"
     let defaults = UserDefaults(suiteName: suiteName)!

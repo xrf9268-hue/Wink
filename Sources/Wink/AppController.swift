@@ -144,7 +144,7 @@ final class AppController {
         startUpdateService: @MainActor () -> Void,
         loadShortcuts: @MainActor () throws -> [AppShortcut],
         replaceShortcuts: @MainActor ([AppShortcut]) -> Void,
-        reapplyHyperIfNeeded: @MainActor () -> Void,
+        reapplyHyperIfNeeded: @MainActor () -> Bool,
         isHyperEnabled: @MainActor () -> Bool,
         setHyperKeyEnabled: @MainActor (Bool) -> Void,
         preparePreferences: @MainActor () -> Void = {},
@@ -158,8 +158,9 @@ final class AppController {
                 "Startup skipped shortcut restore because persistence loading failed: \(error.localizedDescription)"
             )
         }
-        reapplyHyperIfNeeded()
-        setHyperKeyEnabled(isHyperEnabled())
+        let isHyperEnabled = isHyperEnabled()
+        let isHyperMappingApplied = reapplyHyperIfNeeded()
+        setHyperKeyEnabled(isHyperEnabled && isHyperMappingApplied)
         preparePreferences()
         startShortcutManager()
     }
