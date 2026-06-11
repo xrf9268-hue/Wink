@@ -24,12 +24,12 @@ This design closes those gaps with gate scripts that run locally and in CI, keep
 ## Goals
 
 - Make a feed downgrade impossible: every release must carry a `CFBundleVersion` strictly greater than the maximum `sparkle:version` already live on R2
-- Preserve appcast history: new releases append entries instead of rewriting the feed to a single item
+- Preserve appcast history: old entries survive unchanged and each release adds its entry, instead of rewriting the feed to a single item
 - Serialize all release runs so concurrent tags cannot race on the feed
 - Move version bumping behind a gate script that enforces semver, monotonic `CFBundleVersion`, and a matching `CHANGELOG.md` section
 - Replace auto-generated release notes with curated `CHANGELOG.md` sections, extracted by script and gated at release time
 - Add a dry-run mode to `release.yml` that exercises the full chain (gate → test → sign → notarize → package → appcast → validate) and uploads artifacts without publishing
-- Publish GitHub Releases atomically: draft → upload assets → publish, feed flip stays last
+- Wire curated notes into the GitHub Release publish step, keeping it idempotent across re-runs; feed flip stays last
 - Cache SwiftPM build products in `release.yml` and `ci.yml`
 
 ## Non-Goals
@@ -97,25 +97,27 @@ Cons:
 
 ### 1. Feed safety gate — new `scripts/verify-release-feed.sh`
 
-Runs in the release job **before** `swift test` (fail fast — notarization wall-clock is expensive) and also as the first step of appcast generation in dry runs.
+Runs in the release job **before** `swift test` (fail fast — notarization wall-clock is expensive).
 
 Behavior:
 
-- Inputs: `SPARKLE_PUBLIC_BASE_URL` (env; the R2 public base), Info.plist path (defaults to the repo's)
-- `curl -sSL --retry 3` the live `appcast.xml` to `build/appcast.xml`, capturing the HTTP status
-- **200** → parse the maximum `sparkle:version` across all entries; if none parse, hard-fail ("feed corrupt?"). Require Info.plist `CFBundleVersion` to be a non-negative integer **strictly greater** than the maximum; otherwise hard-fail with a "forgot to bump?" message
-- **404** → first release: remove the empty download file, exit 0
+- Inputs: `SPARKLE_PUBLIC_BASE_URL` (env; the R2 public base), Info.plist path (defaults to the repo's), and a mode flag: `--mode release` (default, enforcing) or `--mode rehearse` (dry runs: fetch + parse + report; fail only on fetch/parse errors, never on the version comparison — between releases main's `CFBundleVersion` legitimately equals the live maximum, so an enforcing gate would make every rehearsal fail by construction)
+- Fetch the live `appcast.xml` to `build/live-appcast.xml` (a dedicated path so later packaging steps cannot plausibly clobber it), capturing the HTTP status with the `|| echo 000` pattern so transport-level curl failures are not eaten by `set -euo pipefail`; use `--retry 3 --retry-all-errors` (plain `--retry` skips connection-refused)
+- **200** → parse the maximum `sparkle:version` across all entries, accepting both syntactic forms (`<sparkle:version>N</sparkle:version>` element and the legacy `sparkle:version="N"` enclosure attribute); if none parse, hard-fail ("feed corrupt?"). In `release` mode, require Info.plist `CFBundleVersion` to be a non-negative integer **strictly greater** than the maximum; otherwise hard-fail. The error message distinguishes the two causes: equal to live max → "this version is already live — re-publishing a released version is not supported, bump instead"; lower → "forgot to run scripts/bump-version.sh?"
+- **404** → hard-fail unless `WINK_ALLOW_FIRST_RELEASE=1` is explicitly set. A wrong `SPARKLE_PUBLIC_BASE_URL` also yields 404, and silently treating it as a first release would fork the feed at a bogus prefix. Wink's feed already exists, so the opt-in is a one-time escape hatch, not a normal path
 - **anything else** (5xx, connection failure) → hard-fail; a fetch error must never be treated as a first release
-- On success with a restored feed, leave `build/appcast.xml` in place for the appcast generation step to merge against
+- On success with a restored feed, `build/live-appcast.xml` is the handoff artifact for appcast generation (§2)
 
-Failure messages name the exact remediation (`scripts/bump-version.sh`, re-run, or feed inspection).
+Consequence, stated deliberately: re-running a tag **after** a fully successful release (feed already flipped) is blocked by the gate. The documented manual re-publish flow in `docs/signing-and-release.md` changes accordingly — repairing a published release means bumping to a new version, not re-running the old tag. Partial-failure re-runs (anything that died before the feed flip) still converge, because the feed flip is the last step.
 
 ### 2. Appcast history preservation — modify `scripts/generate-appcast.sh`
 
-- Add `--maximum-versions 0` to the `generate_appcast` invocation
-- Merge against the restored feed: ensure the old `appcast.xml` restored by the gate participates in generation so existing entries are preserved and the new entry is appended. The exact placement (`-o` target vs. a copy inside the staging dir) is a `generate_appcast` behavioral detail that **must be pinned down by a local rehearsal during implementation**, with an assertion that (a) old entries survive and (b) old entries' URLs are not rewritten
-- Keep the staging dir containing **only** the new ZIP (and optional release-notes file) — never old archives
+- Add `--maximum-versions 0` to the `generate_appcast` invocation (the tool defaults to keeping only the newest 3 entries)
+- Merge against the restored feed: `generate_appcast` merges off an appcast file present in the **archives directory it scans**, not the `-o` target — so the script copies `build/live-appcast.xml` to `$STAGING_DIR/appcast.xml` before invoking the tool. The script takes the restored-feed path via env (`SPARKLE_RESTORED_APPCAST`, default `build/live-appcast.xml`); if the variable points at a declared-but-missing file it hard-fails rather than silently regenerating a single-entry feed. Absent variable and absent file = explicit fresh-feed mode (first release only)
+- The merge semantics **must be pinned down by a local rehearsal during implementation**, asserting that (a) old entries are preserved unchanged (count, `sparkle:version` values, URLs, `edSignature`s), (b) the new entry is present and signed, and (c) per-release options like `--full-release-notes-url` do not rewrite old entries
+- Keep the staging dir containing **only** the new ZIP, the optional release-notes file, and the restored `appcast.xml` — never old archives (`--download-url-prefix` rewrites the URL of every entry whose archive is present in the directory)
 - Keep `--maximum-deltas 0` and the existing key-handling paths unchanged
+- Strengthen the workflow's "Verify appcast" step from `test -f` to runtime assertions: the new `sparkle:shortVersionString` entry exists, it carries an `edSignature`, and when a feed was restored, the output's entry count is ≥ the restored feed's entry count
 
 ### 3. Serial releases — modify `.github/workflows/release.yml`
 
@@ -126,6 +128,8 @@ concurrency:
 ```
 
 All release runs queue globally instead of per-ref. One-line change.
+
+Known GitHub semantics, accepted: a concurrency group holds at most one running plus one pending run, so pushing 3+ tags in quick succession cancels the intermediate pending run. Remediation is simply re-running the cancelled workflow — the feed gate makes re-runs safe in any order (an out-of-date run fails the gate instead of downgrading the feed).
 
 ### 4. Version bump gate — new `scripts/bump-version.sh`
 
@@ -142,35 +146,40 @@ All release runs queue globally instead of per-ref. One-line change.
 - `CHANGELOG.md` at the repo root, newest first, one `## X.Y.Z` section per release, hand-written
 - `scripts/release-notes.sh X.Y.Z` prints the body of that section (everything until the next `## ` heading or EOF), hard-failing if the section is missing or empty
 - The release job calls it both as a gate (early, alongside the feed gate) and to produce the GitHub Release body, replacing `--generate-notes`
-- Sparkle side: pass `SPARKLE_FULL_RELEASE_NOTES_URL` (already supported by `generate-appcast.sh`) pointing at the GitHub Releases page; no HTML embedding in the appcast
+- Sparkle side: pass `SPARKLE_FULL_RELEASE_NOTES_URL` (already supported by `generate-appcast.sh`) pointing at the **per-tag** release page (`…/releases/tag/vX.Y.Z`); no HTML embedding in the appcast. The value changes per release while old entries must keep theirs — covered by the §2 rehearsal assertion (c)
 
 ### 6. Dry-run rehearsal — modify `.github/workflows/release.yml`
 
 - `workflow_dispatch` inputs become:
-  - `release_tag` (optional): an existing `v*` tag to operate on; **empty = rehearse the current default branch**, which forces dry run regardless of the flag
+  - `release_tag` (optional): an existing `v*` tag to operate on; **empty = rehearse the dispatched ref**, which forces dry run regardless of the flag
   - `dry_run` (boolean, default `true`): build everything, publish nothing
 - Tag-push behavior is unchanged (real release, `dry_run=false`)
-- A dry run executes the full chain: feed gate → notes gate → `swift test` → sign → notarize → staple → DMG/ZIP → appcast → artifact validation, then uploads `build/` release artifacts via `actions/upload-artifact` and **skips** the R2 uploads and the GitHub Release steps
-- The tag↔`CFBundleShortVersionString` equality check is skipped only in branch-rehearsal mode (no tag to compare); the feed downgrade gate still runs so a rehearsal also detects a forgotten bump
+- A dry run executes the full chain: feed gate (`--mode rehearse`, §1) → notes gate → `swift test` → sign → notarize → staple → DMG/ZIP → appcast → artifact validation, then uploads `build/` release artifacts via `actions/upload-artifact` and **skips** the R2 uploads and the GitHub Release steps
+- Ref-rehearsal mode (empty `release_tag`) skips both the "Checkout manual release tag" step and the tag↔`CFBundleShortVersionString` equality check (there is no tag to compare); the version for the notes gate derives from `CFBundleShortVersionString`
+- Secrets: dry runs require the same full secret set as real releases — rehearsing the *signed* chain is the point, and this repo has all secrets configured. The existing `release-readiness` job stays as-is, with one adjustment: its `release_ref` output falls back to `github.ref_name` when the `release_tag` input is empty
 - Division of labor with `internal-package.yml`: internal-package = fast unsigned test build on main pushes; dry run = full signed release rehearsal
 
-### 7. Atomic GitHub Release — modify the publish step
+### 7. GitHub Release publish step — notes wiring, no draft flow
 
-- `gh release create --draft` with the DMG and the CHANGELOG-derived notes → `gh release edit --draft=false`
-- Keep the existing idempotent re-run handling (release already exists → `gh release upload --clobber`, then ensure published)
+The originally considered draft → upload → publish sequence is **dropped**: `gh release view` resolves releases by tag ref and cannot see drafts (drafts have no tag ref until published), so a re-run after a crash between create-draft and publish would create duplicate drafts. The atomicity it buys is negligible here — `gh release create` already attaches the DMG atomically at creation, and the real publish boundary is the feed flip, which is already last.
+
+What changes instead:
+
+- `gh release create` switches from `--generate-notes` to `--notes-file` fed by `scripts/release-notes.sh`
+- The existing-release re-run path additionally runs `gh release edit --notes-file` so a re-run refreshes the body, not just the asset (`--clobber`)
 - Feed flip (appcast upload to R2) stays the final step — Wink already orders this correctly; preserve it
 
 ### 8. SwiftPM cache — modify `release.yml` and `ci.yml`
 
 ```yaml
-- uses: actions/cache@<pinned-sha> # v5
+- uses: actions/cache@<pinned-sha> # v5, pin by commit SHA per repo convention
   with:
     path: .build
-    key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-    restore-keys: spm-${{ runner.os }}-
+    key: spm-${{ runner.os }}-xcode${{ env.XCODE_VERSION }}-${{ hashFiles('Package.resolved') }}
+    restore-keys: spm-${{ runner.os }}-xcode${{ env.XCODE_VERSION }}-
 ```
 
-Pin the action by commit SHA, matching the repo's existing pinning convention.
+Include the toolchain in the key (an `xcodebuild -version`-derived env value, captured in a prior step) so a runner-image Xcode bump does not restore stale `.build` products.
 
 ## Error Handling Summary
 
@@ -178,26 +187,31 @@ Pin the action by commit SHA, matching the repo's existing pinning convention.
 |---|---|---|
 | Forgot `CFBundleVersion` bump | `bump-version.sh` locally; `verify-release-feed.sh` in CI | Hard fail before any build work |
 | Re-run of an old tag | `verify-release-feed.sh` (old build ≤ live max) | Hard fail; feed never downgraded |
+| Re-run of the current tag after a fully successful release | `verify-release-feed.sh` (build = live max) | Hard fail with "already live — bump instead"; deliberate behavior change vs. the documented re-publish flow |
+| Re-run after partial failure (died before feed flip) | Idempotent release step (`--clobber` + `edit --notes-file`) + appcast merge | Converges; gate passes because the feed never flipped |
 | Two tags pushed close together | Serial concurrency group | Second run queues; its feed gate then sees the first run's published feed |
+| 3+ tags pushed in quick succession | GitHub concurrency semantics (1 running + 1 pending) | Intermediate pending run is cancelled; re-run it manually — the gate makes any re-run order safe |
 | Live feed fetch 5xx/network error | `verify-release-feed.sh` | Hard fail; never misread as first release |
+| Live feed 404 (deleted, or wrong base URL) | `verify-release-feed.sh` | Hard fail unless `WINK_ALLOW_FIRST_RELEASE=1` is explicitly set |
 | Live feed present but unparseable | `verify-release-feed.sh` | Hard fail ("feed corrupt?") |
+| Restored feed declared but missing at generation time | `generate-appcast.sh` | Hard fail instead of silently regenerating a single-entry feed |
+| Generated appcast missing the new entry, its signature, or restored history | Strengthened "Verify appcast" workflow step | Hard fail before any upload |
 | Tag without `CHANGELOG.md` section | `bump-version.sh` locally; notes gate in CI | Hard fail before build work |
-| Re-run after partial publish | Existing idempotent release step + appcast merge | Converges; assets clobbered, feed unchanged or appended |
 
 ## Testing
 
-- **Bats unit tests** (extending the `e2e-lib.bats` precedent) for the three new scripts:
-  - `verify-release-feed.sh`: mock `curl` via PATH shim; cases for 200-with-greater-build, 200-with-equal/lower-build, 200-unparseable, 404, 500, network failure
+- **Bats unit tests** (extending the `e2e-lib.bats` precedent) for the three new scripts, run in a new `ci.yml` step (install `bats-core` via Homebrew on the macOS runner):
+  - `verify-release-feed.sh`: mock `curl` via PATH shim; cases for 200-with-greater-build, 200-with-equal/lower-build (both modes — `release` fails, `rehearse` passes), 200-unparseable, both `sparkle:version` syntactic forms, 404 with and without `WINK_ALLOW_FIRST_RELEASE`, 500, network failure
   - `release-notes.sh`: fixture CHANGELOG; cases for present, missing, and empty sections
   - `bump-version.sh`: temp Info.plist + fixture CHANGELOG; cases for bad semver, same version, missing section, non-integer build, successful bump
-- **Appcast merge rehearsal** (implementation-time, local): build an "old appcast + new ZIP" fixture, run `generate-appcast.sh`, assert old entries survive with unchanged URLs and the new entry is appended and signed
-- **Full-chain dry run** in CI after each issue lands, as the acceptance check
-- **Docs**: update `docs/signing-and-release.md` (bump script, CHANGELOG requirement, dry-run usage) in the same PRs that change behavior
+- **Appcast merge rehearsal** (implementation-time, local): build an "old appcast + new ZIP" fixture, run `generate-appcast.sh`, assert the §2 invariants (old entries unchanged including URLs and signatures; new entry present and signed; per-release options don't touch old entries)
+- **Acceptance per issue**: Issues A and B — bats green plus the next real release passing its strengthened verify steps; Issue C — a full-chain dry run from `workflow_dispatch`
+- **Docs**: update `docs/signing-and-release.md` (bump script, CHANGELOG requirement, dry-run usage, the new "bump instead of re-running a published tag" rule) in the same PRs that change behavior
 
 ## Issue Breakdown (dependency order)
 
 1. **Issue A — Feed safety**: `verify-release-feed.sh` + appcast history preservation + serial concurrency (Design §1–3). Closes both accident paths; highest priority
-2. **Issue B — Version & notes management**: `CHANGELOG.md` + `bump-version.sh` + `release-notes.sh` + release-body wiring (Design §4–5). The bump script gates on CHANGELOG, so these ship together
-3. **Issue C — Rehearsal & robustness**: dry-run mode + atomic draft→publish + SPM cache (Design §6–8)
+2. **Issue B — Version & notes management**: `CHANGELOG.md` + `bump-version.sh` + `release-notes.sh` + publish-step notes wiring (Design §4–5, §7). The bump script gates on CHANGELOG, so these ship together
+3. **Issue C — Rehearsal & efficiency**: dry-run mode + SPM cache (Design §6, §8)
 
 Each issue is one PR through the existing review-gate flow.
