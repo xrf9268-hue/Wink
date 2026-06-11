@@ -151,17 +151,28 @@ If any required Apple, Sparkle, or R2 secret is missing, the workflow exits succ
 ### Release job flow
 
 0. Check whether all required release secrets are present
-1. Import the `Developer ID Application` certificate into a temporary keychain
-2. Write the `notarytool` API key to a temporary file
-3. Run `swift test`
-4. Run `scripts/package-app.sh` in hardened runtime signing mode, injecting `SPARKLE_FEED_URL` and `SPARKLE_PUBLIC_ED_KEY`
-5. Verify `build/Wink.app`, archive it as a zip for `notarytool`, notarize that archive, and staple `build/Wink.app`
-6. Run `scripts/package-update-zip.sh`
-7. Run `scripts/generate-appcast.sh` with the private EdDSA key
-8. Run `scripts/package-dmg.sh`, then notarize and staple `build/Wink-<version>.dmg`
-9. Upload the versioned DMG and Sparkle ZIP to R2
-10. Create or update the GitHub Release and upload `Wink-<version>.dmg`
-11. Upload `appcast.xml` last so the live Sparkle feed only flips after the earlier release steps succeed
+1. Run `scripts/verify-release-feed.sh --mode release`: restore the live `appcast.xml` to `build/live-appcast.xml` and fail unless `CFBundleVersion` is strictly greater than the live feed's maximum `sparkle:version`
+2. Import the `Developer ID Application` certificate into a temporary keychain
+3. Write the `notarytool` API key to a temporary file
+4. Run `swift test`
+5. Run `scripts/package-app.sh` in hardened runtime signing mode, injecting `SPARKLE_FEED_URL` and `SPARKLE_PUBLIC_ED_KEY`
+6. Verify `build/Wink.app`, archive it as a zip for `notarytool`, notarize that archive, and staple `build/Wink.app`
+7. Run `scripts/package-update-zip.sh`
+8. Run `scripts/generate-appcast.sh` with the private EdDSA key, merging the restored live feed so existing entries are preserved
+9. Run `scripts/package-dmg.sh`, then notarize and staple `build/Wink-<version>.dmg`
+10. Upload the versioned DMG and Sparkle ZIP to R2
+11. Create or update the GitHub Release and upload `Wink-<version>.dmg`
+12. Upload `appcast.xml` last so the live Sparkle feed only flips after the earlier release steps succeed
+
+### Feed safety gate
+
+Every release run starts by fetching the live `appcast.xml` from `R2_PUBLIC_BASE_URL`:
+
+- The release proceeds only when this build's `CFBundleVersion` is strictly greater than the largest `sparkle:version` already live. A forgotten bump or an out-of-date tag fails before any signing work starts.
+- The restored feed is merged into the generated appcast, so old entries (URLs, signatures) survive every release.
+- A fetch error (5xx, network failure) always fails the run; it is never treated as a first release.
+- If the live feed legitimately does not exist yet (HTTP 404), set the repository variable `WINK_ALLOW_FIRST_RELEASE` to `1` for the first run and delete the variable afterwards.
+- All release runs share one concurrency group and execute serially. If three or more runs queue up, GitHub cancels the intermediate pending run — re-run it; the gate makes any re-run order safe.
 
 When secrets are present, the workflow is fail-closed for the live Sparkle feed: if signing, notarization, appcast signing, GitHub Release publication, or the final appcast upload fails, Sparkle clients do not see the new update because `appcast.xml` is published last.
 
@@ -190,7 +201,7 @@ The internal package path is for trusted testers only. It does not:
 4. Run `bash scripts/package-update-zip.sh`
 5. Run `bash scripts/package-dmg.sh`
 6. Tag the release: `git tag vX.Y.Z && git push origin vX.Y.Z`
-7. If you need to rerun automation manually, open `Release`, keep the branch on the default branch, and set `release_tag` to the existing `vX.Y.Z`
+7. If a run failed before the final appcast upload, re-run it manually: open `Release`, keep the branch on the default branch, and set `release_tag` to the existing `vX.Y.Z`. Re-running a tag **after** its feed entry is live is blocked by the feed gate — to repair a published release, bump to a new version instead
 8. Confirm the `Release` workflow succeeds for both the DMG and the Sparkle feed upload
 9. Validate the published DMG and Sparkle update path on a clean macOS machine, including the Finder background, icon layout, and drag-install affordance
 
