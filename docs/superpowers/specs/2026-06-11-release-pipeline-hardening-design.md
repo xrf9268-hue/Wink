@@ -113,7 +113,7 @@ Consequence, stated deliberately: re-running a tag **after** a fully successful 
 ### 2. Appcast history preservation — modify `scripts/generate-appcast.sh`
 
 - Add `--maximum-versions 0` to the `generate_appcast` invocation (the tool defaults to keeping only the newest 3 entries)
-- Merge against the restored feed: `generate_appcast` merges off an appcast file present in the **archives directory it scans**, not the `-o` target — so the script copies `build/live-appcast.xml` to `$STAGING_DIR/appcast.xml` before invoking the tool. The script takes the restored-feed path via env (`SPARKLE_RESTORED_APPCAST`, default `build/live-appcast.xml`); if the variable points at a declared-but-missing file it hard-fails rather than silently regenerating a single-entry feed. Absent variable and absent file = explicit fresh-feed mode (first release only)
+- Merge against the restored feed: `generate_appcast` merges off an appcast file present in the **archives directory it scans**, not the `-o` target — so the script copies `build/live-appcast.xml` to `$STAGING_DIR/appcast.xml` before invoking the tool. The script takes the restored-feed path via env (`SPARKLE_RESTORED_APPCAST`, default `build/live-appcast.xml`); a missing file at that path is a hard fail rather than a silent single-entry regeneration. The only way to generate without a restored feed is `WINK_ALLOW_FIRST_RELEASE=1` — the same explicit opt-in the gate's 404 path requires, so a lost handoff file can never silently masquerade as a first release
 - The merge semantics **must be pinned down by a local rehearsal during implementation**, asserting that (a) old entries are preserved unchanged (count, `sparkle:version` values, URLs, `edSignature`s), (b) the new entry is present and signed, and (c) per-release options like `--full-release-notes-url` do not rewrite old entries
 - Keep the staging dir containing **only** the new ZIP, the optional release-notes file, and the restored `appcast.xml` — never old archives (`--download-url-prefix` rewrites the URL of every entry whose archive is present in the directory)
 - Keep `--maximum-deltas 0` and the existing key-handling paths unchanged
@@ -194,7 +194,7 @@ Include the toolchain in the key (an `xcodebuild -version`-derived env value, ca
 | Live feed fetch 5xx/network error | `verify-release-feed.sh` | Hard fail; never misread as first release |
 | Live feed 404 (deleted, or wrong base URL) | `verify-release-feed.sh` | Hard fail unless `WINK_ALLOW_FIRST_RELEASE=1` is explicitly set |
 | Live feed present but unparseable | `verify-release-feed.sh` | Hard fail ("feed corrupt?") |
-| Restored feed declared but missing at generation time | `generate-appcast.sh` | Hard fail instead of silently regenerating a single-entry feed |
+| Restored feed missing at generation time (without `WINK_ALLOW_FIRST_RELEASE=1`) | `generate-appcast.sh` | Hard fail instead of silently regenerating a single-entry feed |
 | Generated appcast missing the new entry, its signature, or restored history | Strengthened "Verify appcast" workflow step | Hard fail before any upload |
 | Tag without `CHANGELOG.md` section | `bump-version.sh` locally; notes gate in CI | Hard fail before build work |
 
