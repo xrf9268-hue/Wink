@@ -39,6 +39,81 @@ func savingShortcutChangesInvokesConfigurationChangeHandler() {
     #expect(callbackCount == 2)
 }
 
+@MainActor
+private func makeFailingSaveEditorContext(
+    existingShortcuts: [AppShortcut]
+) -> (editor: ShortcutEditorState, shortcutStore: ShortcutStore, callbackCount: CallbackCounter) {
+    let shortcutStore = ShortcutStore()
+    shortcutStore.replaceAll(with: existingShortcuts)
+
+    let manager = ShortcutManager(
+        shortcutStore: shortcutStore,
+        persistenceService: PersistenceService(storageURLProvider: { nil }),
+        appSwitcher: FakeAppSwitcher(),
+        captureCoordinator: ShortcutCaptureCoordinator(
+            standardProvider: FakeCaptureProvider(),
+            hyperProvider: FakeHyperCaptureProvider()
+        ),
+        permissionService: FakePermissionService(ax: true, input: false),
+        diagnosticClient: .init(log: { _ in })
+    )
+    let callbackCount = CallbackCounter()
+    let editor = ShortcutEditorState(
+        shortcutStore: shortcutStore,
+        shortcutManager: manager,
+        onShortcutConfigurationChange: {
+            callbackCount.value += 1
+        }
+    )
+    return (editor, shortcutStore, callbackCount)
+}
+
+@Test @MainActor
+func failedSaveRevertsEditorShortcutsAndSurfacesError() {
+    let safari = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "s",
+        modifierFlags: ["command", "shift"]
+    )
+    let context = makeFailingSaveEditorContext(existingShortcuts: [safari])
+
+    context.editor.removeShortcut(id: safari.id)
+
+    #expect(context.editor.shortcuts == [safari])
+    #expect(context.shortcutStore.shortcuts == [safari])
+    #expect(context.editor.saveErrorMessage?.contains("Failed to save shortcuts") == true)
+    #expect(context.callbackCount.value == 0)
+}
+
+@Test @MainActor
+func failedToggleLeavesEnabledStateUnchanged() {
+    let safari = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "s",
+        modifierFlags: ["command", "shift"]
+    )
+    let context = makeFailingSaveEditorContext(existingShortcuts: [safari])
+
+    context.editor.toggleShortcutEnabled(id: safari.id)
+
+    #expect(context.editor.shortcuts.first?.isEnabled == true)
+    #expect(context.shortcutStore.shortcuts.first?.isEnabled == true)
+    #expect(context.editor.saveErrorMessage != nil)
+}
+
+@Test @MainActor
+func successfulSaveClearsPreviousSaveError() {
+    let context = makeEditorContext()
+    defer { context.harness.cleanup() }
+
+    context.editor.saveErrorMessage = "stale error"
+    context.editor.setAllEnabled(true)
+
+    #expect(context.editor.saveErrorMessage == nil)
+}
+
 @Test @MainActor
 func editorSynchronizesWhenShortcutStoreChangesExternally() async {
     let context = makeEditorContext()
@@ -771,7 +846,7 @@ private func makeEditorContext(
     )
 
     if !existingShortcuts.isEmpty {
-        manager.save(shortcuts: existingShortcuts)
+        try! manager.save(shortcuts: existingShortcuts)
     }
 
     let callbackCount = CallbackCounter()

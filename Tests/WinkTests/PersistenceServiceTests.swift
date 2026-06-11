@@ -20,7 +20,7 @@ struct PersistenceServiceDiskLoadingTests {
         ]
 
         let service = harness.makePersistenceService()
-        service.save(shortcuts)
+        try service.save(shortcuts)
 
         let liveShortcutsURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/Wink", isDirectory: true)
@@ -58,7 +58,7 @@ struct PersistenceServiceDiskLoadingTests {
                 diagnostics.append(message)
             })
         )
-        service.save(shortcuts)
+        try service.save(shortcuts)
 
         let loaded = try service.load()
 
@@ -164,6 +164,55 @@ struct PersistenceServiceDiskLoadingTests {
         let backupURL = harness.directory.appendingPathComponent("shortcuts.load-failure-unsupported-schema.json")
         #expect(try Data(contentsOf: harness.shortcutsURL) == unsupportedPayload)
         #expect(try Data(contentsOf: backupURL) == unsupportedPayload)
+    }
+
+    @Test
+    func saveThrowsWhenStorageIsUnavailable() {
+        let diagnostics = DiagnosticRecorder()
+        let service = PersistenceService(
+            storageURLProvider: { nil },
+            diagnosticClient: .init(log: { message in
+                diagnostics.append(message)
+            })
+        )
+
+        #expect(throws: PersistenceService.SaveError.self) {
+            try service.save([])
+        }
+        #expect(diagnostics.messages.contains {
+            $0.contains("Failed to save shortcuts")
+        })
+    }
+
+    @Test
+    func saveThrowsWhenDiskWriteFails() throws {
+        let harness = TestPersistenceHarness()
+        defer { harness.cleanup() }
+        let diagnostics = DiagnosticRecorder()
+
+        let missingDirectoryURL = harness.directory
+            .appendingPathComponent("missing-subdirectory", isDirectory: true)
+            .appendingPathComponent("shortcuts.json")
+        let service = PersistenceService(
+            storageURLProvider: { missingDirectoryURL },
+            diagnosticClient: .init(log: { message in
+                diagnostics.append(message)
+            })
+        )
+
+        #expect(throws: PersistenceService.SaveError.self) {
+            try service.save([
+                AppShortcut(
+                    appName: "Safari",
+                    bundleIdentifier: "com.apple.Safari",
+                    keyEquivalent: "s",
+                    modifierFlags: ["command", "shift"]
+                ),
+            ])
+        }
+        #expect(diagnostics.messages.contains {
+            $0.contains("path=\(missingDirectoryURL.path)") && $0.contains("reason=")
+        })
     }
 }
 

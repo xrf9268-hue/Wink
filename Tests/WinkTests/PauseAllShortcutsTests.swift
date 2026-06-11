@@ -5,7 +5,7 @@ import Testing
 @Suite("Pause all shortcuts")
 struct PauseAllShortcutsTests {
     @Test @MainActor
-    func pausingStopsStandardAndHyperCaptureAndMarksStatusPaused() {
+    func pausingStopsStandardAndHyperCaptureAndMarksStatusPaused() throws {
         let standardProvider = FakeCaptureProvider()
         let hyperProvider = FakeHyperCaptureProvider()
         let coordinator = ShortcutCaptureCoordinator(
@@ -23,7 +23,7 @@ struct PauseAllShortcutsTests {
         )
         let shortcuts = [standardShortcut(), hyperShortcut()]
 
-        manager.save(shortcuts: shortcuts)
+        try manager.save(shortcuts: shortcuts)
         manager.setHyperKeyEnabled(true)
         manager.start()
         manager.setShortcutsPaused(true)
@@ -39,7 +39,7 @@ struct PauseAllShortcutsTests {
     }
 
     @Test @MainActor
-    func unpausingRestartsConfiguredCaptureWithoutRewritingShortcuts() async {
+    func unpausingRestartsConfiguredCaptureWithoutRewritingShortcuts() async throws {
         let standardProvider = FakeCaptureProvider()
         let hyperProvider = FakeHyperCaptureProvider()
         let coordinator = ShortcutCaptureCoordinator(
@@ -57,7 +57,7 @@ struct PauseAllShortcutsTests {
         )
         let shortcuts = [standardShortcut(), hyperShortcut()]
 
-        manager.save(shortcuts: shortcuts)
+        try manager.save(shortcuts: shortcuts)
         manager.setHyperKeyEnabled(true)
         manager.start()
         manager.setShortcutsPaused(true)
