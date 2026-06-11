@@ -278,9 +278,9 @@ User opens settings
   -> ShortcutRecorderView stores RecordedShortcut in ShortcutEditorState
   -> ShortcutEditorState.addShortcut() builds AppShortcut
   -> ShortcutValidator checks conflicts against current shortcuts
-  -> ShortcutManager.save(updated shortcuts)
+  -> ShortcutManager.save(updated shortcuts) — throws on write failure
+  -> PersistenceService.save() (disk first; on failure the in-memory store is untouched and ShortcutEditorState reverts + surfaces saveErrorMessage)
   -> ShortcutStore.replaceAll()
-  -> PersistenceService.save()
   -> ShortcutCaptureCoordinator refreshes routed shortcuts / provider state
   -> onShortcutConfigurationChange triggers AppPreferences.refreshPermissions()
 ```
