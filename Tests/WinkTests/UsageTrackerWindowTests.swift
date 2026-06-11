@@ -102,6 +102,49 @@ struct UsageTrackerWindowTests {
         let counts = await tracker.usageCounts(days: 1, relativeTo: moment)
         #expect(counts[id] == nil)
     }
+
+    @Test
+    func streakCountsConsecutiveDaysEndingToday() async {
+        let tracker = UsageTracker(databasePath: ":memory:")
+        let id = UUID()
+        let today = isoDate("2026-03-21")
+
+        await tracker.recordUsage(shortcutId: id, on: isoDate("2026-03-19"))
+        await tracker.recordUsage(shortcutId: id, on: isoDate("2026-03-20"))
+        await tracker.recordUsage(shortcutId: id, on: today)
+        // Gap on 2026-03-17 ends the streak; this day must not count.
+        await tracker.recordUsage(shortcutId: id, on: isoDate("2026-03-16"))
+
+        let streak = await tracker.streakDays(relativeTo: today)
+        #expect(streak == 3)
+    }
+
+    @Test
+    func streakIsZeroWithoutUsageToday() async {
+        let tracker = UsageTracker(databasePath: ":memory:")
+        let id = UUID()
+
+        await tracker.recordUsage(shortcutId: id, on: isoDate("2026-03-20"))
+
+        let streak = await tracker.streakDays(relativeTo: isoDate("2026-03-22"))
+        #expect(streak == 0)
+    }
+
+    @Test
+    func streakIgnoresFutureDatedRows() async {
+        let tracker = UsageTracker(databasePath: ":memory:")
+        let id = UUID()
+        let today = isoDate("2026-03-21")
+
+        await tracker.recordUsage(shortcutId: id, on: isoDate("2026-03-20"))
+        await tracker.recordUsage(shortcutId: id, on: today)
+        // Clock skew or a corrupt insert can leave a future-dated row; it must
+        // not zero out a genuine streak (Issue #266).
+        await tracker.recordUsage(shortcutId: id, on: isoDate("2026-03-25"))
+
+        let streak = await tracker.streakDays(relativeTo: today)
+        #expect(streak == 2)
+    }
 }
 
 private final class CountingTimeZoneBox: @unchecked Sendable {
