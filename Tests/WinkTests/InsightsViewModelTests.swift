@@ -151,6 +151,70 @@ func latestPeriodWinsWhenRefreshesOverlap() async {
 }
 
 @Test @MainActor
+func refreshForSyncsPeriodSelectionWithDisplayedData() async {
+    let shortcutId = UUID()
+    let store = ShortcutStore()
+    store.replaceAll(with: [
+        AppShortcut(
+            id: shortcutId,
+            appName: "Terminal",
+            bundleIdentifier: "com.apple.Terminal",
+            keyEquivalent: "t",
+            modifierFlags: ["command"]
+        )
+    ])
+
+    let viewModel = InsightsViewModel(
+        usageTracker: DelayedUsageTracker(shortcutId: shortcutId),
+        shortcutStore: store
+    )
+    #expect(viewModel.period == .week)
+
+    // refresh(for:) must keep the picker state and the displayed data in
+    // sync — month data with a week picker selection is a contract violation
+    // (Issue #265).
+    await viewModel.refresh(for: .month)
+
+    #expect(viewModel.period == .month)
+    #expect(viewModel.totalCount == 30)
+}
+
+@Test @MainActor
+func refreshForIsSupersededByLaterPeriodSelection() async {
+    let shortcutId = UUID()
+    let store = ShortcutStore()
+    store.replaceAll(with: [
+        AppShortcut(
+            id: shortcutId,
+            appName: "Terminal",
+            bundleIdentifier: "com.apple.Terminal",
+            keyEquivalent: "t",
+            modifierFlags: ["command"]
+        )
+    ])
+
+    let viewModel = InsightsViewModel(
+        usageTracker: DelayedUsageTracker(shortcutId: shortcutId),
+        shortcutStore: store
+    )
+
+    // Slow month refresh through the async variant, superseded by a fast
+    // day selection through the picker path. The last selection must win
+    // even when the variants are mixed.
+    let monthRefresh = Task { @MainActor in
+        await viewModel.refresh(for: .month)
+    }
+    await Task.yield()
+    viewModel.period = .day
+    await monthRefresh.value
+    await viewModel.waitForRefreshForTesting()
+
+    #expect(viewModel.period == .day)
+    #expect(viewModel.totalCount == 1)
+    #expect(viewModel.ranking.first?.count == 1)
+}
+
+@Test @MainActor
 func refreshUsesRelativeAnchorQueriesInsteadOfNonRelativeFallbacks() async {
     let shortcutId = UUID()
     let store = ShortcutStore()
