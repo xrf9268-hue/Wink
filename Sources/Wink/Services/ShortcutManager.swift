@@ -97,10 +97,13 @@ final class ShortcutManager {
         captureCoordinator.stop()
     }
 
-    func save(shortcuts: [AppShortcut]) {
+    /// Persists to disk first and only then updates the in-memory store, so a
+    /// failed write cannot leave the running app showing state that silently
+    /// reverts on next launch (`shortcuts.json` is the canonical state).
+    func save(shortcuts: [AppShortcut]) throws {
         let inputMonitoringWasRequired = captureCoordinator.inputMonitoringRequired
+        try persistenceService.save(shortcuts)
         shortcutStore.replaceAll(with: shortcuts)
-        persistenceService.save(shortcuts)
         rebuildIndex()
         handleCaptureConfigurationChange(
             inputMonitoringWasRequired: inputMonitoringWasRequired

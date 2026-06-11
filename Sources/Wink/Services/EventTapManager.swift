@@ -560,10 +560,12 @@ final class EventTapManager: EventTapManaging {
 /// Keeps the tap responsive even if the main thread is busy with UI work.
 /// Uses an NSCondition-based readiness mechanism instead of a one-shot semaphore
 /// so that the same thread supports repeated add/remove/recreate cycles.
-private final class BackgroundRunLoopThread: Thread {
+/// internal for @testable access
+final class BackgroundRunLoopThread: Thread {
     private var threadRunLoop: CFRunLoop?
     private let readyCondition = NSCondition()
     private var isReady = false
+    private var didExit = false
 
     override func main() {
         readyCondition.lock()
@@ -576,7 +578,23 @@ private final class BackgroundRunLoopThread: Thread {
         var mutableContext = context
         let dummySource = CFRunLoopSourceCreate(kCFAllocatorDefault, 0, &mutableContext)
         CFRunLoopAddSource(threadRunLoop, dummySource, .commonModes)
-        CFRunLoopRun()
+        // A cancel() issued before this point could not stop the run loop
+        // (CFRunLoopStop on a non-running loop is a no-op), so don't enter it.
+        if !isCancelled {
+            CFRunLoopRun()
+        }
+        readyCondition.lock()
+        didExit = true
+        readyCondition.broadcast()
+        readyCondition.unlock()
+    }
+
+    /// True once `main()` has returned past `CFRunLoopRun()`. Test seam for
+    /// verifying `cancel()`'s join semantics.
+    var hasExited: Bool {
+        readyCondition.lock()
+        defer { readyCondition.unlock() }
+        return didExit
     }
 
     /// Wait for the run loop to become ready and return it.
@@ -601,14 +619,29 @@ private final class BackgroundRunLoopThread: Thread {
         CFRunLoopRemoveSource(rl, source, .commonModes)
     }
 
+    /// Blocks until the thread can no longer touch the `EventTapBox`: either
+    /// `main()` has returned, or the thread exited without ever running
+    /// `main()` (Foundation skips `main()` when the cancelled flag wins the
+    /// race against thread startup). Callers (`EventTapManager.stop()`) rely
+    /// on this join to release the box only after no tap callback can still
+    /// be executing on this thread.
     override func cancel() {
         super.cancel()
         readyCondition.lock()
-        let rl = threadRunLoop
-        readyCondition.unlock()
-        if let rl = rl {
-            CFRunLoopStop(rl)
+        while !didExit {
+            if isReady, let rl = threadRunLoop {
+                // CFRunLoopStop is a no-op if it lands between the readiness
+                // broadcast and CFRunLoopRun() actually starting, so re-issue
+                // it every pass instead of waiting forever on a lost stop.
+                CFRunLoopStop(rl)
+            }
+            if !readyCondition.wait(until: Date().addingTimeInterval(0.01)),
+               isFinished {
+                // Thread exited without running main() — nothing to join.
+                break
+            }
         }
+        readyCondition.unlock()
     }
 }
 

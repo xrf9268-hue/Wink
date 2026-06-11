@@ -11,6 +11,20 @@ struct PersistenceService: Sendable {
         static let live = DiagnosticClient(log: DiagnosticLog.log)
     }
 
+    enum SaveError: Error, LocalizedError, Sendable {
+        case storageUnavailable
+        case writeFailed(path: String, reason: String)
+
+        var errorDescription: String? {
+            switch self {
+            case .storageUnavailable:
+                return "Failed to save shortcuts: path unavailable"
+            case let .writeFailed(path, reason):
+                return "Failed to save shortcuts: path=\(path) reason=\(reason)"
+            }
+        }
+    }
+
     enum LoadError: Error, LocalizedError, Sendable {
         case storageUnavailable
         case fileReadFailed(path: String, reason: String)
@@ -82,12 +96,11 @@ struct PersistenceService: Sendable {
         }
     }
 
-    func save(_ shortcuts: [AppShortcut]) {
+    func save(_ shortcuts: [AppShortcut]) throws {
         guard let url = storageURLProvider() else {
-            let message = "Failed to save shortcuts: path unavailable"
-            logger.error("\(message, privacy: .public)")
-            diagnosticClient.log(message)
-            return
+            let error = SaveError.storageUnavailable
+            logSaveFailure(error)
+            throw error
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -96,10 +109,19 @@ struct PersistenceService: Sendable {
             let data = try encoder.encode(shortcuts)
             try data.write(to: url, options: .atomic)
         } catch {
-            let message = "Failed to save shortcuts: path=\(url.path) reason=\(error.localizedDescription)"
-            logger.error("\(message, privacy: .public)")
-            diagnosticClient.log(message)
+            let saveError = SaveError.writeFailed(
+                path: url.path,
+                reason: error.localizedDescription
+            )
+            logSaveFailure(saveError)
+            throw saveError
         }
+    }
+
+    private func logSaveFailure(_ error: SaveError) {
+        let message = error.localizedDescription
+        logger.error("\(message, privacy: .public)")
+        diagnosticClient.log(message)
     }
 
     private func preserveUnreadablePayload(_ data: Data, originalURL: URL) -> String? {

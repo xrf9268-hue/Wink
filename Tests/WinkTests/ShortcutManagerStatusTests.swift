@@ -263,13 +263,37 @@ private func alternateStandardShortcutKeyPress() -> KeyPress {
 }
 
 @Test @MainActor
+func saveFailureLeavesInMemoryStoreUnchanged() throws {
+    let shortcutStore = ShortcutStore()
+    let existing = [standardShortcut()]
+    shortcutStore.replaceAll(with: existing)
+
+    let manager = ShortcutManager(
+        shortcutStore: shortcutStore,
+        persistenceService: PersistenceService(storageURLProvider: { nil }),
+        appSwitcher: FakeAppSwitcher(),
+        captureCoordinator: ShortcutCaptureCoordinator(
+            standardProvider: FakeCaptureProvider(),
+            hyperProvider: FakeHyperCaptureProvider()
+        ),
+        permissionService: FakePermissionService(ax: true, input: false),
+        diagnosticClient: .init(log: { _ in })
+    )
+
+    #expect(throws: PersistenceService.SaveError.self) {
+        try manager.save(shortcuts: [standardShortcut(), alternateStandardShortcut()])
+    }
+    #expect(shortcutStore.shortcuts == existing)
+}
+
+@Test @MainActor
 func helperBuiltShortcutManagerCanPersistIntoInjectedHarness() throws {
     let shortcuts = [standardShortcut()]
     let context = makeShortcutManager(
         permissionService: FakePermissionService(ax: true, input: false)
     )
 
-    context.manager.save(shortcuts: shortcuts)
+    try context.manager.save(shortcuts: shortcuts)
 
     let persisted = try context.persistenceHarness.makePersistenceService().load()
     #expect(persisted == shortcuts)
@@ -289,7 +313,7 @@ func saveRegistersOnlyCurrentlyAvailableShortcuts() throws {
     )
     let shortcuts = [standardShortcut(), unavailableShortcut()]
 
-    context.manager.save(shortcuts: shortcuts)
+    try context.manager.save(shortcuts: shortcuts)
 
     let persisted = try context.persistenceHarness.makePersistenceService().load()
     #expect(persisted == shortcuts)
@@ -297,7 +321,7 @@ func saveRegistersOnlyCurrentlyAvailableShortcuts() throws {
 }
 
 @Test @MainActor
-func availabilityGainRebuildsRegisteredShortcutsWithoutAnotherSave() {
+func availabilityGainRebuildsRegisteredShortcutsWithoutAnotherSave() throws {
     let bundleLocatorState = MutableAppBundleLocatorState(entries: [:])
     let context = makeShortcutManager(
         permissionService: FakePermissionService(ax: true, input: false),
@@ -305,7 +329,7 @@ func availabilityGainRebuildsRegisteredShortcutsWithoutAnotherSave() {
             bundleLocatorState.entries[bundleIdentifier]
         }
     )
-    context.manager.save(shortcuts: [standardShortcut()])
+    try context.manager.save(shortcuts: [standardShortcut()])
     context.manager.start()
 
     #expect(context.standardProvider.registeredShortcuts.isEmpty)
@@ -317,7 +341,7 @@ func availabilityGainRebuildsRegisteredShortcutsWithoutAnotherSave() {
 }
 
 @Test @MainActor
-func availabilityGainForHyperShortcutRequestsInputMonitoringAndStartsEventTap() {
+func availabilityGainForHyperShortcutRequestsInputMonitoringAndStartsEventTap() throws {
     let bundleLocatorState = MutableAppBundleLocatorState(entries: [:])
     let permissionService = MutablePermissionService(ax: true, input: false)
     permissionService.grantInputMonitoringOnPrompt = true
@@ -328,7 +352,7 @@ func availabilityGainForHyperShortcutRequestsInputMonitoringAndStartsEventTap() 
         }
     )
 
-    context.manager.save(shortcuts: [hyperShortcut()])
+    try context.manager.save(shortcuts: [hyperShortcut()])
     context.manager.setHyperKeyEnabled(true)
     context.manager.start()
 
@@ -348,7 +372,7 @@ func availabilityGainForHyperShortcutRequestsInputMonitoringAndStartsEventTap() 
 }
 
 @Test @MainActor
-func availabilityLossRemovesRegisteredShortcutsWithoutAnotherSave() {
+func availabilityLossRemovesRegisteredShortcutsWithoutAnotherSave() throws {
     let bundleLocatorState = MutableAppBundleLocatorState(entries: [
         "com.apple.Safari": URL(fileURLWithPath: "/Applications/Safari.app")
     ])
@@ -358,7 +382,7 @@ func availabilityLossRemovesRegisteredShortcutsWithoutAnotherSave() {
             bundleLocatorState.entries[bundleIdentifier]
         }
     )
-    context.manager.save(shortcuts: [standardShortcut()])
+    try context.manager.save(shortcuts: [standardShortcut()])
     context.manager.start()
 
     #expect(context.standardProvider.registeredShortcuts == [standardShortcutKeyPress()])
@@ -370,7 +394,7 @@ func availabilityLossRemovesRegisteredShortcutsWithoutAnotherSave() {
 }
 
 @Test @MainActor
-func resumeRebuildsAvailableShortcutSetAfterAvailabilityChangesWhilePaused() {
+func resumeRebuildsAvailableShortcutSetAfterAvailabilityChangesWhilePaused() throws {
     let bundleLocatorState = MutableAppBundleLocatorState(entries: [
         "com.apple.Safari": URL(fileURLWithPath: "/Applications/Safari.app")
     ])
@@ -380,7 +404,7 @@ func resumeRebuildsAvailableShortcutSetAfterAvailabilityChangesWhilePaused() {
             bundleLocatorState.entries[bundleIdentifier]
         }
     )
-    context.manager.save(shortcuts: [standardShortcut(), alternateStandardShortcut()])
+    try context.manager.save(shortcuts: [standardShortcut(), alternateStandardShortcut()])
     context.manager.start()
 
     #expect(context.standardProvider.registeredShortcuts == [standardShortcutKeyPress()])
@@ -396,11 +420,11 @@ func resumeRebuildsAvailableShortcutSetAfterAvailabilityChangesWhilePaused() {
 }
 
 @Test @MainActor
-func captureStatusKeepsStandardShortcutsReadyWhenInputMonitoringIsMissing() {
+func captureStatusKeepsStandardShortcutsReadyWhenInputMonitoringIsMissing() throws {
     let (manager, standardProvider, hyperProvider, _) = makeShortcutManager(
         permissionService: FakePermissionService(ax: true, input: false)
     )
-    manager.save(shortcuts: [standardShortcut()])
+    try manager.save(shortcuts: [standardShortcut()])
     manager.start()
 
     let status = manager.shortcutCaptureStatus()
@@ -419,11 +443,11 @@ func captureStatusKeepsStandardShortcutsReadyWhenInputMonitoringIsMissing() {
 }
 
 @Test @MainActor
-func hyperShortcutsNeedInputMonitoringAndDoNotStartEventTapWithoutIt() {
+func hyperShortcutsNeedInputMonitoringAndDoNotStartEventTapWithoutIt() throws {
     let (manager, standardProvider, hyperProvider, _) = makeShortcutManager(
         permissionService: FakePermissionService(ax: true, input: false)
     )
-    manager.save(shortcuts: [hyperShortcut()])
+    try manager.save(shortcuts: [hyperShortcut()])
     manager.setHyperKeyEnabled(true)
     manager.start()
 
@@ -441,19 +465,19 @@ func hyperShortcutsNeedInputMonitoringAndDoNotStartEventTapWithoutIt() {
 }
 
 @Test @MainActor
-func hyperRoutingFollowsHyperKeyToggle() {
+func hyperRoutingFollowsHyperKeyToggle() throws {
     #expect(ShortcutCaptureRoute.route(for: hyperShortcut(), hyperKeyEnabled: false) == .standard)
     #expect(ShortcutCaptureRoute.route(for: hyperShortcut(), hyperKeyEnabled: true) == .hyper)
     #expect(ShortcutCaptureRoute.route(for: standardShortcut(), hyperKeyEnabled: true) == .standard)
 }
 
 @Test @MainActor
-func permissionGainStartsStandardCaptureWhenAccessibilityBecomesAvailable() {
+func permissionGainStartsStandardCaptureWhenAccessibilityBecomesAvailable() throws {
     let permissionService = MutablePermissionService(ax: true, input: false)
     let (manager, standardProvider, hyperProvider, _) = makeShortcutManager(
         permissionService: permissionService
     )
-    manager.save(shortcuts: [standardShortcut()])
+    try manager.save(shortcuts: [standardShortcut()])
 
     manager.checkPermissionChange()
 
@@ -463,12 +487,12 @@ func permissionGainStartsStandardCaptureWhenAccessibilityBecomesAvailable() {
 }
 
 @Test @MainActor
-func startDoesNotRequestInputMonitoringWhenCurrentConfigurationIsStandardOnly() {
+func startDoesNotRequestInputMonitoringWhenCurrentConfigurationIsStandardOnly() throws {
     let permissionService = MutablePermissionService(ax: true, input: false)
     let (manager, standardProvider, hyperProvider, _) = makeShortcutManager(
         permissionService: permissionService
     )
-    manager.save(shortcuts: [standardShortcut()])
+    try manager.save(shortcuts: [standardShortcut()])
 
     manager.start()
 
@@ -480,13 +504,13 @@ func startDoesNotRequestInputMonitoringWhenCurrentConfigurationIsStandardOnly() 
 }
 
 @Test @MainActor
-func startRequestsInputMonitoringWhenCurrentConfigurationNeedsHyperTransport() {
+func startRequestsInputMonitoringWhenCurrentConfigurationNeedsHyperTransport() throws {
     let permissionService = MutablePermissionService(ax: true, input: false)
     permissionService.grantInputMonitoringOnPrompt = true
     let (manager, standardProvider, hyperProvider, _) = makeShortcutManager(
         permissionService: permissionService
     )
-    manager.save(shortcuts: [hyperShortcut()])
+    try manager.save(shortcuts: [hyperShortcut()])
     manager.setHyperKeyEnabled(true)
 
     manager.start()
@@ -505,13 +529,13 @@ func startRequestsInputMonitoringWhenCurrentConfigurationNeedsHyperTransport() {
 }
 
 @Test @MainActor
-func startDefersInputMonitoringPromptUntilAccessibilityIsGrantedForHyperConfiguration() {
+func startDefersInputMonitoringPromptUntilAccessibilityIsGrantedForHyperConfiguration() throws {
     let permissionService = MutablePermissionService(ax: false, input: false)
     permissionService.grantInputMonitoringOnPrompt = true
     let (manager, standardProvider, hyperProvider, _) = makeShortcutManager(
         permissionService: permissionService
     )
-    manager.save(shortcuts: [hyperShortcut()])
+    try manager.save(shortcuts: [hyperShortcut()])
     manager.setHyperKeyEnabled(true)
 
     manager.start()
@@ -539,12 +563,12 @@ func startDefersInputMonitoringPromptUntilAccessibilityIsGrantedForHyperConfigur
 }
 
 @Test @MainActor
-func mixedConfigurationKeepsStandardShortcutsReadyWhileHyperWaitsForInputMonitoring() {
+func mixedConfigurationKeepsStandardShortcutsReadyWhileHyperWaitsForInputMonitoring() throws {
     let permissionService = MutablePermissionService(ax: true, input: false)
     let (manager, standardProvider, hyperProvider, _) = makeShortcutManager(
         permissionService: permissionService
     )
-    manager.save(shortcuts: [standardShortcut(), hyperShortcut()])
+    try manager.save(shortcuts: [standardShortcut(), hyperShortcut()])
     manager.setHyperKeyEnabled(true)
 
     manager.start()
@@ -562,13 +586,13 @@ func mixedConfigurationKeepsStandardShortcutsReadyWhileHyperWaitsForInputMonitor
 }
 
 @Test @MainActor
-func enablingHyperAtRuntimeRequestsInputMonitoringAndResyncsCapture() {
+func enablingHyperAtRuntimeRequestsInputMonitoringAndResyncsCapture() throws {
     let permissionService = MutablePermissionService(ax: true, input: false)
     permissionService.grantInputMonitoringOnPrompt = true
     let (manager, standardProvider, hyperProvider, _) = makeShortcutManager(
         permissionService: permissionService
     )
-    manager.save(shortcuts: [hyperShortcut()])
+    try manager.save(shortcuts: [hyperShortcut()])
     manager.start()
 
     #expect(permissionService.requestedPromptFlags == [true])
@@ -591,13 +615,13 @@ func enablingHyperAtRuntimeRequestsInputMonitoringAndResyncsCapture() {
 }
 
 @Test @MainActor
-func grantingAccessibilityAfterHyperBecomesRequiredRequestsInputMonitoring() {
+func grantingAccessibilityAfterHyperBecomesRequiredRequestsInputMonitoring() throws {
     let permissionService = MutablePermissionService(ax: false, input: false)
     permissionService.grantInputMonitoringOnPrompt = true
     let (manager, standardProvider, hyperProvider, _) = makeShortcutManager(
         permissionService: permissionService
     )
-    manager.save(shortcuts: [hyperShortcut()])
+    try manager.save(shortcuts: [hyperShortcut()])
 
     manager.start()
     manager.setHyperKeyEnabled(true)
@@ -624,7 +648,7 @@ func grantingAccessibilityAfterHyperBecomesRequiredRequestsInputMonitoring() {
 }
 
 @Test @MainActor
-func accessibilityLossStopsAllShortcutCapture() {
+func accessibilityLossStopsAllShortcutCapture() throws {
     let permissionService = MutablePermissionService(ax: false, input: false)
     let standardProvider = FakeCaptureProvider()
     let hyperProvider = FakeHyperCaptureProvider()
@@ -652,12 +676,12 @@ func accessibilityLossStopsAllShortcutCapture() {
 }
 
 @Test @MainActor
-func unchangedPermissionsDoNotResyncCaptureRepeatedly() {
+func unchangedPermissionsDoNotResyncCaptureRepeatedly() throws {
     let permissionService = MutablePermissionService(ax: true, input: false)
     let (manager, standardProvider, hyperProvider, _) = makeShortcutManager(
         permissionService: permissionService
     )
-    manager.save(shortcuts: [standardShortcut()])
+    try manager.save(shortcuts: [standardShortcut()])
     manager.start()
 
     let standardStartsAfterLaunch = standardProvider.startCallCount
@@ -670,13 +694,13 @@ func unchangedPermissionsDoNotResyncCaptureRepeatedly() {
 }
 
 @Test @MainActor
-func startSuppressesAutomaticPermissionPromptsWhenDisabledForThisLaunch() {
+func startSuppressesAutomaticPermissionPromptsWhenDisabledForThisLaunch() throws {
     let permissionService = MutablePermissionService(ax: true, input: false)
     let (manager, standardProvider, hyperProvider, _) = makeShortcutManager(
         permissionService: permissionService,
         automaticPermissionPromptingEnabled: false
     )
-    manager.save(shortcuts: [hyperShortcut()])
+    try manager.save(shortcuts: [hyperShortcut()])
     manager.setHyperKeyEnabled(true)
 
     manager.start()
@@ -693,14 +717,14 @@ func startSuppressesAutomaticPermissionPromptsWhenDisabledForThisLaunch() {
 }
 
 @Test @MainActor
-func explicitPermissionRequestStillPromptsWhenAutomaticPromptsAreDisabled() {
+func explicitPermissionRequestStillPromptsWhenAutomaticPromptsAreDisabled() throws {
     let permissionService = MutablePermissionService(ax: true, input: false)
     permissionService.grantInputMonitoringOnPrompt = true
     let (manager, _, hyperProvider, _) = makeShortcutManager(
         permissionService: permissionService,
         automaticPermissionPromptingEnabled: false
     )
-    manager.save(shortcuts: [hyperShortcut()])
+    try manager.save(shortcuts: [hyperShortcut()])
     manager.setHyperKeyEnabled(true)
 
     manager.start()
@@ -716,7 +740,7 @@ func explicitPermissionRequestStillPromptsWhenAutomaticPromptsAreDisabled() {
 }
 
 @Test @MainActor
-func matchedShortcutEmitsTraceOnlyForMatchedKeys() {
+func matchedShortcutEmitsTraceOnlyForMatchedKeys() throws {
     let diagnostics = DiagnosticCapture()
     let standardProvider = FakeCaptureProvider()
     let (manager, _, _, _) = makeShortcutManager(
@@ -724,7 +748,7 @@ func matchedShortcutEmitsTraceOnlyForMatchedKeys() {
         standardProvider: standardProvider,
         diagnosticSink: diagnostics.record
     )
-    manager.save(shortcuts: [standardShortcut()])
+    try manager.save(shortcuts: [standardShortcut()])
     manager.start()
 
     standardProvider.emit(KeyPress(
@@ -744,7 +768,7 @@ func matchedShortcutEmitsTraceOnlyForMatchedKeys() {
 }
 
 @Test @MainActor
-func missingStandardRegistrationEmitsCaptureBlockedDiagnostic() {
+func missingStandardRegistrationEmitsCaptureBlockedDiagnostic() throws {
     let diagnostics = DiagnosticCapture()
     let standardProvider = FakeCaptureProvider()
     standardProvider.startSucceeds = false
@@ -753,7 +777,7 @@ func missingStandardRegistrationEmitsCaptureBlockedDiagnostic() {
         standardProvider: standardProvider,
         diagnosticSink: diagnostics.record
     )
-    manager.save(shortcuts: [standardShortcut()])
+    try manager.save(shortcuts: [standardShortcut()])
 
     manager.start()
     let status = manager.shortcutCaptureStatus()
@@ -770,7 +794,7 @@ func missingStandardRegistrationEmitsCaptureBlockedDiagnostic() {
 }
 
 @Test @MainActor
-func partialStandardRegistrationMarksStandardCaptureNotReadyAndIncludesFailedBindingDetails() {
+func partialStandardRegistrationMarksStandardCaptureNotReadyAndIncludesFailedBindingDetails() throws {
     let diagnostics = DiagnosticCapture()
     let standardProvider = FakeCaptureProvider()
     let failedKeyPress = KeyPress(
@@ -783,7 +807,7 @@ func partialStandardRegistrationMarksStandardCaptureNotReadyAndIncludesFailedBin
         standardProvider: standardProvider,
         diagnosticSink: diagnostics.record
     )
-    manager.save(shortcuts: [standardShortcut(), alternateStandardShortcut()])
+    try manager.save(shortcuts: [standardShortcut(), alternateStandardShortcut()])
 
     manager.start()
 
@@ -803,13 +827,13 @@ func partialStandardRegistrationMarksStandardCaptureNotReadyAndIncludesFailedBin
 }
 
 @Test @MainActor
-func missingInputMonitoringEmitsHyperCaptureBlockedDiagnostic() {
+func missingInputMonitoringEmitsHyperCaptureBlockedDiagnostic() throws {
     let diagnostics = DiagnosticCapture()
     let (manager, _, _, _) = makeShortcutManager(
         permissionService: FakePermissionService(ax: true, input: false),
         diagnosticSink: diagnostics.record
     )
-    manager.save(shortcuts: [hyperShortcut()])
+    try manager.save(shortcuts: [hyperShortcut()])
     manager.setHyperKeyEnabled(true)
 
     manager.start()

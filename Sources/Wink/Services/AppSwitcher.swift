@@ -755,7 +755,7 @@ final class AppSwitcher: AppSwitching {
         guard let runningApp = appLookupClient.runningApplications(shortcut.bundleIdentifier).first else {
             // App not running — launch it
             if let appURL = appLookupClient.applicationURL(shortcut.bundleIdentifier) {
-                _ = acceptPendingLaunch(
+                let launchState = acceptPendingLaunch(
                     for: shortcut,
                     startedAt: attemptStartedAt
                 )
@@ -775,6 +775,7 @@ final class AppSwitcher: AppSwitching {
                     elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
                 )
                 let bundleId = shortcut.bundleIdentifier
+                let launchGeneration = launchState.generation
                 let configuration = NSWorkspace.OpenConfiguration()
                 fallbackActivationClient.openApplication(appURL, configuration) { [weak self] launchedApp, error in
                     if let error {
@@ -798,7 +799,8 @@ final class AppSwitcher: AppSwitching {
                     Task { @MainActor [weak self] in
                         self?.continueOwnedLaunchConfirmation(
                             for: shortcut,
-                            launchedProcessIdentifier: launchedProcessIdentifier
+                            launchedProcessIdentifier: launchedProcessIdentifier,
+                            expectedGeneration: launchGeneration
                         )
                     }
                 }
@@ -1162,9 +1164,25 @@ final class AppSwitcher: AppSwitching {
 
     private func continueOwnedLaunchConfirmation(
         for shortcut: AppShortcut,
-        launchedProcessIdentifier: pid_t?
+        launchedProcessIdentifier: pid_t?,
+        expectedGeneration: Int
     ) {
         guard let pendingState = pendingActivationState(for: shortcut.bundleIdentifier) else {
+            return
+        }
+
+        // A slow launch can be superseded by a second press that replaced the
+        // pending session (new generation). The superseding session's own
+        // completion manages its lifecycle; discard this stale callback before
+        // it can overwrite the new session's activationPath/pid.
+        guard pendingState.generation == expectedGeneration else {
+            logToggleTrace(
+                family: .confirmation,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "stale_completion_discarded",
+                reason: "launch_completion_superseded",
+                activationPath: .launch
+            )
             return
         }
 

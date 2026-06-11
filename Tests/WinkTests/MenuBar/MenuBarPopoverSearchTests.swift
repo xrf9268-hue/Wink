@@ -42,7 +42,7 @@ struct MenuBarPopoverSearchTests {
     }
 
     @Test @MainActor
-    func blankSearchKeepsSavedOrdering() {
+    func blankSearchKeepsSavedOrdering() throws {
         let context = makeSearchPopoverContext(
             shortcuts: [
                 AppShortcut(
@@ -89,7 +89,7 @@ private func makeSearchPopoverContext(shortcuts: [AppShortcut]) -> SearchPopover
         permissionService: SearchFakePermissionService(),
         diagnosticClient: .live
     )
-    manager.save(shortcuts: shortcuts)
+    try! manager.save(shortcuts: shortcuts)
 
     let preferences = AppPreferences(
         shortcutManager: manager,

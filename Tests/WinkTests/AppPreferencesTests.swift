@@ -70,7 +70,7 @@ func setHyperKeyEnabledTracksActualServiceStateAfterFailure() {
 }
 
 @Test @MainActor
-func setHyperKeyEnabledRefreshesShortcutCaptureStatusForHyperRoutingChanges() {
+func setHyperKeyEnabledRefreshesShortcutCaptureStatusForHyperRoutingChanges() throws {
     let suiteName = "AppPreferencesTests.setHyperKeyEnabledRefreshesShortcutCaptureStatusForHyperRoutingChanges"
     let defaults = UserDefaults(suiteName: suiteName)!
     defaults.removePersistentDomain(forName: suiteName)
@@ -92,7 +92,7 @@ func setHyperKeyEnabledRefreshesShortcutCaptureStatusForHyperRoutingChanges() {
         permissionService: FakePermissionService(ax: true, input: false),
         diagnosticClient: .live
     )
-    manager.save(shortcuts: shortcutStore.shortcuts)
+    try manager.save(shortcuts: shortcutStore.shortcuts)
 
     let preferences = AppPreferences(
         shortcutManager: manager,
@@ -283,7 +283,7 @@ func initRestoresPausedShortcutPreferenceIntoRuntimeStatus() throws {
         permissionService: FakePermissionService(ax: true, input: true),
         diagnosticClient: .live
     )
-    manager.save(shortcuts: shortcutStore.shortcuts)
+    try manager.save(shortcuts: shortcutStore.shortcuts)
 
     let preferences = AppPreferences(
         shortcutManager: manager,
@@ -318,7 +318,7 @@ func setShortcutsPausedPersistsPreferenceAfterRuntimeUpdate() throws {
         permissionService: FakePermissionService(ax: true, input: true),
         diagnosticClient: .live
     )
-    manager.save(shortcuts: shortcutStore.shortcuts)
+    try manager.save(shortcuts: shortcutStore.shortcuts)
 
     let preferences = AppPreferences(
         shortcutManager: manager,
