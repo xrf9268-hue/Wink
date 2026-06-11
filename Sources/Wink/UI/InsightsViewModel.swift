@@ -88,14 +88,12 @@ final class InsightsViewModel {
         }
     }
 
-    func refresh() async {
-        refreshGeneration &+= 1
-        await doRefresh(for: period, generation: refreshGeneration)
-    }
-
+    /// Selects `period` and awaits the resulting refresh. Drives the same
+    /// task-tracked, last-selection-wins mechanism as the period picker, so a
+    /// concurrent `scheduleRefresh()` can cancel and supersede this refresh.
     func refresh(for period: InsightsPeriod) async {
-        refreshGeneration &+= 1
-        await doRefresh(for: period, generation: refreshGeneration)
+        self.period = period  // didSet calls scheduleRefresh()
+        await refreshTask?.value
     }
 
     func waitForRefreshForTesting() async {

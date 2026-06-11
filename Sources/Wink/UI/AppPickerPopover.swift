@@ -1,14 +1,51 @@
 import AppKit
 import SwiftUI
 
+/// Keyboard-navigation highlight state for `AppPickerPopover`, kept as a pure
+/// value type so the highlight/Return semantics are unit-testable.
+struct AppPickerHighlightState {
+    private(set) var highlightedIndex: Int?
+
+    /// Highlight the first row (onAppear behavior).
+    mutating func reset() {
+        highlightedIndex = 0
+    }
+
+    /// A new query re-filters the list, so a retained index can point past the
+    /// new bounds (Return would no-op) or at the wrong row. Re-anchor on the
+    /// first visible result to match the type-ahead-then-Enter flow.
+    mutating func searchTextChanged() {
+        highlightedIndex = 0
+    }
+
+    /// Move the highlight by `delta`, clamped to `0..<count`. Returns the new
+    /// index so the caller can scroll to it, or nil when the list is empty.
+    mutating func move(_ delta: Int, count: Int) -> Int? {
+        guard count > 0 else { return nil }
+        let newIndex = max(0, min(count - 1, (highlightedIndex ?? 0) + delta))
+        highlightedIndex = newIndex
+        return newIndex
+    }
+
+    /// The highlighted entry, or nil when the index is unset or out of bounds.
+    func selection<Entry>(in entries: [Entry]) -> Entry? {
+        guard let highlightedIndex, entries.indices.contains(highlightedIndex) else {
+            return nil
+        }
+        return entries[highlightedIndex]
+    }
+}
+
 struct AppPickerPopover: View {
     @Bindable var appListProvider: AppListProvider
     let onSelect: (AppEntry) -> Void
     let onBrowse: () -> Void
 
     @State private var searchText = ""
-    @State private var highlightedIndex: Int?
+    @State private var highlight = AppPickerHighlightState()
     @Environment(\.dismiss) private var dismiss
+
+    private var highlightedIndex: Int? { highlight.highlightedIndex }
 
     /// SwiftUI reads these lists several times per body render; computed
     /// properties would re-filter on each access.
@@ -100,7 +137,10 @@ struct AppPickerPopover: View {
         .frame(width: 320, height: 400)
         .onAppear {
             appListProvider.refreshIfNeeded()
-            highlightedIndex = 0
+            highlight.reset()
+        }
+        .onChange(of: searchText) {
+            highlight.searchTextChanged()
         }
         .onKeyPress(.escape) { dismiss(); return .handled }
     }
@@ -146,17 +186,13 @@ struct AppPickerPopover: View {
     // MARK: - Navigation
 
     private func moveHighlight(_ delta: Int, proxy: ScrollViewProxy, in sections: Sections) {
-        let count = sections.flat.count
-        guard count > 0 else { return }
-        let current = highlightedIndex ?? 0
-        let newIndex = max(0, min(count - 1, current + delta))
-        highlightedIndex = newIndex
+        guard let newIndex = highlight.move(delta, count: sections.flat.count) else { return }
         proxy.scrollTo(newIndex, anchor: .center)
     }
 
     private func selectHighlighted(in sections: Sections) {
-        guard let index = highlightedIndex, index < sections.flat.count else { return }
-        select(sections.flat[index])
+        guard let entry = highlight.selection(in: sections.flat) else { return }
+        select(entry)
     }
 
     private func select(_ entry: AppEntry) {

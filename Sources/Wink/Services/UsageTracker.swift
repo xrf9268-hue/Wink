@@ -7,6 +7,8 @@ private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "Usage
 actor UsageTracker: UsageTracking {
     private nonisolated(unsafe) let db: OpaquePointer?
     private static let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+    /// Hard cap on the streak scan; the UI never needs unbounded streaks.
+    static let maxStreakDays = 366
 
     private let timeZoneProvider: @Sendable () -> TimeZone
     private var dateFormatter: DateFormatter
@@ -331,10 +333,16 @@ actor UsageTracker: UsageTracking {
     }
 
     func streakDays(relativeTo now: Date) async -> Int {
+        // Bounded to dates up to "today" so future-dated rows (clock skew,
+        // corrupt insert) cannot break the walk on the first iteration, and
+        // capped so the scan never materializes unbounded history. Served by
+        // an ordered walk of idx_daily_usage_date.
         let sql = """
             SELECT DISTINCT date
             FROM daily_usage
+            WHERE date <= ?
             ORDER BY date DESC
+            LIMIT \(Self.maxStreakDays)
             """
         guard let stmt = cachedStatement(&streakDaysStmt, sql: sql) else {
             return 0
@@ -344,6 +352,9 @@ actor UsageTracker: UsageTracking {
         let calendar = UsageWindowMath.calendar(timeZone: tz)
         var expectedDate = calendar.startOfDay(for: now)
         var streak = 0
+
+        let today = dateString(for: expectedDate, in: tz)
+        sqlite3_bind_text(stmt, 1, (today as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
 
         while sqlite3_step(stmt) == SQLITE_ROW {
             guard let datePtr = sqlite3_column_text(stmt, 0) else {
@@ -464,6 +475,8 @@ actor UsageTracker: UsageTracking {
             );
             CREATE INDEX IF NOT EXISTS idx_usage_hourly_date_hour
                 ON usage_hourly(date, hour);
+            CREATE INDEX IF NOT EXISTS idx_daily_usage_date
+                ON daily_usage(date);
             PRAGMA user_version = \(UsageDatabaseBootstrap.requiredSchemaVersion);
             """
 
