@@ -208,6 +208,58 @@ struct EventTapLifecycleLoggingTests {
     }
 }
 
+// MARK: - Background run loop thread teardown
+
+@Suite("BackgroundRunLoopThread teardown synchronization")
+struct BackgroundRunLoopThreadTeardownTests {
+
+    /// `EventTapManager.stop()` releases the retained `EventTapBox` right after
+    /// `cancel()` returns. That is only safe if `cancel()` blocks until the
+    /// background run loop has fully exited — including any in-flight tap
+    /// callback executing on that thread.
+    @Test
+    func cancelBlocksUntilInFlightRunLoopWorkCompletes() {
+        let thread = BackgroundRunLoopThread()
+        thread.start()
+        guard let runLoop = thread.runLoop else {
+            Issue.record("background run loop never became ready")
+            return
+        }
+
+        let blockStarted = DispatchSemaphore(value: 0)
+        let blockFinished = LockedValue(false)
+        CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) {
+            blockStarted.signal()
+            Thread.sleep(forTimeInterval: 0.2)
+            blockFinished.value = true
+        }
+        CFRunLoopWakeUp(runLoop)
+
+        #expect(blockStarted.wait(timeout: .now() + 5) == .success)
+        thread.cancel()
+
+        // cancel() must not return while the run loop is still executing work.
+        #expect(blockFinished.value)
+        #expect(thread.hasExited)
+    }
+
+    /// Hammer the start→cancel transition: CFRunLoopStop is a no-op when it
+    /// lands before CFRunLoopRun() starts, and Foundation may skip main()
+    /// entirely when the cancelled flag wins the race against thread startup.
+    /// cancel() must return (not hang) in every interleaving, and afterwards
+    /// the thread must be unable to touch the box: either main() ran to
+    /// completion or the thread finished without ever running it.
+    @Test
+    func cancelImmediatelyAfterStartDoesNotHang() {
+        for _ in 0..<50 {
+            let thread = BackgroundRunLoopThread()
+            thread.start()
+            thread.cancel()
+            #expect(thread.hasExited || thread.isFinished)
+        }
+    }
+}
+
 // MARK: - Callback-safe recovery dispatch
 
 @Suite("EventTapManagerLifecycle callback safety")
