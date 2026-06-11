@@ -26,4 +26,11 @@ jobs:
       - name: Validate issue linkage and validation status
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node .github/scripts/validate-pr-metadata.mjs
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        # The event payload snapshots the PR body at trigger time; fetch the
+        # live body so reruns validate what the PR actually says now.
+        run: |
+          PR_BODY="$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" -q '.body // ""')"
+          export PR_BODY
+          node .github/scripts/validate-pr-metadata.mjs
