@@ -28,6 +28,16 @@ jobs:
       - name: Swift version
         run: swift --version
 
+      - name: Capture toolchain cache key
+        run: echo "TOOLCHAIN_KEY=$(swift --version 2>/dev/null | head -1 | shasum -a 256 | cut -c1-12)" >> "$GITHUB_ENV"
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ env.TOOLCHAIN_KEY }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-${{ env.TOOLCHAIN_KEY }}-
+
       - name: Release script unit tests
         run: |
           brew install bats-core
