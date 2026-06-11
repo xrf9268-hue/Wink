@@ -141,10 +141,12 @@ The release workflow lives at [release.yml](../.github/workflows/release.yml).
 
 ### Trigger
 
-- push a tag named `v<CFBundleShortVersionString>`
-- or run the workflow manually from the default branch and provide an existing matching `release_tag` input
+- push a tag named `v<CFBundleShortVersionString>` (real release)
+- or run the workflow manually: provide an existing matching `release_tag` to operate on that tag, or leave it empty to rehearse the dispatched ref (forces a dry run)
 
-The workflow fails if the Git tag does not match `CFBundleShortVersionString`.
+The `dry_run` input (default `true` for manual runs) builds and validates everything but publishes nothing. Tag pushes always publish.
+
+The workflow fails if the Git tag does not match `CFBundleShortVersionString` (skipped when rehearsing a ref without a tag).
 
 If any required Apple, Sparkle, or R2 secret is missing, the workflow exits successfully with a summary that lists the missing secrets and publishes nothing.
 
@@ -174,6 +176,15 @@ Every release run starts by fetching the live `appcast.xml` from `R2_PUBLIC_BASE
 - A fetch error (5xx, network failure) always fails the run; it is never treated as a first release.
 - If the live feed legitimately does not exist yet (HTTP 404), set the repository variable `WINK_ALLOW_FIRST_RELEASE` to `1` for the first run and delete the variable afterwards.
 - All release runs share one concurrency group and execute serially. If three or more runs queue up, GitHub cancels the intermediate pending run — re-run it; the gate makes any re-run order safe.
+
+### Dry run
+
+A manual `Release` run with `dry_run` enabled (the default) rehearses the full chain — feed gate (report-only `--mode rehearse`), notes gate, tests, signing, notarization, stapling, DMG/ZIP packaging, appcast generation, and artifact validation — then uploads everything as the `release-dry-run-<version>` workflow artifact instead of publishing. R2 and GitHub Releases are never touched.
+
+- Leave `release_tag` empty to rehearse the dispatched ref (dry run is forced).
+- Set `release_tag` to an existing tag with `dry_run` enabled to rehearse that tag.
+- Dry runs require the same secrets as real releases; rehearsing the signed chain is the point.
+- While no live feed exists yet, the rehearse-mode gate still fails on 404 unless the `WINK_ALLOW_FIRST_RELEASE` repository variable is set (the same opt-in a first real release needs).
 
 When secrets are present, the workflow is fail-closed for the live Sparkle feed: if signing, notarization, appcast signing, GitHub Release publication, or the final appcast upload fails, Sparkle clients do not see the new update because `appcast.xml` is published last.
 
