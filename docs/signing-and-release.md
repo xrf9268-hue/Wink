@@ -152,17 +152,18 @@ If any required Apple, Sparkle, or R2 secret is missing, the workflow exits succ
 
 0. Check whether all required release secrets are present
 1. Run `scripts/verify-release-feed.sh --mode release`: restore the live `appcast.xml` to `build/live-appcast.xml` and fail unless `CFBundleVersion` is strictly greater than the live feed's maximum `sparkle:version`
-2. Import the `Developer ID Application` certificate into a temporary keychain
-3. Write the `notarytool` API key to a temporary file
-4. Run `swift test`
-5. Run `scripts/package-app.sh` in hardened runtime signing mode, injecting `SPARKLE_FEED_URL` and `SPARKLE_PUBLIC_ED_KEY`
-6. Verify `build/Wink.app`, archive it as a zip for `notarytool`, notarize that archive, and staple `build/Wink.app`
-7. Run `scripts/package-update-zip.sh`
-8. Run `scripts/generate-appcast.sh` with the private EdDSA key, merging the restored live feed so existing entries are preserved
-9. Run `scripts/package-dmg.sh`, then notarize and staple `build/Wink-<version>.dmg`
-10. Upload the versioned DMG and Sparkle ZIP to R2
-11. Create or update the GitHub Release and upload `Wink-<version>.dmg`
-12. Upload `appcast.xml` last so the live Sparkle feed only flips after the earlier release steps succeed
+2. Run `scripts/release-notes.sh <version>`: fail unless `CHANGELOG.md` has a non-empty `## <version>` section, and stage it as the GitHub Release body
+3. Import the `Developer ID Application` certificate into a temporary keychain
+4. Write the `notarytool` API key to a temporary file
+5. Run `swift test`
+6. Run `scripts/package-app.sh` in hardened runtime signing mode, injecting `SPARKLE_FEED_URL` and `SPARKLE_PUBLIC_ED_KEY`
+7. Verify `build/Wink.app`, archive it as a zip for `notarytool`, notarize that archive, and staple `build/Wink.app`
+8. Run `scripts/package-update-zip.sh`
+9. Run `scripts/generate-appcast.sh` with the private EdDSA key, merging the restored live feed so existing entries are preserved; `SPARKLE_FULL_RELEASE_NOTES_URL` points at the tag's GitHub Release page
+10. Run `scripts/package-dmg.sh`, then notarize and staple `build/Wink-<version>.dmg`
+11. Upload the versioned DMG and Sparkle ZIP to R2
+12. Create or update the GitHub Release with the CHANGELOG-derived notes and upload `Wink-<version>.dmg`
+13. Upload `appcast.xml` last so the live Sparkle feed only flips after the earlier release steps succeed
 
 ### Feed safety gate
 
@@ -195,7 +196,7 @@ The internal package path is for trusted testers only. It does not:
 
 ## Manual Release Checklist
 
-1. Update `CFBundleShortVersionString` and `CFBundleVersion` in [Info.plist](../Sources/Wink/Resources/Info.plist)
+1. Write the `## X.Y.Z` section in [CHANGELOG.md](../CHANGELOG.md), then run `./scripts/bump-version.sh X.Y.Z` (validates semver, requires the CHANGELOG section, and increments `CFBundleVersion`)
 2. Run `swift test`
 3. Run `bash scripts/package-app.sh`
 4. Run `bash scripts/package-update-zip.sh`

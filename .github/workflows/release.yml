@@ -200,6 +200,11 @@ jobs:
         run: |
           SPARKLE_PUBLIC_BASE_URL="$R2_PUBLIC_BASE_URL" bash scripts/verify-release-feed.sh --mode release
 
+      - name: Extract release notes
+        run: |
+          bash scripts/release-notes.sh "$VERSION" > "$RUNNER_TEMP/release-notes.md"
+          echo "RELEASE_NOTES_PATH=$RUNNER_TEMP/release-notes.md" >> "$GITHUB_ENV"
+
       - name: Import Developer ID certificate
         env:
           DEVELOPER_ID_APP_CERT_BASE64: ${{ secrets.DEVELOPER_ID_APP_CERT_BASE64 }}
@@ -285,6 +290,7 @@ jobs:
           SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
         run: |
           export SPARKLE_PUBLIC_BASE_URL="$R2_PUBLIC_BASE_URL"
+          export SPARKLE_FULL_RELEASE_NOTES_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
           bash scripts/generate-appcast.sh
 
       - name: Verify appcast
@@ -347,10 +353,11 @@ jobs:
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "$DMG_PATH" --clobber
+            gh release edit "$RELEASE_TAG" --notes-file "$RELEASE_NOTES_PATH"
           else
             gh release create "$RELEASE_TAG" "$DMG_PATH" \
               --title "$RELEASE_TAG" \
-              --generate-notes
+              --notes-file "$RELEASE_NOTES_PATH"
           fi
 
       - name: Publish live Sparkle appcast to R2
