@@ -1390,6 +1390,97 @@ func clearActivationTrackingResetsCoordinatorSession() {
     #expect(coordinator.session(for: "com.apple.Safari")?.phase == .idle)
 }
 
+// MARK: - Stale launch completion
+
+/// A slow launch whose `openApplication` completion arrives after a second
+/// shortcut press has replaced the pending session (new generation) must not
+/// mutate the superseding session's `activationPath`/`pid` (Issue #263).
+@Test @MainActor
+func staleLaunchCompletionDoesNotMutateSupersedingSession() async {
+    let clock = MutableClock(time: 1000.0)
+    let coordinator = ToggleSessionCoordinator(now: { clock.time })
+    let runningApps = LockedValue<[NSRunningApplication]>([])
+    let launchCompletions = LockedValue<[@Sendable (NSRunningApplication?, Error?) -> Void]>([])
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        fallbackActivationClient: .init(openApplication: { _, _, completion in
+            launchCompletions.value.append(completion)
+        }),
+        appLookupClient: .init(
+            runningApplications: { _ in runningApps.value },
+            applicationURL: { _ in URL(fileURLWithPath: "/Applications/StaleLaunch.app") }
+        ),
+        confirmationClient: .init(now: { clock.time }, schedule: { _, _ in }),
+        sessionCoordinator: coordinator
+    )
+    let shortcut = AppShortcut(
+        appName: "StaleLaunch",
+        bundleIdentifier: "com.test.StaleLaunch",
+        keyEquivalent: "l",
+        modifierFlags: ["command"]
+    )
+
+    // First press: not running → launch path begins session S1.
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    let firstGeneration = coordinator.session(for: shortcut.bundleIdentifier)?.generation
+    #expect(launchCompletions.value.count == 1)
+
+    // Past the 400ms cooldown the app still is not running, so the second
+    // press takes the launch path again and replaces S1 with S2.
+    clock.time += 0.5
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    let supersedingSession = coordinator.session(for: shortcut.bundleIdentifier)
+    #expect(supersedingSession != nil)
+    #expect(supersedingSession?.generation != firstGeneration)
+    #expect(supersedingSession?.phase == .launching)
+    #expect(supersedingSession?.pid == nil)
+    #expect(launchCompletions.value.count == 2)
+
+    // The app becomes visible to lookup, then S1's completion arrives late.
+    // The completion hops through one Task { @MainActor }, so yielding the
+    // main actor drains it deterministically.
+    runningApps.value = [NSRunningApplication.current]
+    launchCompletions.value[0](nil, nil)
+    for _ in 0..<10 { await Task.yield() }
+
+    // The stale callback must be discarded outright: S2 keeps its launching
+    // phase, nil pid, and generation.
+    let after = coordinator.session(for: shortcut.bundleIdentifier)
+    #expect(after?.generation == supersedingSession?.generation)
+    #expect(after?.phase == .launching)
+    #expect(after?.pid == nil)
+
+    // The current session's own completion still attaches normally.
+    launchCompletions.value[1](nil, nil)
+    await waitUntilAppSwitcher("current completion attaches the launched process") {
+        coordinator.session(for: shortcut.bundleIdentifier)?.pid != nil
+    }
+    let attached = coordinator.session(for: shortcut.bundleIdentifier)
+    #expect(attached?.generation == supersedingSession?.generation)
+    // NSRunningApplication.current's processIdentifier is unstable in the
+    // test-runner process, so assert attachment rather than the exact pid.
+    #expect(attached?.pid != nil)
+    #expect(attached?.phase == .activating)
+}
+
+@MainActor
+private func waitUntilAppSwitcher(
+    _ description: String,
+    timeout: Duration = .seconds(2),
+    pollInterval: Duration = .milliseconds(20),
+    condition: @escaping @MainActor () -> Bool
+) async {
+    let clock = ContinuousClock()
+    let deadline = clock.now + timeout
+    while !condition() {
+        if clock.now >= deadline {
+            Issue.record("Timed out waiting for: \(description)")
+            return
+        }
+        try? await Task.sleep(for: pollInterval)
+    }
+}
+
 // MARK: - Cooldown and structured metrics
 
 @Test @MainActor

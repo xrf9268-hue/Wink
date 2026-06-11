@@ -151,7 +151,7 @@ struct MenuBarPopoverViewTests {
     }
 
     @Test @MainActor
-    func modelRefreshesUnavailableStateForActivationNotificationsWhilePopoverIsOpen() {
+    func modelRefreshesUnavailableStateForActivationNotificationsWhilePopoverIsOpen() throws {
         let runtimeState = PopoverRuntimeState(
             applicationURLs: [
                 "com.apple.Safari": URL(fileURLWithPath: "/Applications/Safari.app")
@@ -219,7 +219,7 @@ private func makePopoverContext(
         permissionService: FakePermissionService(ax: true, input: true),
         diagnosticClient: .live
     )
-    manager.save(shortcuts: shortcuts)
+    try! manager.save(shortcuts: shortcuts)
 
     let preferences = AppPreferences(
         shortcutManager: manager,

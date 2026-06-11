@@ -432,6 +432,12 @@ struct ShortcutsTabView: View {
                     .foregroundStyle(palette.red)
             }
 
+            if let saveErrorMessage = editor.saveErrorMessage {
+                Text(saveErrorMessage)
+                    .font(WinkType.labelSmall)
+                    .foregroundStyle(palette.red)
+            }
+
             if let recipeFeedback = editor.recipeFeedback {
                 Text(recipeFeedback.message)
                     .font(WinkType.labelSmall)
