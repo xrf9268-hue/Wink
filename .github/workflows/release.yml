@@ -14,8 +14,10 @@ on:
 permissions:
   contents: write
 
+# Serialize ALL release runs: two tags racing on the R2 appcast upload must never interleave
+# (spec §3). GitHub holds 1 running + 1 pending; a 3rd run cancels the pending one — re-run it.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}
   cancel-in-progress: false
 
 jobs:
@@ -192,6 +194,12 @@ jobs:
           echo "R2_PUBLIC_BASE_URL=$R2_PUBLIC_BASE_URL" >> "$GITHUB_ENV"
           echo "SPARKLE_FEED_URL=${R2_PUBLIC_BASE_URL}appcast.xml" >> "$GITHUB_ENV"
 
+      - name: Verify release feed gate
+        env:
+          WINK_ALLOW_FIRST_RELEASE: ${{ vars.WINK_ALLOW_FIRST_RELEASE }}
+        run: |
+          SPARKLE_PUBLIC_BASE_URL="$R2_PUBLIC_BASE_URL" bash scripts/verify-release-feed.sh --mode release
+
       - name: Import Developer ID certificate
         env:
           DEVELOPER_ID_APP_CERT_BASE64: ${{ secrets.DEVELOPER_ID_APP_CERT_BASE64 }}
@@ -280,7 +288,18 @@ jobs:
           bash scripts/generate-appcast.sh
 
       - name: Verify appcast
-        run: test -f "$APPCAST_PATH"
+        run: |
+          test -f "$APPCAST_PATH"
+          grep -q "Wink-${VERSION}" "$APPCAST_PATH"
+          grep -q 'edSignature' "$APPCAST_PATH"
+          if [ -f build/live-appcast.xml ]; then
+            OLD_COUNT="$(grep -c '<item>' build/live-appcast.xml || true)"
+            NEW_COUNT="$(grep -c '<item>' "$APPCAST_PATH" || true)"
+            if [ "$NEW_COUNT" -lt "$OLD_COUNT" ]; then
+              echo "Error: generated appcast has $NEW_COUNT items but the live feed had $OLD_COUNT — history lost" >&2
+              exit 1
+            fi
+          fi
 
       - name: Package signed DMG
         env:

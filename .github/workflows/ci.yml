@@ -28,6 +28,11 @@ jobs:
       - name: Swift version
         run: swift --version
 
+      - name: Release script unit tests
+        run: |
+          brew install bats-core
+          bats scripts/verify-release-feed.bats
+
       - name: Build (debug)
         run: swift build
 
@@ -67,13 +72,19 @@ jobs:
           test -f "build/Wink-${VERSION}.zip"
 
       - name: Generate Sparkle appcast
-        run: bash scripts/generate-appcast.sh
+        run: SPARKLE_RESTORED_APPCAST=scripts/fixtures/ci-old-appcast.xml bash scripts/generate-appcast.sh
 
       - name: Verify Sparkle appcast
         run: |
           test -f build/appcast.xml
           grep -q "Wink-" build/appcast.xml
           grep -q "https://example.invalid/wink/" build/appcast.xml
+          # Merge-semantics rehearsal assertions (spec §2): the fixture entry must survive
+          # untouched next to the freshly generated entry.
+          grep -q "https://old.example.invalid/Wink-0.0.1.zip" build/appcast.xml
+          grep -q "fixturesignature==" build/appcast.xml
+          grep -q "<sparkle:version>1</sparkle:version>" build/appcast.xml
+          test "$(grep -c '<item>' build/appcast.xml)" -ge 2
 
       - name: Package DMG
         run: bash scripts/package-dmg.sh
