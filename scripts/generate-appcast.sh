@@ -54,6 +54,23 @@ fi
 STAGING_DIR="$(mktemp -d "$BUILD_DIR/sparkle-updates.XXXXXX")"
 cp "$ZIP_PATH" "$STAGING_DIR/$(basename "$ZIP_PATH")"
 
+# Merge against the restored live feed (spec §2). generate_appcast merges off an appcast
+# present where it scans; we copy to both the staging dir and the -o path so the merge
+# happens regardless of which one this Sparkle version reads. Never put old archives here:
+# --download-url-prefix rewrites the URL of every entry whose archive is in the directory.
+RESTORED_APPCAST="${SPARKLE_RESTORED_APPCAST:-$BUILD_DIR/live-appcast.xml}"
+if [ -f "$RESTORED_APPCAST" ]; then
+    cp "$RESTORED_APPCAST" "$STAGING_DIR/appcast.xml"
+    cp "$RESTORED_APPCAST" "$APPCAST_PATH"
+    echo "==> Merging against restored live feed: $RESTORED_APPCAST"
+elif [ "${WINK_ALLOW_FIRST_RELEASE:-}" = "1" ]; then
+    echo "==> No restored feed; WINK_ALLOW_FIRST_RELEASE=1 — generating a fresh feed."
+else
+    echo "Error: restored live feed not found at $RESTORED_APPCAST." >&2
+    echo "Run scripts/verify-release-feed.sh first, or set WINK_ALLOW_FIRST_RELEASE=1 for a genuine first release." >&2
+    exit 1
+fi
+
 if [ -n "$SPARKLE_RELEASE_NOTES_FILE" ]; then
     if [ ! -f "$SPARKLE_RELEASE_NOTES_FILE" ]; then
         echo "Error: SPARKLE_RELEASE_NOTES_FILE does not exist: $SPARKLE_RELEASE_NOTES_FILE" >&2
@@ -67,6 +84,7 @@ fi
 APPCAST_CMD=(
     "$GENERATE_APPCAST_BIN"
     --maximum-deltas 0
+    --maximum-versions 0
     --download-url-prefix "$SPARKLE_PUBLIC_BASE_URL"
     --release-notes-url-prefix "$SPARKLE_PUBLIC_BASE_URL"
     -o "$APPCAST_PATH"
