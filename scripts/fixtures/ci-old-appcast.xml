@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CI fixture: a pre-existing feed entry whose archive is NOT in the staging dir.
+     ci.yml feeds this to generate-appcast.sh via SPARKLE_RESTORED_APPCAST and then asserts
+     the entry survives unchanged (URL, version, signature) next to the freshly generated one. -->
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>Wink</title>
+        <item>
+            <title>0.0.1</title>
+            <pubDate>Wed, 01 Jan 2025 00:00:00 +0000</pubDate>
+            <sparkle:version>1</sparkle:version>
+            <sparkle:shortVersionString>0.0.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://old.example.invalid/Wink-0.0.1.zip" length="100" type="application/octet-stream" sparkle:edSignature="fixturesignature==" />
+        </item>
+    </channel>
+</rss>
