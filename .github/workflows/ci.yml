@@ -31,7 +31,7 @@ jobs:
       - name: Release script unit tests
         run: |
           brew install bats-core
-          bats scripts/verify-release-feed.bats
+          bats scripts/verify-release-feed.bats scripts/release-notes.bats scripts/bump-version.bats
 
       - name: Build (debug)
         run: swift build
