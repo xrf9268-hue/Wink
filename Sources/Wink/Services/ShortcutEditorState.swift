@@ -75,6 +75,7 @@ final class ShortcutEditorState {
     var recordedShortcut: RecordedShortcut?
     var isRecordingShortcut: Bool = false
     var conflictMessage: String?
+    var saveErrorMessage: String?
     var recipeFeedback: RecipeFeedback?
     var pendingRecipeImport: WinkRecipeImportPlanner.ImportPlan?
     var usageCounts: [UUID: Int] = [:]
@@ -134,8 +135,7 @@ final class ShortcutEditorState {
 
         var updated = shortcuts
         updated.append(candidate)
-        shortcuts = updated
-        shortcutManager.save(shortcuts: updated)
+        guard persist(updated) else { return }
         onShortcutConfigurationChange()
         conflictMessage = nil
         resetDraft()
@@ -144,8 +144,7 @@ final class ShortcutEditorState {
 
     func removeShortcut(id: UUID) {
         let updated = shortcuts.filter { $0.id != id }
-        shortcuts = updated
-        shortcutManager.save(shortcuts: updated)
+        guard persist(updated) else { return }
         onShortcutConfigurationChange()
         if let usageTracker {
             Task {
@@ -158,8 +157,7 @@ final class ShortcutEditorState {
     func moveShortcut(from source: IndexSet, to destination: Int) {
         var updated = shortcuts
         updated.moveItems(from: source, to: destination)
-        shortcuts = updated
-        shortcutManager.save(shortcuts: updated)
+        guard persist(updated) else { return }
         onShortcutConfigurationChange()
     }
 
@@ -201,16 +199,18 @@ final class ShortcutEditorState {
 
     func toggleShortcutEnabled(id: UUID) {
         guard let index = shortcuts.firstIndex(where: { $0.id == id }) else { return }
-        shortcuts[index].isEnabled.toggle()
-        shortcutManager.save(shortcuts: shortcuts)
+        var updated = shortcuts
+        updated[index].isEnabled.toggle()
+        guard persist(updated) else { return }
         onShortcutConfigurationChange()
     }
 
     func setAllEnabled(_ enabled: Bool) {
-        for index in shortcuts.indices {
-            shortcuts[index].isEnabled = enabled
+        var updated = shortcuts
+        for index in updated.indices {
+            updated[index].isEnabled = enabled
         }
-        shortcutManager.save(shortcuts: shortcuts)
+        guard persist(updated) else { return }
         onShortcutConfigurationChange()
     }
 
@@ -304,8 +304,8 @@ final class ShortcutEditorState {
             strategy: strategy
         )
 
-        shortcuts = updatedShortcuts
-        shortcutManager.save(shortcuts: updatedShortcuts)
+        // Keep the pending import on failure so the user can retry.
+        guard persist(updatedShortcuts) else { return }
         onShortcutConfigurationChange()
         conflictMessage = nil
         self.pendingRecipeImport = nil
@@ -329,6 +329,23 @@ final class ShortcutEditorState {
         async let lastUsedMap = usageTracker.lastUsedPerShortcut()
         usageCounts = await counts
         lastUsed = await lastUsedMap
+    }
+
+    /// Saves through the manager (disk first, then in-memory store). On
+    /// failure the editor list is reverted to the canonical store contents and
+    /// the error is surfaced via `saveErrorMessage` instead of silently
+    /// showing state that would not survive a relaunch.
+    private func persist(_ updated: [AppShortcut]) -> Bool {
+        do {
+            try shortcutManager.save(shortcuts: updated)
+            shortcuts = updated
+            saveErrorMessage = nil
+            return true
+        } catch {
+            shortcuts = shortcutStore.shortcuts
+            saveErrorMessage = error.localizedDescription
+            return false
+        }
     }
 
     private func observeShortcutStore() {
