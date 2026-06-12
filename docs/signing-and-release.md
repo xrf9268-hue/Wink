@@ -148,7 +148,20 @@ The `dry_run` input (default `true` for manual runs) builds and validates everyt
 
 The workflow fails if the Git tag does not match `CFBundleShortVersionString` (skipped when rehearsing a ref without a tag).
 
-If any required Apple, Sparkle, or R2 secret is missing, the workflow exits successfully with a summary that lists the missing secrets and publishes nothing.
+Secret requirements are split into two groups (issue #283):
+
+- **Core (always required):** the two Sparkle keys and the five R2 credentials. If any is missing, the workflow exits successfully with a summary that lists the missing secrets and publishes nothing.
+- **Apple (optional as a complete set):** the four signing secrets (including `KEYCHAIN_PASSWORD`) and the three notarytool secrets. All seven present → Developer ID signing plus notarization (`signing_mode=developer-id`). All seven absent → ad-hoc interim mode (`signing_mode=adhoc`). A partial set fails the run instead of silently degrading.
+
+### Ad-hoc interim mode
+
+While the maintainer has no Apple Developer Program membership, releases ship ad-hoc signed and unnotarized:
+
+- the app bundle is ad-hoc signed (`codesign -s -`) without hardened runtime; the DMG is unsigned
+- all notarization, stapling, and Gatekeeper (`spctl`) steps are skipped — `codesign --verify` still runs
+- Sparkle's EdDSA feed signature remains the update trust anchor, so in-app auto updates work exactly as in the full path
+- first install on macOS 15+ requires System Settings → Privacy & Security → **Open Anyway**; the release workflow appends this hint to the GitHub Release notes automatically
+- enrolling in the Apple Developer Program later requires no workflow changes: configure the seven Apple secrets and the next release is signed and notarized
 
 ### Release job flow
 

@@ -33,6 +33,7 @@ jobs:
     outputs:
       release_ready: ${{ steps.check.outputs.release_ready }}
       missing_secrets: ${{ steps.check.outputs.missing_secrets }}
+      signing_mode: ${{ steps.check.outputs.signing_mode }}
       release_ref: ${{ steps.resolve.outputs.release_ref }}
     steps:
       - name: Resolve requested release ref
@@ -66,16 +67,12 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
         run: |
-          missing=()
-
+          # Core secrets (Sparkle feed signing + R2 distribution) are always required.
+          # Apple secrets are optional AS A COMPLETE SET (issue #283): all present =
+          # Developer ID signing + notarization; all absent = ad-hoc interim mode;
+          # a partial set is a misconfiguration and fails instead of degrading silently.
+          core_missing=()
           for secret_name in \
-            DEVELOPER_ID_APP_CERT_BASE64 \
-            DEVELOPER_ID_APP_CERT_PASSWORD \
-            KEYCHAIN_PASSWORD \
-            DEVELOPER_ID_APP_SIGNING_IDENTITY \
-            NOTARYTOOL_KEY \
-            NOTARYTOOL_KEY_ID \
-            NOTARYTOOL_ISSUER \
             SPARKLE_PUBLIC_ED_KEY \
             SPARKLE_PRIVATE_ED_KEY \
             R2_ACCOUNT_ID \
@@ -85,18 +82,47 @@ jobs:
             R2_PUBLIC_BASE_URL
           do
             if [ -z "${!secret_name:-}" ]; then
-              missing+=("$secret_name")
+              core_missing+=("$secret_name")
             fi
           done
 
-          if [ "${#missing[@]}" -eq 0 ]; then
-            echo "release_ready=true" >> "$GITHUB_OUTPUT"
-            echo "missing_secrets=" >> "$GITHUB_OUTPUT"
-          else
-            missing_csv="$(IFS=,; echo "${missing[*]}")"
+          apple_missing=()
+          for secret_name in \
+            DEVELOPER_ID_APP_CERT_BASE64 \
+            DEVELOPER_ID_APP_CERT_PASSWORD \
+            KEYCHAIN_PASSWORD \
+            DEVELOPER_ID_APP_SIGNING_IDENTITY \
+            NOTARYTOOL_KEY \
+            NOTARYTOOL_KEY_ID \
+            NOTARYTOOL_ISSUER
+          do
+            if [ -z "${!secret_name:-}" ]; then
+              apple_missing+=("$secret_name")
+            fi
+          done
+
+          if [ "${#core_missing[@]}" -gt 0 ]; then
+            missing_csv="$(IFS=,; echo "${core_missing[*]}")"
             echo "release_ready=false" >> "$GITHUB_OUTPUT"
             echo "missing_secrets=$missing_csv" >> "$GITHUB_OUTPUT"
+            echo "signing_mode=" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          if [ "${#apple_missing[@]}" -eq 0 ]; then
+            SIGNING_MODE=developer-id
+          elif [ "${#apple_missing[@]}" -eq 7 ]; then
+            SIGNING_MODE=adhoc
+            echo "::notice title=Ad-hoc release mode::No Apple Developer secrets configured — releasing ad-hoc signed, unnotarized artifacts (issue #283)."
+          else
+            apple_csv="$(IFS=,; echo "${apple_missing[*]}")"
+            echo "::error title=Partial Apple secrets::Configure all Apple secrets or none. Missing: $apple_csv" >&2
+            exit 1
+          fi
+
+          echo "release_ready=true" >> "$GITHUB_OUTPUT"
+          echo "missing_secrets=" >> "$GITHUB_OUTPUT"
+          echo "signing_mode=$SIGNING_MODE" >> "$GITHUB_OUTPUT"
 
   release-unavailable:
     name: Skip release without signing credentials
@@ -114,8 +140,8 @@ jobs:
           {
             echo "## Release skipped"
             echo
-            echo "Wink's formal release pipeline requires Developer ID signing, Apple notarization, Sparkle signing keys, and Cloudflare R2 credentials."
-            echo "Those secrets are not configured in this repository, so no signed/notarized release or Sparkle update feed was published."
+            echo "Wink's release pipeline always requires Sparkle signing keys and Cloudflare R2 credentials (Apple Developer secrets are optional — without them releases ship ad-hoc signed, see issue #283)."
+            echo "The required core secrets below are not configured, so no release or Sparkle update feed was published."
             echo
             echo "Missing secrets:"
 
@@ -134,6 +160,8 @@ jobs:
     if: ${{ needs.release-readiness.outputs.release_ready == 'true' }}
     runs-on: macos-15
     timeout-minutes: 45
+    env:
+      SIGNING_MODE: ${{ needs.release-readiness.outputs.signing_mode }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -234,9 +262,18 @@ jobs:
       - name: Extract release notes
         run: |
           bash scripts/release-notes.sh "$VERSION" > "$RUNNER_TEMP/release-notes.md"
+          if [ "$SIGNING_MODE" = "adhoc" ]; then
+            {
+              printf '\n---\n'
+              printf 'First install on macOS 15+: System Settings → Privacy & Security → **Open Anyway** '
+              printf '(this build is ad-hoc signed and not notarized — issue #283). '
+              printf 'Updates after that arrive in-app via Sparkle.\n'
+            } >> "$RUNNER_TEMP/release-notes.md"
+          fi
           echo "RELEASE_NOTES_PATH=$RUNNER_TEMP/release-notes.md" >> "$GITHUB_ENV"
 
       - name: Import Developer ID certificate
+        if: ${{ env.SIGNING_MODE == 'developer-id' }}
         env:
           DEVELOPER_ID_APP_CERT_BASE64: ${{ secrets.DEVELOPER_ID_APP_CERT_BASE64 }}
           DEVELOPER_ID_APP_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_APP_CERT_PASSWORD }}
@@ -258,6 +295,7 @@ jobs:
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
       - name: Write notarytool API key
+        if: ${{ env.SIGNING_MODE == 'developer-id' }}
         env:
           NOTARYTOOL_KEY: ${{ secrets.NOTARYTOOL_KEY }}
         run: |
@@ -271,6 +309,7 @@ jobs:
         run: swift test
 
       - name: Package signed app bundle
+        if: ${{ env.SIGNING_MODE == 'developer-id' }}
         env:
           SIGN_IDENTITY: ${{ secrets.DEVELOPER_ID_APP_SIGNING_IDENTITY }}
           ENTITLEMENTS_PLIST: ${{ github.workspace }}/entitlements.plist
@@ -280,18 +319,29 @@ jobs:
           SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         run: bash scripts/package-app.sh
 
+      - name: Package ad-hoc app bundle
+        if: ${{ env.SIGNING_MODE == 'adhoc' }}
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+        run: bash scripts/package-app.sh
+
       - name: Verify app signature
         run: |
           codesign --verify --deep --strict --verbose=2 build/Wink.app
-          spctl --assess --type exec --verbose build/Wink.app
           test -d build/Wink.app/Contents/Frameworks/Sparkle.framework
 
+      - name: Assess app with Gatekeeper
+        if: ${{ env.SIGNING_MODE == 'developer-id' }}
+        run: spctl --assess --type exec --verbose build/Wink.app
+
       - name: Archive app bundle for notarization
+        if: ${{ env.SIGNING_MODE == 'developer-id' }}
         run: |
           rm -f "$APP_NOTARIZATION_ZIP_PATH"
           ditto -c -k --sequesterRsrc --keepParent build/Wink.app "$APP_NOTARIZATION_ZIP_PATH"
 
       - name: Submit app notarization archive
+        if: ${{ env.SIGNING_MODE == 'developer-id' }}
         env:
           NOTARYTOOL_KEY_ID: ${{ secrets.NOTARYTOOL_KEY_ID }}
           NOTARYTOOL_ISSUER: ${{ secrets.NOTARYTOOL_ISSUER }}
@@ -303,9 +353,11 @@ jobs:
             --wait
 
       - name: Staple app notarization ticket
+        if: ${{ env.SIGNING_MODE == 'developer-id' }}
         run: xcrun stapler staple build/Wink.app
 
       - name: Validate notarized app bundle
+        if: ${{ env.SIGNING_MODE == 'developer-id' }}
         run: |
           xcrun stapler validate build/Wink.app
           spctl --assess --type exec --verbose build/Wink.app
@@ -319,6 +371,7 @@ jobs:
       - name: Generate appcast
         env:
           SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+          WINK_ALLOW_FIRST_RELEASE: ${{ vars.WINK_ALLOW_FIRST_RELEASE }}
         run: |
           export SPARKLE_PUBLIC_BASE_URL="$R2_PUBLIC_BASE_URL"
           export SPARKLE_FULL_RELEASE_NOTES_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG_OR_PLANNED}"
@@ -338,12 +391,14 @@ jobs:
             fi
           fi
 
-      - name: Package signed DMG
+      - name: Package DMG
         env:
+          # Empty in adhoc mode — package-dmg.sh skips DMG signing when unset.
           DMG_SIGN_IDENTITY: ${{ secrets.DEVELOPER_ID_APP_SIGNING_IDENTITY }}
         run: bash scripts/package-dmg.sh
 
       - name: Submit DMG for notarization
+        if: ${{ env.SIGNING_MODE == 'developer-id' }}
         env:
           NOTARYTOOL_KEY_ID: ${{ secrets.NOTARYTOOL_KEY_ID }}
           NOTARYTOOL_ISSUER: ${{ secrets.NOTARYTOOL_ISSUER }}
@@ -355,12 +410,18 @@ jobs:
             --wait
 
       - name: Staple notarization ticket
+        if: ${{ env.SIGNING_MODE == 'developer-id' }}
         run: xcrun stapler staple "$DMG_PATH"
 
       - name: Validate final DMG
+        if: ${{ env.SIGNING_MODE == 'developer-id' }}
         run: |
           xcrun stapler validate "$DMG_PATH"
           spctl --assess --type open --context context:primary-signature --verbose "$DMG_PATH"
+
+      - name: Verify ad-hoc DMG exists
+        if: ${{ env.SIGNING_MODE == 'adhoc' }}
+        run: test -f "$DMG_PATH"
 
       - name: Upload dry-run artifacts
         if: ${{ env.DRY_RUN == 'true' }}
