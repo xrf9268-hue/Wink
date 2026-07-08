@@ -23,10 +23,10 @@ final class EventTapCaptureProvider: HyperShortcutCaptureProvider {
     }
 
     func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {
+        // The manager delivers on the main actor already; invoke the handler
+        // directly rather than enqueueing a second main-actor Task per press.
         let result = manager.start { keyPress in
-            Task { @MainActor in
-                onKeyPress(keyPress)
-            }
+            onKeyPress(keyPress)
             return true
         }
         if result == .started {

@@ -866,7 +866,7 @@ final class AppSwitcher: AppSwitching {
                 return performFrontmostFocus(
                     shortcut: shortcut,
                     runningApp: runningApp,
-                    windows: preActionWindowObservation.windows,
+                    windowObservation: preActionWindowObservation,
                     snapshot: preActionSnapshot,
                     attemptStartedAt: attemptStartedAt
                 )
@@ -1006,9 +1006,8 @@ final class AppSwitcher: AppSwitching {
         if runningApp.isHidden {
             runningApp.unhide()
         }
-        let windows = preActionWindowObservation.windows
-        unminimizeWindows(of: runningApp, windows: windows)
-        let activated = activateViaWindowServer(runningApp, windows: windows)
+        unminimizeWindows(of: runningApp, observation: preActionWindowObservation)
+        let activated = activateViaWindowServer(runningApp, windows: preActionWindowObservation.windows)
         guard activated || continuingPendingActivation else {
             clearActivationTracking(for: shortcut.bundleIdentifier)
             return false
@@ -1084,15 +1083,15 @@ final class AppSwitcher: AppSwitching {
     private func performFrontmostFocus(
         shortcut: AppShortcut,
         runningApp: NSRunningApplication,
-        windows: [AXUIElement]?,
+        windowObservation: ApplicationObservation.WindowObservation,
         snapshot: ActivationObservationSnapshot,
         attemptStartedAt: CFAbsoluteTime
     ) -> Bool {
         if runningApp.isHidden {
             runningApp.unhide()
         }
-        unminimizeWindows(of: runningApp, windows: windows)
-        let activated = activateViaWindowServer(runningApp, windows: windows)
+        unminimizeWindows(of: runningApp, observation: windowObservation)
+        let activated = activateViaWindowServer(runningApp, windows: windowObservation.windows)
         logToggleTrace(
             family: .decision,
             bundleIdentifier: shortcut.bundleIdentifier,
@@ -1239,9 +1238,8 @@ final class AppSwitcher: AppSwitching {
         if runningApp.isHidden {
             runningApp.unhide()
         }
-        let windows = preActionWindowObservation.windows
-        unminimizeWindows(of: runningApp, windows: windows)
-        _ = activateViaWindowServer(runningApp, windows: windows)
+        unminimizeWindows(of: runningApp, observation: preActionWindowObservation)
+        _ = activateViaWindowServer(runningApp, windows: preActionWindowObservation.windows)
 
         let continuedState = pendingActivationState(for: shortcut.bundleIdentifier) ?? pendingState
         schedulePendingConfirmation(
@@ -1490,25 +1488,25 @@ final class AppSwitcher: AppSwitching {
         return windows
     }
 
-    /// Unminimize all minimized windows using pre-fetched window list.
-    private func unminimizeWindows(of app: NSRunningApplication, windows: [AXUIElement]?) {
-        guard let windows else {
+    /// Unminimize the windows the observation already found minimized.
+    /// Consumes the per-window `kAXMinimized` reads captured during the
+    /// single pre-action observation pass instead of re-issuing them — in
+    /// the common nothing-minimized case this performs zero AX IPC on the
+    /// keypress→activation path.
+    private func unminimizeWindows(
+        of app: NSRunningApplication,
+        observation: ApplicationObservation.WindowObservation
+    ) {
+        guard observation.windows != nil else {
             logger.error("unminimize: no windows for pid \(app.processIdentifier)")
             DiagnosticLog.log("unminimize: no windows for pid \(app.processIdentifier)")
             return
         }
-        #if DEBUG
-        logger.debug("unminimize: found \(windows.count) windows for pid \(app.processIdentifier)")
-        #endif
-        for (i, window) in windows.enumerated() {
-            var minimizedRef: CFTypeRef?
-            let minResult = AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimizedRef)
-            if minResult == .success, let isMinimized = minimizedRef as? Bool, isMinimized {
-                let setResult = AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, false as CFTypeRef)
-                #if DEBUG
-                logger.debug("unminimize: window[\(i)] was minimized, unminimize result=\(setResult.rawValue)")
-                #endif
-            }
+        for (i, window) in observation.minimizedWindows.enumerated() {
+            let setResult = AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, false as CFTypeRef)
+            #if DEBUG
+            logger.debug("unminimize: window[\(i)] was minimized, unminimize result=\(setResult.rawValue)")
+            #endif
         }
     }
 
@@ -1729,8 +1727,17 @@ extension AppSwitcher.ConfirmationClient {
             CFAbsoluteTimeGetCurrent()
         },
         schedule: { delay, operation in
+            // Callers are @MainActor (the client type pins schedule to the
+            // main actor), so a zero delay runs inline instead of paying a
+            // dispatch-timer turn plus an executor enqueue on the toggle-off
+            // hot path. Nonzero delays land on the main queue, which is the
+            // main actor's executor — no second hop needed.
+            if delay <= 0 {
+                operation()
+                return
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                Task { @MainActor in
+                MainActor.assumeIsolated {
                     operation()
                 }
             }

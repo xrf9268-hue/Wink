@@ -9,7 +9,7 @@ private final class FakeEventTapManager: EventTapManaging {
     private(set) var registeredShortcuts: Set<KeyPress> = []
     private(set) var setHyperEnabledCalls: [(enabled: Bool, whileRunning: Bool)] = []
 
-    func start(onKeyPress: @escaping (KeyPress) -> Bool) -> EventTapStartResult {
+    func start(onKeyPress: @escaping @MainActor (KeyPress) -> Bool) -> EventTapStartResult {
         isRunning = true
         return .started
     }
