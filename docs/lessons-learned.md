@@ -785,3 +785,16 @@ After the traffic-light dots were correctly repositioned to the design coordinat
 - If the title/sidebar-toggle must share a baseline with native traffic lights, place them in the `titlebarView` as AppKit controls after the accessory has grown the titlebar view to the target height. A SwiftUI row below the safe area cannot share y=18 with controls living in the native titlebar.
 - Keep the `NavigationSplitView` content out of the fake chrome row. Once the titlebar accessory makes `contentLayoutRect` start at y=36, the sidebar first row naturally begins below the hairline instead of needing a compensating top spacer.
 - Validate with pixels, not assumptions: assert the traffic-light bboxes, sidebar-toggle y centroid, hairline y, and sidebar first-row icon x alignment from the saved packaged-app screenshot.
+
+## Titlebar Controls Must Share One Vertical Centerline — the AppKit Button Baseline (#286)
+
+**Issue**
+After PR #239 stopped repositioning the native traffic lights (they visibly jumped during sidebar toggling), the title label kept centering on the design row's midline (`36 / 2 = 18pt` from top) while the AppKit-owned buttons — and the sidebar toggle that follows `zoomButton.frame.midY` — sat centered in the native 28pt titlebar band (~14pt from top). The two centerlines disagree by ~4pt *by construction*: the 36pt chrome row is a 28pt native titlebar plus an 8pt bottom accessory, and AppKit centers its buttons only in the native band. No amount of constant tuning can satisfy both references at once.
+
+**Fix (PR for #286)**
+- Every Wink-added titlebar control derives its center y from `zoomButton.frame.midY` (`chromeBaselineCenterY`). `baselineCenterY` (design-height-derived) was deleted so a second centerline cannot come back silently; `LayoutRegressionTests.settingsWindowChromeConfiguratorGrowsTitlebarToDesignHeight` asserts title/toggle/zoom share midY.
+- `applyAll()` is idempotent-cheap: every window-property and frame write is guarded by an inequality check, so the `didUpdate`-driven re-apply reduces to reads in steady state. Observers were cut from five notifications to `didUpdate` + `didResize`.
+- The localized-string + geometry heuristic that hunted duplicate SwiftUI sidebar toggles was removed: with `window.toolbar` nil'd and `.toolbar(removing: .sidebarToggle)`, the packaged app's titlebar exposes exactly four AX buttons (close/minimize/zoom + Wink's toggle). The heuristic's `"sidebar"` substring match was English-only (labels are localized, e.g. "边栏") and its size/overlap fallback could hide arbitrary future system controls.
+
+**Residual design decision**
+The aligned cluster sits on AppKit's ~14pt centerline, i.e. ~4pt above the 36pt row's midline. True centering at 18pt requires owning the lights (hide the standard buttons and draw custom dots, PomoFox-style) — repositioning real buttons is what #239 reverted. Treat "centered in the 36pt row" as a separate, owner-approved issue if design fidelity demands it; do not resurrect per-pass `setFrameOrigin` on standard buttons.
