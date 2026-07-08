@@ -38,6 +38,23 @@ struct WhatsNewNote: Equatable, Sendable {
 /// authoritative prose is CHANGELOG.md.
 enum WhatsNewCatalog {
     static let entries: [String: [WhatsNewNote]] = [
+        "0.6.0": [
+            WhatsNewNote(
+                symbolName: "arrow.down.circle",
+                title: "Updates, the Wink way",
+                detail: "Checking, download progress, and installs now happen right here — no more separate update dialogs."
+            ),
+            WhatsNewNote(
+                symbolName: "switch.2",
+                title: "Automatic updates, your call",
+                detail: "The Settings toggle is live: background checks and downloads, on or off."
+            ),
+            WhatsNewNote(
+                symbolName: "bolt",
+                title: "Snappier shortcuts",
+                detail: "Less work between keypress and app switch, especially with minimized windows."
+            ),
+        ],
         "0.5.0": [
             WhatsNewNote(
                 symbolName: "keyboard",
