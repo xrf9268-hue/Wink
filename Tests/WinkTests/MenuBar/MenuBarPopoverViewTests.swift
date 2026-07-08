@@ -421,8 +421,8 @@ private final class FakeUpdateService: UpdateServicing {
     let isConfigured: Bool
     let canCheckForUpdates: Bool
     let currentVersion: String
-    let automaticallyChecksForUpdates: Bool
-    let automaticallyDownloadsUpdates: Bool
+    var automaticallyChecksForUpdates: Bool
+    var automaticallyDownloadsUpdates: Bool
     private(set) var didRequestManualCheck = false
 
     init(

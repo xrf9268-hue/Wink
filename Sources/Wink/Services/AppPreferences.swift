@@ -58,12 +58,19 @@ final class AppPreferences {
             currentVersion: updateService?.currentVersion ?? Self.currentVersionString(),
             isConfigured: updateService?.isConfigured ?? false,
             checkForUpdatesEnabled: updateService?.canCheckForUpdates ?? false,
-            automaticChecksEnabledByDefault: updateService?.automaticallyChecksForUpdates
+            automaticChecksEnabled: updateService?.automaticallyChecksForUpdates
                 ?? Self.boolValue(forInfoDictionaryKey: "SUEnableAutomaticChecks", default: true),
-            automaticDownloadsEnabledByDefault: updateService?.automaticallyDownloadsUpdates
+            automaticDownloadsEnabled: updateService?.automaticallyDownloadsUpdates
                 ?? Self.boolValue(forInfoDictionaryKey: "SUAutomaticallyUpdate", default: true)
         )
     }
+
+    /// Master switch mirrored from the live updater values so SwiftUI can
+    /// observe flips (`updatePresentation` is computed off non-observable
+    /// service state). ON means scheduled checks plus background downloads;
+    /// mixed states (only reachable via `defaults write`) read as OFF and
+    /// normalize on the next toggle.
+    private(set) var automaticUpdatesEnabled: Bool = false
 
     var launchAtLoginPresentation: LaunchAtLoginPresentation {
         switch launchAtLoginStatus {
@@ -141,6 +148,7 @@ final class AppPreferences {
         self.launchAtLoginService = launchAtLoginService
         self.updateService = updateService
         self.userDefaults = userDefaults
+        self.automaticUpdatesEnabled = Self.resolveAutomaticUpdatesEnabled(from: updateService)
         self.hyperKeyEnabled = initialHyperKeyEnabled
         self.shortcutsPaused = initialShortcutsPaused
         self.frontmostTargetBehavior = initialFrontmostTargetBehavior
@@ -194,6 +202,35 @@ final class AppPreferences {
 
     func checkForUpdates() {
         updateService?.checkForUpdates()
+    }
+
+    /// Drives both Sparkle flags (scheduled checks + background downloads)
+    /// as one user-facing switch. The mirrored state is read back from the
+    /// service after the write so it only reflects what actually persisted.
+    ///
+    /// Order matters: without an `SUAllowsAutomaticUpdates` Info.plist key,
+    /// Sparkle derives `allowsAutomaticUpdates` from the checks flag and
+    /// silently drops writes to `automaticallyDownloadsUpdates` while checks
+    /// are off (SPUUpdaterSettings.setAutomaticallyDownloadsUpdates). Write
+    /// the downloads flag while checks are still on so both flags persist.
+    func setAutomaticUpdatesEnabled(_ enabled: Bool) {
+        guard let updateService else { return }
+        if enabled {
+            updateService.automaticallyChecksForUpdates = true
+            updateService.automaticallyDownloadsUpdates = true
+        } else {
+            updateService.automaticallyDownloadsUpdates = false
+            updateService.automaticallyChecksForUpdates = false
+        }
+        automaticUpdatesEnabled = Self.resolveAutomaticUpdatesEnabled(from: updateService)
+    }
+
+    private static func resolveAutomaticUpdatesEnabled(from updateService: UpdateServicing?) -> Bool {
+        let checks = updateService?.automaticallyChecksForUpdates
+            ?? boolValue(forInfoDictionaryKey: "SUEnableAutomaticChecks", default: true)
+        let downloads = updateService?.automaticallyDownloadsUpdates
+            ?? boolValue(forInfoDictionaryKey: "SUAutomaticallyUpdate", default: true)
+        return checks && downloads
     }
 
     func setHyperKeyEnabled(_ enabled: Bool) {
