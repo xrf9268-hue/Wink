@@ -317,6 +317,55 @@ func setAutomaticUpdatesEnabled_isNoOpWithoutService() {
 }
 
 @Test @MainActor
+func updatePhase_mirrorsServiceStateChangesIntoObservableStorage() {
+    let service = FakeUpdateService(
+        isConfigured: true,
+        canCheckForUpdates: true,
+        currentVersion: "0.5.0",
+        automaticallyChecksForUpdates: true,
+        automaticallyDownloadsUpdates: true
+    )
+    let preferences = makePreferences(updateService: service)
+    #expect(preferences.updatePhase == .idle)
+    #expect(preferences.lastUpdateCheckDate == nil)
+
+    let checkedAt = Date(timeIntervalSince1970: 1_750_000_000)
+    service.simulateUpdateState(phase: .available(version: "0.6.0"), lastCheck: checkedAt)
+
+    #expect(preferences.updatePhase == .available(version: "0.6.0"))
+    #expect(preferences.lastUpdateCheckDate == checkedAt)
+
+    service.simulateUpdateState(phase: .ready(version: "0.6.0"))
+    #expect(preferences.updatePhase == .ready(version: "0.6.0"))
+
+    service.simulateUpdateState(phase: .idle)
+    #expect(preferences.updatePhase == .idle)
+}
+
+@Test @MainActor
+func updatePresentation_checkForUpdatesEnabledFollowsConfigurationNotCanCheckSnapshot() {
+    let service = FakeUpdateService(
+        isConfigured: true,
+        canCheckForUpdates: false,
+        currentVersion: "0.5.0",
+        automaticallyChecksForUpdates: true,
+        automaticallyDownloadsUpdates: true
+    )
+    let preferences = makePreferences(updateService: service)
+
+    // A session in flight makes canCheckForUpdates false, but the button
+    // must stay enabled so a repeat click re-focuses the session.
+    #expect(preferences.updatePresentation.checkForUpdatesEnabled == true)
+}
+
+@Test
+func updatePhaseMapping_notDownloadedIsAvailable_downloadedAndInstallingAreReady() {
+    #expect(UpdatePhase.forFoundUpdate(version: "1.2", stage: .notDownloaded) == .available(version: "1.2"))
+    #expect(UpdatePhase.forFoundUpdate(version: "1.2", stage: .downloaded) == .ready(version: "1.2"))
+    #expect(UpdatePhase.forFoundUpdate(version: "1.2", stage: .installing) == .ready(version: "1.2"))
+}
+
+@Test @MainActor
 func initRestoresPausedShortcutPreferenceIntoRuntimeStatus() throws {
     let suiteName = "AppPreferencesTests.initRestoresPausedShortcutPreferenceIntoRuntimeStatus"
     let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -538,6 +587,9 @@ private final class FakeUpdateService: UpdateServicing {
     var automaticallyChecksForUpdates: Bool
     var automaticallyDownloadsUpdates: Bool
     private(set) var didRequestManualCheck = false
+    private(set) var updatePhase: UpdatePhase = .idle
+    private(set) var lastUpdateCheckDate: Date?
+    var onUpdateStateChange: (@MainActor () -> Void)?
 
     init(
         isConfigured: Bool,
@@ -555,6 +607,14 @@ private final class FakeUpdateService: UpdateServicing {
 
     func checkForUpdates() {
         didRequestManualCheck = true
+    }
+
+    func simulateUpdateState(phase: UpdatePhase, lastCheck: Date? = nil) {
+        updatePhase = phase
+        if let lastCheck {
+            lastUpdateCheckDate = lastCheck
+        }
+        onUpdateStateChange?()
     }
 }
 

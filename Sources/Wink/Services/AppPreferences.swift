@@ -57,7 +57,10 @@ final class AppPreferences {
         UpdatePresentation(
             currentVersion: updateService?.currentVersion ?? Self.currentVersionString(),
             isConfigured: updateService?.isConfigured ?? false,
-            checkForUpdatesEnabled: updateService?.canCheckForUpdates ?? false,
+            // Keyed on configuration, not the transient canCheckForUpdates
+            // snapshot: repeat clicks while a session is in flight re-focus
+            // Sparkle's existing session, which is the desired recovery path.
+            checkForUpdatesEnabled: updateService?.isConfigured ?? false,
             automaticChecksEnabled: updateService?.automaticallyChecksForUpdates
                 ?? Self.boolValue(forInfoDictionaryKey: "SUEnableAutomaticChecks", default: true),
             automaticDownloadsEnabled: updateService?.automaticallyDownloadsUpdates
@@ -71,6 +74,11 @@ final class AppPreferences {
     /// mixed states (only reachable via `defaults write`) read as OFF and
     /// normalize on the next toggle.
     private(set) var automaticUpdatesEnabled: Bool = false
+
+    /// Mirrors of the update service's session state, stored so SwiftUI can
+    /// observe changes (the service itself is not @Observable).
+    private(set) var updatePhase: UpdatePhase = .idle
+    private(set) var lastUpdateCheckDate: Date?
 
     var launchAtLoginPresentation: LaunchAtLoginPresentation {
         switch launchAtLoginStatus {
@@ -149,6 +157,8 @@ final class AppPreferences {
         self.updateService = updateService
         self.userDefaults = userDefaults
         self.automaticUpdatesEnabled = Self.resolveAutomaticUpdatesEnabled(from: updateService)
+        self.updatePhase = updateService?.updatePhase ?? .idle
+        self.lastUpdateCheckDate = updateService?.lastUpdateCheckDate
         self.hyperKeyEnabled = initialHyperKeyEnabled
         self.shortcutsPaused = initialShortcutsPaused
         self.frontmostTargetBehavior = initialFrontmostTargetBehavior
@@ -160,6 +170,10 @@ final class AppPreferences {
         let launchAtLoginSnapshot = launchAtLoginService.snapshot
         self.launchAtLoginStatus = launchAtLoginSnapshot.status
         self.launchAtLoginAvailability = launchAtLoginSnapshot.availability
+
+        updateService?.onUpdateStateChange = { [weak self] in
+            self?.refreshUpdateState()
+        }
     }
 
     func refreshPermissions() {
@@ -202,6 +216,16 @@ final class AppPreferences {
 
     func checkForUpdates() {
         updateService?.checkForUpdates()
+    }
+
+    private func refreshUpdateState() {
+        guard let updateService else { return }
+        if updatePhase != updateService.updatePhase {
+            updatePhase = updateService.updatePhase
+        }
+        if lastUpdateCheckDate != updateService.lastUpdateCheckDate {
+            lastUpdateCheckDate = updateService.lastUpdateCheckDate
+        }
     }
 
     /// Drives both Sparkle flags (scheduled checks + background downloads)

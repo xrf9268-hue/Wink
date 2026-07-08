@@ -235,15 +235,34 @@ struct GeneralTabView: View {
             return "Automatic updates become available after this build is configured with a signed Sparkle appcast feed."
         }
 
+        // Live session state outranks the static behavior description.
+        switch preferences.updatePhase {
+        case .available(let version):
+            return "Version \(version) is available. Use Check for Updates… to review and install."
+        case .ready(let version):
+            return "Version \(version) is downloaded and installs when Wink quits. Use Check for Updates… to install now."
+        case .error(let message):
+            return "The last automatic update check failed: \(message)"
+        case .idle:
+            break
+        }
+
+        let behavior: String
         if presentation.automaticChecksEnabled && presentation.automaticDownloadsEnabled {
-            return "Automatic update checks and downloads are enabled."
+            behavior = "Automatic update checks and downloads are enabled."
+        } else if presentation.automaticChecksEnabled {
+            behavior = "Wink checks for updates automatically and asks before downloading."
+        } else {
+            behavior = "Automatic update checks are off. Use Check for Updates… to check manually."
         }
 
-        if presentation.automaticChecksEnabled {
-            return "Wink checks for updates automatically and asks before downloading."
+        guard let lastChecked = preferences.lastUpdateCheckDate else {
+            return behavior
         }
-
-        return "Automatic update checks are off. Use Check for Updates… to check manually."
+        let relative = RelativeDateTimeFormatter()
+        relative.unitsStyle = .full
+        let when = relative.localizedString(for: lastChecked, relativeTo: Date())
+        return behavior + " Last checked \(when)."
     }
 }
 
