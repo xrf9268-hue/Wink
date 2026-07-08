@@ -123,6 +123,10 @@ struct ActivationObservationSnapshot: Sendable, Equatable {
 struct ApplicationObservation {
     struct WindowObservation {
         let windows: [AXUIElement]?
+        /// Windows whose `kAXMinimized` read true during this observation
+        /// pass. Captured here so consumers (unminimize) never re-issue the
+        /// per-window AX roundtrips the observation already paid for.
+        var minimizedWindows: [AXUIElement] = []
         let visibleWindowCount: Int
         let hasFocusedWindow: Bool
         let hasMainWindow: Bool
@@ -233,17 +237,22 @@ extension ApplicationObservation.Client {
         var windowsRef: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef)
         let windows = result == .success ? windowsRef as? [AXUIElement] : nil
-        let visibleWindowCount = (windows ?? []).reduce(into: 0) { count, window in
+        var visibleWindowCount = 0
+        var minimizedWindows: [AXUIElement] = []
+        for window in windows ?? [] {
             var minimizedRef: CFTypeRef?
             let minimizedResult = AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimizedRef)
             let isMinimized = minimizedResult == .success && (minimizedRef as? Bool ?? false)
-            if !isMinimized {
-                count += 1
+            if isMinimized {
+                minimizedWindows.append(window)
+            } else {
+                visibleWindowCount += 1
             }
         }
 
         return ApplicationObservation.WindowObservation(
             windows: windows,
+            minimizedWindows: minimizedWindows,
             visibleWindowCount: visibleWindowCount,
             hasFocusedWindow: hasAppWindowAttribute(kAXFocusedWindowAttribute, on: axApp),
             hasMainWindow: hasAppWindowAttribute(kAXMainWindowAttribute, on: axApp),

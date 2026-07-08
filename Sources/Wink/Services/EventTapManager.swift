@@ -296,7 +296,9 @@ private let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
 @MainActor
 final class EventTapManager: EventTapManaging {
     /// Returns `true` if the key press was handled and should be consumed (not passed to other apps).
-    typealias ShortcutHandler = (KeyPress) -> Bool
+    /// Main-actor bound: delivery already hops to the main actor once in
+    /// `MatchedShortcutDelivery`, so the handler runs there directly.
+    typealias ShortcutHandler = @MainActor (KeyPress) -> Bool
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
