@@ -33,13 +33,23 @@ final class SparkleUpdateService: UpdateServicing {
     }
 
     var automaticallyChecksForUpdates: Bool {
-        updaterController?.updater.automaticallyChecksForUpdates
-            ?? Self.boolValue(forInfoDictionaryKey: "SUEnableAutomaticChecks", bundle: bundle, default: true)
+        get {
+            updaterController?.updater.automaticallyChecksForUpdates
+                ?? Self.boolValue(forInfoDictionaryKey: "SUEnableAutomaticChecks", bundle: bundle, default: true)
+        }
+        set {
+            updaterController?.updater.automaticallyChecksForUpdates = newValue
+        }
     }
 
     var automaticallyDownloadsUpdates: Bool {
-        updaterController?.updater.automaticallyDownloadsUpdates
-            ?? Self.boolValue(forInfoDictionaryKey: "SUAutomaticallyUpdate", bundle: bundle, default: true)
+        get {
+            updaterController?.updater.automaticallyDownloadsUpdates
+                ?? Self.boolValue(forInfoDictionaryKey: "SUAutomaticallyUpdate", bundle: bundle, default: true)
+        }
+        set {
+            updaterController?.updater.automaticallyDownloadsUpdates = newValue
+        }
     }
 
     func checkForUpdates() {

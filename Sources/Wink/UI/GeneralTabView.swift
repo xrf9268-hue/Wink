@@ -93,12 +93,12 @@ struct GeneralTabView: View {
                         SettingsToggleRow(
                             title: "Automatic Updates",
                             subtitle: "Download and install new versions in the background.",
-                            isOn: .constant(
-                                updatePresentation.automaticChecksEnabledByDefault
-                                    && updatePresentation.automaticDownloadsEnabledByDefault
+                            isOn: Binding(
+                                get: { preferences.automaticUpdatesEnabled },
+                                set: { preferences.setAutomaticUpdatesEnabled($0) }
                             )
                         )
-                        .disabled(true)
+                        .disabled(!updatePresentation.isConfigured)
                     }
                 }
 
@@ -235,15 +235,15 @@ struct GeneralTabView: View {
             return "Automatic updates become available after this build is configured with a signed Sparkle appcast feed."
         }
 
-        if presentation.automaticChecksEnabledByDefault && presentation.automaticDownloadsEnabledByDefault {
+        if presentation.automaticChecksEnabled && presentation.automaticDownloadsEnabled {
             return "Automatic update checks and downloads are enabled."
         }
 
-        if presentation.automaticChecksEnabledByDefault {
+        if presentation.automaticChecksEnabled {
             return "Wink checks for updates automatically and asks before downloading."
         }
 
-        return "Automatic update checks are disabled by default."
+        return "Automatic update checks are off. Use Check for Updates… to check manually."
     }
 }
 

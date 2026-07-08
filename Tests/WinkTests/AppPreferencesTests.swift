@@ -243,8 +243,8 @@ func updatePresentation_exposesVersionAndEnablesManualChecksWhenServiceIsAvailab
     #expect(presentation.currentVersion == "0.3.0")
     #expect(presentation.isConfigured == true)
     #expect(presentation.checkForUpdatesEnabled == true)
-    #expect(presentation.automaticChecksEnabledByDefault == true)
-    #expect(presentation.automaticDownloadsEnabledByDefault == true)
+    #expect(presentation.automaticChecksEnabled == true)
+    #expect(presentation.automaticDownloadsEnabled == true)
 }
 
 @Test @MainActor
@@ -255,8 +255,65 @@ func updatePresentation_defaultsToDisabledChecksWithoutService() {
 
     #expect(presentation.isConfigured == false)
     #expect(presentation.checkForUpdatesEnabled == false)
-    #expect(presentation.automaticChecksEnabledByDefault == true)
-    #expect(presentation.automaticDownloadsEnabledByDefault == true)
+    #expect(presentation.automaticChecksEnabled == true)
+    #expect(presentation.automaticDownloadsEnabled == true)
+}
+
+@Test @MainActor
+func setAutomaticUpdatesEnabled_writesBothUpdaterFlagsAndMirrorsState() {
+    let service = FakeUpdateService(
+        isConfigured: true,
+        canCheckForUpdates: true,
+        currentVersion: "0.3.0",
+        automaticallyChecksForUpdates: true,
+        automaticallyDownloadsUpdates: true
+    )
+    let preferences = makePreferences(updateService: service)
+    #expect(preferences.automaticUpdatesEnabled == true)
+
+    preferences.setAutomaticUpdatesEnabled(false)
+
+    #expect(service.automaticallyChecksForUpdates == false)
+    #expect(service.automaticallyDownloadsUpdates == false)
+    #expect(preferences.automaticUpdatesEnabled == false)
+    #expect(preferences.updatePresentation.automaticChecksEnabled == false)
+    #expect(preferences.updatePresentation.automaticDownloadsEnabled == false)
+
+    preferences.setAutomaticUpdatesEnabled(true)
+
+    #expect(service.automaticallyChecksForUpdates == true)
+    #expect(service.automaticallyDownloadsUpdates == true)
+    #expect(preferences.automaticUpdatesEnabled == true)
+}
+
+@Test @MainActor
+func automaticUpdatesEnabled_readsMixedExternalStateAsOffAndNormalizesOnToggle() {
+    let service = FakeUpdateService(
+        isConfigured: true,
+        canCheckForUpdates: true,
+        currentVersion: "0.3.0",
+        automaticallyChecksForUpdates: true,
+        automaticallyDownloadsUpdates: false
+    )
+    let preferences = makePreferences(updateService: service)
+
+    #expect(preferences.automaticUpdatesEnabled == false)
+
+    preferences.setAutomaticUpdatesEnabled(true)
+
+    #expect(service.automaticallyChecksForUpdates == true)
+    #expect(service.automaticallyDownloadsUpdates == true)
+    #expect(preferences.automaticUpdatesEnabled == true)
+}
+
+@Test @MainActor
+func setAutomaticUpdatesEnabled_isNoOpWithoutService() {
+    let preferences = makePreferences()
+    let initial = preferences.automaticUpdatesEnabled
+
+    preferences.setAutomaticUpdatesEnabled(!initial)
+
+    #expect(preferences.automaticUpdatesEnabled == initial)
 }
 
 @Test @MainActor
@@ -478,8 +535,8 @@ private final class FakeUpdateService: UpdateServicing {
     let isConfigured: Bool
     let canCheckForUpdates: Bool
     let currentVersion: String
-    let automaticallyChecksForUpdates: Bool
-    let automaticallyDownloadsUpdates: Bool
+    var automaticallyChecksForUpdates: Bool
+    var automaticallyDownloadsUpdates: Bool
     private(set) var didRequestManualCheck = false
 
     init(
