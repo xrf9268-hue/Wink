@@ -32,6 +32,7 @@ final class AppController {
     private let userDefaults: UserDefaults
     private lazy var updateService = SparkleUpdateService()
     private let whatsNewPresenter = WhatsNewPresenter()
+    private let updatePanelPresenter = UpdatePanelPresenter()
     private lazy var appSwitcher = AppSwitcher()
     private lazy var settingsLauncher = SettingsLauncher(userDefaults: userDefaults)
     private lazy var settingsShortcutStatusProvider = ShortcutStatusProvider()
@@ -108,6 +109,16 @@ final class AppController {
         // Prevents AX calls from blocking threads for too long when apps are unresponsive.
         // Reference: alt-tab-macos
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 1.0)
+
+        // Wire the update panel before the updater starts so a launch-time
+        // resumed session can present immediately.
+        updateService.presentUpdatePanel = { [weak self] activate in
+            guard let self else { return }
+            self.updatePanelPresenter.present(preferences: self.appPreferences, activate: activate)
+        }
+        updateService.dismissUpdatePanel = { [weak self] in
+            self?.updatePanelPresenter.dismiss()
+        }
 
         Self.runStartupSequence(
             startUpdateService: { _ = updateService },

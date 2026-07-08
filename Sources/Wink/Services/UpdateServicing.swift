@@ -13,29 +13,33 @@ struct UpdatePresentation: Equatable {
 /// update seam keeps Sparkle out of the view layer).
 enum UpdatePhase: Equatable {
     case idle
+    /// A user-initiated check is in flight.
+    case checking
     /// A check found an update that is not downloaded yet.
     case available(version: String)
+    /// The update archive is downloading. `expected == 0` until the content
+    /// length is known.
+    case downloading(version: String, received: UInt64, expected: UInt64)
+    /// The downloaded archive is being extracted. Progress is 0...1.
+    case extracting(progress: Double)
     /// The update is downloaded or staged; it installs on quit or relaunch.
     case ready(version: String)
-    /// A scheduled background check failed (feed unreachable, bad signature).
-    /// Cleared by the next check that completes without error.
+    /// Sparkle is installing (the app is about to relaunch).
+    case installing
+    /// A user-initiated check finished with no newer version.
+    case upToDate(checkedAt: Date)
+    /// A check failed (feed unreachable, bad signature). Cleared by the next
+    /// check that completes without error.
     case error(message: String)
 
-    /// Delivery progress of a found update, mirrored from the updater.
-    enum DeliveryStage: Equatable {
-        case notDownloaded
-        case downloaded
-        case installing
-    }
-
-    /// Pure mapping used by the Sparkle delegate glue; unit-testable without
-    /// Sparkle types.
-    static func forFoundUpdate(version: String, stage: DeliveryStage) -> UpdatePhase {
-        switch stage {
-        case .notDownloaded:
-            return .available(version: version)
-        case .downloaded, .installing:
-            return .ready(version: version)
+    /// True while a session holds a Sparkle reply or is doing work — the
+    /// states the update panel should stay open for.
+    var isActiveSession: Bool {
+        switch self {
+        case .idle, .upToDate, .error:
+            return false
+        case .checking, .available, .downloading, .extracting, .ready, .installing:
+            return true
         }
     }
 }
@@ -61,4 +65,17 @@ protocol UpdateServicing: AnyObject {
     var onUpdateStateChange: (@MainActor () -> Void)? { get set }
 
     func checkForUpdates()
+
+    // MARK: - Session actions (driven by the update panel / popover)
+
+    /// available → install the found update; ready → install and relaunch.
+    func installUpdateNow()
+    /// available/ready → dismiss for now (remind on the next check).
+    func remindUpdateLater()
+    /// available → skip this version entirely.
+    func skipUpdateVersion()
+    /// checking/downloading → cancel the in-flight operation.
+    func cancelUpdateOperation()
+    /// upToDate/error → acknowledge the terminal state and return to idle.
+    func acknowledgeUpdateResult()
 }
