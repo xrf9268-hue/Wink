@@ -22,6 +22,7 @@ final class AppController {
     }
 
     static let firstLaunchCompletedDefaultsKey = "com.wink.firstLaunchCompleted"
+    static let lastSeenVersionDefaultsKey = "com.wink.lastSeenVersion"
 
     private let shortcutStore = ShortcutStore()
     private let persistenceService = PersistenceService()
@@ -30,6 +31,7 @@ final class AppController {
     private let appBundleLocator = AppBundleLocator()
     private let userDefaults: UserDefaults
     private lazy var updateService = SparkleUpdateService()
+    private let whatsNewPresenter = WhatsNewPresenter()
     private lazy var appSwitcher = AppSwitcher()
     private lazy var settingsLauncher = SettingsLauncher(userDefaults: userDefaults)
     private lazy var settingsShortcutStatusProvider = ShortcutStatusProvider()
@@ -118,11 +120,30 @@ final class AppController {
             startShortcutManager: { shortcutManager.start() }
         )
 
+        // Read the onboarded state before consumeFirstLaunchFlag marks it, so
+        // the What's New gate can tell a fresh install from an upgrade.
+        let hasLaunchedBefore = userDefaults.bool(forKey: Self.firstLaunchCompletedDefaultsKey)
+
         if Self.consumeFirstLaunchFlag(
             userDefaults: userDefaults,
             hasExistingShortcuts: !shortcutStore.shortcuts.isEmpty
         ) {
             openSettings()
+        }
+
+        let currentVersion = Self.currentVersionString()
+        let notes = WhatsNewCatalog.notes(for: currentVersion)
+        if Self.consumeWhatsNewGate(
+            userDefaults: userDefaults,
+            currentVersion: currentVersion,
+            hasLaunchedBefore: hasLaunchedBefore,
+            hasNotes: !notes.isEmpty
+        ) {
+            // Slight delay so the panel appears after launch settles; it is
+            // non-activating and never steals focus.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                self?.whatsNewPresenter.present(version: currentVersion, notes: notes)
+            }
         }
     }
 
@@ -176,5 +197,30 @@ final class AppController {
         guard !userDefaults.bool(forKey: firstLaunchCompletedDefaultsKey) else { return false }
         userDefaults.set(true, forKey: firstLaunchCompletedDefaultsKey)
         return !hasExistingShortcuts
+    }
+
+    /// Returns true exactly once per version change on an already-onboarded
+    /// install (fresh installs only record the version). Always writes back
+    /// `lastSeenVersion` synchronously, mirroring `consumeFirstLaunchFlag`'s
+    /// crash-safe consume-then-act shape. The decision itself is
+    /// `LaunchGates.shouldShowWhatsNew` (pure, unit-tested).
+    static func consumeWhatsNewGate(
+        userDefaults: UserDefaults,
+        currentVersion: String,
+        hasLaunchedBefore: Bool,
+        hasNotes: Bool
+    ) -> Bool {
+        let lastSeenVersion = userDefaults.string(forKey: lastSeenVersionDefaultsKey)
+        userDefaults.set(currentVersion, forKey: lastSeenVersionDefaultsKey)
+        return LaunchGates.shouldShowWhatsNew(
+            currentVersion: currentVersion,
+            hasLaunchedBefore: hasLaunchedBefore,
+            lastSeenVersion: lastSeenVersion,
+            hasNotes: hasNotes
+        )
+    }
+
+    private static func currentVersionString(bundle: Bundle = .main) -> String {
+        bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
     }
 }
