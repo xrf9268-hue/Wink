@@ -359,10 +359,44 @@ func updatePresentation_checkForUpdatesEnabledFollowsConfigurationNotCanCheckSna
 }
 
 @Test
-func updatePhaseMapping_notDownloadedIsAvailable_downloadedAndInstallingAreReady() {
-    #expect(UpdatePhase.forFoundUpdate(version: "1.2", stage: .notDownloaded) == .available(version: "1.2"))
-    #expect(UpdatePhase.forFoundUpdate(version: "1.2", stage: .downloaded) == .ready(version: "1.2"))
-    #expect(UpdatePhase.forFoundUpdate(version: "1.2", stage: .installing) == .ready(version: "1.2"))
+func updatePhase_isActiveSessionCoversWorkingAndHeldStates() {
+    #expect(UpdatePhase.checking.isActiveSession)
+    #expect(UpdatePhase.available(version: "1.2").isActiveSession)
+    #expect(UpdatePhase.downloading(version: "1.2", received: 1, expected: 2).isActiveSession)
+    #expect(UpdatePhase.extracting(progress: 0.5).isActiveSession)
+    #expect(UpdatePhase.ready(version: "1.2").isActiveSession)
+    #expect(UpdatePhase.installing.isActiveSession)
+    #expect(!UpdatePhase.idle.isActiveSession)
+    #expect(!UpdatePhase.upToDate(checkedAt: Date(timeIntervalSince1970: 0)).isActiveSession)
+    #expect(!UpdatePhase.error(message: "x").isActiveSession)
+}
+
+@Test @MainActor
+func handleUpdatePanelCloseRequest_routesToPhaseAppropriateAction() {
+    let service = FakeUpdateService(
+        isConfigured: true,
+        canCheckForUpdates: true,
+        currentVersion: "0.5.0",
+        automaticallyChecksForUpdates: true,
+        automaticallyDownloadsUpdates: true
+    )
+    let preferences = makePreferences(updateService: service)
+
+    service.simulateUpdateState(phase: .checking)
+    preferences.handleUpdatePanelCloseRequest()
+    #expect(service.recordedActions == ["cancel"])
+
+    service.simulateUpdateState(phase: .available(version: "9.9"))
+    preferences.handleUpdatePanelCloseRequest()
+    #expect(service.recordedActions == ["cancel", "later"])
+
+    service.simulateUpdateState(phase: .error(message: "offline"))
+    preferences.handleUpdatePanelCloseRequest()
+    #expect(service.recordedActions == ["cancel", "later", "acknowledge"])
+
+    service.simulateUpdateState(phase: .idle)
+    preferences.handleUpdatePanelCloseRequest()
+    #expect(service.recordedActions == ["cancel", "later", "acknowledge"])
 }
 
 @Test @MainActor
@@ -616,6 +650,14 @@ private final class FakeUpdateService: UpdateServicing {
         }
         onUpdateStateChange?()
     }
+
+    private(set) var recordedActions: [String] = []
+
+    func installUpdateNow() { recordedActions.append("install") }
+    func remindUpdateLater() { recordedActions.append("later") }
+    func skipUpdateVersion() { recordedActions.append("skip") }
+    func cancelUpdateOperation() { recordedActions.append("cancel") }
+    func acknowledgeUpdateResult() { recordedActions.append("acknowledge") }
 }
 
 private final class MutableLaunchAtLoginState: @unchecked Sendable {

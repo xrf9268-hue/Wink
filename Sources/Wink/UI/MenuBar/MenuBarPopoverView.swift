@@ -105,17 +105,27 @@ final class MenuBarPopoverModel {
         let subtitle: String
     }
 
-    /// Non-modal surface for scheduled update findings (gentle reminders):
-    /// clicking runs a user-initiated check, which re-focuses Sparkle's
-    /// existing session in its standard UI.
+    /// Non-modal surface for scheduled update findings (gentle sessions):
+    /// clicking runs a user-initiated check, which resumes the held session
+    /// into the Wink update panel.
     var updateNotice: UpdateNotice? {
         switch preferences.updatePhase {
-        case .idle, .error:
+        case .idle, .checking, .error, .upToDate, .installing:
             return nil
         case .available(let version):
             return UpdateNotice(
                 title: "Update available — v\(version)",
                 subtitle: "Click to review and install."
+            )
+        case .downloading(let version, _, _):
+            return UpdateNotice(
+                title: "Downloading update — v\(version)",
+                subtitle: "Click to view progress."
+            )
+        case .extracting:
+            return UpdateNotice(
+                title: "Preparing update…",
+                subtitle: "Click to view progress."
             )
         case .ready(let version):
             return UpdateNotice(

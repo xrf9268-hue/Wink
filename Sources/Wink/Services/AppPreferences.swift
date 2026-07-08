@@ -228,6 +228,44 @@ final class AppPreferences {
         }
     }
 
+    // MARK: - Update session actions (update panel / popover)
+
+    func installUpdateNow() {
+        updateService?.installUpdateNow()
+    }
+
+    func remindUpdateLater() {
+        updateService?.remindUpdateLater()
+    }
+
+    func skipUpdateVersion() {
+        updateService?.skipUpdateVersion()
+    }
+
+    func cancelUpdateOperation() {
+        updateService?.cancelUpdateOperation()
+    }
+
+    func acknowledgeUpdateResult() {
+        updateService?.acknowledgeUpdateResult()
+    }
+
+    /// Routes the update panel's close button to the session action that
+    /// matches the current phase, so closing the window never leaks a held
+    /// Sparkle reply or acknowledgement.
+    func handleUpdatePanelCloseRequest() {
+        switch updatePhase {
+        case .checking, .downloading:
+            cancelUpdateOperation()
+        case .available, .ready, .extracting, .installing:
+            remindUpdateLater()
+        case .upToDate, .error:
+            acknowledgeUpdateResult()
+        case .idle:
+            break
+        }
+    }
+
     /// Drives both Sparkle flags (scheduled checks + background downloads)
     /// as one user-facing switch. The mirrored state is read back from the
     /// service after the write so it only reflects what actually persisted.

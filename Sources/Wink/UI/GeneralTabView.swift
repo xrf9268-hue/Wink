@@ -237,13 +237,22 @@ struct GeneralTabView: View {
 
         // Live session state outranks the static behavior description.
         switch preferences.updatePhase {
+        case .checking:
+            return "Checking for updates…"
         case .available(let version):
             return "Version \(version) is available. Use Check for Updates… to review and install."
+        case .downloading(let version, let received, let expected):
+            let percent = expected > 0 ? " (\(Int(Double(received) / Double(expected) * 100))%)" : ""
+            return "Downloading version \(version)…\(percent)"
+        case .extracting:
+            return "Preparing the downloaded update…"
         case .ready(let version):
             return "Version \(version) is downloaded and installs when Wink quits. Use Check for Updates… to install now."
+        case .installing:
+            return "Installing the update — Wink will relaunch shortly."
         case .error(let message):
             return "The last automatic update check failed: \(message)"
-        case .idle:
+        case .idle, .upToDate:
             break
         }
 

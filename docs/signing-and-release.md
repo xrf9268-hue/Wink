@@ -289,6 +289,35 @@ bash scripts/package-dmg.sh
 codesign --verify --deep --strict --verbose=2 build/Wink.app
 ```
 
+### Local end-to-end update-flow validation
+
+The in-app update UI (check → available → download → extract → ready →
+install/relaunch, Issue #298) can be exercised against a fully local feed,
+no release infrastructure needed:
+
+1. Generate a throwaway EdDSA keypair under a dedicated keychain account and
+   export the private key:
+   `generate_keys --account wink-local-test && generate_keys --account wink-local-test -x /tmp/wink-test-ed.key`
+   (the tool lives under `.build/artifacts/*/bin/`).
+2. Package the app-under-test with only the public key injected
+   (`SPARKLE_PUBLIC_ED_KEY=<pubkey> bash scripts/package-app.sh`) and stash a
+   copy — the feed URL comes from the override below, so `SPARKLE_FEED_URL`
+   is not needed.
+3. Temporarily bump `CFBundleShortVersionString`/`CFBundleVersion` in
+   `Sources/Wink/Resources/Info.plist`, package again, run
+   `bash scripts/package-update-zip.sh`, then
+   `WINK_ALLOW_FIRST_RELEASE=1 SPARKLE_PUBLIC_BASE_URL="http://localhost:8000/" SPARKLE_PRIVATE_ED_KEY_FILE=/tmp/wink-test-ed.key bash scripts/generate-appcast.sh`,
+   and revert the plist.
+4. Serve the zip + `appcast.xml` with `python3 -m http.server 8000` and point
+   the app at it: `defaults write com.wink.app updateFeedURLOverride "http://localhost:8000/appcast.xml"`.
+   The override accepts https plus loopback http only
+   (`SparkleUpdaterDelegate.sanitizedOverride`).
+5. Launch the stashed lower-version copy and drive Check for Updates…
+   end-to-end; Sparkle installs the new version in place and relaunches.
+6. Clean up: delete the `updateFeedURLOverride`/`SULastCheckTime` defaults,
+   `security delete-generic-password -a wink-local-test`, and remove the
+   exported key file.
+
 Release verification:
 
 ```bash

@@ -503,6 +503,12 @@ private final class FakeUpdateService: UpdateServicing {
         }
         onUpdateStateChange?()
     }
+
+    func installUpdateNow() {}
+    func remindUpdateLater() {}
+    func skipUpdateVersion() {}
+    func cancelUpdateOperation() {}
+    func acknowledgeUpdateResult() {}
 }
 
 private final class OpenedTabsRecorder: @unchecked Sendable {
