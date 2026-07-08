@@ -93,6 +93,56 @@ struct MenuBarPopoverViewTests {
     }
 
     @Test @MainActor
+    func updateNoticeReflectsMirroredPhase() throws {
+        let defaults = try #require(UserDefaults(suiteName: "MenuBarPopoverViewTests.updateNotice"))
+        defaults.removePersistentDomain(forName: "MenuBarPopoverViewTests.updateNotice")
+        let updateService = FakeUpdateService(
+            isConfigured: true,
+            canCheckForUpdates: true,
+            currentVersion: "0.5.0",
+            automaticallyChecksForUpdates: true,
+            automaticallyDownloadsUpdates: true
+        )
+        let context = makePopoverContext(
+            shortcuts: [],
+            usageTotal: 0,
+            userDefaults: defaults,
+            updateService: updateService
+        )
+
+        #expect(context.model.updateNotice == nil)
+        #expect(context.model.updateUnavailableCaption == nil)
+
+        updateService.simulateUpdateState(phase: .available(version: "0.6.0"))
+        #expect(context.model.updateNotice?.title == "Update available — v0.6.0")
+
+        updateService.simulateUpdateState(phase: .ready(version: "0.6.0"))
+        #expect(context.model.updateNotice?.title == "Update ready — v0.6.0")
+
+        // Errors surface in the settings card, not as a popover notice row.
+        updateService.simulateUpdateState(phase: .error(message: "feed unreachable"))
+        #expect(context.model.updateNotice == nil)
+    }
+
+    @Test @MainActor
+    func unconfiguredUpdaterDisablesCheckRowWithExplanatoryCaption() {
+        let context = makePopoverContext(
+            shortcuts: [],
+            usageTotal: 0,
+            updateService: FakeUpdateService(
+                isConfigured: false,
+                canCheckForUpdates: false,
+                currentVersion: "0.5.0",
+                automaticallyChecksForUpdates: true,
+                automaticallyDownloadsUpdates: true
+            )
+        )
+
+        #expect(context.model.isCheckForUpdatesEnabled == false)
+        #expect(context.model.updateUnavailableCaption != nil)
+    }
+
+    @Test @MainActor
     func refreshBuildsEvenTwentyFourBarHistogramFromTodayTotal() async {
         let context = makePopoverContext(
             shortcuts: [],
@@ -424,6 +474,9 @@ private final class FakeUpdateService: UpdateServicing {
     var automaticallyChecksForUpdates: Bool
     var automaticallyDownloadsUpdates: Bool
     private(set) var didRequestManualCheck = false
+    private(set) var updatePhase: UpdatePhase = .idle
+    private(set) var lastUpdateCheckDate: Date?
+    var onUpdateStateChange: (@MainActor () -> Void)?
 
     init(
         isConfigured: Bool,
@@ -441,6 +494,14 @@ private final class FakeUpdateService: UpdateServicing {
 
     func checkForUpdates() {
         didRequestManualCheck = true
+    }
+
+    func simulateUpdateState(phase: UpdatePhase, lastCheck: Date? = nil) {
+        updatePhase = phase
+        if let lastCheck {
+            lastUpdateCheckDate = lastCheck
+        }
+        onUpdateStateChange?()
     }
 }
 

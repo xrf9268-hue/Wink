@@ -92,6 +92,39 @@ final class MenuBarPopoverModel {
         preferences.updatePresentation.checkForUpdatesEnabled
     }
 
+    /// Explains the disabled Check for Updates row instead of leaving a bare
+    /// dead control (dev builds ship without an injected Sparkle feed).
+    var updateUnavailableCaption: String? {
+        preferences.updatePresentation.isConfigured
+            ? nil
+            : "Updates are available in packaged builds with a signed update feed."
+    }
+
+    struct UpdateNotice: Equatable {
+        let title: String
+        let subtitle: String
+    }
+
+    /// Non-modal surface for scheduled update findings (gentle reminders):
+    /// clicking runs a user-initiated check, which re-focuses Sparkle's
+    /// existing session in its standard UI.
+    var updateNotice: UpdateNotice? {
+        switch preferences.updatePhase {
+        case .idle, .error:
+            return nil
+        case .available(let version):
+            return UpdateNotice(
+                title: "Update available — v\(version)",
+                subtitle: "Click to review and install."
+            )
+        case .ready(let version):
+            return UpdateNotice(
+                title: "Update ready — v\(version)",
+                subtitle: "Installs when Wink quits. Click to install now."
+            )
+        }
+    }
+
     var filteredShortcutRows: [ShortcutRow] {
         let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSearch.isEmpty else {
@@ -349,11 +382,27 @@ struct MenuBarPopoverView: View {
 
                 Divider().overlay(palette.hairline)
 
+                if let notice = model.updateNotice {
+                    MenuBarUpdateNoticeRow(notice: notice, action: model.checkForUpdates)
+
+                    Divider().overlay(palette.hairline)
+                }
+
                 MenuBarActionRow(
                     title: "Check for Updates…",
                     action: model.checkForUpdates
                 )
                 .disabled(!model.isCheckForUpdatesEnabled)
+
+                if let caption = model.updateUnavailableCaption {
+                    Text(caption)
+                        .font(WinkType.labelSmall)
+                        .foregroundStyle(palette.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
+                }
 
                 Divider().overlay(palette.hairline)
 
@@ -510,6 +559,40 @@ private struct MenuBarToggleRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+}
+
+private struct MenuBarUpdateNoticeRow: View {
+    @Environment(\.winkPalette) private var palette
+
+    let notice: MenuBarPopoverModel.UpdateNotice
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(palette.accent)
+                    .padding(.top, 1)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(notice.title)
+                        .font(WinkType.bodyMedium)
+                        .foregroundStyle(palette.textPrimary)
+                    Text(notice.subtitle)
+                        .font(WinkType.labelSmall)
+                        .foregroundStyle(palette.textSecondary)
+                }
+
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("MenuBarUpdateNoticeRow")
     }
 }
 
