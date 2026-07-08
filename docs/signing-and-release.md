@@ -62,6 +62,53 @@ Release-style signing is controlled by environment variables passed to `scripts/
 - `SPARKLE_FEED_URL`
 - `SPARKLE_PUBLIC_ED_KEY`
 
+### Local development signing identity ("Wink")
+
+`SIGN_IDENTITY` defaults to `Wink`. Keep a self-signed code-signing
+certificate named exactly **Wink** in the login keychain so local packages get
+a **stable designated requirement** instead of the ad-hoc fallback:
+
+- Ad-hoc signatures change every rebuild, which silently invalidates the TCC
+  grants (Accessibility, Input Monitoring) for `build/Wink.app` — the e2e
+  harness then fails capture readiness (`ax=false im=false`) until the rows
+  are manually re-added in System Settings.
+- TCC keys grants by bundle id plus the granted copy's code requirement.
+  With `/Applications/Wink.app` and `build/Wink.app` signed by the **same**
+  "Wink" certificate, one grant covers both copies and survives rebuilds.
+  Do not let one copy drift back to ad-hoc: re-granting a differently signed
+  copy of `com.wink.app` silently breaks the other copy's permissions.
+
+Create the certificate either with Keychain Access → Certificate Assistant →
+Create a Certificate (Name: `Wink`, Type: Code Signing), or from a terminal:
+
+```bash
+cat > /tmp/wink-cert.cnf <<'EOF'
+[req]
+distinguished_name = dn
+x509_extensions = v3_codesign
+prompt = no
+[dn]
+CN = Wink
+[v3_codesign]
+basicConstraints = critical,CA:FALSE
+keyUsage = critical,digitalSignature
+extendedKeyUsage = critical,codeSigning
+subjectKeyIdentifier = hash
+EOF
+openssl req -x509 -newkey rsa:2048 -keyout /tmp/wink-key.pem \
+  -out /tmp/wink-cert.pem -days 3650 -nodes -config /tmp/wink-cert.cnf
+openssl pkcs12 -export -legacy -out /tmp/wink.p12 \
+  -inkey /tmp/wink-key.pem -in /tmp/wink-cert.pem -passout pass:winktmp
+security import /tmp/wink.p12 -k ~/Library/Keychains/login.keychain-db \
+  -P winktmp -T /usr/bin/codesign
+security add-trusted-cert -p codeSign \
+  -k ~/Library/Keychains/login.keychain-db /tmp/wink-cert.pem   # approve the dialog
+rm -f /tmp/wink-key.pem /tmp/wink.p12 /tmp/wink-cert.pem /tmp/wink-cert.cnf
+```
+
+(`-legacy` matters: macOS `security import` rejects OpenSSL 3's default
+PKCS#12 encoding with "MAC verification failed".)
+
 ### Sparkle update ZIP
 
 ```bash

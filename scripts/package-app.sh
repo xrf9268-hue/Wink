@@ -171,10 +171,11 @@ rm -rf \
     "$FRAMEWORKS_DIR/Sparkle.framework/XPCServices"
 
 # Sign with a stable identity if available; fall back to ad-hoc.
-# A stable identity (e.g. "Wink Dev" self-signed cert) lets TCC
-# permissions survive across rebuilds. Create one via:
-#   Keychain Access → Certificate Assistant → Create a Certificate
-#   Name: "Wink Dev", Type: Code Signing
+# A stable identity (the default is a self-signed cert named exactly "Wink")
+# gives a stable designated requirement, so TCC grants survive rebuilds and
+# one grant covers every same-signed copy of com.wink.app. See
+# docs/signing-and-release.md "Local development signing identity" for the
+# Keychain Access and openssl recipes.
 if security find-identity -v -p codesigning 2>/dev/null | grep -Fq "$SIGN_IDENTITY"; then
     echo "==> Signing with '$SIGN_IDENTITY'..."
     SELECTED_SIGN_IDENTITY="$SIGN_IDENTITY"
