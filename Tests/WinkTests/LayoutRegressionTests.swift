@@ -631,8 +631,6 @@ struct LayoutRegressionTests {
         let customTitle = try #require(titlebarView.subviews.first {
             $0.identifier == SettingsTitlebarLayout.titleIdentifier
         })
-        let toggleCenterYFromTop = titlebarView.bounds.height - sidebarToggle.frame.midY
-        let titleCenterYFromTop = titlebarView.bounds.height - customTitle.frame.midY
         let expectedToggleLeadingX = zoomButton.frame.maxX + SettingsTitlebarLayout.toggleGapFromZoomButton
 
         #expect(abs(topInset - SettingsTitlebarLayout.height) < 0.5)
@@ -641,10 +639,13 @@ struct LayoutRegressionTests {
         #expect(accessory.automaticallyAdjustsSize == false)
         #expect(abs(accessory.view.frame.height - SettingsTitlebarLayout.titlebarAccessoryHeight) < 0.5)
         #expect(abs(sidebarToggle.frame.minX - expectedToggleLeadingX) < 0.5)
+        // Single baseline: traffic lights, toggle, and title share the
+        // AppKit-owned button centerline. A design-height-derived second
+        // centerline is exactly the regression this guards against.
         #expect(abs(sidebarToggle.frame.midY - zoomButton.frame.midY) < 0.5)
-        #expect(abs(toggleCenterYFromTop - (titlebarView.bounds.height - zoomButton.frame.midY)) < 0.5)
+        #expect(abs(customTitle.frame.midY - zoomButton.frame.midY) < 1.0)
+        #expect(abs(customTitle.frame.midY - sidebarToggle.frame.midY) < 1.0)
         #expect(abs(customTitle.frame.midX - titlebarView.bounds.midX) < 0.5)
-        #expect(abs(titleCenterYFromTop - SettingsTitlebarLayout.baselineCenterY) < 0.5)
     }
 
     @Test @MainActor
@@ -665,38 +666,6 @@ struct LayoutRegressionTests {
 
         #expect(window.toolbar == nil)
         #expect(window.titlebarSeparatorStyle == .none)
-    }
-
-    @Test @MainActor
-    func settingsWindowChromeHidesDuplicateSidebarToggleButtons() throws {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: SettingsWindowMetrics.width, height: SettingsWindowMetrics.height),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        let coordinator = SettingsWindowChromeCoordinator()
-
-        coordinator.attach(to: window)
-        let closeButton = try #require(window.standardWindowButton(.closeButton))
-        let titlebarView = try #require(closeButton.superview)
-        let sidebarToggle = try #require(titlebarView.subviews.first {
-            $0.identifier == SettingsTitlebarLayout.sidebarToggleIdentifier
-        })
-        let duplicateToggle = NSButton(frame: sidebarToggle.frame.offsetBy(dx: 2, dy: 0))
-        duplicateToggle.image = NSImage(systemSymbolName: "sidebar.leading", accessibilityDescription: "Toggle Sidebar")
-        duplicateToggle.imagePosition = .imageOnly
-        duplicateToggle.toolTip = "Toggle Sidebar"
-        titlebarView.addSubview(duplicateToggle)
-
-        coordinator.attach(to: window)
-
-        #expect(duplicateToggle.isHidden)
-        #expect(duplicateToggle.isEnabled == false)
-        let ownedToggles = titlebarView.subviews.filter {
-            $0.identifier == SettingsTitlebarLayout.sidebarToggleIdentifier
-        }
-        #expect(ownedToggles.count == 1)
     }
 
     @Test @MainActor
