@@ -18,29 +18,20 @@ struct SettingsTabHeader<Trailing: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .bottom, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(WinkType.tabTitle)
+                    .tracking(-0.3)
                     .foregroundStyle(palette.textPrimary)
                 Text(subtitle)
-                    .font(WinkType.bodyText)
+                    .font(WinkType.tabSubtitle)
                     .foregroundStyle(palette.textSecondary)
             }
 
             Spacer(minLength: 8)
             trailing()
         }
-    }
-}
-
-// MARK: - Alternating row background
-
-extension View {
-    func alternatingRowBackground(index: Int) -> some View {
-        self.background(index.isMultiple(of: 2)
-            ? Color.clear
-            : Color.primary.opacity(0.03))
     }
 }
 
