@@ -135,9 +135,9 @@ The helper copy should be short and direct. It must explain that:
 
 #### `.notFound` semantics
 
-`.notFound` should be presented as an environment or packaging problem, not as a user preference that failed to save. The toggle remains in its normal position for layout stability but is disabled to avoid implying that retrying the switch is the primary recovery path.
+**Correction (2026-07-09, issue #303):** this section's original premise was wrong. Apple's own DTS engineers have clarified on the developer forums that `SMAppService.Status.notFound` is the normal pre-registration baseline ("the system has never seen your service") — `.notRegistered` is only reached after a register()/unregister() cycle has happened at least once. Wink never auto-registers on first launch, so a correctly installed copy that a user simply hasn't toggled "Launch at Login" on for legitimately reads `.notFound`, not `.notRegistered`. Presenting *every* `.notFound` as a packaging error was therefore misdiagnosing a normal, healthy state. The implementation now gates the error-style copy on an actual `register()` attempt this session (tracked via `AppPreferences.hasAttemptedLaunchAtLoginRegistration`): before any attempt, `.notFound` presents identically to `.disabled` (toggle on, no message); only if `.notFound` persists *after* an attempt does it escalate to the error-style copy below, since that is the point where it genuinely does indicate an environment/packaging problem.
 
-The helper copy should point users toward installation, packaging, or distribution problems rather than toward System Settings approval.
+The helper copy should point users toward installation, packaging, or distribution problems rather than toward System Settings approval, but only once an attempt has actually failed to register.
 
 ### 3. Visual Presentation
 

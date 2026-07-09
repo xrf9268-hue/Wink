@@ -185,7 +185,9 @@ func LaunchAtLoginPresentation_requiresApprovalMapsToInformationalStateWithOpenS
 }
 
 @Test @MainActor
-func LaunchAtLoginPresentation_notFoundMapsToDisabledErrorStateWithoutOpenSettingsCTA() {
+func LaunchAtLoginPresentation_notFoundBeforeAttemptPresentsLikeDisabled() {
+    // .notFound before any register() call is Apple's documented normal
+    // pre-registration baseline, not a defect — must not show an error.
     let preferences = makePreferences(
         status: .notFound,
         bundleURL: URL(fileURLWithPath: "/Applications/Wink.app")
@@ -193,11 +195,16 @@ func LaunchAtLoginPresentation_notFoundMapsToDisabledErrorStateWithoutOpenSettin
 
     let presentation = preferences.launchAtLoginPresentation
     #expect(presentation.toggleIsOn == false)
-    #expect(presentation.toggleIsEnabled == false)
-    #expect(presentation.messageStyle == .error)
-    #expect(presentation.message == "Wink couldn't find its login item configuration. This usually points to an installation or packaging problem.")
-    #expect(presentation.showsOpenSettingsButton == false)
+    #expect(presentation.toggleIsEnabled == true)
+    #expect(presentation.message == nil)
+    #expect(presentation.messageStyle == .none)
 }
+
+// The after-attempt-still-notFound error path is covered by
+// LaunchAtLoginPresentationTests.notFoundInApplicationsAfterAttemptMapsToConfigurationError,
+// which uses a fixed-status fake — this file's MutableLaunchAtLoginState
+// fake always flips register() to .enabled, so it can't represent "register
+// succeeded without throwing but status is still notFound."
 
 @Test @MainActor
 func LaunchAtLoginPresentation_notFoundOutsideApplicationsShowsInstallGuidance() {
