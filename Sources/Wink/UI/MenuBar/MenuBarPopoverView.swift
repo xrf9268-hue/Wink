@@ -238,20 +238,52 @@ final class MenuBarPopoverModel {
     }
 }
 
+/// Tighter NSMenu-style row metrics for the popover's list/footer rows —
+/// distinct from `ShortcutsTabView`'s `ShortcutRowMetrics`, which are sized
+/// for the full Shortcuts tab rather than menubar.jsx's compact rows.
+private enum MenuBarRowMetrics {
+    static let rowHorizontalPadding: CGFloat = 8
+    static let listRowVerticalPadding: CGFloat = 6
+    static let listRowSpacing: CGFloat = 9
+    static let listRowCornerRadius: CGFloat = 6
+    static let footerRowVerticalPadding: CGFloat = 5
+    static let footerRowCornerRadius: CGFloat = 5
+}
+
 struct MenuBarPopoverView: View {
     @Environment(\.winkPalette) private var palette
 
     @Bindable var model: MenuBarPopoverModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            header
-            search
-            todayCard
-            shortcutsCard
-            actionsCard
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 10) {
+                header
+                search
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            todaySection
+                .padding(.horizontal, 14)
+                .padding(.bottom, 10)
+
+            Divider().overlay(palette.hairline)
+
+            shortcutsHeader
+
+            shortcutsList
+                .layoutPriority(1)
+
+            Divider().overlay(palette.hairline)
+
+            manageRow
+
+            Divider().overlay(palette.hairline)
+
+            actionsSection
         }
-        .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(palette.windowBg)
         .onAppear {
@@ -288,39 +320,40 @@ struct MenuBarPopoverView: View {
         }
     }
 
-    private var todayCard: some View {
-        WinkCard(
-            title: {
-                Text("Today")
-            },
-            accessory: {
+    private var todaySection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 8) {
+                WinkSectionLabel("Today")
+                Spacer(minLength: 8)
                 Text("\(model.todayActivationCount) activations")
                     .font(WinkType.labelSmall)
                     .foregroundStyle(palette.textTertiary)
             }
-        ) {
             MenuBarTodayHistogram(
                 bars: model.todayHistogramBars
             )
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
         }
     }
 
-    private var shortcutsCard: some View {
-        WinkCard(
-            title: {
-                Text("Shortcuts")
-            }
-        ) {
-            let filteredRows = model.filteredShortcutRows
+    private var shortcutsHeader: some View {
+        HStack(alignment: .center, spacing: 8) {
+            WinkSectionLabel("Shortcuts")
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+    }
+
+    private var shortcutsList: some View {
+        let filteredRows = model.filteredShortcutRows
+        return Group {
             if model.shortcutRows.isEmpty {
                 Text("No shortcuts configured")
                     .font(WinkType.bodyText)
                     .foregroundStyle(palette.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
-                    .padding(.top, 14)
                     .padding(.bottom, 10)
             } else if filteredRows.isEmpty {
                 Text("No shortcuts match your search")
@@ -328,20 +361,13 @@ struct MenuBarPopoverView: View {
                     .foregroundStyle(palette.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
-                    .padding(.top, 14)
                     .padding(.bottom, 10)
             } else {
                 GeometryReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(Array(filteredRows.enumerated()), id: \.element.id) { index, row in
+                            ForEach(filteredRows) { row in
                                 MenuBarShortcutRow(row: row)
-
-                                if index < filteredRows.count - 1 {
-                                    Divider()
-                                        .overlay(palette.hairline)
-                                        .padding(.leading, 48)
-                                }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -351,78 +377,75 @@ struct MenuBarPopoverView: View {
                 }
                 .frame(minHeight: 120, maxHeight: .infinity, alignment: .top)
             }
+        }
+    }
+
+    private var manageRow: some View {
+        Button(action: model.openManageShortcuts) {
+            HStack(spacing: 6) {
+                Text("Manage…")
+                WinkIcon.chevronRight.image(size: 10)
+            }
+            .font(WinkType.bodyMedium)
+            .foregroundStyle(palette.accent)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var actionsSection: some View {
+        VStack(spacing: 0) {
+            MenuBarToggleRow(
+                title: "Pause all shortcuts",
+                isOn: Binding(
+                    get: { model.shortcutsPaused },
+                    set: { model.setShortcutsPaused($0) }
+                )
+            )
 
             Divider().overlay(palette.hairline)
 
-            Button(action: model.openManageShortcuts) {
-                HStack(spacing: 6) {
-                    Text("Manage…")
-                    WinkIcon.chevronRight.image(size: 10)
-                }
-                .font(WinkType.bodyMedium)
-                .foregroundStyle(palette.accent)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+            MenuBarActionRow(
+                title: "Settings…",
+                keycaps: ["⌘", ","],
+                action: model.openSettings
+            )
+
+            Divider().overlay(palette.hairline)
+
+            if let notice = model.updateNotice {
+                MenuBarUpdateNoticeRow(notice: notice, action: model.checkForUpdates)
+
+                Divider().overlay(palette.hairline)
             }
-            .buttonStyle(.plain)
-        }
-        .frame(maxHeight: .infinity, alignment: .topLeading)
-        .layoutPriority(1)
-    }
 
-    private var actionsCard: some View {
-        WinkCard {
-            VStack(spacing: 0) {
-                MenuBarToggleRow(
-                    title: "Pause all shortcuts",
-                    isOn: Binding(
-                        get: { model.shortcutsPaused },
-                        set: { model.setShortcutsPaused($0) }
-                    )
-                )
+            MenuBarActionRow(
+                title: "Check for Updates…",
+                action: model.checkForUpdates
+            )
+            .disabled(!model.isCheckForUpdatesEnabled)
 
-                Divider().overlay(palette.hairline)
-
-                MenuBarActionRow(
-                    title: "Settings…",
-                    keycaps: ["⌘", ","],
-                    action: model.openSettings
-                )
-
-                Divider().overlay(palette.hairline)
-
-                if let notice = model.updateNotice {
-                    MenuBarUpdateNoticeRow(notice: notice, action: model.checkForUpdates)
-
-                    Divider().overlay(palette.hairline)
-                }
-
-                MenuBarActionRow(
-                    title: "Check for Updates…",
-                    action: model.checkForUpdates
-                )
-                .disabled(!model.isCheckForUpdatesEnabled)
-
-                if let caption = model.updateUnavailableCaption {
-                    Text(caption)
-                        .font(WinkType.labelSmall)
-                        .foregroundStyle(palette.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
-                }
-
-                Divider().overlay(palette.hairline)
-
-                MenuBarActionRow(
-                    title: "Quit Wink",
-                    keycaps: ["⌘", "Q"],
-                    action: model.quit
-                )
+            if let caption = model.updateUnavailableCaption {
+                Text(caption)
+                    .font(WinkType.labelSmall)
+                    .foregroundStyle(palette.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
             }
+
+            Divider().overlay(palette.hairline)
+
+            MenuBarActionRow(
+                title: "Quit Wink",
+                keycaps: ["⌘", "Q"],
+                action: model.quit
+            )
         }
+        .padding(.bottom, 8)
     }
 }
 
@@ -508,11 +531,12 @@ private struct MenuBarTodayHistogram: View {
 
 private struct MenuBarShortcutRow: View {
     @Environment(\.winkPalette) private var palette
+    @State private var isHovering = false
 
     let row: MenuBarPopoverModel.ShortcutRow
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: MenuBarRowMetrics.listRowSpacing) {
             AppIconView(
                 bundleIdentifier: row.shortcut.bundleIdentifier,
                 size: 22
@@ -543,22 +567,34 @@ private struct MenuBarShortcutRow: View {
                 WinkHyperBadge(size: .small)
             }
 
-            ShortcutKeycapStrip(shortcut: row.shortcut, size: .small)
+            WinkShortcutGlyph(
+                ShortcutKeycapStrip.labels(
+                    keyEquivalent: row.shortcut.keyEquivalent,
+                    modifierFlags: row.shortcut.modifierFlags
+                ).joined()
+            )
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, MenuBarRowMetrics.rowHorizontalPadding)
+        .padding(.vertical, MenuBarRowMetrics.listRowVerticalPadding)
+        .background(
+            RoundedRectangle(cornerRadius: MenuBarRowMetrics.listRowCornerRadius, style: .continuous)
+                .fill(isHovering ? palette.sidebarItemHover : .clear)
+        )
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
         .opacity(row.shortcut.isEnabled ? 1 : 0.6)
     }
 }
 
 private struct MenuBarToggleRow: View {
     @Environment(\.winkPalette) private var palette
+    @State private var isHovering = false
 
     let title: String
     let isOn: Binding<Bool>
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: MenuBarRowMetrics.listRowSpacing) {
             Text(title)
                 .font(WinkType.bodyMedium)
                 .foregroundStyle(palette.textPrimary)
@@ -567,8 +603,14 @@ private struct MenuBarToggleRow: View {
 
             WinkSwitch(isOn: isOn, size: .small)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, MenuBarRowMetrics.rowHorizontalPadding)
+        .padding(.vertical, MenuBarRowMetrics.listRowVerticalPadding)
+        .background(
+            RoundedRectangle(cornerRadius: MenuBarRowMetrics.listRowCornerRadius, style: .continuous)
+                .fill(isHovering ? palette.sidebarItemHover : .clear)
+        )
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
     }
 }
 
@@ -608,6 +650,7 @@ private struct MenuBarUpdateNoticeRow: View {
 
 private struct MenuBarActionRow: View {
     @Environment(\.winkPalette) private var palette
+    @State private var isHovering = false
 
     let title: String
     var keycaps: [String] = []
@@ -623,13 +666,18 @@ private struct MenuBarActionRow: View {
                 Spacer(minLength: 8)
 
                 if !keycaps.isEmpty {
-                    ShortcutKeycapStrip(labels: keycaps, size: .small)
+                    WinkShortcutGlyph(keycaps.joined())
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, MenuBarRowMetrics.rowHorizontalPadding)
+            .padding(.vertical, MenuBarRowMetrics.footerRowVerticalPadding)
+            .background(
+                RoundedRectangle(cornerRadius: MenuBarRowMetrics.footerRowCornerRadius, style: .continuous)
+                    .fill(isHovering ? palette.sidebarItemHover : .clear)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }

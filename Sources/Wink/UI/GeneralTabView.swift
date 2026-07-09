@@ -146,15 +146,10 @@ struct GeneralTabView: View {
 
                 if let message = preferences.launchAtLoginPresentation.message {
                     Divider().overlay(palette.hairline)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(message)
-                            .font(WinkType.labelSmall)
-                            .foregroundStyle(
-                                preferences.launchAtLoginPresentation.messageStyle == .error
-                                    ? palette.red
-                                    : palette.textSecondary
-                            )
-
+                    WinkBanner(
+                        kind: preferences.launchAtLoginPresentation.messageStyle == .error ? .error : .info,
+                        title: message
+                    ) {
                         if preferences.launchAtLoginPresentation.showsOpenSettingsButton {
                             WinkButton("Open Login Items Settings") {
                                 preferences.openLoginItemsSettings()
