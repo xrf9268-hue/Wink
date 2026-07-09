@@ -37,6 +37,8 @@ struct AppPickerHighlightState {
 }
 
 struct AppPickerPopover: View {
+    @Environment(\.winkPalette) private var palette
+
     @Bindable var appListProvider: AppListProvider
     let onSelect: (AppEntry) -> Void
     let onBrowse: () -> Void
@@ -69,95 +71,97 @@ struct AppPickerPopover: View {
 
     var body: some View {
         let sections = computeSections()
-        return VStack(spacing: 0) {
-            // Search field
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                    .font(.system(size: 12))
-                TextField("Search apps...", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .onSubmit { selectHighlighted(in: sections) }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
 
-            Divider()
+        // `ScrollViewReader` wraps the whole popover (not just the list) so the
+        // arrow-key handlers can live on the outer VStack, an ancestor of both
+        // the search TextField and the list — `.onKeyPress` only fires when the
+        // modified view or a descendant holds focus, and a TextField sibling
+        // doesn't qualify.
+        return ScrollViewReader { proxy in
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    WinkIcon.search.image(size: 12)
+                        .foregroundStyle(palette.textTertiary)
+                    TextField("Search apps...", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(WinkType.bodyText)
+                        .foregroundStyle(palette.textPrimary)
+                        .onSubmit { selectHighlighted(in: sections) }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
 
-            // Scrollable list with keyboard nav
-            ScrollViewReader { proxy in
+                Divider().overlay(palette.hairline)
+
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         if searchText.isEmpty {
                             if !sections.recent.isEmpty {
-                                sectionHeader("Recently Used")
+                                WinkSectionLabel("Recently Used")
+                                    .padding(.horizontal, 14)
+                                    .padding(.top, 8)
+                                    .padding(.bottom, 4)
                                 ForEach(Array(sections.recent.enumerated()), id: \.element.id) { index, entry in
-                                    appRow(entry, index: index, proxy: proxy)
+                                    appRow(entry, index: index)
                                 }
                             }
 
                             if !sections.nonRecent.isEmpty {
-                                sectionHeader("All Apps")
+                                WinkSectionLabel("All Apps")
+                                    .padding(.horizontal, 14)
+                                    .padding(.top, 8)
+                                    .padding(.bottom, 4)
                                 ForEach(Array(sections.nonRecent.enumerated()), id: \.element.id) { i, entry in
                                     let index = sections.recent.count + i
-                                    appRow(entry, index: index, proxy: proxy)
+                                    appRow(entry, index: index)
                                 }
                             }
                         } else {
                             ForEach(Array(sections.all.enumerated()), id: \.element.id) { index, entry in
-                                appRow(entry, index: index, proxy: proxy)
+                                appRow(entry, index: index)
                             }
                         }
                     }
                 }
-                .onKeyPress(.upArrow) { moveHighlight(-1, proxy: proxy, in: sections); return .handled }
-                .onKeyPress(.downArrow) { moveHighlight(1, proxy: proxy, in: sections); return .handled }
+                // `.onSubmit` on the search TextField already handles Return
+                // while typing; keep this scoped to the list so a highlighted
+                // row doesn't fire selection twice.
                 .onKeyPress(.return) { selectHighlighted(in: sections); return .handled }
-            }
 
-            Divider()
+                Divider().overlay(palette.hairline)
 
-            // Browse fallback
-            Button {
-                onBrowse()
-                dismiss()
-            } label: {
-                HStack {
-                    Image(systemName: "folder")
-                    Text("Browse...")
+                Button {
+                    onBrowse()
+                    dismiss()
+                } label: {
+                    HStack {
+                        Image(systemName: "folder")
+                        Text("Browse...")
+                    }
+                    .font(WinkType.labelSmall)
+                    .foregroundStyle(palette.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
                 }
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .frame(width: 320, height: 400)
+            .onAppear {
+                appListProvider.refreshIfNeeded()
+                highlight.reset()
+            }
+            .onChange(of: searchText) {
+                highlight.searchTextChanged()
+            }
+            .onKeyPress(.upArrow) { moveHighlight(-1, proxy: proxy, in: sections); return .handled }
+            .onKeyPress(.downArrow) { moveHighlight(1, proxy: proxy, in: sections); return .handled }
+            .onKeyPress(.escape) { dismiss(); return .handled }
         }
-        .frame(width: 320, height: 400)
-        .onAppear {
-            appListProvider.refreshIfNeeded()
-            highlight.reset()
-        }
-        .onChange(of: searchText) {
-            highlight.searchTextChanged()
-        }
-        .onKeyPress(.escape) { dismiss(); return .handled }
     }
 
     // MARK: - Subviews
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.secondary)
-            .tracking(0.5)
-            .padding(.horizontal, 14)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
-    }
-
-    private func appRow(_ entry: AppEntry, index: Int, proxy: ScrollViewProxy) -> some View {
+    private func appRow(_ entry: AppEntry, index: Int) -> some View {
         Button {
             select(entry)
         } label: {
@@ -165,16 +169,17 @@ struct AppPickerPopover: View {
                 AppIconView(bundleIdentifier: entry.bundleIdentifier, size: 28)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(entry.name)
-                        .font(.system(size: 13, weight: highlightedIndex == index ? .medium : .regular))
+                        .font(highlightedIndex == index ? WinkType.bodyMedium : WinkType.bodyText)
+                        .foregroundStyle(palette.textPrimary)
                     Text(entry.bundleIdentifier)
                         .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.textTertiary)
                 }
                 Spacer()
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(highlightedIndex == index ? Color.accentColor.opacity(0.15) : Color.clear)
+            .background(highlightedIndex == index ? palette.accentBgSoft : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .contentShape(Rectangle())
         }

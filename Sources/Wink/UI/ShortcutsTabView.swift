@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 private enum ShortcutRowMetrics {
-    static let spacing: CGFloat = 12
+    static let spacing: CGFloat = 10
     static let gripColumnWidth: CGFloat = 24
     static let gripHitHeight: CGFloat = 24
     static let iconSize: CGFloat = 30
@@ -16,7 +16,7 @@ private enum ShortcutRowMetrics {
     static let shortcutColumnWidth: CGFloat = 112
     static let switchColumnWidth: CGFloat = 36
     static let actionButtonSize: CGFloat = 22
-    static let accessorySpacing: CGFloat = 8
+    static let accessorySpacing: CGFloat = 10
 
     static var accessoryGroupWidth: CGFloat {
         hyperBadgeColumnWidth + shortcutColumnWidth + switchColumnWidth + actionButtonSize + accessorySpacing * 3
@@ -330,12 +330,12 @@ struct ShortcutsTabView: View {
                             } label: {
                                 HStack(spacing: 8) {
                                     if editor.selectedBundleIdentifier.isEmpty {
-                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                            .fill(palette.controlBgRest)
-                                            .frame(width: 20, height: 20)
+                                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                            .fill(palette.appPlaceholderSwatchBg)
+                                            .frame(width: 18, height: 18)
                                             .overlay {
-                                                WinkIcon.app.image(size: 11)
-                                                    .foregroundStyle(palette.textTertiary)
+                                                WinkIcon.plus.image(size: 10)
+                                                    .foregroundStyle(.white)
                                             }
 
                                         Text("Choose an app…")
@@ -568,7 +568,6 @@ struct ShortcutsTabView: View {
                                 reorderableRow(shortcut, index: index, canReorder: canReorder)
                                 if index < filteredShortcuts.count - 1 {
                                     Divider().overlay(palette.hairline)
-                                        .padding(.leading, 58)
                                 }
                             }
                         }
@@ -820,6 +819,9 @@ struct ShortcutsListRow: View {
     let onRemove: @MainActor () -> Void
     let reorderHandlers: ShortcutRowReorderHandlers?
 
+    @State private var isRowHovering = false
+    @State private var isMenuButtonHovering = false
+
     private var presentation: ShortcutsListRowPresentation {
         ShortcutsListRowPresentation(
             shortcut: shortcut,
@@ -914,7 +916,8 @@ struct ShortcutsListRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, ShortcutRowMetrics.verticalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .alternatingRowBackground(index: index)
+        .background(isRowHovering ? Color.primary.opacity(0.035) : Color.clear)
+        .onHover { isRowHovering = $0 }
         .opacity(presentation.contentOpacity)
         .animation(statusAnimation, value: statusAnimationKey)
     }
@@ -948,6 +951,24 @@ struct ShortcutsListRow: View {
         }
     }
 
+    // The row badge is one unified pill holding the whole chord string, unlike
+    // the composer's live-record preview which shows discrete Keycap chips
+    // per modifier (tab-shortcuts.jsx:143-151 vs. :91-93).
+    private var shortcutBadge: some View {
+        Text(shortcut.displayText)
+            .font(WinkType.monoBadge)
+            .tracking(0.5)
+            .foregroundStyle(palette.textPrimary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(palette.controlBgRest)
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(palette.controlBorder, lineWidth: 0.5)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+    }
+
     private var shortcutAccessoryGroup: some View {
         HStack(spacing: ShortcutRowMetrics.accessorySpacing) {
             Group {
@@ -960,7 +981,7 @@ struct ShortcutsListRow: View {
             }
             .frame(width: ShortcutRowMetrics.hyperBadgeColumnWidth, alignment: .trailing)
 
-            ShortcutKeycapStrip(shortcut: shortcut)
+            shortcutBadge
                 .frame(width: ShortcutRowMetrics.shortcutColumnWidth, alignment: .trailing)
 
             WinkSwitch(isOn: Binding(
@@ -974,7 +995,7 @@ struct ShortcutsListRow: View {
                 Button("Delete Shortcut", role: .destructive, action: onRemove)
             } label: {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(Color.clear)
+                    .fill(isMenuButtonHovering ? palette.controlBgRest : Color.clear)
                     .frame(width: ShortcutRowMetrics.actionButtonSize, height: ShortcutRowMetrics.actionButtonSize)
                     .overlay {
                         WinkIcon.more.image(size: 12)
@@ -984,6 +1005,7 @@ struct ShortcutsListRow: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .frame(width: ShortcutRowMetrics.actionButtonSize, height: ShortcutRowMetrics.actionButtonSize)
+            .onHover { isMenuButtonHovering = $0 }
             .disabled(importPreviewActive)
         }
         .frame(width: ShortcutRowMetrics.accessoryGroupWidth, alignment: .trailing)

@@ -71,6 +71,11 @@ enum WinkPalette {
         // Misc
         let heatmapBase: Color
         let focusRing: Color
+
+        /// Fixed neutral grey for the "no app chosen" placeholder swatch.
+        /// A deliberately fixed hue rather than a translucent control token —
+        /// mirrors tab-shortcuts.jsx:66's literal `#D8D8D8`/`#5A5A5C`.
+        let appPlaceholderSwatchBg: Color
     }
 
     static let light = Tokens(
@@ -117,7 +122,9 @@ enum WinkPalette {
         amberBgSoft:      .winkSRGB(0xC7, 0x78, 0x00, 0.10),
 
         heatmapBase:    .winkSRGB(0x00, 0x64, 0xE0, 0.10),
-        focusRing:      .winkSRGB(0x00, 0x64, 0xE0, 0.35)
+        focusRing:      .winkSRGB(0x00, 0x64, 0xE0, 0.35),
+
+        appPlaceholderSwatchBg: .winkSRGB(0xD8, 0xD8, 0xD8)
     )
 
     static let dark = Tokens(
@@ -168,7 +175,9 @@ enum WinkPalette {
         amberBgSoft:      .winkSRGB(0xF5, 0xB5, 0x3F, 0.14),
 
         heatmapBase:    .winkSRGB(0x2A, 0x8F, 0xFF, 0.20),
-        focusRing:      .winkSRGB(0x2A, 0x8F, 0xFF, 0.45)
+        focusRing:      .winkSRGB(0x2A, 0x8F, 0xFF, 0.45),
+
+        appPlaceholderSwatchBg: .winkSRGB(0x5A, 0x5A, 0x5C)
     )
 
     static func tokens(for scheme: ColorScheme) -> Tokens {
@@ -245,6 +254,7 @@ enum WinkType {
     static let sectionLabel = Font.system(size: 11, weight: .semibold)
     static let cardTitle    = Font.system(size: 12, weight: .semibold)
     static let tabTitle     = Font.system(size: 20, weight: .semibold)
+    static let tabSubtitle  = Font.system(size: 12, weight: .regular)
     static let bodyText     = Font.system(size: 13, weight: .regular)
     static let bodyMedium   = Font.system(size: 13, weight: .medium)
     /// chrome.jsx Sidebar row label: `fontSize: 13, fontWeight: 400`.
