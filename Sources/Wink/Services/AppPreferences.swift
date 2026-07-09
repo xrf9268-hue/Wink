@@ -39,8 +39,16 @@ final class AppPreferences {
     private(set) var shortcutCaptureStatus: ShortcutCaptureStatus
     private(set) var launchAtLoginStatus: LaunchAtLoginStatus = .disabled
     private(set) var launchAtLoginAvailability: LaunchAtLoginAvailability = .available
-    var hyperKeyEnabled: Bool = false
+    private(set) var hyperKeyEnabled: Bool = false
     private(set) var shortcutsPaused: Bool = false
+    /// Apple's own DTS guidance: `SMAppService.Status.notFound` is the normal
+    /// pre-registration baseline ("the system has never seen your service"),
+    /// not inherently an error — `.notRegistered` is only reached after a
+    /// register()/unregister() cycle. Gate the scary "packaging problem"
+    /// copy on an actual register() attempt this session, so a correctly
+    /// installed copy that the user simply hasn't toggled on yet doesn't get
+    /// misdiagnosed as broken.
+    private var hasAttemptedLaunchAtLoginRegistration = false
     var frontmostTargetBehavior: FrontmostTargetBehavior {
         didSet {
             guard frontmostTargetBehavior != oldValue else { return }
@@ -117,13 +125,27 @@ final class AppPreferences {
                     showsOpenSettingsButton: false
                 )
             case .available, .missingConfiguration:
-                LaunchAtLoginPresentation(
-                    toggleIsOn: false,
-                    toggleIsEnabled: false,
-                    message: "Wink couldn't find its login item configuration. This usually points to an installation or packaging problem.",
-                    messageStyle: .error,
-                    showsOpenSettingsButton: false
-                )
+                if hasAttemptedLaunchAtLoginRegistration {
+                    LaunchAtLoginPresentation(
+                        toggleIsOn: false,
+                        toggleIsEnabled: false,
+                        message: "Wink couldn't find its login item configuration. This usually points to an installation or packaging problem.",
+                        messageStyle: .error,
+                        showsOpenSettingsButton: false
+                    )
+                } else {
+                    // notFound before any register() attempt this session is
+                    // Apple's documented normal baseline, not a defect —
+                    // present it like .disabled until an actual attempt
+                    // proves otherwise.
+                    LaunchAtLoginPresentation(
+                        toggleIsOn: false,
+                        toggleIsEnabled: true,
+                        message: nil,
+                        messageStyle: .none,
+                        showsOpenSettingsButton: false
+                    )
+                }
             }
         }
     }
@@ -189,6 +211,9 @@ final class AppPreferences {
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
+        if enabled {
+            hasAttemptedLaunchAtLoginRegistration = true
+        }
         launchAtLoginService.setEnabled(enabled)
         refreshLaunchAtLoginStatus()
     }
