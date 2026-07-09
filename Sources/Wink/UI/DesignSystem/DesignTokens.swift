@@ -23,12 +23,15 @@ enum WinkPalette {
         let cardShadowY: CGFloat
 
         // Sidebar (vibrancy-ish)
-        // chrome.jsx's Sidebar also defines sidebarItemActive/sidebarItemHover
-        // (flat rgba row overlays) — Wink's sidebar is a real SwiftUI
+        // chrome.jsx's Sidebar also defines sidebarItemActive (flat rgba row
+        // overlay for the *selected* row) — Wink's sidebar is a real SwiftUI
         // List(selection:) with .listStyle(.sidebar), so row selection comes
-        // from AppKit's native accent-color highlight instead; carrying
-        // those two tokens with no consumer read as unreviewed drift.
+        // from AppKit's native accent-color highlight instead; carrying that
+        // token with no consumer read as unreviewed drift. sidebarItemHover
+        // does have a real consumer (the menu bar popover's row hover state),
+        // so it stays.
         let sidebarBg: Color
+        let sidebarItemHover: Color
 
         // Text
         let textPrimary: Color
@@ -82,6 +85,7 @@ enum WinkPalette {
         cardShadowY:     1,
 
         sidebarBg:           .winkSRGB(0xE8, 0xE8, 0xE8),
+        sidebarItemHover:    .winkBlack(0.04),
 
         textPrimary:    .winkBlack(0.88),
         textSecondary:  .winkBlack(0.55),
@@ -128,6 +132,7 @@ enum WinkPalette {
         cardShadowY:     1,
 
         sidebarBg:           .winkSRGB(0x25, 0x25, 0x27),
+        sidebarItemHover:    .winkWhite(0.04),
 
         // tokens.jsx darkTheme: textSecondary/textTertiary use Apple's
         // tinted near-white (rgba(235,235,245,…), the systemGray-family
