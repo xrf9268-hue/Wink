@@ -4,6 +4,23 @@ Newest first. One `## X.Y.Z` section per release, written by hand **before** run
 `scripts/bump-version.sh X.Y.Z`. `scripts/release-notes.sh X.Y.Z` extracts a section as the
 GitHub Release body; the release workflow fails if the tagged version has no section here.
 
+## 0.6.1
+
+Accessibility, a false-positive warning fix, and interface polish.
+
+- **"Couldn't find its login item configuration" was a false alarm** — Settings
+  no longer shows this as a packaging error the first time Wink sees a
+  correctly installed copy; the warning now only appears if turning Launch at
+  Login on actually fails.
+- **Traffic lights work with VoiceOver and keyboard-only navigation again** —
+  closing, minimizing, and zooming the Settings window via assistive
+  technology was silently broken since the titlebar realignment in 0.6.0.
+- **Interface polish across Settings and the menu bar** — corrected colors,
+  spacing, and typography against the design system in the Shortcuts,
+  Insights, and General tabs and the menu bar popover, including a clearer
+  usage heatmap and a fixed keyboard-navigation bug when choosing a target
+  app.
+
 ## 0.6.0
 
 In-app updates and interface polish.
