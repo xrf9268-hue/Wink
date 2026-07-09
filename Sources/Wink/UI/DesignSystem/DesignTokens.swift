@@ -23,9 +23,12 @@ enum WinkPalette {
         let cardShadowY: CGFloat
 
         // Sidebar (vibrancy-ish)
+        // chrome.jsx's Sidebar also defines sidebarItemActive/sidebarItemHover
+        // (flat rgba row overlays) — Wink's sidebar is a real SwiftUI
+        // List(selection:) with .listStyle(.sidebar), so row selection comes
+        // from AppKit's native accent-color highlight instead; carrying
+        // those two tokens with no consumer read as unreviewed drift.
         let sidebarBg: Color
-        let sidebarItemActive: Color
-        let sidebarItemHover: Color
 
         // Text
         let textPrimary: Color
@@ -41,6 +44,9 @@ enum WinkPalette {
         let controlBg: Color
         let controlBgRest: Color
         let controlBorder: Color
+        /// tokens.jsx `controlShadow`: a subtle 0.5px top-edge highlight,
+        /// e.g. `.shadow(color: controlShadowColor, radius: 0, y: 0.5)`.
+        let controlShadowColor: Color
         let fieldBg: Color
         let fieldBorder: Color
 
@@ -76,8 +82,6 @@ enum WinkPalette {
         cardShadowY:     1,
 
         sidebarBg:           .winkSRGB(0xE8, 0xE8, 0xE8),
-        sidebarItemActive:   .winkBlack(0.08),
-        sidebarItemHover:    .winkBlack(0.04),
 
         textPrimary:    .winkBlack(0.88),
         textSecondary:  .winkBlack(0.55),
@@ -90,6 +94,7 @@ enum WinkPalette {
         controlBg:      .winkSRGB(0xFF, 0xFF, 0xFF),
         controlBgRest:  .winkSRGB(0xFD, 0xFD, 0xFD),
         controlBorder:  .winkBlack(0.14),
+        controlShadowColor: .winkBlack(0.04),
         fieldBg:        .winkSRGB(0xFF, 0xFF, 0xFF),
         fieldBorder:    .winkBlack(0.10),
 
@@ -123,12 +128,14 @@ enum WinkPalette {
         cardShadowY:     1,
 
         sidebarBg:           .winkSRGB(0x25, 0x25, 0x27),
-        sidebarItemActive:   .winkWhite(0.08),
-        sidebarItemHover:    .winkWhite(0.04),
 
+        // tokens.jsx darkTheme: textSecondary/textTertiary use Apple's
+        // tinted near-white (rgba(235,235,245,…), the systemGray-family
+        // secondary/tertiary label tint), not pure white — textPrimary is
+        // the only one that's actually pure white at full-ish opacity.
         textPrimary:    .winkWhite(0.92),
-        textSecondary:  .winkWhite(0.55),
-        textTertiary:   .winkWhite(0.32),
+        textSecondary:  .winkSRGB(0xEB, 0xEB, 0xF5, 0.55),
+        textTertiary:   .winkSRGB(0xEB, 0xEB, 0xF5, 0.32),
         textOnAccent:   .white,
 
         hairline:        .winkWhite(0.08),
@@ -137,6 +144,7 @@ enum WinkPalette {
         controlBg:      .winkSRGB(0x3A, 0x3A, 0x3C),
         controlBgRest:  .winkSRGB(0x2E, 0x2E, 0x30),
         controlBorder:  .winkWhite(0.10),
+        controlShadowColor: .winkWhite(0.04),
         fieldBg:        .winkSRGB(0x2A, 0x2A, 0x2C),
         fieldBorder:    .winkWhite(0.08),
 
@@ -234,6 +242,8 @@ enum WinkType {
     static let tabTitle     = Font.system(size: 20, weight: .semibold)
     static let bodyText     = Font.system(size: 13, weight: .regular)
     static let bodyMedium   = Font.system(size: 13, weight: .medium)
+    /// chrome.jsx Sidebar row label: `fontSize: 13, fontWeight: 400`.
+    static let sidebarRow   = Font.system(size: 13, weight: .regular)
     static let labelSmall   = Font.system(size: 11, weight: .regular)
     static let captionStrong = Font.system(size: 11, weight: .semibold)
     static let kpiValue     = Font.system(size: 26, weight: .semibold)

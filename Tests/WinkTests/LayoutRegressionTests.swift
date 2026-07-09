@@ -580,7 +580,7 @@ struct LayoutRegressionTests {
     }
 
     @Test @MainActor
-    func settingsViewUsesCompactSidebarColumnWidth() throws {
+    func settingsViewUsesDesignSidebarColumnWidth() throws {
         let context = SettingsViewLayoutContext()
         defer { context.harness.cleanup() }
 
@@ -601,7 +601,7 @@ struct LayoutRegressionTests {
         let splitView = try #require(splitViews.first)
         let sidebarWidth = splitView.arrangedSubviews.first?.frame.width ?? 0
 
-        #expect(abs(sidebarWidth - 150) < 1)
+        #expect(abs(sidebarWidth - SettingsSidebarMetrics.width) < 1)
         #expect(SettingsSidebarMetrics.topContentPadding == 8)
         #expect(splitView.frame.minY >= -1)
         #expect(splitView.frame.height <= hostingView.bounds.height + 1)
