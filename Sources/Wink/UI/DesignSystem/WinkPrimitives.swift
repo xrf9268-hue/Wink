@@ -176,6 +176,26 @@ struct WinkKeycap: View {
     }
 }
 
+// MARK: - Shortcut glyph
+
+/// Plain-text accelerator glyph — mirrors `ShortcutGlyph` in `primitives.jsx`.
+/// Menu-native contexts (the menu bar popover) render key combos as tight,
+/// unstyled text rather than the boxed `WinkKeycap` pills used in the
+/// Shortcuts tab's list.
+struct WinkShortcutGlyph: View {
+    @Environment(\.winkPalette) private var palette
+    let text: String
+
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(WinkType.bodyMedium)
+            .tracking(0.5)
+            .foregroundStyle(palette.textSecondary)
+    }
+}
+
 // MARK: - Hyper badge
 
 struct WinkHyperBadge: View {
