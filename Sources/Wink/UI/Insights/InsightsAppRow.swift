@@ -7,7 +7,7 @@ private enum InsightsAppRowLayout {
     static let progressCornerRadius: CGFloat = 3
     static let sparklineWidth: CGFloat = 80
     static let sparklineHeight: CGFloat = 24
-    static let countMinWidth: CGFloat = 32
+    static let countMinWidth: CGFloat = 28
 }
 
 struct InsightsAppRow: View {
@@ -44,12 +44,13 @@ struct InsightsAppRow: View {
                 WinkSparkline(
                     points: item.sparklinePoints,
                     stroke: item.count == 0 ? palette.textTertiary : palette.accent,
-                    fill: item.count == 0 ? .clear : palette.accent.opacity(0.1)
+                    fill: item.count == 0 ? .clear : palette.accentBgSoft
                 )
                 .frame(width: InsightsAppRowLayout.sparklineWidth, height: InsightsAppRowLayout.sparklineHeight)
 
                 Text(item.count.formatted(.number.grouping(.automatic)))
-                    .font(WinkType.monoBadge)
+                    .font(.system(size: 13, weight: .semibold))
+                    .monospacedDigit()
                     .foregroundStyle(palette.textPrimary)
                     .frame(minWidth: InsightsAppRowLayout.countMinWidth, alignment: .trailing)
             }
@@ -60,7 +61,6 @@ struct InsightsAppRow: View {
             if showsDivider {
                 Divider()
                     .overlay(palette.hairline)
-                    .padding(.leading, 56)
             }
         }
     }
@@ -69,7 +69,7 @@ struct InsightsAppRow: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: InsightsAppRowLayout.progressCornerRadius, style: .continuous)
-                    .fill(palette.controlBgRest)
+                    .fill(palette.progressTrackBg)
 
                 if item.count > 0 {
                     RoundedRectangle(cornerRadius: InsightsAppRowLayout.progressCornerRadius, style: .continuous)
@@ -101,9 +101,9 @@ private struct InsightsInlineChangeLabel: View {
     private var systemImage: String {
         switch change.tone {
         case .positive:
-            return "arrow.up.right"
+            return "arrow.up"
         case .negative:
-            return "arrow.down.right"
+            return "arrow.down"
         case .neutral:
             return "minus"
         }
@@ -119,9 +119,9 @@ private struct InsightsInlineChangeLabel: View {
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: systemImage)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 10.5, weight: .semibold))
             Text(displayText)
-                .font(WinkType.labelSmall.weight(.semibold))
+                .font(.system(size: 10.5, weight: .semibold))
         }
         .foregroundStyle(foreground)
         .lineLimit(1)

@@ -66,27 +66,32 @@ struct WinkBanner<Trailing: View>: View {
     let kind: WinkBannerKind
     let title: String
     let message: String?
+    var icon: String?
     @ViewBuilder var trailing: () -> Trailing
 
     init(
         kind: WinkBannerKind,
         title: String,
         message: String? = nil,
+        icon: String? = nil,
         @ViewBuilder trailing: @escaping () -> Trailing
     ) {
         self.kind = kind
         self.title = title
         self.message = message
+        self.icon = icon
         self.trailing = trailing
     }
 
     private var style: (background: Color, foreground: Color, systemImage: String) {
+        let base: (background: Color, foreground: Color, systemImage: String)
         switch kind {
-        case .success: return (palette.greenSoft,    palette.green, "checkmark.circle.fill")
-        case .info:    return (palette.accentBgSoft, palette.accent, "info.circle.fill")
-        case .warn:    return (palette.amberBgSoft,  palette.amber, "exclamationmark.triangle.fill")
-        case .error:   return (palette.redBgSoft,    palette.red,   "exclamationmark.octagon.fill")
+        case .success: base = (palette.greenSoft,    palette.green, "checkmark.circle.fill")
+        case .info:    base = (palette.accentBgSoft, palette.accent, "info.circle.fill")
+        case .warn:    base = (palette.amberBgSoft,  palette.amber, "exclamationmark.triangle.fill")
+        case .error:   base = (palette.redBgSoft,    palette.red,   "exclamationmark.octagon.fill")
         }
+        return (base.background, base.foreground, icon ?? base.systemImage)
     }
 
     var body: some View {
@@ -123,8 +128,8 @@ struct WinkBanner<Trailing: View>: View {
 
 /// Convenience initializer for banners without a trailing accessory.
 extension WinkBanner where Trailing == EmptyView {
-    init(kind: WinkBannerKind, title: String, message: String? = nil) {
-        self.init(kind: kind, title: title, message: message) { EmptyView() }
+    init(kind: WinkBannerKind, title: String, message: String? = nil, icon: String? = nil) {
+        self.init(kind: kind, title: title, message: message, icon: icon) { EmptyView() }
     }
 }
 

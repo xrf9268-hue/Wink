@@ -1,7 +1,7 @@
 import SwiftUI
 
 private enum InsightsHeatmapLayout {
-    static let dayLabelWidth: CGFloat = 32
+    static let dayLabelWidth: CGFloat = 24
     static let labelGridSpacing: CGFloat = 8
     static let columnSpacing: CGFloat = 2
     static let rowSpacing: CGFloat = 3
@@ -50,9 +50,8 @@ struct InsightsHourlyHeatmap: View {
                     ForEach(groupedRows, id: \.date) { row in
                         HStack(spacing: InsightsHeatmapLayout.labelGridSpacing) {
                             Text(dayLabel(for: row.date))
-                                .font(WinkType.labelSmall)
+                                .font(.system(size: 10, weight: .regular))
                                 .foregroundStyle(palette.textTertiary)
-                                .textCase(.uppercase)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
                                 .frame(width: InsightsHeatmapLayout.dayLabelWidth, alignment: .leading)
@@ -99,7 +98,7 @@ struct InsightsHourlyHeatmap: View {
 
     private func fill(for count: Int) -> Color {
         guard count > 0 else {
-            return palette.heatmapBase
+            return palette.heatmapEmpty
         }
 
         let normalized = Double(count) / Double(maxCount)

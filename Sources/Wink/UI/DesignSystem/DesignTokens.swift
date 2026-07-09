@@ -43,6 +43,7 @@ enum WinkPalette {
         let controlBorder: Color
         let fieldBg: Color
         let fieldBorder: Color
+        let progressTrackBg: Color
 
         // Accents
         let accent: Color
@@ -60,7 +61,7 @@ enum WinkPalette {
         let amberBgSoft: Color
 
         // Misc
-        let heatmapBase: Color
+        let heatmapEmpty: Color
         let focusRing: Color
     }
 
@@ -92,6 +93,7 @@ enum WinkPalette {
         controlBorder:  .winkBlack(0.14),
         fieldBg:        .winkSRGB(0xFF, 0xFF, 0xFF),
         fieldBorder:    .winkBlack(0.10),
+        progressTrackBg: .winkBlack(0.04),
 
         accent:           .winkSRGB(0x00, 0x64, 0xE0),
         accentHover:      .winkSRGB(0x00, 0x4F, 0xC2),
@@ -107,7 +109,7 @@ enum WinkPalette {
         amber:            .winkSRGB(0xC7, 0x78, 0x00),
         amberBgSoft:      .winkSRGB(0xC7, 0x78, 0x00, 0.10),
 
-        heatmapBase:    .winkSRGB(0x00, 0x64, 0xE0, 0.10),
+        heatmapEmpty:   .winkBlack(0.04),
         focusRing:      .winkSRGB(0x00, 0x64, 0xE0, 0.35)
     )
 
@@ -139,6 +141,7 @@ enum WinkPalette {
         controlBorder:  .winkWhite(0.10),
         fieldBg:        .winkSRGB(0x2A, 0x2A, 0x2C),
         fieldBorder:    .winkWhite(0.08),
+        progressTrackBg: .winkWhite(0.05),
 
         accent:           .winkSRGB(0x2A, 0x8F, 0xFF),
         accentHover:      .winkSRGB(0x4A, 0xA0, 0xFF),
@@ -154,7 +157,7 @@ enum WinkPalette {
         amber:            .winkSRGB(0xF5, 0xB5, 0x3F),
         amberBgSoft:      .winkSRGB(0xF5, 0xB5, 0x3F, 0.14),
 
-        heatmapBase:    .winkSRGB(0x2A, 0x8F, 0xFF, 0.20),
+        heatmapEmpty:   .winkWhite(0.04),
         focusRing:      .winkSRGB(0x2A, 0x8F, 0xFF, 0.45)
     )
 
