@@ -26,10 +26,8 @@ struct InsightsTabView: View {
     @Bindable var viewModel: InsightsViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             header
-
-            InsightsUnusedNudge(appNames: viewModel.unusedShortcutNames)
 
             InsightsKpiSection(
                 totalCount: viewModel.totalCount,
@@ -41,15 +39,18 @@ struct InsightsTabView: View {
             InsightsHourlyHeatmap(buckets: viewModel.heatmapBuckets)
 
             mostUsedCard
+
+            InsightsUnusedNudge(appNames: viewModel.unusedShortcutNames)
         }
+        .padding(.top, 18)
+        .padding(.bottom, 22)
         .padding(.horizontal, 22)
-        .padding(.vertical, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(palette.windowBg)
     }
 
     private var header: some View {
-        HStack(alignment: .bottom, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Insights")
                     .font(WinkType.tabTitle)
@@ -61,14 +62,11 @@ struct InsightsTabView: View {
 
             Spacer(minLength: 8)
 
-            Picker("", selection: $viewModel.period) {
-                ForEach(InsightsPeriod.allCases, id: \.self) { period in
-                    Text(period.rawValue).tag(period)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 120)
-            .labelsHidden()
+            WinkSegmented(
+                options: InsightsPeriod.allCases.map { (label: $0.rawValue, value: $0) },
+                selection: $viewModel.period,
+                accessibilityLabel: "Insights period"
+            )
         }
     }
 

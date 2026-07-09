@@ -93,13 +93,13 @@ struct InsightsKpiSection: View {
                 subtitle: "vs previous period",
                 help: InsightsKpiFormatter.activationSubtitle(change: activationDelta),
                 badge: {
-                    InsightsChangeBadge(change: activationDelta)
+                    InsightsKpiDelta(change: activationDelta)
                 },
                 bottom: {
                     WinkSparkline(
                         points: sparklinePoints,
                         stroke: palette.accent,
-                        fill: palette.accent.opacity(0.12)
+                        fill: palette.accentBgSoft
                     )
                 }
             )
@@ -143,12 +143,13 @@ struct InsightsKpiSection: View {
         WinkCard {
             VStack(alignment: .leading, spacing: 0) {
                 Text(title)
-                    .font(WinkType.labelSmall)
-                    .foregroundStyle(palette.textTertiary)
+                    .font(WinkType.labelSmall.weight(.medium))
+                    .foregroundStyle(palette.textSecondary)
 
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(value)
-                        .font(.system(size: 28, weight: .semibold))
+                        .font(WinkType.kpiValue)
+                        .tracking(-0.6)
                         .foregroundStyle(palette.textPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
@@ -159,7 +160,7 @@ struct InsightsKpiSection: View {
 
                 Text(subtitle)
                     .font(WinkType.labelSmall)
-                    .foregroundStyle(palette.textSecondary)
+                    .foregroundStyle(palette.textTertiary)
                     .lineLimit(1)
                     .help(help)
                     .padding(.top, 4)
@@ -178,6 +179,33 @@ struct InsightsKpiSection: View {
     }
 }
 
+/// Plain-text delta used for the headline Activations KPI, matching
+/// tab-insights.jsx's unadorned `{delta}` span (no icon, no capsule).
+struct InsightsKpiDelta: View {
+    @Environment(\.winkPalette) private var palette
+
+    let change: InsightsChange
+
+    private var foreground: Color {
+        switch change.tone {
+        case .positive:
+            return palette.green
+        case .negative:
+            return palette.red
+        case .neutral:
+            return palette.textSecondary
+        }
+    }
+
+    var body: some View {
+        Text(change.text)
+            .font(WinkType.captionStrong)
+            .foregroundStyle(foreground)
+    }
+}
+
+/// Pill-style change badge. Not currently used by the Insights KPI row
+/// (see `InsightsKpiDelta`) — kept for other, explicitly-designed badge uses.
 struct InsightsChangeBadge: View {
     @Environment(\.winkPalette) private var palette
 

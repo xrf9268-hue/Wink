@@ -2,14 +2,18 @@ import SwiftUI
 
 struct InsightsUnusedNudge: View {
     let appNames: [String]
+    var onReview: () -> Void = {}
 
     var body: some View {
         if !appNames.isEmpty {
             WinkBanner(
                 kind: .info,
                 title: "Unused shortcuts this week",
-                message: Self.message(for: appNames)
-            )
+                message: Self.message(for: appNames),
+                icon: WinkIcon.sparkles.systemName
+            ) {
+                WinkButton("Review", action: onReview)
+            }
         }
     }
 
