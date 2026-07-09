@@ -365,16 +365,25 @@ final class SettingsWindowChromeCoordinator: NSObject {
                 // A button vended by this factory isn't the window's
                 // *registered* close/miniaturize/zoom button, so its own
                 // NSButtonCell mouse-tracking doesn't reliably send
-                // target/action on click — confirmed both by manual testing
-                // (clicks landed but performClose/performZoom never fired)
-                // and by Apple Developer Forums precedent on this exact API
-                // ("may be difficult to impossible to hack those buttons...
-                // the window is doing something"). A click gesture
-                // recognizer uses a separate, independent event path that
-                // doesn't depend on that internal tracking, so it's the
-                // reliable way to dispatch the action; native rendering
-                // (color, hover dim, active/inactive state) still comes free
-                // from the button itself.
+                // target/action on a live mouse click — confirmed both by
+                // manual testing (clicks landed but performClose/performZoom
+                // never fired) and by Apple Developer Forums precedent on
+                // this exact API ("may be difficult to impossible to hack
+                // those buttons... the window is doing something"). A click
+                // gesture recognizer uses a separate, independent event path
+                // that doesn't depend on that internal mouse-tracking, so
+                // it's the reliable way to dispatch a live click.
+                //
+                // VoiceOver and Full Keyboard Access don't go through mouse
+                // tracking OR gesture recognizers at all — they invoke
+                // NSControl.performClick(_:) (directly, or via the default
+                // accessibilityPerformPress() implementation), which sends
+                // the action straight to target/action without the broken
+                // tracking loop in between. So target/action still needs to
+                // be set on the button itself for those paths to work, even
+                // though it's not the reliable path for a live mouse click.
+                button?.target = window
+                button?.action = Self.trafficLightAction(for: type)
                 if let button {
                     titlebarView.addSubview(button)
                     button.addGestureRecognizer(
@@ -423,6 +432,18 @@ final class SettingsWindowChromeCoordinator: NSObject {
             window.performZoom(nil)
         default:
             break
+        }
+    }
+
+    /// Selector for the button's own target/action — used by VoiceOver /
+    /// Full Keyboard Access activation (`performClick(_:)` /
+    /// `accessibilityPerformPress()`), not by live mouse clicks (see
+    /// `ownedTrafficLightClicked`).
+    private static func trafficLightAction(for type: NSWindow.ButtonType) -> Selector {
+        switch type {
+        case .closeButton: return #selector(NSWindow.performClose(_:))
+        case .miniaturizeButton: return #selector(NSWindow.performMiniaturize(_:))
+        default: return #selector(NSWindow.performZoom(_:))
         }
     }
 
@@ -604,12 +625,15 @@ final class SettingsWindowChromeCoordinator: NSObject {
     }
 
     private static func sidebarToggleImage() -> NSImage? {
-        NSImage(
+        let image = NSImage(
             systemSymbolName: SettingsTitlebarLayout.sidebarToggleSymbolName,
             accessibilityDescription: "Toggle Sidebar"
         ) ?? NSImage(
             systemSymbolName: SettingsTitlebarLayout.sidebarToggleFallbackSymbolName,
             accessibilityDescription: "Toggle Sidebar"
+        )
+        return image?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: SettingsTitlebarLayout.toggleIconPointSize, weight: .regular)
         )
     }
 
@@ -675,44 +699,33 @@ private final class SettingsTitlebarHairlineView: SettingsTitlebarPassthroughVie
     }
 }
 
+/// Derives titlebar chrome colors from the shared `WinkPalette` tokens
+/// instead of keeping a second, hand-copied set of constants — the
+/// hand-copied set had drifted from the design source (light-mode hairline
+/// alpha, dark-mode text tint) once already.
 private enum SettingsTitlebarColors {
     static func chromeBackground(for appearance: NSAppearance) -> NSColor {
-        isDark(appearance)
-            ? NSColor(srgbRed: 0x2C, green: 0x2C, blue: 0x2E)
-            : NSColor(srgbRed: 0xEC, green: 0xEC, blue: 0xEC)
+        NSColor(tokens(for: appearance).chromeBg)
     }
 
     static func hairline(for appearance: NSAppearance) -> NSColor {
-        isDark(appearance)
-            ? NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 0.08)
-            : NSColor(srgbRed: 0.0, green: 0.0, blue: 0.0, alpha: 0.08)
+        NSColor(tokens(for: appearance).chromeBorder)
     }
 
     static func textPrimary(for appearance: NSAppearance) -> NSColor {
-        isDark(appearance)
-            ? NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 0.92)
-            : NSColor(srgbRed: 0.0, green: 0.0, blue: 0.0, alpha: 0.88)
+        NSColor(tokens(for: appearance).textPrimary)
     }
 
     static func textSecondary(for appearance: NSAppearance) -> NSColor {
-        isDark(appearance)
-            ? NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 0.55)
-            : NSColor(srgbRed: 0.0, green: 0.0, blue: 0.0, alpha: 0.55)
+        NSColor(tokens(for: appearance).textSecondary)
+    }
+
+    private static func tokens(for appearance: NSAppearance) -> WinkPalette.Tokens {
+        isDark(appearance) ? WinkPalette.dark : WinkPalette.light
     }
 
     private static func isDark(_ appearance: NSAppearance) -> Bool {
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-    }
-}
-
-private extension NSColor {
-    convenience init(srgbRed red: Int, green: Int, blue: Int, alpha: CGFloat = 1) {
-        self.init(
-            srgbRed: CGFloat(red) / 255.0,
-            green: CGFloat(green) / 255.0,
-            blue: CGFloat(blue) / 255.0,
-            alpha: alpha
-        )
     }
 }
 
