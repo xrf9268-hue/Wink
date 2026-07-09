@@ -43,8 +43,26 @@ struct LaunchAtLoginPresentationTests {
     }
 
     @Test @MainActor
-    func notFoundInApplicationsMapsToConfigurationError() {
+    func notFoundInApplicationsBeforeAnyAttemptPresentsLikeDisabled() {
+        // Apple's DTS guidance: .notFound before any register() call is the
+        // normal pre-registration baseline ("the system has never seen your
+        // service"), not a defect. A correctly installed copy that the user
+        // simply hasn't toggled on yet must not show a scary error.
         let preferences = makePreferences(status: .notFound)
+        let presentation = preferences.launchAtLoginPresentation
+
+        #expect(presentation.toggleIsOn == false)
+        #expect(presentation.toggleIsEnabled == true)
+        #expect(presentation.message == nil)
+        #expect(presentation.messageStyle == .none)
+    }
+
+    @Test @MainActor
+    func notFoundInApplicationsAfterAttemptMapsToConfigurationError() {
+        // notFound *persisting after* an explicit register() attempt is the
+        // genuine signal something is wrong with this install.
+        let preferences = makePreferences(status: .notFound)
+        preferences.setLaunchAtLogin(true)
         let presentation = preferences.launchAtLoginPresentation
 
         #expect(presentation.toggleIsOn == false)

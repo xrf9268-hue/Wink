@@ -96,7 +96,7 @@ struct WinkBanner<Trailing: View>: View {
 
     var body: some View {
         let s = style
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: s.systemImage)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(s.foreground)
@@ -211,12 +211,16 @@ struct WinkStatusDot: View {
     var size: CGFloat = 6
 
     var body: some View {
+        // Mirrors the CSS spread box-shadow `0 0 0 2px ${color}22`, which sits
+        // entirely outside the dot's box — a stroke on the dot's own edge
+        // would halve the halo instead of extending past it.
         Circle()
-            .fill(color)
-            .frame(width: size, height: size)
+            .fill(color.opacity(0.13))
+            .frame(width: size + 4, height: size + 4)
             .overlay(
                 Circle()
-                    .stroke(color.opacity(0.13), lineWidth: 2)
+                    .fill(color)
+                    .frame(width: size, height: size)
             )
     }
 }

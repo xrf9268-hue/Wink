@@ -43,7 +43,7 @@ struct SettingsView: View {
 
                 ForEach(SettingsTab.allCases, id: \.self) { tab in
                     Label(tab.title, systemImage: tab.systemImage)
-                        .font(WinkType.bodyMedium)
+                        .font(WinkType.sidebarRow)
                         .padding(.leading, SettingsSidebarMetrics.rowContentLeadingAdjustment)
                         .tag(tab)
                 }
@@ -114,7 +114,10 @@ struct SettingsView: View {
 }
 
 enum SettingsSidebarMetrics {
-    static let width: CGFloat = 150
+    /// chrome.jsx Sidebar: `width: 180`. PR #239 silently narrowed this to
+    /// 150 while fixing an unrelated scrolling issue, with no documented
+    /// rationale — restored to match the design (Issue #304).
+    static let width: CGFloat = 180
     static let topContentPadding: CGFloat = 8
     static let rowContentLeadingAdjustment: CGFloat = -2
 }
