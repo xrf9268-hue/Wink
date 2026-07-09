@@ -66,6 +66,18 @@ enum SettingsTitlebarLayout {
     /// chrome.jsx: outer flex row `height: 36`.
     static let height: CGFloat = 36
 
+    /// primitives.jsx TrafficLights: `padding: 0 16px`. AppKit's native
+    /// button inset (~13pt center) is a fixed system value that isn't this
+    /// value — now that Wink owns the traffic-light buttons (see
+    /// `installOwnedTrafficLights`), their x position is driven by this
+    /// design constant instead of wherever AppKit happened to place the
+    /// originals.
+    static let trafficLightLeadingPadding: CGFloat = 16
+    /// primitives.jsx TrafficLights: each dot `width: 12; height: 12`.
+    static let trafficLightDotSize: CGFloat = 12
+    /// primitives.jsx TrafficLights: flex `gap: 8` between dots.
+    static let trafficLightDotGap: CGFloat = 8
+
     /// chrome.jsx title overlay: `fontSize: 13; fontWeight: 500`.
     static let titleFontSize: CGFloat = 13
     /// CSS `font-weight: 500` ≈ AppKit/SwiftUI `.medium`.
@@ -73,8 +85,8 @@ enum SettingsTitlebarLayout {
 
     /// Chrome browser reference titlebar puts the sidebar toggle about 24pt to
     /// the trailing side of the zoom button, sharing the traffic-light baseline.
-    /// AppKit owns the traffic-light positions; Wink only places its own toggle
-    /// relative to the current system button frames.
+    /// Wink owns the traffic-light buttons (see `installOwnedTrafficLights`) and
+    /// places its toggle relative to the owned zoom button's frame.
     static let toggleGapFromZoomButton: CGFloat = 24
 
     /// SF Symbol `sidebar.leading` rendered at this point size matches the
@@ -97,6 +109,15 @@ enum SettingsTitlebarLayout {
     static let sidebarToggleIdentifier = NSUserInterfaceItemIdentifier("WinkSettingsTitlebarSidebarToggle")
     static let titleIdentifier = NSUserInterfaceItemIdentifier("WinkSettingsTitlebarTitle")
     static let accessoryIdentifier = NSUserInterfaceItemIdentifier("WinkSettingsTitlebarAccessory")
+
+    static func trafficLightIdentifier(for type: NSWindow.ButtonType) -> NSUserInterfaceItemIdentifier {
+        switch type {
+        case .closeButton: return NSUserInterfaceItemIdentifier("WinkSettingsTitlebarCloseLight")
+        case .miniaturizeButton: return NSUserInterfaceItemIdentifier("WinkSettingsTitlebarMiniaturizeLight")
+        case .zoomButton: return NSUserInterfaceItemIdentifier("WinkSettingsTitlebarZoomLight")
+        default: return NSUserInterfaceItemIdentifier("WinkSettingsTitlebarLight")
+        }
+    }
 }
 
 /// Minimal NSWindow surgery for the SwiftUI `Settings` scene:
@@ -112,14 +133,24 @@ enum SettingsTitlebarLayout {
 ///   3. Add an 8pt bottom `NSTitlebarAccessoryViewController` so the Settings
 ///      content starts below the design's 36pt chrome row instead of below the
 ///      native 28pt titlebar safe area.
-///   4. Add Wink's own sidebar toggle and title beside the system traffic
-///      lights without rewriting the native button frames. AppKit remains the
-///      owner of the standard close/minimize/zoom placement, and every
-///      Wink-added control shares the traffic lights' vertical centerline
-///      (`zoomButton.frame.midY`) — a single baseline, never a second one
-///      derived from the design row height (PR #239 removed traffic-light
-///      repositioning; a design-height centerline can no longer agree with
-///      the AppKit-owned buttons).
+///   4. Hide the three AppKit-placed traffic-light buttons and replace them
+///      with fresh instances from `NSWindow.standardWindowButton(_:for:)`
+///      (Apple's factory API for "a new instance of a given standard window
+///      button, sized appropriately for a given window style" — the caller
+///      owns placement). The originals stay alive (just hidden) so
+///      `performClose`/`performMiniaturize`/`performZoom`, the Mission
+///      Control "unsaved changes" dot, and full-screen widget still track
+///      real window state; Wink mirrors their `isEnabled` onto the owned
+///      buttons every pass. This avoids PR #237's mistake of repositioning
+///      the *live* AppKit-owned buttons via `setFrameOrigin`, which fights
+///      `NSTitlebarView`'s own autolayout on every relayout pass and made the
+///      buttons visibly jump (PR #239 reverted it) — a factory-created
+///      button isn't in that autolayout at all, so there's nothing to fight.
+///   5. Add Wink's own sidebar toggle and title beside the owned traffic
+///      lights. Because Wink now owns every control in the row, all four
+///      (lights, toggle, title) share one true centerline: the design row's
+///      own midpoint (36pt / 2 = 18pt from the top), not AppKit's native
+///      28pt-band center.
 private struct SettingsWindowChromeConfigurator: NSViewRepresentable {
     func makeCoordinator() -> SettingsWindowChromeCoordinator {
         SettingsWindowChromeCoordinator()
@@ -173,12 +204,35 @@ final class SettingsWindowChromeCoordinator: NSObject {
     private weak var chromeHostView: NSView?
     private let observers = NotificationObserverBag()
 
+    /// Owned replacements for the AppKit close/miniaturize/zoom buttons,
+    /// keyed by button type. Created once per window; positioned on the
+    /// design centerline instead of AppKit's native-band center.
+    private var ownedTrafficLights: [NSWindow.ButtonType: NSButton] = [:]
+    /// The AppKit-native frame of each traffic-light button, captured once
+    /// (before it's hidden) so the owned replacement can reuse the native
+    /// x/width/height and only override y. Captured once because a hidden
+    /// button's frame may no longer reflect AppKit's normal layout.
+    private var trafficLightNativeFrames: [NSWindow.ButtonType: NSRect] = [:]
+    /// Stable reference to each *true* AppKit-owned button, captured once
+    /// before any owned clone exists. `window.standardWindowButton(_:)`
+    /// does a live, type-based search of the titlebar's subviews — once a
+    /// factory-vended clone of the same private button class is also in
+    /// that hierarchy, the search can return the clone instead of the
+    /// original (confirmed empirically: `isHidden` toggles landed on the
+    /// clone, hiding it, because the "original" that later passes looked up
+    /// was actually the clone). Re-querying by type after clones exist is
+    /// unreliable, so every subsequent pass must use these cached instances.
+    private var originalTrafficLights: [NSWindow.ButtonType: NSButton] = [:]
+
     func attach(to window: NSWindow) {
         guard self.window !== window else {
             applyAll()
             return
         }
         observers.removeAll()
+        ownedTrafficLights.removeAll()
+        trafficLightNativeFrames.removeAll()
+        originalTrafficLights.removeAll()
 
         self.window = window
         applyOnce()
@@ -238,7 +292,138 @@ final class SettingsWindowChromeCoordinator: NSObject {
             window.layoutIfNeeded()
         }
         guard let titlebarView = titlebarHostView(in: window) else { return }
+        installOwnedTrafficLights(in: window, titlebarView: titlebarView)
         installOrUpdateTitlebarChrome(in: titlebarView)
+        // NSTitlebarView's own layout can re-show its canonical buttons as a
+        // side effect of *any* pass that adds/resizes sibling subviews (seen
+        // empirically: hiding them earlier in this same method didn't stick
+        // once installOrUpdateTitlebarChrome touched the hairline/toggle/
+        // title subviews below). Re-assert hidden last, after every other
+        // subview mutation in this pass, so we always get the final word.
+        reassertTrafficLightsHidden()
+    }
+
+    private func reassertTrafficLightsHidden() {
+        for (type, original) in originalTrafficLights {
+            guard ownedTrafficLights[type] != nil, !original.isHidden else { continue }
+            original.isHidden = true
+        }
+    }
+
+    /// Hides the AppKit-placed close/miniaturize/zoom buttons and maintains
+    /// fresh replacements from `NSWindow.standardWindowButton(_:for:)` on the
+    /// design centerline. See the type-level doc comment (step 4) for why
+    /// this is safer than repositioning the live buttons.
+    private func installOwnedTrafficLights(in window: NSWindow, titlebarView: NSView) {
+        let types: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+
+        // AppKit can rebuild NSTitlebarView itself (observed after the
+        // window becomes key) without replacing the NSWindow — the same
+        // condition installOrUpdateTitlebarChrome below detects for its own
+        // subviews. A cache keyed only by button type doesn't notice its
+        // views went stale on the old host, so it would silently keep
+        // returning orphaned, invisible clones forever. Check the same
+        // condition here (before installOrUpdateTitlebarChrome updates
+        // chromeHostView for this pass) and drop the cache so fresh clones
+        // get created on the new host.
+        if chromeHostView !== titlebarView {
+            ownedTrafficLights.removeAll()
+            trafficLightNativeFrames.removeAll()
+            originalTrafficLights.removeAll()
+        }
+
+        // Capture the native frame *and a stable reference to the true
+        // AppKit button* once, before any clone exists. This must happen
+        // before hiding/cloning below: `window.standardWindowButton(_:)`
+        // does a live, type-based search of the titlebar's subviews, and
+        // once a factory-vended clone of the same private button class is
+        // also present, that search can return the clone instead of the
+        // original — confirmed empirically (a later pass's "original" was
+        // actually the clone, so this code hid the clone it had just made
+        // visible). Every subsequent read must go through
+        // `originalTrafficLights`, never back through
+        // `window.standardWindowButton(_:)`.
+        if trafficLightNativeFrames.isEmpty {
+            for type in types {
+                guard let original = window.standardWindowButton(type), !original.isHidden else { continue }
+                trafficLightNativeFrames[type] = original.frame
+                originalTrafficLights[type] = original
+            }
+        }
+
+        let centerY = chromeBaselineCenterY(in: titlebarView)
+
+        for (index, type) in types.enumerated() {
+            guard let original = originalTrafficLights[type] else { continue }
+            if !original.isHidden { original.isHidden = true }
+
+            guard let nativeFrame = trafficLightNativeFrames[type] else { continue }
+
+            let owned = ownedTrafficLights[type] ?? {
+                let button = NSWindow.standardWindowButton(type, for: window.styleMask)
+                button?.identifier = SettingsTitlebarLayout.trafficLightIdentifier(for: type)
+                // A button vended by this factory isn't the window's
+                // *registered* close/miniaturize/zoom button, so its own
+                // NSButtonCell mouse-tracking doesn't reliably send
+                // target/action on click — confirmed both by manual testing
+                // (clicks landed but performClose/performZoom never fired)
+                // and by Apple Developer Forums precedent on this exact API
+                // ("may be difficult to impossible to hack those buttons...
+                // the window is doing something"). A click gesture
+                // recognizer uses a separate, independent event path that
+                // doesn't depend on that internal tracking, so it's the
+                // reliable way to dispatch the action; native rendering
+                // (color, hover dim, active/inactive state) still comes free
+                // from the button itself.
+                if let button {
+                    titlebarView.addSubview(button)
+                    button.addGestureRecognizer(
+                        NSClickGestureRecognizer(target: self, action: #selector(ownedTrafficLightClicked(_:)))
+                    )
+                }
+                return button
+            }()
+            guard let owned else { continue }
+            ownedTrafficLights[type] = owned
+
+            if owned.isEnabled != original.isEnabled {
+                owned.isEnabled = original.isEnabled
+            }
+
+            // x comes from the design's own 16px-padding/12px-dot/8px-gap
+            // spec, not nativeFrame.minX (AppKit's native ~13pt inset) —
+            // measured on the packaged app, that native inset put the
+            // cluster ~8.5pt left of what chrome.jsx/primitives.jsx specify,
+            // and mainwindow.jsx composes the traffic lights and the
+            // sidebar's icon column on the same x-axis, so the gap between
+            // them is part of the design, not free for AppKit to decide.
+            let designCenterX = SettingsTitlebarLayout.trafficLightLeadingPadding
+                + SettingsTitlebarLayout.trafficLightDotSize / 2
+                + CGFloat(index) * (SettingsTitlebarLayout.trafficLightDotSize + SettingsTitlebarLayout.trafficLightDotGap)
+            let ownedFrame = NSRect(
+                x: designCenterX - nativeFrame.width / 2,
+                y: centerY - nativeFrame.height / 2,
+                width: nativeFrame.width,
+                height: nativeFrame.height
+            )
+            if owned.frame != ownedFrame {
+                owned.frame = ownedFrame
+            }
+        }
+    }
+
+    @objc private func ownedTrafficLightClicked(_ recognizer: NSClickGestureRecognizer) {
+        guard let button = recognizer.view as? NSButton, button.isEnabled, let window else { return }
+        switch button.identifier {
+        case SettingsTitlebarLayout.trafficLightIdentifier(for: .closeButton):
+            window.performClose(nil)
+        case SettingsTitlebarLayout.trafficLightIdentifier(for: .miniaturizeButton):
+            window.performMiniaturize(nil)
+        case SettingsTitlebarLayout.trafficLightIdentifier(for: .zoomButton):
+            window.performZoom(nil)
+        default:
+            break
+        }
     }
 
     /// Returns `true` when the accessory was added or resized and a layout
@@ -390,13 +575,17 @@ final class SettingsWindowChromeCoordinator: NSObject {
     }
 
     /// The single vertical centerline shared by every Wink-added titlebar
-    /// control: the AppKit-owned traffic lights' midY. Deriving a second
-    /// centerline from the design row height cannot agree with the buttons
-    /// (native titlebar band is 28pt; the 36pt row adds an 8pt bottom
-    /// accessory below it), so nothing else may define one.
+    /// control, expressed in `titlebarView`'s own coordinate space (origin
+    /// at the native 28pt band's bottom edge, i.e. 8pt above the true bottom
+    /// of the full 36pt design row). Wink owns every control on this row —
+    /// including the traffic lights, via `installOwnedTrafficLights` — so
+    /// this can finally be the design row's own midpoint (18pt from the top)
+    /// instead of AppKit's native-band center: `titlebarView.bounds.height`
+    /// is the native band height (28pt); subtracting the design row's half
+    /// height (18pt) converts "18pt from the row's top" into this view's
+    /// bottom-up coordinate space.
     private func chromeBaselineCenterY(in titlebarView: NSView) -> CGFloat {
-        window?.standardWindowButton(.zoomButton)?.frame.midY
-            ?? titlebarView.bounds.midY
+        titlebarView.bounds.height - SettingsTitlebarLayout.height / 2
     }
 
     private func removeInstalledChrome(from hostView: NSView) {
@@ -405,6 +594,9 @@ final class SettingsWindowChromeCoordinator: NSObject {
             SettingsTitlebarLayout.hairlineIdentifier,
             SettingsTitlebarLayout.sidebarToggleIdentifier,
             SettingsTitlebarLayout.titleIdentifier,
+            SettingsTitlebarLayout.trafficLightIdentifier(for: .closeButton),
+            SettingsTitlebarLayout.trafficLightIdentifier(for: .miniaturizeButton),
+            SettingsTitlebarLayout.trafficLightIdentifier(for: .zoomButton),
         ]
         for subview in hostView.subviews where subview.identifier.map(identifiers.contains) == true {
             subview.removeFromSuperview()
@@ -422,13 +614,15 @@ final class SettingsWindowChromeCoordinator: NSObject {
     }
 
     /// The toggle sits `toggleGapFromZoomButton` past the button cluster's
-    /// trailing edge (in reading direction), on the shared baseline. A titled
+    /// trailing edge (in reading direction), on the shared baseline. Anchors
+    /// on Wink's *owned* zoom button (not the hidden AppKit original) since
+    /// that's the one actually visible on the design centerline. A titled
     /// window always carries a zoom button alongside its close button, so
     /// `nil` (leave the current frame untouched) is a defensive fallback, not
     /// a reachable layout state.
     private func sidebarToggleFrame(in titlebarView: NSView) -> NSRect? {
         guard let window,
-              let zoomButton = window.standardWindowButton(.zoomButton) else {
+              let zoomButton = ownedTrafficLights[.zoomButton] else {
             return nil
         }
         let size = SettingsTitlebarLayout.toggleHitSize

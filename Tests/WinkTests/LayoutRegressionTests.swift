@@ -623,15 +623,18 @@ struct LayoutRegressionTests {
         let topInset = window.frame.height - window.contentLayoutRect.maxY
         let accessory = try #require(window.titlebarAccessoryViewControllers.first)
         let closeButton = try #require(window.standardWindowButton(.closeButton))
-        let zoomButton = try #require(window.standardWindowButton(.zoomButton))
         let titlebarView = try #require(closeButton.superview)
+        let ownedZoomLight = try #require(titlebarView.subviews.first {
+            $0.identifier == SettingsTitlebarLayout.trafficLightIdentifier(for: .zoomButton)
+        })
         let sidebarToggle = try #require(titlebarView.subviews.first {
             $0.identifier == SettingsTitlebarLayout.sidebarToggleIdentifier
         })
         let customTitle = try #require(titlebarView.subviews.first {
             $0.identifier == SettingsTitlebarLayout.titleIdentifier
         })
-        let expectedToggleLeadingX = zoomButton.frame.maxX + SettingsTitlebarLayout.toggleGapFromZoomButton
+        let expectedToggleLeadingX = ownedZoomLight.frame.maxX + SettingsTitlebarLayout.toggleGapFromZoomButton
+        let expectedCenterY = titlebarView.bounds.height - SettingsTitlebarLayout.height / 2
 
         #expect(abs(topInset - SettingsTitlebarLayout.height) < 0.5)
         #expect(abs(titlebarView.bounds.height - SettingsTitlebarLayout.height) < 0.5)
@@ -639,13 +642,94 @@ struct LayoutRegressionTests {
         #expect(accessory.automaticallyAdjustsSize == false)
         #expect(abs(accessory.view.frame.height - SettingsTitlebarLayout.titlebarAccessoryHeight) < 0.5)
         #expect(abs(sidebarToggle.frame.minX - expectedToggleLeadingX) < 0.5)
-        // Single baseline: traffic lights, toggle, and title share the
-        // AppKit-owned button centerline. A design-height-derived second
-        // centerline is exactly the regression this guards against.
-        #expect(abs(sidebarToggle.frame.midY - zoomButton.frame.midY) < 0.5)
-        #expect(abs(customTitle.frame.midY - zoomButton.frame.midY) < 1.0)
-        #expect(abs(customTitle.frame.midY - sidebarToggle.frame.midY) < 1.0)
+        // Single baseline: owned traffic lights, toggle, and title all share
+        // the design row's own midpoint (18pt from the top of the 36pt row).
+        // Wink owns every control on the row now, so a second, AppKit-native
+        // centerline can no longer disagree with this one — that disagreement
+        // (fixed by owning the lights) is exactly the regression this guards.
+        #expect(abs(ownedZoomLight.frame.midY - expectedCenterY) < 0.5)
+        #expect(abs(sidebarToggle.frame.midY - expectedCenterY) < 0.5)
+        #expect(abs(customTitle.frame.midY - expectedCenterY) < 1.0)
         #expect(abs(customTitle.frame.midX - titlebarView.bounds.midX) < 0.5)
+    }
+
+    @Test @MainActor
+    func settingsWindowChromeOwnedTrafficLightsFollowDesignLeadingPadding() throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: SettingsWindowMetrics.width, height: SettingsWindowMetrics.height),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        let coordinator = SettingsWindowChromeCoordinator()
+
+        coordinator.attach(to: window)
+        window.layoutIfNeeded()
+
+        let closeButton = try #require(window.standardWindowButton(.closeButton))
+        let titlebarView = try #require(closeButton.superview)
+
+        // primitives.jsx TrafficLights: `padding: 0 16px`, 12px dots, 8px
+        // gap — AppKit's native ~13pt inset is a different, fixed system
+        // value that doesn't match this, so owning the buttons must
+        // reposition them to the design's x, not just reuse where AppKit
+        // originally put them.
+        let pitch = SettingsTitlebarLayout.trafficLightDotSize + SettingsTitlebarLayout.trafficLightDotGap
+        let expectedCenters: [NSWindow.ButtonType: CGFloat] = [
+            .closeButton: SettingsTitlebarLayout.trafficLightLeadingPadding + SettingsTitlebarLayout.trafficLightDotSize / 2,
+            .miniaturizeButton: SettingsTitlebarLayout.trafficLightLeadingPadding + SettingsTitlebarLayout.trafficLightDotSize / 2 + pitch,
+            .zoomButton: SettingsTitlebarLayout.trafficLightLeadingPadding + SettingsTitlebarLayout.trafficLightDotSize / 2 + pitch * 2,
+        ]
+        for (type, expectedCenterX) in expectedCenters {
+            let owned = try #require(titlebarView.subviews.first {
+                $0.identifier == SettingsTitlebarLayout.trafficLightIdentifier(for: type)
+            })
+            #expect(abs(owned.frame.midX - expectedCenterX) < 0.5)
+        }
+    }
+
+    @Test @MainActor
+    func settingsWindowChromeOwnsTrafficLightsAndHidesAppKitOriginals() throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: SettingsWindowMetrics.width, height: SettingsWindowMetrics.height),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        // Capture the true AppKit button references *before* attach() ever
+        // runs. Once an owned clone of the same private button class exists
+        // alongside the original, window.standardWindowButton(_:) does a
+        // live, type-based hierarchy search that can return either one —
+        // confirmed empirically, this is exactly why production code caches
+        // these references instead of re-querying. Querying fresh after
+        // attach() would make this assertion meaningless (it could just as
+        // easily land on the clone, which is deliberately left visible).
+        let closeButton = try #require(window.standardWindowButton(.closeButton))
+        let minimizeButton = try #require(window.standardWindowButton(.miniaturizeButton))
+        let zoomButton = try #require(window.standardWindowButton(.zoomButton))
+        let titlebarView = try #require(closeButton.superview)
+
+        let coordinator = SettingsWindowChromeCoordinator()
+        coordinator.attach(to: window)
+        window.layoutIfNeeded()
+
+        #expect(closeButton.isHidden)
+        #expect(minimizeButton.isHidden)
+        #expect(zoomButton.isHidden)
+
+        let ownedTypes: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+        for type in ownedTypes {
+            let owned = try #require(titlebarView.subviews.first {
+                $0.identifier == SettingsTitlebarLayout.trafficLightIdentifier(for: type)
+            } as? NSButton)
+            // Click dispatch goes through a gesture recognizer, not
+            // target/action — a factory-vended button's own mouse tracking
+            // doesn't reliably fire target/action once detached from the
+            // window's internal bookkeeping (confirmed via manual testing).
+            #expect(owned.gestureRecognizers.contains { $0 is NSClickGestureRecognizer })
+            #expect(owned.frame.width > 0)
+            #expect(owned.frame.height > 0)
+        }
     }
 
     @Test @MainActor
@@ -676,12 +760,15 @@ struct LayoutRegressionTests {
             backing: .buffered,
             defer: false
         )
-        let coordinator = SettingsWindowChromeCoordinator()
-
-        coordinator.attach(to: window)
+        // Capture references before attach() — see the comment in
+        // settingsWindowChromeOwnsTrafficLightsAndHidesAppKitOriginals for
+        // why a post-attach lookup is ambiguous once a clone exists.
         let closeButton = try #require(window.standardWindowButton(.closeButton))
         let minimizeButton = try #require(window.standardWindowButton(.miniaturizeButton))
         let zoomButton = try #require(window.standardWindowButton(.zoomButton))
+
+        let coordinator = SettingsWindowChromeCoordinator()
+        coordinator.attach(to: window)
         let appKitOwnedOrigins = [
             closeButton: closeButton.frame.origin.offsetBy(dx: -8, dy: -4),
             minimizeButton: minimizeButton.frame.origin.offsetBy(dx: -8, dy: -4),
