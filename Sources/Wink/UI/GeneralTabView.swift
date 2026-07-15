@@ -52,8 +52,8 @@ struct GeneralTabView: View {
                         PermissionSummaryRow(
                             label: "Input Monitoring",
                             detail: preferences.shortcutCaptureStatus.inputMonitoringRequired
-                                ? "Needed for Hyper-routed shortcuts."
-                                : "Only required when a saved shortcut uses Hyper routing.",
+                                ? "Needed for the current shortcut configuration."
+                                : "Not required for the current shortcut configuration.",
                             state: inputMonitoringPresentationState(for: preferences.shortcutCaptureStatus)
                         )
                     }

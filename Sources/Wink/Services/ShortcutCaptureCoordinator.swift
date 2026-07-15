@@ -12,6 +12,7 @@ enum ShortcutCaptureRoute: Equatable, Sendable {
 struct ShortcutCaptureSnapshot: Equatable, Sendable {
     let carbonHotKeysRegistered: Bool
     let eventTapActive: Bool
+    let standardInputMonitoringRequired: Bool
     let shortcutsPaused: Bool
     let standardShortcutCount: Int
     let registeredStandardShortcutCount: Int
@@ -79,7 +80,7 @@ final class ShortcutCaptureCoordinator {
     }
 
     var inputMonitoringRequired: Bool {
-        !hyperShortcuts.isEmpty
+        standardProvider.inputMonitoringRequired || !hyperShortcuts.isEmpty
     }
 
     func status(
@@ -90,11 +91,15 @@ final class ShortcutCaptureCoordinator {
         let standardShortcutCount = standardRegistrationState.desiredShortcutCount
         let allStandardShortcutsRegistered = standardShortcutCount == 0
             || standardRegistrationState.registeredShortcutCount == standardShortcutCount
+        let standardInputMonitoringReady = !standardProvider.inputMonitoringRequired
+            || inputMonitoringGranted
         let carbonHotKeysRegistered = !capturePaused
             && standardShortcutCount > 0
+            && standardInputMonitoringReady
             && allStandardShortcutsRegistered
         let standardReady = !capturePaused
             && accessibilityGranted
+            && standardInputMonitoringReady
             && (standardShortcutCount == 0 || allStandardShortcutsRegistered)
         let hyperReady = !capturePaused
             && accessibilityGranted
@@ -118,12 +123,16 @@ final class ShortcutCaptureCoordinator {
     func snapshot() -> ShortcutCaptureSnapshot {
         let standardRegistrationState = standardProvider.registrationState
         let standardShortcutCount = standardRegistrationState.desiredShortcutCount
+        let standardInputMonitoringReady = !standardProvider.inputMonitoringRequired
+            || inputMonitoringGranted
         let carbonHotKeysRegistered = !capturePaused
             && standardShortcutCount > 0
+            && standardInputMonitoringReady
             && standardRegistrationState.registeredShortcutCount == standardShortcutCount
         return ShortcutCaptureSnapshot(
             carbonHotKeysRegistered: carbonHotKeysRegistered,
             eventTapActive: !capturePaused && hyperProvider.isRunning,
+            standardInputMonitoringRequired: standardProvider.inputMonitoringRequired,
             shortcutsPaused: capturePaused,
             standardShortcutCount: standardShortcutCount,
             registeredStandardShortcutCount: standardRegistrationState.registeredShortcutCount,

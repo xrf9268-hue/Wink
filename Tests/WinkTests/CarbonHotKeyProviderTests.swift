@@ -6,6 +6,307 @@ import Testing
 @Suite("CarbonHotKeyProvider")
 struct CarbonHotKeyProviderTests {
     @Test @MainActor
+    func functionTrackerSeedsOnlyTheCurrentPhysicalFunctionKeyState() {
+        let tapClient = RecordingFunctionModifierEventTapClient()
+        var physicalFunctionKeyPressed = true
+        var currentTimestamp: CGEventTimestamp = 100_000_000
+        let tracker = CGEventTapFunctionModifierStateTracker(
+            systemState: FunctionModifierSystemStateClient(
+                isPhysicalFunctionKeyPressed: { physicalFunctionKeyPressed },
+                currentEventTimestamp: { currentTimestamp }
+            ),
+            tapClient: tapClient.client
+        )
+
+        #expect(tracker.start())
+        tapClient.sessions.last?.recordFunctionRowKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            timestamp: 101_000_000
+        )
+        #expect(tracker.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 101_500_000
+        ))
+
+        tracker.stop()
+        physicalFunctionKeyPressed = false
+        currentTimestamp = 200_000_000
+        #expect(tracker.start())
+        tapClient.sessions.last?.recordFunctionRowKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            timestamp: 201_000_000
+        )
+        #expect(!tracker.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 201_500_000
+        ))
+        tracker.stop()
+    }
+
+    @Test @MainActor
+    func functionTrackerFailsClosedAndRetriesAfterTapCreationFailure() {
+        let tapClient = RecordingFunctionModifierEventTapClient(startSucceeds: false)
+        let tracker = CGEventTapFunctionModifierStateTracker(
+            systemState: FunctionModifierSystemStateClient(
+                isPhysicalFunctionKeyPressed: { false }
+            ),
+            tapClient: tapClient.client
+        )
+
+        #expect(!tracker.start())
+
+        tapClient.startSucceeds = true
+        #expect(tracker.start())
+        #expect(tapClient.startCount == 2)
+        tracker.stop()
+        #expect(tapClient.sessions.last?.stopCount == 1)
+    }
+
+    @Test @MainActor
+    func functionTrackerDoesNotOverwriteATransitionObservedWhileTheTapStarts() {
+        let tapClient = RecordingFunctionModifierEventTapClient()
+        tapClient.functionTransitionObservedOnStart = false
+        let tracker = CGEventTapFunctionModifierStateTracker(
+            systemState: FunctionModifierSystemStateClient(
+                isPhysicalFunctionKeyPressed: { true }
+            ),
+            tapClient: tapClient.client
+        )
+
+        #expect(tracker.start())
+        tapClient.sessions.last?.recordFunctionRowKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            timestamp: 100_000_000
+        )
+        #expect(!tracker.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 100_500_000
+        ))
+        tracker.stop()
+    }
+
+    @Test @MainActor
+    func functionTrackerFailsClosedWhenInputMonitoringIsRevoked() throws {
+        let tapClient = RecordingFunctionModifierEventTapClient()
+        let tracker = CGEventTapFunctionModifierStateTracker(
+            systemState: FunctionModifierSystemStateClient(
+                isPhysicalFunctionKeyPressed: { true }
+            ),
+            tapClient: tapClient.client
+        )
+
+        #expect(tracker.start())
+        let session = try #require(tapClient.sessions.last)
+        session.recordFunctionRowKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            timestamp: 100_000_000
+        )
+        #expect(tracker.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 100_500_000
+        ))
+        session.recordFunctionRowKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            timestamp: 101_000_000
+        )
+
+        tapClient.inputMonitoringGranted = false
+        #expect(!tracker.start())
+        #expect(!tracker.isReady)
+        #expect(!tracker.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 101_500_000
+        ))
+        #expect(session.stopCount == 1)
+    }
+
+    @Test @MainActor
+    func functionTrackerUsesTheFunctionStateAtTheFunctionRowKeyDown() throws {
+        let tapClient = RecordingFunctionModifierEventTapClient()
+        let tracker = CGEventTapFunctionModifierStateTracker(
+            systemState: FunctionModifierSystemStateClient(
+                isPhysicalFunctionKeyPressed: { false }
+            ),
+            tapClient: tapClient.client
+        )
+
+        #expect(tracker.start())
+        let session = try #require(tapClient.sessions.last)
+        session.recordFunctionTransition(isPressed: true, timestamp: 100_000_000)
+        session.recordFunctionRowKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            timestamp: 150_000_000
+        )
+        session.recordFunctionTransition(isPressed: false, timestamp: 151_000_000)
+
+        #expect(tracker.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 150_720_542
+        ))
+        tracker.stop()
+    }
+
+    @Test @MainActor
+    func functionTrackerRejectsFnPressedAfterTheFunctionRowKeyDown() throws {
+        let tapClient = RecordingFunctionModifierEventTapClient()
+        let tracker = CGEventTapFunctionModifierStateTracker(
+            systemState: FunctionModifierSystemStateClient(
+                isPhysicalFunctionKeyPressed: { false }
+            ),
+            tapClient: tapClient.client
+        )
+
+        #expect(tracker.start())
+        let session = try #require(tapClient.sessions.last)
+        session.recordFunctionRowKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            timestamp: 150_000_000
+        )
+        session.recordFunctionTransition(isPressed: true, timestamp: 200_000_000)
+
+        #expect(!tracker.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 150_534_125
+        ))
+        tracker.stop()
+    }
+
+    @Test
+    func functionModifierTapTracksOnlyPhysicalFnAndFailsClosedWhenDisabled() throws {
+        let box = FunctionModifierTapBox()
+        box.markActive()
+
+        let f6 = try #require(CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: CGKeyCode(kVK_F6),
+            keyDown: true
+        ))
+        f6.type = .flagsChanged
+        f6.flags = [.maskSecondaryFn]
+        _ = handleFunctionModifierTapEvent(type: .flagsChanged, event: f6, box: box)
+        #expect(!box.snapshot.isFunctionPressed)
+
+        let fn = try #require(CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: CGKeyCode(kVK_Function),
+            keyDown: true
+        ))
+        fn.type = .flagsChanged
+        fn.flags = [.maskSecondaryFn]
+        _ = handleFunctionModifierTapEvent(type: .flagsChanged, event: fn, box: box)
+        #expect(box.snapshot.isFunctionPressed)
+
+        let f6KeyDown = try #require(CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: CGKeyCode(kVK_F6),
+            keyDown: true
+        ))
+        f6KeyDown.timestamp = 150_000_000
+        _ = handleFunctionModifierTapEvent(type: .keyDown, event: f6KeyDown, box: box)
+        #expect(box.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 150_720_542
+        ))
+
+        f6KeyDown.timestamp = 160_000_000
+        _ = handleFunctionModifierTapEvent(type: .keyDown, event: f6KeyDown, box: box)
+
+        _ = handleFunctionModifierTapEvent(type: .tapDisabledByUserInput, event: fn, box: box)
+        #expect(!box.snapshot.isActive)
+        #expect(!box.snapshot.isFunctionPressed)
+        #expect(!box.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 160_720_542
+        ))
+    }
+
+    @Test
+    func functionRowKeyDownSnapshotsFnStateForTheDelayedCarbonCallback() {
+        let box = FunctionModifierTapBox()
+        box.markActive()
+
+        box.recordFunctionTransition(isPressed: true, timestamp: 100_000_000)
+        #expect(box.recordFunctionRowKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            timestamp: 150_000_000
+        ))
+        box.recordFunctionTransition(isPressed: false, timestamp: 151_000_000)
+
+        #expect(!box.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F5),
+            carbonTimestamp: 150_720_542
+        ))
+        #expect(box.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 150_720_542
+        ))
+        #expect(!box.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 150_720_542
+        ))
+    }
+
+    @Test
+    func laterFnDownCannotAuthorizeAnEarlierBareFunctionRowKeyDown() {
+        let box = FunctionModifierTapBox()
+        box.markActive()
+
+        #expect(!box.recordFunctionRowKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            timestamp: 200_000_000
+        ))
+        box.recordFunctionTransition(isPressed: true, timestamp: 201_000_000)
+
+        #expect(!box.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 200_534_125
+        ))
+    }
+
+    @Test
+    func functionFlagOnFunctionRowKeyDownDoesNotReplacePhysicalFnObservation() throws {
+        let box = FunctionModifierTapBox()
+        box.markActive()
+        let f6 = try #require(CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: CGKeyCode(kVK_F6),
+            keyDown: true
+        ))
+        f6.flags = [.maskSecondaryFn]
+        f6.timestamp = 300_000_000
+
+        _ = handleFunctionModifierTapEvent(type: .keyDown, event: f6, box: box)
+
+        #expect(!box.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 300_720_542
+        ))
+    }
+
+    @Test
+    func staleFunctionRowKeyDownObservationFailsClosed() {
+        let box = FunctionModifierTapBox()
+        box.markActive()
+        box.recordFunctionTransition(isPressed: true, timestamp: 100_000_000)
+        box.recordFunctionRowKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            timestamp: 150_000_000
+        )
+
+        #expect(!box.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 200_000_001
+        ))
+    }
+
+    @Test
+    func carbonEventTimeConvertsToTheCGEventTimestampClock() {
+        #expect(cgEventTimestamp(fromCarbonEventTime: 1.25) == 1_250_000_000)
+        #expect(cgEventTimestamp(fromCarbonEventTime: 0) == 0)
+        #expect(cgEventTimestamp(fromCarbonEventTime: .infinity) == 0)
+    }
+
+    @Test @MainActor
     func existingModifierMasksReachTheCarbonRegistrationBoundaryUnchanged() {
         let registrar = RecordingCarbonHotKeyRegistrar()
         let provider = CarbonHotKeyProvider(registrationClient: registrar.client)
@@ -40,6 +341,7 @@ struct CarbonHotKeyProviderTests {
         var delivered: [KeyPress] = []
 
         provider.updateRegisteredShortcuts([shortcut])
+        #expect(!provider.inputMonitoringRequired)
         provider.start { delivered.append($0) }
         defer { provider.stop() }
 
@@ -64,10 +366,12 @@ struct CarbonHotKeyProviderTests {
         var delivered: [KeyPress] = []
 
         provider.updateRegisteredShortcuts([shortcut])
+        #expect(!provider.inputMonitoringRequired)
         provider.start { delivered.append($0) }
         defer { provider.stop() }
 
         let registration = try #require(registrar.registrations.first)
+        #expect(modifierState.startCount == 0)
         #expect(registration.keyCode == UInt32(kVK_ANSI_A))
         #expect(registration.modifiers == UInt32(kEventKeyModifierFnMask))
 
@@ -101,19 +405,108 @@ struct CarbonHotKeyProviderTests {
         var delivered: [KeyPress] = []
 
         provider.updateRegisteredShortcuts([shortcut])
+        #expect(provider.inputMonitoringRequired)
         provider.start { delivered.append($0) }
 
         let registration = try #require(registrar.registrations.first)
-        provider.handleHotKeyEvent(identifier: registration.identifier)
+        provider.handleHotKeyEvent(
+            identifier: registration.identifier,
+            eventTimestamp: 123
+        )
         #expect(delivered.isEmpty)
         #expect(modifierState.startCount == 1)
 
         modifierState.isFunctionPressed = true
-        provider.handleHotKeyEvent(identifier: registration.identifier)
+        provider.handleHotKeyEvent(
+            identifier: registration.identifier,
+            eventTimestamp: 456
+        )
         #expect(delivered == [shortcut])
+        #expect(modifierState.requestedKeyCodes == [CGKeyCode(kVK_F6), CGKeyCode(kVK_F6)])
+        #expect(modifierState.requestedEventTimestamps == [123, 456])
 
         provider.stop()
         #expect(modifierState.stopCount == 1)
+    }
+
+    @Test @MainActor
+    func fnFunctionKeyRegistrationFailsClosedAndRetriesWhenTrackingIsUnavailable() throws {
+        let registrar = RecordingCarbonHotKeyRegistrar()
+        let modifierState = RecordingFunctionModifierStateTracker(
+            isFunctionPressed: false,
+            startSucceeds: false
+        )
+        let provider = CarbonHotKeyProvider(
+            registrationClient: registrar.client,
+            functionModifierStateTracker: modifierState
+        )
+        let shortcut = KeyPress(
+            keyCode: CGKeyCode(kVK_F6),
+            modifiers: [.function]
+        )
+
+        provider.updateRegisteredShortcuts([shortcut])
+        provider.start { _ in }
+
+        #expect(registrar.registrations.isEmpty)
+        #expect(provider.registrationState.desiredShortcutCount == 1)
+        #expect(provider.registrationState.registeredShortcutCount == 0)
+        #expect(provider.registrationState.failures == [
+            ShortcutCaptureRegistrationFailure(
+                keyPress: shortcut,
+                status: Int32(eventInternalErr)
+            ),
+        ])
+
+        modifierState.startSucceeds = true
+        provider.start { _ in }
+        #expect(try #require(registrar.registrations.first).keyCode == UInt32(kVK_F6))
+        #expect(provider.registrationState.allDesiredShortcutsRegistered)
+        provider.stop()
+    }
+
+    @Test @MainActor
+    func unavailableFunctionTrackingPreservesOrdinaryCarbonRegistrations() throws {
+        let registrar = RecordingCarbonHotKeyRegistrar()
+        let modifierState = RecordingFunctionModifierStateTracker(
+            isFunctionPressed: false,
+            startSucceeds: false
+        )
+        let provider = CarbonHotKeyProvider(
+            registrationClient: registrar.client,
+            functionModifierStateTracker: modifierState
+        )
+        let ordinaryShortcut = KeyPress(
+            keyCode: CGKeyCode(kVK_ANSI_A),
+            modifiers: [.command]
+        )
+        let functionShortcut = KeyPress(
+            keyCode: CGKeyCode(kVK_F6),
+            modifiers: [.function]
+        )
+        var delivered: [KeyPress] = []
+
+        provider.updateRegisteredShortcuts([ordinaryShortcut, functionShortcut])
+        provider.start { delivered.append($0) }
+
+        #expect(registrar.registrations.count == 1)
+        #expect(registrar.registrations.first?.keyCode == UInt32(kVK_ANSI_A))
+        #expect(provider.registrationState.desiredShortcutCount == 2)
+        #expect(provider.registrationState.registeredShortcutCount == 1)
+        #expect(provider.registrationState.failures.map(\.keyPress) == [functionShortcut])
+        registrar.deliver(
+            keyCode: UInt32(kVK_ANSI_A),
+            modifiers: UInt32(cmdKey),
+            to: provider
+        )
+        #expect(delivered == [ordinaryShortcut])
+
+        modifierState.startSucceeds = true
+        provider.start { _ in }
+
+        #expect(registrar.registrations.count == 2)
+        #expect(provider.registrationState.allDesiredShortcutsRegistered)
+        provider.stop()
     }
 }
 
@@ -136,7 +529,11 @@ private final class RecordingCarbonHotKeyRegistrar {
             ))
             return (noErr, OpaquePointer(bitPattern: Int(hotKeyID.id)))
         },
-        unregister: { _ in }
+        unregister: { [unowned self] hotKeyRef in
+            registrations.removeAll {
+                OpaquePointer(bitPattern: Int($0.identifier)) == hotKeyRef
+            }
+        }
     )
 
     func deliver(
@@ -156,18 +553,116 @@ private final class RecordingCarbonHotKeyRegistrar {
 @MainActor
 private final class RecordingFunctionModifierStateTracker: FunctionModifierStateTracking {
     var isFunctionPressed: Bool
+    var startSucceeds: Bool
     private(set) var startCount = 0
     private(set) var stopCount = 0
+    private(set) var requestedKeyCodes: [CGKeyCode] = []
+    private(set) var requestedEventTimestamps: [CGEventTimestamp] = []
 
-    init(isFunctionPressed: Bool) {
+    init(isFunctionPressed: Bool, startSucceeds: Bool = true) {
         self.isFunctionPressed = isFunctionPressed
+        self.startSucceeds = startSucceeds
     }
 
-    func start() {
+    var isReady: Bool {
+        startSucceeds
+    }
+
+    func start() -> Bool {
         startCount += 1
+        return startSucceeds
+    }
+
+    func consumeFunctionModifiedKeyDown(
+        keyCode: CGKeyCode,
+        carbonTimestamp: CGEventTimestamp
+    ) -> Bool {
+        requestedKeyCodes.append(keyCode)
+        requestedEventTimestamps.append(carbonTimestamp)
+        return isFunctionPressed
     }
 
     func stop() {
         stopCount += 1
+    }
+}
+
+@MainActor
+private final class RecordingFunctionModifierEventTapClient {
+    var startSucceeds: Bool
+    var inputMonitoringGranted = true
+    var functionTransitionObservedOnStart: Bool?
+    private(set) var startCount = 0
+    private(set) var sessions: [RecordingFunctionModifierEventTapSession] = []
+
+    init(startSucceeds: Bool = true) {
+        self.startSucceeds = startSucceeds
+    }
+
+    lazy var client = FunctionModifierEventTapClient(
+        inputMonitoringGranted: { [unowned self] in inputMonitoringGranted },
+        start: { [unowned self] in
+            startCount += 1
+            guard startSucceeds else { return nil }
+
+            let session = RecordingFunctionModifierEventTapSession()
+            if let functionTransitionObservedOnStart {
+                session.recordFunctionTransition(isPressed: functionTransitionObservedOnStart)
+            }
+            sessions.append(session)
+            return session
+        }
+    )
+}
+
+private final class RecordingFunctionModifierEventTapSession: FunctionModifierEventTapSessionProtocol {
+    private let box = FunctionModifierTapBox()
+    private let lock = NSLock()
+    private(set) var stopCount = 0
+
+    init() {
+        box.markActive()
+    }
+
+    var isActive: Bool {
+        box.snapshot.isActive
+    }
+
+    func seedIfUnobserved(
+        isPressed: Bool,
+        timestamp: CGEventTimestamp
+    ) {
+        box.seedIfUnobserved(isPressed: isPressed, timestamp: timestamp)
+    }
+
+    func consumeFunctionModifiedKeyDown(
+        keyCode: CGKeyCode,
+        carbonTimestamp: CGEventTimestamp
+    ) -> Bool {
+        box.consumeFunctionModifiedKeyDown(
+            keyCode: keyCode,
+            carbonTimestamp: carbonTimestamp
+        )
+    }
+
+    func recordFunctionTransition(
+        isPressed: Bool,
+        timestamp: CGEventTimestamp = .max
+    ) {
+        box.recordFunctionTransition(isPressed: isPressed, timestamp: timestamp)
+    }
+
+    func recordFunctionRowKeyDown(
+        keyCode: CGKeyCode,
+        timestamp: CGEventTimestamp
+    ) {
+        box.recordFunctionRowKeyDown(keyCode: keyCode, timestamp: timestamp)
+    }
+
+    func stop() {
+        lock.withLock {
+            stopCount += 1
+        }
+        box.failClosed()
     }
 }

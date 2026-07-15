@@ -7,7 +7,7 @@
 # Prerequisites:
 # - Wink.app built (./scripts/package-app.sh)
 # - Accessibility permission granted
-# - Input Monitoring granted only when the current saved shortcuts require Hyper transport
+# - Input Monitoring granted when the saved shortcuts require Hyper transport or a standard Fn+F-row observer
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

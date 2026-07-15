@@ -433,7 +433,10 @@ final class ShortcutManager {
 
         if snapshot.standardShortcutCount > 0 && !snapshot.carbonHotKeysRegistered {
             blockedMessages.insert(captureBlockedMessage(
-                reason: "missing_registration_or_system_conflict",
+                reason: snapshot.standardInputMonitoringRequired
+                    && !permissionService.isInputMonitoringTrusted()
+                    ? "input_monitoring_missing"
+                    : "missing_registration_or_system_conflict",
                 route: .standard,
                 snapshot: snapshot
             ))
