@@ -73,6 +73,7 @@ private final class MutableAppBundleLocatorState: @unchecked Sendable {
 @MainActor
 private final class FakeCaptureProvider: ShortcutCaptureProvider {
     var isRunning = false
+    var inputMonitoringRequired = false
     var startSucceeds = true
     var failingShortcuts: Set<KeyPress> = []
     private(set) var startCallCount = 0
@@ -440,6 +441,44 @@ func captureStatusKeepsStandardShortcutsReadyWhenInputMonitoringIsMissing() thro
     #expect(hyperProvider.startCallCount == 0)
 
     manager.stop()
+}
+
+@Test @MainActor
+func inputMonitoringDependentStandardCaptureFailsClosedUntilPermissionIsGranted() throws {
+    let permissionService = MutablePermissionService(ax: true, input: false)
+    let standardProvider = FakeCaptureProvider()
+    standardProvider.inputMonitoringRequired = true
+    let diagnostics = DiagnosticCapture()
+    let context = makeShortcutManager(
+        permissionService: permissionService,
+        standardProvider: standardProvider,
+        diagnosticSink: diagnostics.record
+    )
+    try context.manager.save(shortcuts: [standardShortcut()])
+
+    context.manager.start()
+
+    var status = context.manager.shortcutCaptureStatus()
+    #expect(permissionService.requestedInputMonitoringFlags == [true])
+    #expect(status.inputMonitoringRequired)
+    #expect(!status.standardShortcutsReady)
+    #expect(standardProvider.startCallCount == 1)
+    #expect(diagnostics.messages.contains {
+        $0.contains("attemptStart:")
+            && $0.contains("standardFnObserverRequired=true")
+    })
+    #expect(diagnostics.messages.contains {
+        $0.contains("SHORTCUT_TRACE_BLOCKED")
+            && $0.contains("reason=\"input_monitoring_missing\"")
+            && $0.contains("route=standard")
+    })
+
+    permissionService.input = true
+    context.manager.checkPermissionChange()
+
+    status = context.manager.shortcutCaptureStatus()
+    #expect(status.standardShortcutsReady)
+    #expect(standardProvider.startCallCount > 1)
 }
 
 @Test @MainActor

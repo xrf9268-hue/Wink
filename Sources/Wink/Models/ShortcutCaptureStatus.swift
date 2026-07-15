@@ -53,12 +53,15 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
                 guard standardRegistrationWarning == nil else {
                     return nil
                 }
-                return "Input Monitoring is only required for Hyper shortcuts."
+                return "Input Monitoring is not required for the current shortcuts."
             }
             return nil
         }
-        guard inputMonitoringGranted || hyperShortcutsReady else {
-            return "Hyper shortcuts need Input Monitoring."
+        guard inputMonitoringGranted else {
+            return "Some shortcuts need Input Monitoring."
+        }
+        guard hyperShortcutsReady else {
+            return "Hyper shortcuts are configured, but shortcut capture is not active."
         }
         return nil
     }
@@ -80,11 +83,13 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
             return "Standard shortcuts are active."
         }
 
-        if !hyperShortcutsReady {
-            return "Hyper shortcuts need Input Monitoring."
+        if !inputMonitoringGranted {
+            return "Some shortcuts need Input Monitoring."
         }
 
-        return "Standard and Hyper shortcuts are active."
+        return eventTapActive
+            ? "Standard and Hyper shortcuts are active."
+            : "Standard shortcuts are active."
     }
 
     var systemSettingsGuidance: String? {
@@ -95,11 +100,14 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
             return nil
         }
 
-        guard inputMonitoringRequired, inputMonitoringGranted, hyperShortcutsReady else {
+        guard inputMonitoringRequired,
+              inputMonitoringGranted,
+              standardShortcutsReady,
+              hyperShortcutsReady else {
             return nil
         }
 
-        return "System Settings > Input Monitoring can lag behind live access. If Hyper shortcuts work here, Wink already has the permission it needs."
+        return "System Settings > Input Monitoring can lag behind live access. If the affected shortcuts work here, Wink already has the permission it needs."
     }
 
     var standardRegistrationWarning: String? {

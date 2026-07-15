@@ -18,10 +18,15 @@ struct ShortcutCaptureRegistrationState: Equatable, Sendable {
 @MainActor
 protocol ShortcutCaptureProvider {
     var isRunning: Bool { get }
+    var inputMonitoringRequired: Bool { get }
     var registrationState: ShortcutCaptureRegistrationState { get }
     func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void)
     func stop()
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>)
+}
+
+extension ShortcutCaptureProvider {
+    var inputMonitoringRequired: Bool { false }
 }
 
 @MainActor

@@ -201,10 +201,10 @@ final class ShortcutManager {
         let inputMonitoringWasRequired = captureCoordinator.inputMonitoringRequired
 
         logger.info(
-            "checkPermission: ax=\(axGranted) im=\(imGranted) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive)"
+            "checkPermission: ax=\(axGranted) im=\(imGranted) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired)"
         )
         diagnosticClient.log(
-            "checkPermission: ax=\(axGranted) im=\(imGranted) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive)"
+            "checkPermission: ax=\(axGranted) im=\(imGranted) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired)"
         )
 
         // Report individual permission changes
@@ -310,10 +310,10 @@ final class ShortcutManager {
             }
             let snapshot = captureCoordinator.snapshot()
             logger.info(
-                "attemptStart: shortcuts=\(self.shortcutStore.shortcuts.count) triggerIndex=\(self.triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive) paused=true"
+                "attemptStart: shortcuts=\(self.shortcutStore.shortcuts.count) triggerIndex=\(self.triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired) paused=true"
             )
             diagnosticClient.log(
-                "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive) paused=true"
+                "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired) paused=true"
             )
             lastCaptureBlockedMessages = []
             return
@@ -335,10 +335,10 @@ final class ShortcutManager {
         }
         let snapshot = captureCoordinator.snapshot()
         logger.info(
-            "attemptStart: shortcuts=\(self.shortcutStore.shortcuts.count) triggerIndex=\(self.triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive)"
+            "attemptStart: shortcuts=\(self.shortcutStore.shortcuts.count) triggerIndex=\(self.triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired)"
         )
         diagnosticClient.log(
-            "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive)"
+            "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired)"
         )
         emitCaptureBlockedDiagnostics(snapshot: snapshot)
     }
@@ -433,7 +433,10 @@ final class ShortcutManager {
 
         if snapshot.standardShortcutCount > 0 && !snapshot.carbonHotKeysRegistered {
             blockedMessages.insert(captureBlockedMessage(
-                reason: "missing_registration_or_system_conflict",
+                reason: snapshot.standardInputMonitoringRequired
+                    && !permissionService.isInputMonitoringTrusted()
+                    ? "input_monitoring_missing"
+                    : "missing_registration_or_system_conflict",
                 route: .standard,
                 snapshot: snapshot
             ))

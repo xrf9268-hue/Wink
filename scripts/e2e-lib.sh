@@ -85,6 +85,57 @@ hyper_key_enabled_flag() {
     defaults read "$APP_BUNDLE_ID" hyperKeyEnabled 2>/dev/null || echo "0"
 }
 
+standard_function_modifier_observer_required() {
+    local shortcuts_file="${1:-$SHORTCUTS_FILE}"
+    local hyper_enabled="${2:-$(hyper_key_enabled_flag)}"
+
+    if [ ! -f "$shortcuts_file" ]; then
+        return 1
+    fi
+
+    /usr/bin/ruby -rjson -e '
+        shortcuts = JSON.parse(File.read(ARGV[0])) rescue []
+        hyper_enabled = ARGV[1] == "1"
+
+        required = shortcuts.any? do |shortcut|
+          next false if shortcut["isEnabled"] == false
+
+          modifiers = Array(shortcut["modifierFlags"]).map { |flag| flag.to_s.downcase }
+          is_hyper_combo = %w[command option control shift].all? { |flag| modifiers.include?(flag) }
+          is_standard = !(hyper_enabled && is_hyper_combo)
+          is_function_row = shortcut["keyEquivalent"].to_s.downcase.match?(/\Af(?:[1-9]|1[0-9]|20)\z/)
+
+          is_standard && is_function_row && modifiers.include?("function")
+        end
+
+        exit(required ? 0 : 1)
+    ' "$shortcuts_file" "$hyper_enabled"
+}
+
+configuration_requires_input_monitoring() {
+    local shortcuts_file="${1:-$SHORTCUTS_FILE}"
+    local hyper_enabled="${2:-$(hyper_key_enabled_flag)}"
+    local log_file="${3:-$LOG_FILE}"
+    local requirement
+    local runtime_status
+
+    requirement=$(detect_capture_requirement "$shortcuts_file" "$hyper_enabled")
+    if [ "$requirement" = "hyper" ] || [ "$requirement" = "mixed" ]; then
+        return 0
+    fi
+
+    if runtime_standard_function_modifier_observer_required "$log_file"; then
+        return 0
+    else
+        runtime_status=$?
+        if [ "$runtime_status" -eq 1 ]; then
+            return 1
+        fi
+    fi
+
+    standard_function_modifier_observer_required "$shortcuts_file" "$hyper_enabled"
+}
+
 detect_capture_requirement() {
     local shortcuts_file="${1:-$SHORTCUTS_FILE}"
     local hyper_enabled="${2:-$(hyper_key_enabled_flag)}"
@@ -208,6 +259,7 @@ shortcut_inventory_json() {
             "keyEquivalent" => key_equivalent,
             "modifierFlags" => modifiers,
             "route" => route,
+            "osascriptCompatible" => !modifiers.include?("function"),
             "keyCode" => key_code
           }
         end
@@ -221,16 +273,19 @@ first_shortcut_for_route() {
     local exclude_bundle="${2:-}"
     local shortcuts_file="${3:-$SHORTCUTS_FILE}"
     local hyper_enabled="${4:-$(hyper_key_enabled_flag)}"
+    local automatable_only="${5:-0}"
 
     shortcut_inventory_json "$shortcuts_file" "$hyper_enabled" | /usr/bin/ruby -rjson -e '
         inventory = JSON.parse(STDIN.read) rescue []
         expected_route = ARGV[0]
         exclude_bundle = ARGV[1]
+        automatable_only = ARGV[2] == "1"
 
         shortcut = inventory.find do |entry|
           route_match = expected_route == "any" || entry["route"] == expected_route
           bundle_match = exclude_bundle.empty? || entry["bundleIdentifier"] != exclude_bundle
-          route_match && bundle_match
+          sender_match = !automatable_only || entry["osascriptCompatible"]
+          route_match && bundle_match && sender_match
         end
 
         if shortcut
@@ -238,15 +293,15 @@ first_shortcut_for_route() {
         else
           exit 1
         end
-    ' "$expected_route" "$exclude_bundle"
+    ' "$expected_route" "$exclude_bundle" "$automatable_only"
 }
 
 resolve_primary_test_shortcut() {
     local shortcuts_file="${1:-$SHORTCUTS_FILE}"
     local hyper_enabled="${2:-$(hyper_key_enabled_flag)}"
 
-    first_shortcut_for_route standard "" "$shortcuts_file" "$hyper_enabled" ||
-        first_shortcut_for_route hyper "" "$shortcuts_file" "$hyper_enabled"
+    first_shortcut_for_route standard "" "$shortcuts_file" "$hyper_enabled" 1 ||
+        first_shortcut_for_route hyper "" "$shortcuts_file" "$hyper_enabled" 1
 }
 
 resolve_isolation_shortcuts() {
@@ -262,12 +317,12 @@ resolve_isolation_shortcuts() {
     primary_route=$(shortcut_json_field "$primary" route)
 
     if [ "$primary_route" = "standard" ]; then
-        secondary=$(first_shortcut_for_route hyper "$primary_bundle" "$shortcuts_file" "$hyper_enabled") ||
-            secondary=$(first_shortcut_for_route any "$primary_bundle" "$shortcuts_file" "$hyper_enabled") ||
+        secondary=$(first_shortcut_for_route hyper "$primary_bundle" "$shortcuts_file" "$hyper_enabled" 1) ||
+            secondary=$(first_shortcut_for_route any "$primary_bundle" "$shortcuts_file" "$hyper_enabled" 1) ||
             return 1
     else
-        secondary=$(first_shortcut_for_route standard "$primary_bundle" "$shortcuts_file" "$hyper_enabled") ||
-            secondary=$(first_shortcut_for_route any "$primary_bundle" "$shortcuts_file" "$hyper_enabled") ||
+        secondary=$(first_shortcut_for_route standard "$primary_bundle" "$shortcuts_file" "$hyper_enabled" 1) ||
+            secondary=$(first_shortcut_for_route any "$primary_bundle" "$shortcuts_file" "$hyper_enabled" 1) ||
             return 1
     fi
 
@@ -299,12 +354,64 @@ regex_escape() {
 
 _standard_capture_ready() {
     local log_file="${1:-$LOG_FILE}"
-    grep -Eq 'attemptStart: .*carbon=true|checkPermission: ax=true .*carbon=true' "$log_file" 2>/dev/null
+    local snapshot
+
+    snapshot=$(_latest_capture_snapshot_line "$log_file") || return 1
+    [[ "$snapshot" == *"carbon=true"* ]] || return 1
+
+    if [[ "$snapshot" == *"checkPermission:"* ]]; then
+        [[ "$snapshot" == *"ax=true"* ]] || return 1
+        if [[ "$snapshot" == *"standardFnObserverRequired=true"* ]]; then
+            [[ "$snapshot" == *"im=true"* ]] || return 1
+        fi
+    fi
+
+    return 0
+}
+
+_latest_capture_snapshot_line() {
+    local log_file="${1:-$LOG_FILE}"
+
+    /usr/bin/awk '
+        /attemptStart: .*carbon=.*eventTap=/ || /checkPermission: .*carbon=.*eventTap=/ {
+            snapshot = $0
+        }
+        END {
+            if (snapshot == "") {
+                exit 1
+            }
+            print snapshot
+        }
+    ' "$log_file" 2>/dev/null
+}
+
+runtime_standard_function_modifier_observer_required() {
+    local log_file="${1:-$LOG_FILE}"
+    local snapshot
+
+    snapshot=$(_latest_capture_snapshot_line "$log_file") || return 2
+    if [[ "$snapshot" == *"standardFnObserverRequired=true"* ]]; then
+        return 0
+    fi
+    if [[ "$snapshot" == *"standardFnObserverRequired=false"* ]]; then
+        return 1
+    fi
+    return 2
 }
 
 _hyper_capture_ready() {
     local log_file="${1:-$LOG_FILE}"
-    grep -Eq 'Event tap started|attemptStart: .*eventTap=true|checkPermission: ax=true im=true .*eventTap=true' "$log_file" 2>/dev/null
+    local snapshot
+
+    snapshot=$(_latest_capture_snapshot_line "$log_file") || return 1
+    [[ "$snapshot" == *"eventTap=true"* ]] || return 1
+
+    if [[ "$snapshot" == *"checkPermission:"* ]]; then
+        [[ "$snapshot" == *"ax=true"* ]] || return 1
+        [[ "$snapshot" == *"im=true"* ]] || return 1
+    fi
+
+    return 0
 }
 
 _startup_log_ready() {
@@ -463,9 +570,19 @@ shortcut_modifiers_osascript() {
     printf '%s' "$shortcut_json" | /usr/bin/ruby -rjson -e '
         shortcut = JSON.parse(STDIN.read) rescue {}
         modifiers = Array(shortcut["modifierFlags"]).map { |flag| flag.to_s.downcase }
-        order = %w[command option control shift function]
+        order = %w[command option control shift]
         formatted = order.select { |flag| modifiers.include?(flag) }.map { |flag| "#{flag} down" }
         puts "{#{formatted.join(", ")}}"
+    '
+}
+
+standard_shortcut_is_osascript_compatible() {
+    local shortcut_json="$1"
+
+    printf '%s' "$shortcut_json" | /usr/bin/ruby -rjson -e '
+        shortcut = JSON.parse(STDIN.read) rescue {}
+        modifiers = Array(shortcut["modifierFlags"]).map { |flag| flag.to_s.downcase }
+        exit(modifiers.include?("function") ? 1 : 0)
     '
 }
 
@@ -473,6 +590,11 @@ send_standard_shortcut() {
     local shortcut_json="$1"
     local key_code
     local modifiers
+
+    if ! standard_shortcut_is_osascript_compatible "$shortcut_json"; then
+        echo "ERROR: AppleScript cannot synthesize physical Fn; use the physical Fn validation path" >&2
+        return 2
+    fi
 
     key_code=$(shortcut_json_field "$shortcut_json" keyCode)
     modifiers=$(shortcut_modifiers_osascript "$shortcut_json")
@@ -591,6 +713,10 @@ send_rapid_shortcuts() {
     route=$(shortcut_json_field "$shortcut_json" route)
 
     if [ "$route" = "standard" ]; then
+        if ! standard_shortcut_is_osascript_compatible "$shortcut_json"; then
+            echo "ERROR: AppleScript cannot synthesize physical Fn; use the physical Fn validation path" >&2
+            return 2
+        fi
         key_code=$(shortcut_json_field "$shortcut_json" keyCode)
         modifiers=$(shortcut_modifiers_osascript "$shortcut_json")
         script="tell application \"System Events\""
@@ -711,7 +837,7 @@ e2e_launch_app() {
         echo "    Re-add the exact current app bundle in the relevant panes, then relaunch with:"
         echo "      open \"$APP_PATH\""
         echo "    Accessibility -> remove stale Wink row, then add: $APP_PATH"
-        if [ "$requirement" = "hyper" ] || [ "$requirement" = "mixed" ]; then
+        if configuration_requires_input_monitoring "$SHORTCUTS_FILE" "$(hyper_key_enabled_flag)"; then
             echo "    Input Monitoring -> remove stale Wink row, then add: $APP_PATH"
         fi
         echo "    Recent log tail:"

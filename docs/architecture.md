@@ -19,7 +19,7 @@ flowchart LR
   subgraph C["捕获 / 匹配"]
     M["M(ShortcutManager)\n匹配、分发、SHORTCUT_TRACE_*"]
     Q["Q(ShortcutCaptureCoordinator)\ntransport-aware readiness"]
-    C1["C(CarbonHotKeyProvider)\n标准快捷键"]
+    C1["C(CarbonHotKeyProvider)\n标准快捷键 + Fn 状态观察"]
     E["E(EventTapCaptureProvider / EventTapManager)\nHyper 快捷键"]
     K["K(KeyMatcher)\nO(1) Trigger Index"]
   end
@@ -155,8 +155,8 @@ Responsibilities:
 
 Responsibilities:
 - route standard shortcuts to Carbon `EventHotKey`
-- reserve the CGEvent tap path for Hyper-dependent shortcuts only
-- host the active Hyper event tap on a dedicated background RunLoop thread
+- reserve CGEvent interception and delivery for Hyper-dependent shortcuts; standard Fn+F-row bindings use a separate observer for physical Fn transitions plus F-row key-downs only to disambiguate the Carbon alias, and return every event unchanged
+- host the active Hyper interception tap and the narrow Fn/F-row observer on dedicated background RunLoop threads
 - normalize captured key events
 - map between key codes and human-readable shortcut symbols
 - match incoming events against stored bindings
@@ -168,6 +168,7 @@ Responsibilities:
   - Input Monitoring granted
   - Carbon hotkeys registered
     - standard Carbon readiness is all-or-nothing per enabled binding: partial `RegisterEventHotKey` success keeps Carbon readiness false until every desired standard binding registers
+    - Fn+F-row registrations additionally require a live Fn/F-row observer. It snapshots physical Fn state at each F-row key-down and consumes only a same-key Carbon callback inside a bounded timestamp window, so callback delay preserves a valid chord while a later Fn press cannot authorize an earlier bare F-row event. If Input Monitoring or the observer is unavailable, only affected bindings fail while unrelated standard Carbon bindings remain registered
   - Hyper event tap active
   - standard shortcuts ready
   - Hyper shortcuts ready
@@ -227,7 +228,7 @@ Responsibilities:
 
 Responsibilities:
 - request/check Accessibility + Input Monitoring permission for global shortcuts
-- request Input Monitoring only when the current enabled shortcut set actually requires Hyper transport, and defer the request until Accessibility is already available
+- request Input Monitoring only when the current enabled shortcut set requires Hyper transport or a standard Fn+F-row observer, and defer the request until Accessibility is already available
 - report shortcut readiness from both permissions plus live Carbon/event-tap state
 - recover monitoring after permission changes without relaunch
 - keep persisted unresolved shortcuts in `shortcuts.json`, but only register enabled shortcuts whose target app currently resolves via `NSWorkspace.urlForApplication(withBundleIdentifier:)`
@@ -259,10 +260,10 @@ App launch
   -> ShortcutManager.setHyperKeyEnabled(hyperKeyService.isEnabled)
   -> ShortcutManager.start()
   -> ShortcutManager rebuilds the trigger index and updates routed shortcuts in ShortcutCaptureCoordinator
-  -> AccessibilityPermissionService requests Accessibility, and requests Input Monitoring only when current routes require Hyper and Accessibility is already granted
+  -> AccessibilityPermissionService requests Accessibility, and requests Input Monitoring only when current routes require Hyper or a standard Fn+F-row observer and Accessibility is already granted
   -> ShortcutManager starts permission polling and calls attemptStartIfPermitted()
   -> ShortcutCaptureCoordinator syncs providers for the current standard/Hyper split
-  -> CarbonHotKeyProvider registers enabled standard shortcuts
+  -> CarbonHotKeyProvider starts the Fn/F-row observer when needed, then registers enabled standard shortcuts; unavailable observation fails only affected Fn+F-row bindings closed
   -> EventTapCaptureProvider/EventTapManager starts only when Input Monitoring is granted and Hyper-routed shortcuts exist
   -> if this is a fresh install with no saved shortcuts, AppController.openSettings() routes through SettingsLauncher + openSettings()
 ```
@@ -346,7 +347,7 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **Capability-aware shortcut readiness**: `ShortcutCaptureStatus` separates Accessibility, Input Monitoring, Carbon registration, Hyper event-tap activity, standard-shortcut readiness, and Hyper readiness
 - **Single Settings entry point**: `SettingsLauncher` persists the selected tab and bridges AppKit callers to the SwiftUI environment action instead of maintaining a custom `SettingsWindowController`
 - **Truthful menu bar visibility**: `Show Menu Bar Icon` is only exposed now that `menuBarIconVisible` directly controls `MenuBarExtra.isInserted`, and app reopen remains a recovery path back into Settings when no windows are visible
-- **On-demand Input Monitoring**: startup and later shortcut-routing changes request Input Monitoring only when the current enabled shortcut set actually needs Hyper transport; standard-only configurations stay on the Carbon/Accessibility path without an eager Input Monitoring prompt, and Hyper-required startup defers the Input Monitoring request until Accessibility has actually been granted
+- **On-demand Input Monitoring**: startup and later shortcut changes request Input Monitoring only when the enabled set needs Hyper transport or a standard Fn+F-row observer; ordinary standard-only and Fn+letter configurations stay on the Carbon/Accessibility path, and any required Input Monitoring request waits until Accessibility has been granted
 - **Strict persistence schema**: Wink currently supports only the exact `[AppShortcut]` payload it writes today; if `shortcuts.json` is malformed or missing required fields, loading fails loudly, logs `path` plus `reason`, and preserves a `shortcuts.load-failure-*.json` copy instead of silently treating the state as empty
 - **O(1) trigger index**: `ShortcutSignature` dictionary replaces linear scans in the hot path
 - **Observation-first toggle truth**: `ApplicationObservation` snapshots gate stable-state promotion from frontmost/window evidence instead of trusting `isActive` alone
@@ -357,7 +358,7 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **Attempt-scoped diagnostics**: `TOGGLE_TRACE_*` and `SHORTCUT_TRACE_*` explain branch choice and failure boundaries without adding detailed logs to unrelated key events
 - **Notification-driven invalidation**: `NSWorkspace` activation and termination notifications clear or expire stable/deactivating sessions without polling
 - **Hardened EventTap lifecycle**: explicit ownership, callback-safe timeout snapshots, threshold-based escalation, and same-thread run-loop recreation
-- **Split capture transports**: standard shortcuts use Carbon hotkeys; Hyper-only shortcuts use the active event tap. Passive `.listenOnly` mode is not used in the interception path because it cannot consume shortcut events
+- **Split capture transports**: standard shortcuts use Carbon hotkeys; Hyper-only shortcuts use the active interception tap. Standard Fn+F-row bindings add a minimal active Fn/F-row observer solely to reject Carbon's bare-F-row alias, and that observer returns events unchanged. Passive `.listenOnly` mode is not used because it cannot provide the required interception-order state barrier
 - **SkyLight primary activation path**: private API is used for reliable foreground switching from LSUIElement context
 - **Modern AppKit fallback**: when SkyLight activation fails, Wink re-requests activation via `NSWorkspace.OpenConfiguration` (`activates = true`) and only falls back to a plain AppKit activation request if no bundle URL is available
 - **Minimal-by-default activation**: front-process activation is the only hot-path activation step; `makeKeyWindow`, `AXRaise`, and reopen/new-window recovery are bounded escalation steps driven by observation

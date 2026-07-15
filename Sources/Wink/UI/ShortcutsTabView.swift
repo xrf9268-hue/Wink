@@ -223,6 +223,14 @@ enum ShortcutBannerPresentation: Equatable {
     case warning(title: String, message: String, showsAction: Bool)
 
     init(status: ShortcutCaptureStatus) {
+        if status.shortcutsPaused {
+            self = .info(
+                title: "Shortcuts paused",
+                message: status.bannerDetail
+            )
+            return
+        }
+
         if !status.accessibilityGranted {
             self = .warning(
                 title: "Accessibility permission needed",
@@ -232,24 +240,26 @@ enum ShortcutBannerPresentation: Equatable {
             return
         }
 
-        if status.inputMonitoringRequired && !status.inputMonitoringGranted && !status.hyperShortcutsReady {
+        if status.inputMonitoringRequired && !status.inputMonitoringGranted {
             self = .warning(
                 title: "Input Monitoring needed",
-                message: "Hyper shortcuts need Input Monitoring before Wink can capture them.",
+                message: "Some shortcuts need Input Monitoring before Wink can capture them.",
                 showsAction: true
             )
             return
         }
 
-        if status.shortcutsPaused {
-            self = .info(
-                title: "Shortcuts paused",
-                message: status.bannerDetail
+        if let warning = status.standardRegistrationWarning {
+            self = .warning(
+                title: "Shortcut capture needs attention",
+                message: warning,
+                showsAction: false
             )
             return
         }
 
-        if let warning = status.standardRegistrationWarning {
+        if status.inputMonitoringRequired,
+           let warning = status.permissionWarning {
             self = .warning(
                 title: "Shortcut capture needs attention",
                 message: warning,
@@ -497,7 +507,7 @@ struct ShortcutsTabView: View {
         if !status.accessibilityGranted {
             return "Request Accessibility"
         }
-        if status.inputMonitoringRequired && !status.inputMonitoringGranted && !status.hyperShortcutsReady {
+        if status.inputMonitoringRequired && !status.inputMonitoringGranted {
             return "Request Input Monitoring"
         }
         return "Request Access"
