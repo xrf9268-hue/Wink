@@ -464,6 +464,10 @@ func inputMonitoringDependentStandardCaptureFailsClosedUntilPermissionIsGranted(
     #expect(!status.standardShortcutsReady)
     #expect(standardProvider.startCallCount == 1)
     #expect(diagnostics.messages.contains {
+        $0.contains("attemptStart:")
+            && $0.contains("standardFnObserverRequired=true")
+    })
+    #expect(diagnostics.messages.contains {
         $0.contains("SHORTCUT_TRACE_BLOCKED")
             && $0.contains("reason=\"input_monitoring_missing\"")
             && $0.contains("route=standard")

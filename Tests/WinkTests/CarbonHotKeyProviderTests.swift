@@ -284,6 +284,27 @@ struct CarbonHotKeyProviderTests {
     }
 
     @Test
+    func functionRowAutorepeatCannotCreateAConsumableObservation() throws {
+        let box = FunctionModifierTapBox()
+        box.markActive()
+        box.recordFunctionTransition(isPressed: true, timestamp: 350_000_000)
+        let f6 = try #require(CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: CGKeyCode(kVK_F6),
+            keyDown: true
+        ))
+        f6.timestamp = 400_000_000
+        f6.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
+
+        _ = handleFunctionModifierTapEvent(type: .keyDown, event: f6, box: box)
+
+        #expect(!box.consumeFunctionModifiedKeyDown(
+            keyCode: CGKeyCode(kVK_F6),
+            carbonTimestamp: 400_720_542
+        ))
+    }
+
+    @Test
     func staleFunctionRowKeyDownObservationFailsClosed() {
         let box = FunctionModifierTapBox()
         box.markActive()

@@ -259,6 +259,9 @@ func handleFunctionModifierTapEvent(
         guard carbonFunctionRowKeyCodes.contains(keyCode) else {
             return Unmanaged.passUnretained(event)
         }
+        guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else {
+            return Unmanaged.passUnretained(event)
+        }
         let timestamp = event.timestamp
         let functionPressed = box.recordFunctionRowKeyDown(
             keyCode: keyCode,

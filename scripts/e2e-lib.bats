@@ -107,7 +107,7 @@ JSON
   [ "$status" -eq 1 ]
 }
 
-@test "standard readiness requires the Fn observer for a configured Fn F-row binding" {
+@test "standard readiness follows the latest production capture snapshot" {
   local shortcuts="$BATS_TEST_TMPDIR/shortcuts.json"
   local log_file="$BATS_TEST_TMPDIR/debug.log"
   cat >"$shortcuts" <<'JSON'
@@ -123,7 +123,7 @@ JSON
 JSON
   cat >"$log_file" <<'LOG'
 2026-04-09T04:24:42Z Wink starting, version 0.2.0
-2026-04-09T04:24:42Z attemptStart: shortcuts=1 triggerIndex=1 carbon=true eventTap=false
+2026-04-09T04:24:42Z attemptStart: shortcuts=1 triggerIndex=1 carbon=false eventTap=false standardFnObserverRequired=true
 LOG
 
   run bash -lc "export E2E_SHORTCUTS_FILE='$shortcuts'; source '$BATS_TEST_DIRNAME/e2e-lib.sh'; capture_requirement_satisfied standard '$log_file'"
@@ -131,19 +131,49 @@ LOG
 
   printf '%s\n' '2026-04-09T04:24:43Z CARBON_FUNCTION_MODIFIER_TAP_STARTED' >>"$log_file"
   run bash -lc "export E2E_SHORTCUTS_FILE='$shortcuts'; source '$BATS_TEST_DIRNAME/e2e-lib.sh'; capture_requirement_satisfied standard '$log_file'"
+  [ "$status" -eq 1 ]
+
+  printf '%s\n' '2026-04-09T04:24:44Z attemptStart: shortcuts=1 triggerIndex=1 carbon=true eventTap=false standardFnObserverRequired=true' >>"$log_file"
+  run bash -lc "export E2E_SHORTCUTS_FILE='$shortcuts'; source '$BATS_TEST_DIRNAME/e2e-lib.sh'; capture_requirement_satisfied standard '$log_file'"
   [ "$status" -eq 0 ]
 
-  printf '%s\n' '2026-04-09T04:24:44Z CARBON_FUNCTION_MODIFIER_TAP_STOPPED' >>"$log_file"
+  printf '%s\n' '2026-04-09T04:24:45Z CARBON_FUNCTION_MODIFIER_TAP_DISABLED reason=4294967295 active=false' >>"$log_file"
+  run bash -lc "export E2E_SHORTCUTS_FILE='$shortcuts'; source '$BATS_TEST_DIRNAME/e2e-lib.sh'; capture_requirement_satisfied standard '$log_file'"
+  [ "$status" -eq 0 ]
+
+  printf '%s\n' '2026-04-09T04:24:46Z checkPermission: ax=true im=false carbon=false eventTap=false standardFnObserverRequired=true' >>"$log_file"
   run bash -lc "export E2E_SHORTCUTS_FILE='$shortcuts'; source '$BATS_TEST_DIRNAME/e2e-lib.sh'; capture_requirement_satisfied standard '$log_file'"
   [ "$status" -eq 1 ]
+}
 
-  printf '%s\n' '2026-04-09T04:24:45Z CARBON_FUNCTION_MODIFIER_TAP_STARTED' >>"$log_file"
-  printf '%s\n' '2026-04-09T04:24:46Z CARBON_FUNCTION_MODIFIER_TAP_DISABLED reason=4294967295 active=false' >>"$log_file"
-  run bash -lc "export E2E_SHORTCUTS_FILE='$shortcuts'; source '$BATS_TEST_DIRNAME/e2e-lib.sh'; capture_requirement_satisfied standard '$log_file'"
-  [ "$status" -eq 1 ]
+@test "standard readiness uses production availability instead of unresolved persisted Fn entries" {
+  local shortcuts="$BATS_TEST_TMPDIR/unresolved-shortcuts.json"
+  local log_file="$BATS_TEST_TMPDIR/unresolved-debug.log"
+  cat >"$shortcuts" <<'JSON'
+[
+  {
+    "appName": "Missing",
+    "bundleIdentifier": "invalid.example.missing",
+    "isEnabled": true,
+    "keyEquivalent": "f6",
+    "modifierFlags": ["function"]
+  },
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "isEnabled": true,
+    "keyEquivalent": "s",
+    "modifierFlags": ["command", "shift"]
+  }
+]
+JSON
+  cat >"$log_file" <<'LOG'
+2026-04-09T04:24:42Z Wink starting, version 0.2.0
+2026-04-09T04:24:42Z attemptStart: shortcuts=2 triggerIndex=1 carbon=true eventTap=false standardFnObserverRequired=false
+LOG
 
-  printf '%s\n' '2026-04-09T04:24:47Z CARBON_FUNCTION_MODIFIER_TAP_DISABLED reason=4294967295 active=true' >>"$log_file"
   run bash -lc "export E2E_SHORTCUTS_FILE='$shortcuts'; source '$BATS_TEST_DIRNAME/e2e-lib.sh'; capture_requirement_satisfied standard '$log_file'"
+
   [ "$status" -eq 0 ]
 }
 
@@ -375,6 +405,33 @@ JSON
   [[ "$output" == *'"bundleIdentifier":"com.google.antigravity"'* ]]
   [[ "$output" == *'"route":"hyper"'* ]]
   [[ "$output" == *'"keyCode":0'* ]]
+}
+
+@test "resolve_primary_test_shortcut skips Hyper bindings that also require Fn" {
+  local shortcuts="$BATS_TEST_TMPDIR/hyper-fn-shortcuts.json"
+  cat >"$shortcuts" <<'JSON'
+[
+  {
+    "appName": "Preview",
+    "bundleIdentifier": "com.apple.Preview",
+    "isEnabled": true,
+    "keyEquivalent": "a",
+    "modifierFlags": ["command", "option", "control", "shift", "function"]
+  },
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "isEnabled": true,
+    "keyEquivalent": "s",
+    "modifierFlags": ["command", "option", "control", "shift"]
+  }
+]
+JSON
+
+  run bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; resolve_primary_test_shortcut '$shortcuts' 1"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"bundleIdentifier":"com.apple.Safari"'* ]]
 }
 
 @test "shortcut_inventory_json marks Hyper modifier supersets as hyper" {

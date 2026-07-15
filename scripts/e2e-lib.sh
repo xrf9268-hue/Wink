@@ -115,17 +115,25 @@ standard_function_modifier_observer_required() {
 configuration_requires_input_monitoring() {
     local shortcuts_file="${1:-$SHORTCUTS_FILE}"
     local hyper_enabled="${2:-$(hyper_key_enabled_flag)}"
+    local log_file="${3:-$LOG_FILE}"
     local requirement
+    local runtime_status
 
     requirement=$(detect_capture_requirement "$shortcuts_file" "$hyper_enabled")
-    if [ "$requirement" = "hyper" ] \
-        || [ "$requirement" = "mixed" ] \
-        || standard_function_modifier_observer_required "$shortcuts_file" "$hyper_enabled"
-    then
+    if [ "$requirement" = "hyper" ] || [ "$requirement" = "mixed" ]; then
         return 0
     fi
 
-    return 1
+    if runtime_standard_function_modifier_observer_required "$log_file"; then
+        return 0
+    else
+        runtime_status=$?
+        if [ "$runtime_status" -eq 1 ]; then
+            return 1
+        fi
+    fi
+
+    standard_function_modifier_observer_required "$shortcuts_file" "$hyper_enabled"
 }
 
 detect_capture_requirement() {
@@ -251,7 +259,7 @@ shortcut_inventory_json() {
             "keyEquivalent" => key_equivalent,
             "modifierFlags" => modifiers,
             "route" => route,
-            "osascriptCompatible" => route != "standard" || !modifiers.include?("function"),
+            "osascriptCompatible" => !modifiers.include?("function"),
             "keyCode" => key_code
           }
         end
@@ -346,42 +354,48 @@ regex_escape() {
 
 _standard_capture_ready() {
     local log_file="${1:-$LOG_FILE}"
-    grep -Eq 'attemptStart: .*carbon=true|checkPermission: ax=true .*carbon=true' "$log_file" 2>/dev/null \
-        || return 1
+    local snapshot
 
-    if standard_function_modifier_observer_required "$SHORTCUTS_FILE" "$(hyper_key_enabled_flag)"; then
-        _function_modifier_observer_ready "$log_file" \
-            || return 1
-    fi
-
-    return 0
+    snapshot=$(_latest_capture_snapshot_line "$log_file") || return 1
+    [[ "$snapshot" == *"carbon=true"* ]]
 }
 
-_function_modifier_observer_ready() {
+_latest_capture_snapshot_line() {
     local log_file="${1:-$LOG_FILE}"
 
     /usr/bin/awk '
-        /CARBON_FUNCTION_MODIFIER_TAP_STARTED/ {
-            seen = 1
-            ready = 1
-        }
-        /CARBON_FUNCTION_MODIFIER_TAP_STOPPED/ {
-            seen = 1
-            ready = 0
-        }
-        /CARBON_FUNCTION_MODIFIER_TAP_DISABLED/ {
-            seen = 1
-            ready = ($0 ~ /active=true/)
+        /attemptStart: .*carbon=.*eventTap=/ || /checkPermission: .*carbon=.*eventTap=/ {
+            snapshot = $0
         }
         END {
-            exit(seen && ready ? 0 : 1)
+            if (snapshot == "") {
+                exit 1
+            }
+            print snapshot
         }
     ' "$log_file" 2>/dev/null
 }
 
+runtime_standard_function_modifier_observer_required() {
+    local log_file="${1:-$LOG_FILE}"
+    local snapshot
+
+    snapshot=$(_latest_capture_snapshot_line "$log_file") || return 2
+    if [[ "$snapshot" == *"standardFnObserverRequired=true"* ]]; then
+        return 0
+    fi
+    if [[ "$snapshot" == *"standardFnObserverRequired=false"* ]]; then
+        return 1
+    fi
+    return 2
+}
+
 _hyper_capture_ready() {
     local log_file="${1:-$LOG_FILE}"
-    grep -Eq 'Event tap started|attemptStart: .*eventTap=true|checkPermission: ax=true im=true .*eventTap=true' "$log_file" 2>/dev/null
+    local snapshot
+
+    snapshot=$(_latest_capture_snapshot_line "$log_file") || return 1
+    [[ "$snapshot" == *"eventTap=true"* ]]
 }
 
 _startup_log_ready() {
