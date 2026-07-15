@@ -357,7 +357,16 @@ _standard_capture_ready() {
     local snapshot
 
     snapshot=$(_latest_capture_snapshot_line "$log_file") || return 1
-    [[ "$snapshot" == *"carbon=true"* ]]
+    [[ "$snapshot" == *"carbon=true"* ]] || return 1
+
+    if [[ "$snapshot" == *"checkPermission:"* ]]; then
+        [[ "$snapshot" == *"ax=true"* ]] || return 1
+        if [[ "$snapshot" == *"standardFnObserverRequired=true"* ]]; then
+            [[ "$snapshot" == *"im=true"* ]] || return 1
+        fi
+    fi
+
+    return 0
 }
 
 _latest_capture_snapshot_line() {
@@ -395,7 +404,14 @@ _hyper_capture_ready() {
     local snapshot
 
     snapshot=$(_latest_capture_snapshot_line "$log_file") || return 1
-    [[ "$snapshot" == *"eventTap=true"* ]]
+    [[ "$snapshot" == *"eventTap=true"* ]] || return 1
+
+    if [[ "$snapshot" == *"checkPermission:"* ]]; then
+        [[ "$snapshot" == *"ax=true"* ]] || return 1
+        [[ "$snapshot" == *"im=true"* ]] || return 1
+    fi
+
+    return 0
 }
 
 _startup_log_ready() {

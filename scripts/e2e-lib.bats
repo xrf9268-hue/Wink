@@ -190,6 +190,56 @@ LOG
   [ "$status" -eq 0 ]
 }
 
+@test "capture_requirement_satisfied rejects stale standard transport after Accessibility is revoked" {
+  local log_file="$BATS_TEST_TMPDIR/debug.log"
+  cat >"$log_file" <<'LOG'
+2026-04-09T04:24:42Z attemptStart: shortcuts=1 triggerIndex=1 carbon=true eventTap=false standardFnObserverRequired=false
+2026-04-09T04:24:45Z checkPermission: ax=false im=true carbon=true eventTap=false standardFnObserverRequired=false
+LOG
+
+  run bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; capture_requirement_satisfied standard '$log_file'"
+
+  [ "$status" -eq 1 ]
+}
+
+@test "capture_requirement_satisfied rejects stale Fn F-row transport after Input Monitoring is revoked" {
+  local log_file="$BATS_TEST_TMPDIR/debug.log"
+  cat >"$log_file" <<'LOG'
+2026-04-09T04:24:42Z attemptStart: shortcuts=1 triggerIndex=1 carbon=true eventTap=false standardFnObserverRequired=true
+2026-04-09T04:24:45Z checkPermission: ax=true im=false carbon=true eventTap=false standardFnObserverRequired=true
+LOG
+
+  run bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; capture_requirement_satisfied standard '$log_file'"
+
+  [ "$status" -eq 1 ]
+}
+
+@test "capture_requirement_satisfied keeps ordinary standard transport ready without Input Monitoring" {
+  local log_file="$BATS_TEST_TMPDIR/debug.log"
+  cat >"$log_file" <<'LOG'
+2026-04-09T04:24:45Z checkPermission: ax=true im=false carbon=true eventTap=false standardFnObserverRequired=false
+LOG
+
+  run bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; capture_requirement_satisfied standard '$log_file'"
+
+  [ "$status" -eq 0 ]
+}
+
+@test "capture_requirement_satisfied rejects stale Hyper transport after either permission is revoked" {
+  local log_file="$BATS_TEST_TMPDIR/debug.log"
+  cat >"$log_file" <<'LOG'
+2026-04-09T04:24:42Z attemptStart: shortcuts=1 triggerIndex=1 carbon=false eventTap=true standardFnObserverRequired=false
+2026-04-09T04:24:45Z checkPermission: ax=false im=true carbon=false eventTap=true standardFnObserverRequired=false
+LOG
+
+  run bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; capture_requirement_satisfied hyper '$log_file'"
+  [ "$status" -eq 1 ]
+
+  printf '%s\n' '2026-04-09T04:24:46Z checkPermission: ax=true im=false carbon=false eventTap=true standardFnObserverRequired=false' >>"$log_file"
+  run bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; capture_requirement_satisfied hyper '$log_file'"
+  [ "$status" -eq 1 ]
+}
+
 @test "capture_requirement_satisfied requires both transports for mixed mode" {
   local log_file="$BATS_TEST_TMPDIR/debug.log"
   cat >"$log_file" <<'LOG'
