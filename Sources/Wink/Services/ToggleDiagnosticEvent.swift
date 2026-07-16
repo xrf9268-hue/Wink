@@ -12,6 +12,7 @@ struct ToggleDiagnosticEvent: Sendable {
     let attemptID: UUID?
     let bundleIdentifier: String
     let pid: pid_t?
+    let generation: Int?
     let phase: ToggleSessionCoordinator.Session.Phase?
     let event: String
     let activationPath: AppSwitcher.ActivationPath?
@@ -23,6 +24,7 @@ struct ToggleDiagnosticEvent: Sendable {
             Self.stringField("attemptId", attemptID?.uuidString ?? "nil"),
             Self.stringField("bundle", bundleIdentifier),
             "pid=\(pid.map(String.init) ?? "nil")",
+            "generation=\(generation.map(String.init) ?? "nil")",
             Self.stringField("phase", phase?.rawValue ?? "nil"),
             Self.stringField("event", event),
             Self.stringField("activationPath", activationPath?.rawValue ?? "nil"),

@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Default packaging is production-only. For the compile-time validation build:
+#   WINK_VALIDATION_LAUNCH_FAULT_INJECTION=1 ./scripts/package-app.sh
+# Then launch the packaged app with exactly one validation argument, for example:
+#   open -n build/Wink.app --args \
+#     --validation-launch-fault=stale-error:com.apple.TextEdit
 set -euo pipefail
 
 APP_NAME="Wink"
@@ -21,6 +26,51 @@ ENABLE_TIMESTAMP="${ENABLE_TIMESTAMP:-0}"
 REQUIRE_SIGN_IDENTITY="${REQUIRE_SIGN_IDENTITY:-0}"
 SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-}"
 SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}"
+WINK_VALIDATION_LAUNCH_FAULT_INJECTION="${WINK_VALIDATION_LAUNCH_FAULT_INJECTION:-0}"
+
+case "$WINK_VALIDATION_LAUNCH_FAULT_INJECTION" in
+    0)
+        PACKAGE_PROFILE="production"
+        BUILD_SCRATCH_PATH="$PROJECT_DIR/.build"
+        ;;
+    1)
+        PACKAGE_PROFILE="launch-fault-injection"
+        BUILD_SCRATCH_PATH="$PROJECT_DIR/.build"
+        ;;
+    *)
+        echo "Error: WINK_VALIDATION_LAUNCH_FAULT_INJECTION must be 0 or 1" >&2
+        exit 1
+        ;;
+esac
+
+SWIFT_BUILD_FLAGS=(
+    -c release
+    --package-path "$PROJECT_DIR"
+    --scratch-path "$BUILD_SCRATCH_PATH"
+)
+if [ "$PACKAGE_PROFILE" = "launch-fault-injection" ]; then
+    SWIFT_BUILD_FLAGS+=(-Xswiftc -DWINK_LAUNCH_FAULT_INJECTION)
+fi
+
+clean_package_products() {
+    (
+        cd "$PROJECT_DIR"
+        swift package clean
+    )
+}
+
+# SwiftPM includes -D flags in its build plan, but validation packaging also
+# removes the previous profile's objects explicitly. This keeps the shared
+# dependency checkout/cache while preventing an injected object from entering
+# a production bundle (or vice versa).
+if [ "$PACKAGE_PROFILE" = "launch-fault-injection" ]; then
+    echo "==> Cleaning package products before validation-profile build..."
+    clean_package_products
+elif [ -f "$BUILD_SCRATCH_PATH/release/${APP_NAME}" ] \
+    && LC_ALL=C grep -aFq 'LAUNCH_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}"; then
+    echo "==> Removing launch-fault-injection products before production build..."
+    clean_package_products
+fi
 
 find_sparkle_framework() {
     local -a candidates=()
@@ -47,7 +97,7 @@ PY
         if [ -n "$candidate" ] && [ -d "$candidate" ]; then
             candidates+=("$candidate")
         fi
-    done < <(find "$PROJECT_DIR/.build/artifacts" -path '*/Sparkle.xcframework/Info.plist' -type f 2>/dev/null | sort)
+    done < <(find "$BUILD_SCRATCH_PATH/artifacts" -path '*/Sparkle.xcframework/Info.plist' -type f 2>/dev/null | sort)
 
     if [ "${#candidates[@]}" -gt 1 ]; then
         echo "Error: multiple macOS Sparkle.framework candidates found in SwiftPM artifacts." >&2
@@ -61,7 +111,7 @@ PY
 }
 
 find_resource_bundle() {
-    find "$PROJECT_DIR/.build" -path "*/release/${RESOURCE_BUNDLE_NAME}" -type d 2>/dev/null | sort | tail -n 1
+    find "$BUILD_SCRATCH_PATH" -path "*/release/${RESOURCE_BUNDLE_NAME}" -type d 2>/dev/null | sort | tail -n 1
 }
 
 apply_sparkle_info_overrides() {
@@ -73,6 +123,17 @@ apply_sparkle_info_overrides() {
 
     if [ -n "$SPARKLE_PUBLIC_ED_KEY" ]; then
         plutil -replace SUPublicEDKey -string "$SPARKLE_PUBLIC_ED_KEY" "$plist_path"
+    fi
+}
+
+apply_validation_profile() {
+    local plist_path="$1"
+
+    if [ "$PACKAGE_PROFILE" = "launch-fault-injection" ]; then
+        plutil -replace WinkRuntimeValidationProfile -string "$PACKAGE_PROFILE" "$plist_path" 2>/dev/null \
+            || plutil -insert WinkRuntimeValidationProfile -string "$PACKAGE_PROFILE" "$plist_path"
+    else
+        plutil -remove WinkRuntimeValidationProfile "$plist_path" >/dev/null 2>&1 || true
     fi
 }
 
@@ -91,10 +152,10 @@ sign_nested_item() {
     codesign "${args[@]}" "$path" 2>&1
 }
 
-echo "==> Building release binary..."
-swift build -c release --package-path "$PROJECT_DIR"
+echo "==> Building release binary (profile: $PACKAGE_PROFILE)..."
+swift build "${SWIFT_BUILD_FLAGS[@]}"
 
-BINARY="$PROJECT_DIR/.build/release/${APP_NAME}"
+BINARY="$BUILD_SCRATCH_PATH/release/${APP_NAME}"
 if [ ! -f "$BINARY" ]; then
     echo "Error: release binary not found at $BINARY" >&2
     exit 1
@@ -138,6 +199,7 @@ fi
 if [ -f "$INFO_PLIST" ]; then
     cp "$INFO_PLIST" "$CONTENTS_DIR/Info.plist"
     apply_sparkle_info_overrides "$CONTENTS_DIR/Info.plist"
+    apply_validation_profile "$CONTENTS_DIR/Info.plist"
     echo "    Info.plist copied from Sources/Wink/Resources/Info.plist"
 else
     echo "Warning: Info.plist not found at $INFO_PLIST, generating default" >&2
@@ -159,6 +221,7 @@ else
 </plist>
 PLIST
     apply_sparkle_info_overrides "$CONTENTS_DIR/Info.plist"
+    apply_validation_profile "$CONTENTS_DIR/Info.plist"
 fi
 
 # Copy Sparkle.framework into the app bundle while preserving symlinks.

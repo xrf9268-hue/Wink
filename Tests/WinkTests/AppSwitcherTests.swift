@@ -229,6 +229,7 @@ func toggleTraceLogMessageIncludesAttemptIdentityAndReasonWithoutPreviousBundleT
         attemptID: UUID(uuidString: "12345678-1234-1234-1234-1234567890AB"),
         bundleIdentifier: "com.apple.Safari",
         pid: 42,
+        generation: 7,
         phase: .activating,
         event: "blocked",
         activationPath: .launch,
@@ -241,6 +242,7 @@ func toggleTraceLogMessageIncludesAttemptIdentityAndReasonWithoutPreviousBundleT
     #expect(message.contains("attemptId=12345678-1234-1234-1234-1234567890AB"))
     #expect(message.contains("bundle=com.apple.Safari"))
     #expect(message.contains("pid=42"))
+    #expect(message.contains("generation=7"))
     #expect(message.contains("phase=activating"))
     #expect(message.contains("event=blocked"))
     #expect(message.contains("activationPath=launch"))
@@ -1463,6 +1465,168 @@ func staleLaunchCompletionDoesNotMutateSupersedingSession() async {
     #expect(attached?.phase == .activating)
 }
 
+/// A launch error owned by S1 must be discarded after S2 supersedes it. The
+/// newer session must keep its full identity and remain able to attach its own
+/// completion and finish confirmation (Issue #315).
+@Test @MainActor
+func staleLaunchErrorDoesNotMutateSupersedingSession() async {
+    guard let target = NSWorkspace.shared.frontmostApplication,
+          let targetBundleIdentifier = target.bundleIdentifier else {
+        Issue.record("Expected a frontmost application for stale launch-error confirmation")
+        return
+    }
+    let clock = MutableClock(time: 2000.0)
+    let coordinator = ToggleSessionCoordinator(now: { clock.time })
+    let runningApps = LockedValue<[NSRunningApplication]>([])
+    let launchCompletions = LockedValue<[@Sendable (NSRunningApplication?, Error?) -> Void]>([])
+    let observedFrontmostBundleIdentifier = LockedValue<String?>(nil)
+    let scheduler = ManualConfirmationScheduler()
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: { observedFrontmostBundleIdentifier.value },
+            windowObservation: { _ in
+                .init(
+                    windows: nil,
+                    visibleWindowCount: 1,
+                    hasFocusedWindow: true,
+                    hasMainWindow: true,
+                    windowsReadSucceeded: true,
+                    failureReason: nil
+                )
+            },
+            activationPolicy: { _ in .regular }
+        )),
+        activationClient: .init(activateFrontProcess: { _, _ in
+            .success(ProcessSerialNumber())
+        }),
+        fallbackActivationClient: .init(openApplication: { _, _, completion in
+            launchCompletions.value.append(completion)
+        }),
+        appLookupClient: .init(
+            runningApplications: { _ in runningApps.value },
+            applicationURL: { _ in URL(fileURLWithPath: "/Applications/StaleLaunchError.app") }
+        ),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        sessionCoordinator: coordinator
+    )
+    let shortcut = AppShortcut(
+        appName: "StaleLaunchError",
+        bundleIdentifier: targetBundleIdentifier,
+        keyEquivalent: "e",
+        modifierFlags: ["command"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    let firstGeneration = coordinator.session(for: shortcut.bundleIdentifier)?.generation
+
+    clock.time += 0.5
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    let supersedingSession = coordinator.session(for: shortcut.bundleIdentifier)
+    #expect(supersedingSession?.generation != firstGeneration)
+    #expect(supersedingSession?.phase == .launching)
+    #expect(supersedingSession?.pid == nil)
+    #expect(launchCompletions.value.count == 2)
+
+    // S2's own completion attaches first and starts its confirmation pipeline.
+    runningApps.value = [target]
+    launchCompletions.value[1](target, nil)
+    await waitUntilAppSwitcher("superseding completion attaches before stale launch error") {
+        let session = coordinator.session(for: shortcut.bundleIdentifier)
+        return session?.pid == target.processIdentifier && session?.phase == .activating
+    }
+    guard let beforeStaleError = coordinator.session(for: shortcut.bundleIdentifier) else {
+        Issue.record("Expected the superseding launch session to remain attached")
+        return
+    }
+    let pendingConfirmationCount = scheduler.pendingCount
+    #expect(pendingConfirmationCount == 1)
+
+    // S1's delayed error must not relabel or reset S2, including its scheduled
+    // confirmation ownership.
+    launchCompletions.value[0](nil, AppSwitcherLaunchTestError.injected)
+    for _ in 0..<10 { await Task.yield() }
+
+    let afterStaleError = coordinator.session(for: shortcut.bundleIdentifier)
+    #expect(afterStaleError == beforeStaleError)
+    #expect(scheduler.pendingCount == pendingConfirmationCount)
+    guard afterStaleError == beforeStaleError else { return }
+
+    observedFrontmostBundleIdentifier.value = targetBundleIdentifier
+    scheduler.runNext()
+    let confirmed = coordinator.session(for: shortcut.bundleIdentifier)
+    #expect(confirmed?.generation == beforeStaleError.generation)
+    #expect(confirmed?.attemptID == beforeStaleError.attemptID)
+    #expect(confirmed?.pid == target.processIdentifier)
+    #expect(confirmed?.phase == .activeStable)
+}
+
+/// The ownership guard must preserve the ordinary failure path: the current
+/// generation is reset, and a later trigger can allocate a fresh launch.
+@Test @MainActor
+func currentLaunchErrorClearsOwnedSessionAndAllowsRetry() async {
+    let clock = MutableClock(time: 3000.0)
+    let coordinator = ToggleSessionCoordinator(now: { clock.time })
+    let launchCompletions = LockedValue<[@Sendable (NSRunningApplication?, Error?) -> Void]>([])
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        fallbackActivationClient: .init(openApplication: { _, _, completion in
+            launchCompletions.value.append(completion)
+        }),
+        appLookupClient: .init(
+            runningApplications: { _ in [] },
+            applicationURL: { _ in URL(fileURLWithPath: "/Applications/CurrentLaunchError.app") }
+        ),
+        confirmationClient: .init(now: { clock.time }, schedule: { _, _ in }),
+        sessionCoordinator: coordinator
+    )
+    let shortcut = AppShortcut(
+        appName: "CurrentLaunchError",
+        bundleIdentifier: "com.test.CurrentLaunchError",
+        keyEquivalent: "c",
+        modifierFlags: ["command"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    guard let ownedSession = coordinator.session(for: shortcut.bundleIdentifier) else {
+        Issue.record("Expected a current launch session")
+        return
+    }
+    #expect(ownedSession.phase == .launching)
+    #expect(launchCompletions.value.count == 1)
+
+    launchCompletions.value[0](nil, AppSwitcherLaunchTestError.injected)
+    for _ in 0..<10 { await Task.yield() }
+
+    let failedSession = coordinator.session(for: shortcut.bundleIdentifier)
+    #expect(failedSession?.generation == ownedSession.generation)
+    #expect(failedSession?.attemptID == ownedSession.attemptID)
+    #expect(failedSession?.pid == nil)
+    #expect(failedSession?.phase == .idle)
+
+    clock.time += 0.5
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    let retrySession = coordinator.session(for: shortcut.bundleIdentifier)
+    #expect(retrySession?.generation != ownedSession.generation)
+    #expect(retrySession?.attemptID != ownedSession.attemptID)
+    #expect(retrySession?.pid == nil)
+    #expect(retrySession?.phase == .launching)
+    #expect(launchCompletions.value.count == 2)
+}
+
+private enum AppSwitcherLaunchTestError: LocalizedError, Sendable {
+    case injected
+
+    var errorDescription: String? {
+        "injected stale launch failure"
+    }
+}
+
 @MainActor
 private func waitUntilAppSwitcher(
     _ description: String,
@@ -1605,6 +1769,10 @@ private final class FallbackActivationRecorder: @unchecked Sendable {
 @MainActor
 private final class ManualConfirmationScheduler {
     private var operations: [@MainActor () -> Void] = []
+
+    var pendingCount: Int {
+        operations.count
+    }
 
     func schedule(after _: TimeInterval, _ operation: @escaping @MainActor () -> Void) {
         operations.append(operation)
