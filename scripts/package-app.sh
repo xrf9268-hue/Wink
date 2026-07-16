@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Default packaging is production-only. For the compile-time validation build:
 #   WINK_VALIDATION_LAUNCH_FAULT_INJECTION=1 ./scripts/package-app.sh
+#   WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION=1 ./scripts/package-app.sh
 # Then launch the packaged app with exactly one validation argument, for example:
 #   open -n build/Wink.app --args \
 #     --validation-launch-fault=stale-error:com.apple.TextEdit
+#   open -n build/Wink.app --args \
+#     --validation-event-tap-fault=replacement-tap-once
 set -euo pipefail
 
 APP_NAME="Wink"
@@ -27,21 +30,34 @@ REQUIRE_SIGN_IDENTITY="${REQUIRE_SIGN_IDENTITY:-0}"
 SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-}"
 SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}"
 WINK_VALIDATION_LAUNCH_FAULT_INJECTION="${WINK_VALIDATION_LAUNCH_FAULT_INJECTION:-0}"
+WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION="${WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION:-0}"
 
 case "$WINK_VALIDATION_LAUNCH_FAULT_INJECTION" in
-    0)
-        PACKAGE_PROFILE="production"
-        BUILD_SCRATCH_PATH="$PROJECT_DIR/.build"
-        ;;
-    1)
-        PACKAGE_PROFILE="launch-fault-injection"
-        BUILD_SCRATCH_PATH="$PROJECT_DIR/.build"
-        ;;
+    0|1) ;;
     *)
         echo "Error: WINK_VALIDATION_LAUNCH_FAULT_INJECTION must be 0 or 1" >&2
         exit 1
         ;;
 esac
+
+case "$WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION" in
+    0|1) ;;
+    *)
+        echo "Error: WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION must be 0 or 1" >&2
+        exit 1
+        ;;
+esac
+
+case "$WINK_VALIDATION_LAUNCH_FAULT_INJECTION:$WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION" in
+    0:0) PACKAGE_PROFILE="production" ;;
+    1:0) PACKAGE_PROFILE="launch-fault-injection" ;;
+    0:1) PACKAGE_PROFILE="event-tap-fault-injection" ;;
+    1:1)
+        echo "Error: launch and EventTap fault-injection profiles are mutually exclusive" >&2
+        exit 1
+        ;;
+esac
+BUILD_SCRATCH_PATH="$PROJECT_DIR/.build"
 
 SWIFT_BUILD_FLAGS=(
     -c release
@@ -50,6 +66,8 @@ SWIFT_BUILD_FLAGS=(
 )
 if [ "$PACKAGE_PROFILE" = "launch-fault-injection" ]; then
     SWIFT_BUILD_FLAGS+=(-Xswiftc -DWINK_LAUNCH_FAULT_INJECTION)
+elif [ "$PACKAGE_PROFILE" = "event-tap-fault-injection" ]; then
+    SWIFT_BUILD_FLAGS+=(-Xswiftc -DWINK_EVENT_TAP_FAULT_INJECTION)
 fi
 
 clean_package_products() {
@@ -63,12 +81,13 @@ clean_package_products() {
 # removes the previous profile's objects explicitly. This keeps the shared
 # dependency checkout/cache while preventing an injected object from entering
 # a production bundle (or vice versa).
-if [ "$PACKAGE_PROFILE" = "launch-fault-injection" ]; then
+if [ "$PACKAGE_PROFILE" != "production" ]; then
     echo "==> Cleaning package products before validation-profile build..."
     clean_package_products
 elif [ -f "$BUILD_SCRATCH_PATH/release/${APP_NAME}" ] \
-    && LC_ALL=C grep -aFq 'LAUNCH_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}"; then
-    echo "==> Removing launch-fault-injection products before production build..."
+    && { LC_ALL=C grep -aFq 'LAUNCH_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}" \
+        || LC_ALL=C grep -aFq 'EVENT_TAP_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}"; }; then
+    echo "==> Removing fault-injection products before production build..."
     clean_package_products
 fi
 
@@ -129,7 +148,7 @@ apply_sparkle_info_overrides() {
 apply_validation_profile() {
     local plist_path="$1"
 
-    if [ "$PACKAGE_PROFILE" = "launch-fault-injection" ]; then
+    if [ "$PACKAGE_PROFILE" != "production" ]; then
         plutil -replace WinkRuntimeValidationProfile -string "$PACKAGE_PROFILE" "$plist_path" 2>/dev/null \
             || plutil -insert WinkRuntimeValidationProfile -string "$PACKAGE_PROFILE" "$plist_path"
     else

@@ -300,32 +300,88 @@ final class EventTapManager: EventTapManaging {
     /// `MatchedShortcutDelivery`, so the handler runs there directly.
     typealias ShortcutHandler = @MainActor (KeyPress) -> Bool
 
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-    private var retainedBox: Unmanaged<EventTapBox>?
+    private let runtimeFactory: EventTapRuntimeFactory
+    #if WINK_EVENT_TAP_FAULT_INJECTION
+    private let validationDriver: EventTapFaultInjectionDriver?
+    #endif
+    private var owner: EventTapOwnedSession?
+    private var generationCounter: UInt64 = 0
+    private var ownershipLedger = EventTapOwnershipLedger()
+    private(set) var lifecycleState: EventTapLifecycleState = .stopped
     // internal for @testable access
     var onKeyPress: ShortcutHandler?
-    private var backgroundThread: BackgroundRunLoopThread?
 
     /// Debounce: minimum interval between triggers for the same shortcut (seconds).
     private let debounceInterval: TimeInterval = 0.2  // safety net behind Layer 1 autorepeat filter
     private var lastTriggerTime: CFAbsoluteTime = 0
     private var lastTriggerKeyPress: KeyPress?
 
-    var isRunning: Bool { eventTap != nil }
+    init(runtimeFactory: EventTapRuntimeFactory? = nil) {
+        #if WINK_EVENT_TAP_FAULT_INJECTION
+        if let runtimeFactory {
+            self.runtimeFactory = runtimeFactory
+            validationDriver = nil
+        } else if let configuration = EventTapFaultInjectionConfiguration(
+            arguments: ProcessInfo.processInfo.arguments
+        ) {
+            let driver = EventTapFaultInjectionDriver(
+                configuration: configuration,
+                baseRuntimeFactory: .live
+            )
+            self.runtimeFactory = driver.runtimeFactory
+            validationDriver = driver
+        } else {
+            self.runtimeFactory = .live
+            validationDriver = nil
+        }
+        #else
+        self.runtimeFactory = runtimeFactory ?? .live
+        #endif
+    }
+
+    var isRunning: Bool {
+        lifecycleState == .running
+            && owner?.tap != nil
+            && owner?.source != nil
+            && owner?.thread.isAlive == true
+    }
+
+    var ownershipSnapshot: EventTapOwnershipSnapshot {
+        ownershipLedger.snapshot(
+            generation: owner?.generation ?? generationCounter,
+            lifecycleState: lifecycleState,
+            owner: owner,
+            ready: isRunning
+        )
+    }
 
     func start(onKeyPress: @escaping ShortcutHandler) -> EventTapStartResult {
+        #if WINK_EVENT_TAP_FAULT_INJECTION
+        if validationDriver?.suppressFurtherStarts == true {
+            DiagnosticLog.log("EVENT_TAP_FAULT_INJECTION event=post_scenario_restart_blocked")
+            return .failedToCreateTap
+        }
+        #endif
+
         if isRunning {
             self.onKeyPress = onKeyPress
             return .started
         }
 
+        if owner != nil || lifecycleState != .stopped {
+            tearDownOwnedSession(finalState: .stopped, event: "start_preflight_teardown")
+        }
+
         self.onKeyPress = onKeyPress
 
+        generationCounter &+= 1
+        let generation = generationCounter
+        lifecycleState = .starting
+
         // Create dedicated background thread for the event tap RunLoop
-        let thread = BackgroundRunLoopThread()
+        let thread = runtimeFactory.makeThread(generation)
+        ownershipLedger.threadCreates += 1
         thread.start()
-        backgroundThread = thread
 
         let mask = (1 << CGEventType.keyDown.rawValue)
                   | (1 << CGEventType.keyUp.rawValue)
@@ -333,7 +389,7 @@ final class EventTapManager: EventTapManaging {
 
         let box = EventTapBox()
         box.onKeyPress = MatchedShortcutDelivery.makeHandler { [weak self] keyPress in
-            self?.handleAsync(keyPress)
+            self?.handleAsync(keyPress, generation: generation)
         }
         box.onTapDisabled = { snapshot in
             DispatchQueue.global(qos: .utility).async {
@@ -342,96 +398,105 @@ final class EventTapManager: EventTapManaging {
         }
         box.onRecoveryNeeded = { [weak self] action, lifecycleSnapshot in
             Task { @MainActor in
-                self?.handleRecoveryAction(action, snapshot: lifecycleSnapshot)
+                self?.handleRecoveryAction(
+                    action,
+                    snapshot: lifecycleSnapshot,
+                    generation: generation
+                )
             }
         }
         box.registeredShortcuts = registeredKeyPresses
-        let retained = Unmanaged.passRetained(box)
-        let userInfo = UnsafeMutableRawPointer(retained.toOpaque())
+        ownershipLedger.boxCreates += 1
+        let session = EventTapOwnedSession(
+            generation: generation,
+            thread: thread,
+            box: box
+        )
+        owner = session
+        let userInfo = session.userInfo
+        let context = EventTapCreationContext(
+            generation: generation,
+            phase: .initial,
+            attempt: 1
+        )
 
         #if DEBUG
         logger.debug("tapCreate: AXIsProcessTrusted=\(AXIsProcessTrusted()), CGPreflightListenEventAccess=\(CGPreflightListenEventAccess()), trying .defaultTap")
         #endif
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: CGEventMask(mask),
-            callback: eventTapCallback,
-            userInfo: userInfo
+        guard let tap = runtimeFactory.makeTap(
+            context,
+            CGEventMask(mask),
+            eventTapCallback,
+            userInfo
         ) else {
-            retained.release()
-            backgroundThread?.cancel()
-            backgroundThread = nil
             logger.error("tapCreate: .defaultTap failed — active event tap could not be created")
             DiagnosticLog.log("tapCreate: .defaultTap failed")
+            tearDownOwnedSession(finalState: .stopped, event: "initial_tap_create_failed")
             return .failedToCreateTap
         }
+        session.tap = tap
+        ownershipLedger.tapCreates += 1
         logger.info("tapCreate: SUCCESS, tap created")
         DiagnosticLog.log("tapCreate: SUCCESS, tap created")
 
-        box.tap = tap
+        box.installTap(tap)
 
-        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
-            retained.release()
-            backgroundThread?.cancel()
-            backgroundThread = nil
+        guard let source = runtimeFactory.makeSource(context, tap) else {
             logger.error("runLoopSourceCreate: failed for active event tap")
             DiagnosticLog.log("runLoopSourceCreate: failed for active event tap")
+            tearDownOwnedSession(finalState: .stopped, event: "initial_source_create_failed")
             return .failedToCreateTap
         }
+        session.source = source
+        ownershipLedger.sourceCreates += 1
 
         // Add source to background thread's RunLoop instead of main RunLoop
         thread.addSource(source)
 
-        CGEvent.tapEnable(tap: tap, enable: true)
+        runtimeFactory.setTapEnabled(tap, true)
 
-        retainedBox = retained
-        eventTap = tap
-        runLoopSource = source
+        lifecycleState = .running
         emitLifecycleLog("EVENT_TAP_STARTED")
+        emitOwnershipLog(event: "started")
         logger.info("Event tap started (background thread)")
         DiagnosticLog.log("Event tap started (background thread)")
+        #if WINK_EVENT_TAP_FAULT_INJECTION
+        validationDriver?.scheduleScenario(manager: self, handler: onKeyPress)
+        #endif
         return .started
     }
 
     func stop() {
-        guard isRunning else { return }
-
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
+        let shouldLog = owner != nil || lifecycleState != .stopped
+        tearDownOwnedSession(finalState: .stopped, event: "stop")
+        if shouldLog {
+            logger.info("Event tap stopped")
+            DiagnosticLog.log("Event tap stopped")
         }
-        if let source = runLoopSource, let thread = backgroundThread {
-            thread.removeSource(source)
-        }
-        backgroundThread?.cancel()
-        backgroundThread = nil
-        retainedBox?.release()
-        retainedBox = nil
-        eventTap = nil
-        runLoopSource = nil
-        onKeyPress = nil
-        lastTriggerTime = 0
-        lastTriggerKeyPress = nil
-        logger.info("Event tap stopped")
-        DiagnosticLog.log("Event tap stopped")
     }
 
     /// Update the set of registered shortcuts for synchronous event swallowing.
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {
         registeredKeyPresses = keyPresses
-        if let box = retainedBox?.takeUnretainedValue() {
-            box.registeredShortcuts = keyPresses
-        }
+        owner?.box.registeredShortcuts = keyPresses
     }
 
     private var registeredKeyPresses: Set<KeyPress> = []
 
     /// Enable or disable Hyper Key (F19) interception in the event tap callback.
     func setHyperKeyEnabled(_ enabled: Bool) {
-        if let box = retainedBox?.takeUnretainedValue() {
-            box.setHyperKey(enabled: enabled)
+        owner?.box.setHyperKey(enabled: enabled)
+    }
+
+    /// Called on main thread from async dispatch. Applies debounce then calls handler.
+    private func handleAsync(_ keyPress: KeyPress, generation: UInt64) {
+        guard owner?.generation == generation, lifecycleState == .running else {
+            ownershipLedger.staleCallbacksDiscarded += 1
+            emitOwnershipLog(event: "stale_key_callback_discarded")
+            return
         }
+        ownershipLedger.keyCallbackDeliveries += 1
+        handleAsync(keyPress)
     }
 
     /// Called on main thread from async dispatch. Applies debounce then calls handler.
@@ -457,94 +522,135 @@ final class EventTapManager: EventTapManaging {
 
     // MARK: - Lifecycle recovery
 
-    private func handleRecoveryAction(_ action: EventTapRecoveryAction, snapshot: EventTapLifecycleSnapshot) {
+    private func handleRecoveryAction(
+        _ action: EventTapRecoveryAction,
+        snapshot: EventTapLifecycleSnapshot,
+        generation: UInt64
+    ) {
+        guard owner?.generation == generation else {
+            ownershipLedger.staleCallbacksDiscarded += 1
+            emitOwnershipLog(event: "stale_recovery_callback_discarded")
+            return
+        }
+
         switch action {
         case .reenableInPlace:
             emitLifecycleLog("EVENT_TAP_REENABLED", snapshot: snapshot)
         case .fullRecreation:
-            recreateEventTap()
+            // A burst can enqueue more timeout callbacks while the first
+            // recreation is pending on the main actor. Only the threshold
+            // crossing owns the recreation; later snapshots from that burst
+            // become stale once the tracker is reset by a successful retry.
+            guard lifecycleState == .running,
+                  snapshot.rollingTimeoutCount == EventTapLifecycleTracker.timeoutsBeforeRecreation else {
+                ownershipLedger.staleCallbacksDiscarded += 1
+                emitOwnershipLog(event: "duplicate_recovery_callback_discarded")
+                return
+            }
+            recreateEventTap(generation: generation)
         case .markDegraded:
-            // The decision was already recorded by the box's tracker in the
-            // callback; just emit the log with the snapshot that was captured.
             emitLifecycleLog("EVENT_TAP_DEGRADED", snapshot: snapshot)
+            tearDownOwnedSession(finalState: .degraded, event: "callback_marked_degraded")
         }
     }
 
-    /// Record a recreation failure through the box, emit logs, and escalate to
-    /// degraded if the threshold is reached.
-    private func recordRecreationFailure() {
-        guard let box = retainedBox?.takeUnretainedValue() else { return }
-        let now = CFAbsoluteTimeGetCurrent()
-        let (action, snapshot) = box.recordRecreationFailureAndSnapshot(at: now, threadIdentity: "main")
+    /// Record a recreation failure through the current owner's tracker. The
+    /// returned action must be executed by the caller; in particular, the
+    /// first `.fullRecreation` is an actual retry rather than a log-only state.
+    private func recordRecreationFailure(
+        for session: EventTapOwnedSession
+    ) -> (EventTapRecoveryAction, EventTapLifecycleSnapshot) {
+        let now = runtimeFactory.now()
+        let (action, snapshot) = session.box.recordRecreationFailureAndSnapshot(
+            at: now,
+            threadIdentity: session.thread.identity
+        )
         emitLifecycleLog("EVENT_TAP_RECREATION_FAILED", snapshot: snapshot)
-        if action == .markDegraded {
-            emitLifecycleLog("EVENT_TAP_DEGRADED", snapshot: snapshot)
-        }
+        emitOwnershipLog(event: "recreation_failed")
+        return (action, snapshot)
     }
 
     /// Tear down and recreate the event tap on the existing background thread.
     /// Follows ordered sequence: remove source → disable/invalidate → release
     /// → create new tap → create new source → add source → enable.
-    private func recreateEventTap() {
-        guard let thread = backgroundThread else { return }
+    private func recreateEventTap(generation: UInt64) {
+        guard let session = owner, session.generation == generation else {
+            ownershipLedger.staleCallbacksDiscarded += 1
+            emitOwnershipLog(event: "recreation_without_current_owner_discarded")
+            return
+        }
 
-        if let source = runLoopSource {
-            thread.removeSource(source)
-        }
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-            CFMachPortInvalidate(tap)
-        }
-        runLoopSource = nil
-        eventTap = nil
-        // retainedBox is kept alive — the box is reused across recreation
+        lifecycleState = .recovering
+        releaseTapAndSource(from: session)
 
         let mask = (1 << CGEventType.keyDown.rawValue)
                   | (1 << CGEventType.keyUp.rawValue)
                   | (1 << CGEventType.flagsChanged.rawValue)
 
-        guard let box = retainedBox?.takeUnretainedValue() else {
-            recordRecreationFailure()
+        var attempt = 1
+        while owner === session, lifecycleState == .recovering {
+            let userInfo = session.userInfo
+            let context = EventTapCreationContext(
+                generation: generation,
+                phase: .replacement,
+                attempt: attempt
+            )
+
+            guard let newTap = runtimeFactory.makeTap(
+                context,
+                CGEventMask(mask),
+                eventTapCallback,
+                userInfo
+            ) else {
+                let (action, snapshot) = recordRecreationFailure(for: session)
+                if action == .fullRecreation {
+                    attempt += 1
+                    continue
+                }
+                emitLifecycleLog("EVENT_TAP_DEGRADED", snapshot: snapshot)
+                tearDownOwnedSession(finalState: .degraded, event: "replacement_tap_retry_limit")
+                return
+            }
+            session.tap = newTap
+            session.box.installTap(newTap)
+            ownershipLedger.tapCreates += 1
+
+            guard let newSource = runtimeFactory.makeSource(context, newTap) else {
+                releaseTapAndSource(from: session)
+                let (action, snapshot) = recordRecreationFailure(for: session)
+                if action == .fullRecreation {
+                    attempt += 1
+                    continue
+                }
+                emitLifecycleLog("EVENT_TAP_DEGRADED", snapshot: snapshot)
+                tearDownOwnedSession(finalState: .degraded, event: "replacement_source_retry_limit")
+                return
+            }
+            session.source = newSource
+            ownershipLedger.sourceCreates += 1
+            session.thread.addSource(newSource)
+            runtimeFactory.setTapEnabled(newTap, true)
+
+            let snapshot = session.box.recordRecreationSuccessAndSnapshot(
+                at: runtimeFactory.now(),
+                threadIdentity: session.thread.identity
+            )
+            lifecycleState = .running
+            emitLifecycleLog("EVENT_TAP_RECREATED", snapshot: snapshot)
+            emitOwnershipLog(event: "recreated")
             return
         }
-        let userInfo = UnsafeMutableRawPointer(Unmanaged.passUnretained(box).toOpaque())
-
-        guard let newTap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: CGEventMask(mask),
-            callback: eventTapCallback,
-            userInfo: userInfo
-        ) else {
-            recordRecreationFailure()
-            return
-        }
-
-        box.tap = newTap
-
-        guard let newSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, newTap, 0) else {
-            recordRecreationFailure()
-            return
-        }
-
-        thread.addSource(newSource)
-        CGEvent.tapEnable(tap: newTap, enable: true)
-
-        eventTap = newTap
-        runLoopSource = newSource
-
-        let now = CFAbsoluteTimeGetCurrent()
-        let snapshot = box.recordRecreationSuccessAndSnapshot(at: now, threadIdentity: "bg-runloop")
-        emitLifecycleLog("EVENT_TAP_RECREATED", snapshot: snapshot)
     }
 
     private func emitLifecycleLog(_ event: String, snapshot: EventTapLifecycleSnapshot? = nil) {
         let resolvedSnapshot: EventTapLifecycleSnapshot
         if let snapshot = snapshot {
             resolvedSnapshot = snapshot
-        } else if let box = retainedBox?.takeUnretainedValue() {
-            resolvedSnapshot = box.captureLifecycleSnapshot(at: CFAbsoluteTimeGetCurrent(), threadIdentity: "main")
+        } else if let session = owner {
+            resolvedSnapshot = session.box.captureLifecycleSnapshot(
+                at: runtimeFactory.now(),
+                threadIdentity: session.thread.identity
+            )
         } else {
             return
         }
@@ -554,6 +660,106 @@ final class EventTapManager: EventTapManaging {
             DiagnosticLog.log(entry.logMessage)
         }
     }
+
+    private func releaseTapAndSource(from session: EventTapOwnedSession) {
+        if let source = session.source {
+            session.thread.removeSource(source)
+            session.source = nil
+            ownershipLedger.sourceReleases += 1
+        }
+        if let tap = session.tap {
+            let clearedBoxTap = session.box.tearDownTap { ownedTap in
+                runtimeFactory.setTapEnabled(ownedTap, false)
+                runtimeFactory.invalidateTap(ownedTap)
+            }
+            if !clearedBoxTap {
+                runtimeFactory.setTapEnabled(tap, false)
+                runtimeFactory.invalidateTap(tap)
+            }
+            session.tap = nil
+            ownershipLedger.tapReleases += 1
+        }
+    }
+
+    /// Unconditionally tears down every resource owned by the current
+    /// generation. This remains safe after partial creation and on repeated
+    /// calls, so `stop()` never uses readiness as an ownership proxy.
+    private func tearDownOwnedSession(
+        finalState: EventTapLifecycleState,
+        event: String
+    ) {
+        if let session = owner {
+            releaseTapAndSource(from: session)
+            session.thread.cancelAndWait()
+            ownershipLedger.threadReleases += 1
+
+            // The join above is the lifetime boundary: no tap callback can
+            // still be reading these fields when session ownership is released.
+            session.box.onKeyPress = nil
+            session.box.onTapDisabled = nil
+            session.box.onRecoveryNeeded = nil
+            session.box.reenableTap = nil
+            ownershipLedger.boxReleases += 1
+            owner = nil
+        }
+
+        onKeyPress = nil
+        lastTriggerTime = 0
+        lastTriggerKeyPress = nil
+        lifecycleState = finalState
+        emitOwnershipLog(event: event)
+    }
+
+    private func emitOwnershipLog(event: String) {
+        let message = ownershipSnapshot.logMessage(event: event)
+        logger.info("\(message)")
+        DispatchQueue.global(qos: .utility).async {
+            DiagnosticLog.log(message)
+        }
+    }
+
+    #if WINK_EVENT_TAP_FAULT_INJECTION
+    /// Validation-only timeout driver. It records decisions through the same
+    /// EventTapBox tracker and dispatches through the same recovery closure as
+    /// a real `.tapDisabledByTimeout` callback.
+    func validationTriggerTimeoutThreshold() {
+        guard let session = owner, lifecycleState == .running else { return }
+        let startedAt = runtimeFactory.now()
+        for offset in 0..<EventTapLifecycleTracker.timeoutsBeforeRecreation {
+            session.box.reenableTapIfNeeded()
+            let (action, snapshot) = session.box.recordTimeoutAndDecide(
+                at: startedAt + Double(offset) / 1_000,
+                threadIdentity: session.thread.identity
+            )
+            if action == .fullRecreation || action == .markDegraded {
+                session.box.onRecoveryNeeded?(action, snapshot)
+            }
+        }
+    }
+
+    func validationCaptureStoppedGenerationProbe() -> EventTapStoppedGenerationProbe? {
+        guard let session = owner,
+              let keyCallback = session.box.onKeyPress,
+              let recoveryCallback = session.box.onRecoveryNeeded else {
+            return nil
+        }
+        let snapshot = EventTapLifecycleSnapshot(
+            rollingTimeoutCount: EventTapLifecycleTracker.timeoutsBeforeRecreation,
+            recreationFailureCount: 0,
+            timeSinceLastTimeout: 0,
+            lifecycleState: .recovering,
+            recoveryMode: "recreated",
+            threadIdentity: session.thread.identity,
+            readinessState: "recovering"
+        )
+        return EventTapStoppedGenerationProbe(
+            generation: session.generation,
+            keyCallback: keyCallback,
+            recoveryCallback: recoveryCallback,
+            recoverySnapshot: snapshot
+        )
+    }
+    #endif
 }
 
 // MARK: - Background RunLoop Thread
@@ -563,14 +769,18 @@ final class EventTapManager: EventTapManaging {
 /// Uses an NSCondition-based readiness mechanism instead of a one-shot semaphore
 /// so that the same thread supports repeated add/remove/recreate cycles.
 /// internal for @testable access
-final class BackgroundRunLoopThread: Thread {
+final class BackgroundRunLoopThread: Thread, EventTapRunLoopThread {
     private var threadRunLoop: CFRunLoop?
     private let readyCondition = NSCondition()
     private var isReady = false
     private var didExit = false
+    private var recordedThreadID: UInt64?
 
     override func main() {
         readyCondition.lock()
+        var currentThreadID: UInt64 = 0
+        pthread_threadid_np(nil, &currentThreadID)
+        recordedThreadID = currentThreadID
         threadRunLoop = CFRunLoopGetCurrent()
         isReady = true
         readyCondition.broadcast()
@@ -597,6 +807,22 @@ final class BackgroundRunLoopThread: Thread {
         readyCondition.lock()
         defer { readyCondition.unlock() }
         return didExit
+    }
+
+    var identity: String {
+        name ?? "event-tap-\(ObjectIdentifier(self))"
+    }
+
+    var threadID: UInt64? {
+        readyCondition.lock()
+        defer { readyCondition.unlock() }
+        return recordedThreadID
+    }
+
+    var isAlive: Bool {
+        readyCondition.lock()
+        defer { readyCondition.unlock() }
+        return isReady && !didExit
     }
 
     /// Wait for the run loop to become ready and return it.
@@ -644,6 +870,10 @@ final class BackgroundRunLoopThread: Thread {
             }
         }
         readyCondition.unlock()
+    }
+
+    func cancelAndWait() {
+        cancel()
     }
 }
 
@@ -781,17 +1011,16 @@ struct EventTapLifecycleTracker: Sendable {
     }
 }
 
-// Boxes the EventTapManager reference for the C callback's userInfo pointer.
-// Lifetime is explicitly managed: retained in start(), released in stop().
-// Also holds the CFMachPort so the callback can re-enable a disabled tap.
+// Boxes the EventTapManager callback state for the C callback's userInfo
+// pointer. EventTapOwnedSession strongly owns it until tap invalidation and the
+// background-thread join have completed. Also holds the CFMachPort so the
+// callback can re-enable a disabled tap.
 //
-// Thread safety: `tap` and `onKeyPress` are written before the event tap is
-// enabled and only read from the callback — no lock needed.
-// `registeredShortcuts`, `hyperKeyEnabled`, and `isHyperHeld` are read from
-// the background callback thread and written from the main thread, so they
-// are protected by an os_unfair_lock.
-final class EventTapBox {
-    var tap: CFMachPort?
+// Thread safety: the tap, registered shortcuts, Hyper state, diagnostics, and
+// lifecycle tracker are protected by an os_unfair_lock. Callback closures are
+// installed before the tap is enabled and cleared only after the thread join.
+final class EventTapBox: @unchecked Sendable {
+    private var _tap: CFMachPort?
     var reenableTap: (@Sendable () -> Void)?
     /// Background-safe closure that hops to the main actor before invoking app logic.
     var onKeyPress: (@Sendable (KeyPress) -> Void)?
@@ -901,12 +1130,41 @@ final class EventTapBox {
     }
 
     /// Re-enable the tap using the custom closure or the tap reference directly.
-    func reenableTapIfNeeded() {
-        if let reenableTap = reenableTap {
-            reenableTap()
-        } else if let tap = tap {
+    func reenableTapIfNeeded(
+        enableTap: (CFMachPort) -> Void = { tap in
             CGEvent.tapEnable(tap: tap, enable: true)
         }
+    ) {
+        if let reenableTap = reenableTap {
+            reenableTap()
+        } else {
+            withLock {
+                if let tap = _tap {
+                    enableTap(tap)
+                }
+            }
+        }
+    }
+
+    func installTap(_ tap: CFMachPort) {
+        withLock {
+            _tap = tap
+        }
+    }
+
+    /// Serializes invalidation with callback-side re-enable so teardown can
+    /// never race an in-flight timeout callback's access to the owned tap.
+    @discardableResult
+    func tearDownTap(_ body: (CFMachPort) -> Void) -> Bool {
+        let tap = withLock { () -> CFMachPort? in
+            defer { _tap = nil }
+            return _tap
+        }
+        guard let tap else { return false }
+        // System calls stay outside the lock. Taking the tap waited for any
+        // earlier re-enable to finish, and future re-enables now see nil.
+        body(tap)
+        return true
     }
 
     /// Record a timeout event and return the recovery action decided by the

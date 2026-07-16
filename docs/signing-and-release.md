@@ -102,6 +102,40 @@ validation argument nor `LAUNCH_FAULT_INJECTION` marker; verify those properties
 on the exact executable used for normal-path E2E. Never distribute the injected
 bundle.
 
+### EventTap lifecycle fault validation package
+
+The EventTap failure factories and scenario driver are also compile-time-only.
+Build that packaged validation profile explicitly:
+
+```bash
+WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION=1 bash scripts/package-app.sh
+```
+
+The resulting bundle carries
+`WinkRuntimeValidationProfile=event-tap-fault-injection` and accepts exactly one
+of these arguments:
+
+```text
+--validation-event-tap-fault=replacement-tap-once
+--validation-event-tap-fault=replacement-source-until-degraded
+--validation-event-tap-fault=cycle20
+```
+
+The first mode fails one replacement-tap creation and requires the configured
+retry to recover on the same thread within one second. The second fails two
+replacement-source creations, requires degraded readiness, and proves that each
+created tap plus the complete owned session is released. `cycle20` runs twenty
+fail/stop-twice/restart generations, probes stopped-generation callbacks, proves
+one owner after each restart, and finishes with all owned-resource counters at
+zero.
+
+The launch and EventTap injection profiles are mutually exclusive. Preserve
+each injected bundle at a separate absolute path, then rebuild production from
+the same 40-character Git head. The clean executable must have no runtime
+validation profile, validation argument, `LAUNCH_FAULT_INJECTION`, or
+`EVENT_TAP_FAULT_INJECTION` marker before normal-path E2E. Never distribute an
+injected bundle.
+
 ### Local development signing identity ("Wink")
 
 `SIGN_IDENTITY` defaults to `Wink`. Keep a self-signed code-signing
