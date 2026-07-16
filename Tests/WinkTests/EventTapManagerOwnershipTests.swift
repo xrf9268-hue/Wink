@@ -238,6 +238,7 @@ struct EventTapManagerOwnedSessionTests {
         let manager = EventTapManager(runtimeFactory: runtime.factory)
 
         #expect(manager.start { _ in true } == .started)
+        manager.setHyperKeyEnabled(true)
         let firstThread = runtime.threads[0]
         let firstBox = runtime.boxes[0]
         firstThread.simulateUnexpectedExit()
@@ -257,6 +258,7 @@ struct EventTapManagerOwnedSessionTests {
         #expect(restarted.sourceOwned == 1)
         #expect(restarted.boxOwned == 1)
         #expect(restarted.threadOwned == 1)
+        #expect(runtime.boxes[1].value?.hyperKeyEnabled == true)
 
         manager.stop()
     }

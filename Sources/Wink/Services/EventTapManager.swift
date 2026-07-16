@@ -406,6 +406,7 @@ final class EventTapManager: EventTapManaging {
             }
         }
         box.registeredShortcuts = registeredKeyPresses
+        box.setHyperKey(enabled: hyperKeyEnabled)
         ownershipLedger.boxCreates += 1
         let session = EventTapOwnedSession(
             generation: generation,
@@ -482,9 +483,11 @@ final class EventTapManager: EventTapManaging {
     }
 
     private var registeredKeyPresses: Set<KeyPress> = []
+    private var hyperKeyEnabled = false
 
     /// Enable or disable Hyper Key (F19) interception in the event tap callback.
     func setHyperKeyEnabled(_ enabled: Bool) {
+        hyperKeyEnabled = enabled
         owner?.box.setHyperKey(enabled: enabled)
     }
 
@@ -758,6 +761,10 @@ final class EventTapManager: EventTapManaging {
             recoveryCallback: recoveryCallback,
             recoverySnapshot: snapshot
         )
+    }
+
+    var validationCurrentHyperKeyEnabled: Bool {
+        owner?.box.hyperKeyEnabled == true
     }
     #endif
 }

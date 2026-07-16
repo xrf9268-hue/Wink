@@ -246,6 +246,7 @@ final class EventTapFaultInjectionDriver: @unchecked Sendable {
                 && restarted.sourceOwned == 1
                 && restarted.boxOwned == 1
                 && restarted.threadOwned == 1
+                && manager.validationCurrentHyperKeyEnabled
 
             let deliveriesBeforeProbe = restarted.keyCallbackDeliveries
             let tapCreatesBeforeProbe = restarted.tapCreates

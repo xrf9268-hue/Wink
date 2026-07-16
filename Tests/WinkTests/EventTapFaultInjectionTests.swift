@@ -84,6 +84,7 @@ struct EventTapFaultInjectionTests {
         let manager = EventTapManager(runtimeFactory: driver.runtimeFactory)
 
         #expect(manager.start { _ in true } == .started)
+        manager.setHyperKeyEnabled(true)
         let passed = await driver.runScenario(manager: manager) { _ in true }
         let degraded = manager.ownershipSnapshot
 
@@ -116,6 +117,7 @@ struct EventTapFaultInjectionTests {
         let manager = EventTapManager(runtimeFactory: driver.runtimeFactory)
 
         #expect(manager.start { _ in true } == .started)
+        manager.setHyperKeyEnabled(true)
         let passed = await driver.runScenario(manager: manager) { _ in true }
         let final = manager.ownershipSnapshot
 
