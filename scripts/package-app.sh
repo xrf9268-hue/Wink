@@ -32,18 +32,25 @@ case "$WINK_VALIDATION_LAUNCH_FAULT_INJECTION" in
     0)
         PACKAGE_PROFILE="production"
         BUILD_SCRATCH_PATH="$PROJECT_DIR/.build"
-        SWIFT_BUILD_FLAGS=()
         ;;
     1)
         PACKAGE_PROFILE="launch-fault-injection"
         BUILD_SCRATCH_PATH="$PROJECT_DIR/.build"
-        SWIFT_BUILD_FLAGS=(-Xswiftc -DWINK_LAUNCH_FAULT_INJECTION)
         ;;
     *)
         echo "Error: WINK_VALIDATION_LAUNCH_FAULT_INJECTION must be 0 or 1" >&2
         exit 1
         ;;
 esac
+
+SWIFT_BUILD_FLAGS=(
+    -c release
+    --package-path "$PROJECT_DIR"
+    --scratch-path "$BUILD_SCRATCH_PATH"
+)
+if [ "$PACKAGE_PROFILE" = "launch-fault-injection" ]; then
+    SWIFT_BUILD_FLAGS+=(-Xswiftc -DWINK_LAUNCH_FAULT_INJECTION)
+fi
 
 clean_package_products() {
     (
@@ -146,11 +153,7 @@ sign_nested_item() {
 }
 
 echo "==> Building release binary (profile: $PACKAGE_PROFILE)..."
-swift build \
-    -c release \
-    --package-path "$PROJECT_DIR" \
-    --scratch-path "$BUILD_SCRATCH_PATH" \
-    "${SWIFT_BUILD_FLAGS[@]}"
+swift build "${SWIFT_BUILD_FLAGS[@]}"
 
 BINARY="$BUILD_SCRATCH_PATH/release/${APP_NAME}"
 if [ ! -f "$BINARY" ]; then
