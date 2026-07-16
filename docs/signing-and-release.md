@@ -62,6 +62,46 @@ Release-style signing is controlled by environment variables passed to `scripts/
 - `SPARKLE_FEED_URL`
 - `SPARKLE_PUBLIC_ED_KEY`
 
+### Launch-completion fault validation package
+
+The default package is production-only: the launch-completion fault injector,
+its argument parser, and its diagnostic markers are excluded at compile time.
+For a packaged macOS ownership test, build the validation profile explicitly:
+
+```bash
+WINK_VALIDATION_LAUNCH_FAULT_INJECTION=1 bash scripts/package-app.sh
+```
+
+The resulting `build/Wink.app` carries
+`WinkRuntimeValidationProfile=launch-fault-injection` in `Info.plist` and accepts
+exactly one of these validation-only arguments:
+
+```text
+--validation-launch-fault=stale-error:<target-bundle-id>
+--validation-launch-fault=current-error-once:<target-bundle-id>
+```
+
+`stale-error` holds the first matching launch completion, lets a second request
+supersede it, then delivers the first request's injected error before forwarding
+the second request to `NSWorkspace`. `current-error-once` fails the first matching
+request and lets later matching requests pass through. Nonmatching app launches
+always pass through unchanged.
+
+Preserve the injected app at a separate absolute path before rebuilding because
+the package script always writes `build/Wink.app`. Build the clean package from
+the same 40-character Git head with the default command (or explicitly set the
+profile to `0`):
+
+```bash
+WINK_VALIDATION_LAUNCH_FAULT_INJECTION=0 bash scripts/package-app.sh
+```
+
+Profile changes clean SwiftPM products while retaining dependency caches. A
+clean build removes the validation `Info.plist` key and contains neither the
+validation argument nor `LAUNCH_FAULT_INJECTION` marker; verify those properties
+on the exact executable used for normal-path E2E. Never distribute the injected
+bundle.
+
 ### Local development signing identity ("Wink")
 
 `SIGN_IDENTITY` defaults to `Wink`. Keep a self-signed code-signing
