@@ -776,21 +776,18 @@ final class AppSwitcher: AppSwitching {
                 )
                 let bundleId = shortcut.bundleIdentifier
                 let launchGeneration = launchState.generation
+                let launchAttemptID = sessionCoordinator.session(for: bundleId)?.attemptID
                 let configuration = NSWorkspace.OpenConfiguration()
                 fallbackActivationClient.openApplication(appURL, configuration) { [weak self] launchedApp, error in
                     if let error {
-                        logger.error("Failed to launch \(bundleId): \(error.localizedDescription)")
-                        DiagnosticLog.log("Failed to launch \(bundleId): \(error.localizedDescription)")
+                        let errorDescription = error.localizedDescription
                         Task { @MainActor [weak self] in
-                            guard let self else { return }
-                            self.logToggleTrace(
-                                family: .reset,
+                            self?.handleOwnedLaunchError(
                                 bundleIdentifier: bundleId,
-                                event: "session_cleared",
-                                reason: "launch_failed",
-                                activationPath: .launch
+                                expectedGeneration: launchGeneration,
+                                expectedAttemptID: launchAttemptID,
+                                errorDescription: errorDescription
                             )
-                            self.clearActivationTracking(for: bundleId)
                         }
                         return
                     }
@@ -1159,6 +1156,66 @@ final class AppSwitcher: AppSwitching {
             }
         )
         return true
+    }
+
+    private func handleOwnedLaunchError(
+        bundleIdentifier: String,
+        expectedGeneration: Int,
+        expectedAttemptID: UUID?,
+        errorDescription: String
+    ) {
+        guard let pendingState = pendingActivationState(for: bundleIdentifier),
+              pendingState.generation == expectedGeneration else {
+            logLaunchErrorTrace(
+                family: .confirmation,
+                bundleIdentifier: bundleIdentifier,
+                expectedGeneration: expectedGeneration,
+                expectedAttemptID: expectedAttemptID,
+                event: "stale_completion_discarded",
+                reason: "launch_error_completion_superseded"
+            )
+            return
+        }
+
+        logger.error("Failed to launch \(bundleIdentifier): \(errorDescription)")
+        DiagnosticLog.log("Failed to launch \(bundleIdentifier): \(errorDescription)")
+        logLaunchErrorTrace(
+            family: .reset,
+            bundleIdentifier: bundleIdentifier,
+            expectedGeneration: expectedGeneration,
+            expectedAttemptID: expectedAttemptID,
+            event: "session_cleared",
+            reason: "launch_failed"
+        )
+        clearActivationTracking(for: bundleIdentifier)
+    }
+
+    private func logLaunchErrorTrace(
+        family: ToggleDiagnosticEvent.Family,
+        bundleIdentifier: String,
+        expectedGeneration: Int,
+        expectedAttemptID: UUID?,
+        event: String,
+        reason: String
+    ) {
+        let currentSession = sessionCoordinator.session(for: bundleIdentifier)
+        let baseMessage = ToggleDiagnosticEvent(
+            family: family,
+            attemptID: expectedAttemptID,
+            bundleIdentifier: bundleIdentifier,
+            pid: nil,
+            generation: expectedGeneration,
+            phase: .launching,
+            event: event,
+            activationPath: .launch,
+            reason: reason
+        ).logMessage
+        let currentGeneration = currentSession.map { String($0.generation) } ?? "nil"
+        let currentPID = currentSession?.pid.map(String.init) ?? "nil"
+        let currentPhase = currentSession?.phase.rawValue ?? "nil"
+        let message = "\(baseMessage) expectedGeneration=\(expectedGeneration) currentGeneration=\(currentGeneration) currentAttemptId=\(currentSession?.attemptID.uuidString ?? "nil") currentPid=\(currentPID) currentPhase=\(currentPhase)"
+        logger.info("\(message)")
+        DiagnosticLog.log(message)
     }
 
     private func continueOwnedLaunchConfirmation(
@@ -1631,10 +1688,11 @@ final class AppSwitcher: AppSwitching {
 
     private func sessionLogFields(for bundleIdentifier: String) -> [String] {
         guard let session = sessionCoordinator.session(for: bundleIdentifier) else {
-            return ["attemptId=nil", "pid=nil", "phase=nil"]
+            return ["attemptId=nil", "generation=nil", "pid=nil", "phase=nil"]
         }
         return [
             "attemptId=\(session.attemptID.uuidString)",
+            "generation=\(session.generation)",
             "pid=\(session.pid.map(String.init) ?? "nil")",
             "phase=\(session.phase.rawValue)"
         ]
@@ -1653,6 +1711,7 @@ final class AppSwitcher: AppSwitching {
             attemptID: session?.attemptID,
             bundleIdentifier: bundleIdentifier,
             pid: session?.pid,
+            generation: session?.generation,
             phase: session?.phase,
             event: event,
             activationPath: activationPath ?? session?.activationPath,
@@ -1690,13 +1749,26 @@ extension AppSwitcher.ActivationClient {
 
 extension AppSwitcher.FallbackActivationClient {
     @MainActor
-    static let live = AppSwitcher.FallbackActivationClient(
-        openApplication: { url, configuration, completion in
-            NSWorkspace.shared.openApplication(at: url, configuration: configuration) { @Sendable app, error in
-                completion(app, error)
+    static let live: AppSwitcher.FallbackActivationClient = {
+        let workspaceClient = AppSwitcher.FallbackActivationClient(
+            openApplication: { url, configuration, completion in
+                NSWorkspace.shared.openApplication(at: url, configuration: configuration) { @Sendable app, error in
+                    completion(app, error)
+                }
             }
+        )
+
+        #if WINK_LAUNCH_FAULT_INJECTION
+        if let configuration = LaunchFaultInjectionConfiguration(arguments: ProcessInfo.processInfo.arguments) {
+            return LaunchFaultInjector(
+                configuration: configuration,
+                workspaceOpen: workspaceClient.openApplication
+            ).client
         }
-    )
+        #endif
+
+        return workspaceClient
+    }()
 }
 
 extension AppSwitcher.HideRequestClient {
