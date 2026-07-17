@@ -2,11 +2,14 @@
 # Default packaging is production-only. For the compile-time validation build:
 #   WINK_VALIDATION_LAUNCH_FAULT_INJECTION=1 ./scripts/package-app.sh
 #   WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION=1 ./scripts/package-app.sh
+#   WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION=1 ./scripts/package-app.sh
 # Then launch the packaged app with exactly one validation argument, for example:
 #   open -n build/Wink.app --args \
 #     --validation-launch-fault=stale-error:com.apple.TextEdit
 #   open -n build/Wink.app --args \
 #     --validation-event-tap-fault=replacement-tap-once
+#   open -n build/Wink.app --args \
+#     --validation-carbon-handler-fault=fail-once
 set -euo pipefail
 
 APP_NAME="Wink"
@@ -31,6 +34,7 @@ SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-}"
 SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}"
 WINK_VALIDATION_LAUNCH_FAULT_INJECTION="${WINK_VALIDATION_LAUNCH_FAULT_INJECTION:-0}"
 WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION="${WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION:-0}"
+WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION="${WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION:-0}"
 
 case "$WINK_VALIDATION_LAUNCH_FAULT_INJECTION" in
     0|1) ;;
@@ -48,12 +52,21 @@ case "$WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION" in
         ;;
 esac
 
-case "$WINK_VALIDATION_LAUNCH_FAULT_INJECTION:$WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION" in
-    0:0) PACKAGE_PROFILE="production" ;;
-    1:0) PACKAGE_PROFILE="launch-fault-injection" ;;
-    0:1) PACKAGE_PROFILE="event-tap-fault-injection" ;;
-    1:1)
-        echo "Error: launch and EventTap fault-injection profiles are mutually exclusive" >&2
+case "$WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION" in
+    0|1) ;;
+    *)
+        echo "Error: WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION must be 0 or 1" >&2
+        exit 1
+        ;;
+esac
+
+case "$WINK_VALIDATION_LAUNCH_FAULT_INJECTION:$WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION:$WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION" in
+    0:0:0) PACKAGE_PROFILE="production" ;;
+    1:0:0) PACKAGE_PROFILE="launch-fault-injection" ;;
+    0:1:0) PACKAGE_PROFILE="event-tap-fault-injection" ;;
+    0:0:1) PACKAGE_PROFILE="carbon-handler-fault-injection" ;;
+    *)
+        echo "Error: launch, EventTap, and Carbon handler fault-injection profiles are mutually exclusive" >&2
         exit 1
         ;;
 esac
@@ -68,6 +81,8 @@ if [ "$PACKAGE_PROFILE" = "launch-fault-injection" ]; then
     SWIFT_BUILD_FLAGS+=(-Xswiftc -DWINK_LAUNCH_FAULT_INJECTION)
 elif [ "$PACKAGE_PROFILE" = "event-tap-fault-injection" ]; then
     SWIFT_BUILD_FLAGS+=(-Xswiftc -DWINK_EVENT_TAP_FAULT_INJECTION)
+elif [ "$PACKAGE_PROFILE" = "carbon-handler-fault-injection" ]; then
+    SWIFT_BUILD_FLAGS+=(-Xswiftc -DWINK_CARBON_HANDLER_FAULT_INJECTION)
 fi
 
 clean_package_products() {
@@ -86,7 +101,8 @@ if [ "$PACKAGE_PROFILE" != "production" ]; then
     clean_package_products
 elif [ -f "$BUILD_SCRATCH_PATH/release/${APP_NAME}" ] \
     && { LC_ALL=C grep -aFq 'LAUNCH_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}" \
-        || LC_ALL=C grep -aFq 'EVENT_TAP_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}"; }; then
+        || LC_ALL=C grep -aFq 'EVENT_TAP_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}" \
+        || LC_ALL=C grep -aFq 'CARBON_HANDLER_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}"; }; then
     echo "==> Removing fault-injection products before production build..."
     clean_package_products
 fi

@@ -9,6 +9,7 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
     let shortcutsPaused: Bool
     let standardShortcutCount: Int
     let registeredStandardShortcutCount: Int
+    let standardHandlerState: ShortcutCaptureHandlerState
     let standardRegistrationFailures: [ShortcutCaptureRegistrationFailure]
 
     init(
@@ -22,6 +23,7 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
         shortcutsPaused: Bool = false,
         standardShortcutCount: Int = 0,
         registeredStandardShortcutCount: Int = 0,
+        standardHandlerState: ShortcutCaptureHandlerState = .installed,
         standardRegistrationFailures: [ShortcutCaptureRegistrationFailure] = []
     ) {
         self.accessibilityGranted = accessibilityGranted
@@ -34,6 +36,7 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
         self.shortcutsPaused = shortcutsPaused
         self.standardShortcutCount = standardShortcutCount
         self.registeredStandardShortcutCount = registeredStandardShortcutCount
+        self.standardHandlerState = standardHandlerState
         self.standardRegistrationFailures = standardRegistrationFailures
     }
 
@@ -113,6 +116,10 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
     var standardRegistrationWarning: String? {
         guard !shortcutsPaused else {
             return nil
+        }
+        if standardShortcutCount > 0,
+           case .installationFailed = standardHandlerState {
+            return "Standard shortcut capture failed to start. Check logs for the Carbon handler status."
         }
         let failedCount = max(0, standardShortcutCount - registeredStandardShortcutCount)
         guard failedCount > 0 else {

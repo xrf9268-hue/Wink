@@ -494,12 +494,16 @@ final class CGEventTapFunctionModifierStateTracker: FunctionModifierStateTrackin
     }
 }
 
-private final class CarbonHotKeyCallbackBox: @unchecked Sendable {
-    // weak reference reads are atomic; provider is set once in init and never mutated.
-    weak var provider: CarbonHotKeyProvider?
+typealias CarbonHotKeyDelivery = @MainActor @Sendable (
+    _ identifier: UInt32,
+    _ eventTimestamp: CGEventTimestamp
+) -> Void
 
-    init(provider: CarbonHotKeyProvider) {
-        self.provider = provider
+private final class CarbonHotKeyCallbackBox: @unchecked Sendable {
+    let delivery: CarbonHotKeyDelivery
+
+    init(delivery: @escaping CarbonHotKeyDelivery) {
+        self.delivery = delivery
     }
 }
 
@@ -532,16 +536,87 @@ private func carbonHotKeyCallbackImpl(
     // Carbon hotkey events installed on GetApplicationEventTarget() are delivered
     // on the main thread, so isolation can be asserted without an async hop.
     MainActor.assumeIsolated {
-        box.provider?.handleHotKeyEvent(
-            identifier: hotKeyID.id,
-            eventTimestamp: eventTimestamp
-        )
+        box.delivery(hotKeyID.id, eventTimestamp)
     }
     return noErr
 }
 
 private let carbonHotKeyCallback: EventHandlerUPP = { _, eventRef, userData in
     carbonHotKeyCallbackImpl(eventRef: eventRef, userData: userData)
+}
+
+@MainActor
+protocol CarbonHotKeyHandlerSession: AnyObject {
+    var isLive: Bool { get }
+    func stop()
+}
+
+enum CarbonHotKeyHandlerInstallResult {
+    case installed(any CarbonHotKeyHandlerSession)
+    case failed(Int32)
+}
+
+@MainActor
+struct CarbonHotKeyHandlerFactory {
+    let install: (@escaping CarbonHotKeyDelivery) -> CarbonHotKeyHandlerInstallResult
+
+    static let live = CarbonHotKeyHandlerFactory { delivery in
+        let box = Unmanaged.passRetained(CarbonHotKeyCallbackBox(delivery: delivery))
+        var spec = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: OSType(kEventHotKeyPressed)
+        )
+        var eventHandlerRef: EventHandlerRef?
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            carbonHotKeyCallback,
+            1,
+            &spec,
+            UnsafeMutableRawPointer(box.toOpaque()),
+            &eventHandlerRef
+        )
+
+        guard status == noErr, let eventHandlerRef else {
+            if let eventHandlerRef {
+                RemoveEventHandler(eventHandlerRef)
+            }
+            box.release()
+            return .failed(status == noErr ? Int32(eventInternalErr) : status)
+        }
+
+        return .installed(LiveCarbonHotKeyHandlerSession(
+            eventHandlerRef: eventHandlerRef,
+            callbackBox: box
+        ))
+    }
+}
+
+@MainActor
+private final class LiveCarbonHotKeyHandlerSession: CarbonHotKeyHandlerSession {
+    private var eventHandlerRef: EventHandlerRef?
+    private var callbackBox: Unmanaged<CarbonHotKeyCallbackBox>?
+
+    init(
+        eventHandlerRef: EventHandlerRef,
+        callbackBox: Unmanaged<CarbonHotKeyCallbackBox>
+    ) {
+        self.eventHandlerRef = eventHandlerRef
+        self.callbackBox = callbackBox
+    }
+
+    var isLive: Bool {
+        eventHandlerRef != nil && callbackBox != nil
+    }
+
+    func stop() {
+        guard eventHandlerRef != nil || callbackBox != nil else { return }
+        if let eventHandlerRef {
+            RemoveEventHandler(eventHandlerRef)
+            self.eventHandlerRef = nil
+        }
+        callbackBox?.release()
+        callbackBox = nil
+    }
 }
 
 func cgEventTimestamp(fromCarbonEventTime eventTime: EventTime) -> CGEventTimestamp {
@@ -558,10 +633,12 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
         let ref: EventHotKeyRef
     }
 
-    private var callbackBox: Unmanaged<CarbonHotKeyCallbackBox>?
     private let registrationClient: CarbonHotKeyRegistrationClient
+    private let handlerFactory: CarbonHotKeyHandlerFactory
     private let functionModifierStateTracker: any FunctionModifierStateTracking
-    private var eventHandlerRef: EventHandlerRef?
+    private var handlerSession: (any CarbonHotKeyHandlerSession)?
+    private var handlerFailureStatus: Int32?
+    private var handlerGeneration: UInt64 = 0
     private var desiredShortcuts: Set<KeyPress> = []
     private var registrations: [UInt32: Registration] = [:]
     private var registrationFailures: [ShortcutCaptureRegistrationFailure] = []
@@ -571,14 +648,30 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
 
     init(
         registrationClient: CarbonHotKeyRegistrationClient = .live,
+        handlerFactory: CarbonHotKeyHandlerFactory? = nil,
         functionModifierStateTracker: any FunctionModifierStateTracking = CGEventTapFunctionModifierStateTracker()
     ) {
         self.registrationClient = registrationClient
+        self.handlerFactory = handlerFactory ?? Self.defaultHandlerFactory()
         self.functionModifierStateTracker = functionModifierStateTracker
     }
 
+    private static func defaultHandlerFactory() -> CarbonHotKeyHandlerFactory {
+        #if WINK_CARBON_HANDLER_FAULT_INJECTION
+        if let configuration = CarbonHandlerFaultInjectionConfiguration(
+            arguments: ProcessInfo.processInfo.arguments
+        ) {
+            return CarbonHandlerFaultInjectionDriver(
+                configuration: configuration,
+                baseFactory: .live
+            ).factory
+        }
+        #endif
+        return .live
+    }
+
     var isRunning: Bool {
-        !registrations.isEmpty
+        handlerSession?.isLive == true && !registrations.isEmpty
     }
 
     var inputMonitoringRequired: Bool {
@@ -608,6 +701,7 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
         return ShortcutCaptureRegistrationState(
             desiredShortcutCount: desiredShortcuts.count,
             registeredShortcutCount: registeredShortcutCount,
+            handlerState: handlerState,
             failures: failures.sorted {
                 if $0.keyPress.keyCode == $1.keyPress.keyCode {
                     return $0.keyPress.modifiers.rawValue < $1.keyPress.modifiers.rawValue
@@ -627,18 +721,22 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
             return
         }
 
-        installHandlerIfNeeded()
-        reregisterShortcuts()
+        guard !registrationState.isReady else { return }
+
+        synchronizeRegistrations()
     }
 
     func stop() {
-        unregisterAll()
-        removeHandlerIfNeeded()
-        functionModifierStateTracker.stop()
         onKeyPress = nil
+        handlerGeneration &+= 1
+        unregisterAll()
+        registrationFailures = []
+        removeHandlerIfNeeded(invalidateCallbacks: false)
+        functionModifierStateTracker.stop()
     }
 
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {
+        let desiredStateChanged = keyPresses != desiredShortcuts
         desiredShortcuts = keyPresses
         guard onKeyPress != nil else { return }
 
@@ -651,49 +749,91 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
             return
         }
 
-        installHandlerIfNeeded()
-        reregisterShortcuts()
+        guard desiredStateChanged || !registrationState.isReady else { return }
+
+        synchronizeRegistrations()
     }
 
-    private func installHandlerIfNeeded() {
-        guard eventHandlerRef == nil else { return }
-
-        let box = Unmanaged.passRetained(CarbonHotKeyCallbackBox(provider: self))
-        callbackBox = box
-        var spec = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: OSType(kEventHotKeyPressed)
-        )
-        let status = InstallEventHandler(
-            GetApplicationEventTarget(),
-            carbonHotKeyCallback,
-            1,
-            &spec,
-            UnsafeMutableRawPointer(box.toOpaque()),
-            &eventHandlerRef
-        )
-
-        guard status == noErr else {
-            callbackBox?.release()
-            callbackBox = nil
-            eventHandlerRef = nil
-            DiagnosticLog.log("CARBON_HOTKEY_HANDLER_INSTALL_FAILED status=\(status)")
-            return
+    private var handlerState: ShortcutCaptureHandlerState {
+        if handlerSession?.isLive == true {
+            return .installed
         }
-    }
-
-    private func removeHandlerIfNeeded() {
-        if let eventHandlerRef {
-            RemoveEventHandler(eventHandlerRef)
-            self.eventHandlerRef = nil
+        if let handlerFailureStatus {
+            return .installationFailed(status: handlerFailureStatus)
         }
-        callbackBox?.release()
-        callbackBox = nil
+        return .notInstalled
     }
 
-    private func reregisterShortcuts() {
+    private func synchronizeRegistrations() {
+        let handlerInstalled = installHandlerIfNeeded()
+        let summary = reregisterShortcuts()
+        let rolledBackRegistrationCount: Int
+        if handlerInstalled {
+            rolledBackRegistrationCount = 0
+        } else {
+            rolledBackRegistrationCount = registrations.count
+            unregisterAll()
+        }
+        let state = handlerState
+        DiagnosticLog.log(
+            "CARBON_HOTKEY_SYNC handlerState=\(state.diagnosticName) handlerStatus=\(state.failureStatus.map(String.init) ?? "none") desired=\(desiredShortcuts.count) lowLevelAttempts=\(summary.attempts) lowLevelSuccesses=\(summary.successes) active=\(registrations.count) rolledBack=\(rolledBackRegistrationCount)"
+        )
+    }
+
+    @discardableResult
+    private func installHandlerIfNeeded() -> Bool {
+        if handlerSession?.isLive == true {
+            handlerFailureStatus = nil
+            return true
+        }
+
+        handlerSession?.stop()
+        handlerSession = nil
+        handlerGeneration &+= 1
+        let generation = handlerGeneration
+        let result = handlerFactory.install { [weak self] identifier, eventTimestamp in
+            guard let self, self.handlerGeneration == generation else { return }
+            self.handleHotKeyEvent(
+                identifier: identifier,
+                eventTimestamp: eventTimestamp
+            )
+        }
+
+        switch result {
+        case .installed(let session) where session.isLive:
+            handlerSession = session
+            handlerFailureStatus = nil
+            DiagnosticLog.log(
+                "CARBON_HOTKEY_HANDLER_INSTALL state=installed status=0 generation=\(generation)"
+            )
+            return true
+        case .installed(let session):
+            session.stop()
+            handlerFailureStatus = Int32(eventInternalErr)
+        case .failed(let status):
+            handlerFailureStatus = status
+        }
+
+        DiagnosticLog.log(
+            "CARBON_HOTKEY_HANDLER_INSTALL state=installation_failed status=\(handlerFailureStatus ?? Int32(eventInternalErr)) generation=\(generation)"
+        )
+        return false
+    }
+
+    private func removeHandlerIfNeeded(invalidateCallbacks: Bool = true) {
+        if invalidateCallbacks {
+            handlerGeneration &+= 1
+        }
+        handlerSession?.stop()
+        handlerSession = nil
+        handlerFailureStatus = nil
+    }
+
+    private func reregisterShortcuts() -> (attempts: Int, successes: Int) {
         unregisterAll()
         registrationFailures = []
+        var attempts = 0
+        var successes = 0
 
         let sortedShortcuts = desiredShortcuts.sorted {
             if $0.keyCode == $1.keyCode {
@@ -703,11 +843,14 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
         }
 
         for keyPress in sortedShortcuts {
-            register(keyPress)
+            let result = register(keyPress)
+            attempts += result.attempted ? 1 : 0
+            successes += result.registered ? 1 : 0
         }
+        return (attempts, successes)
     }
 
-    private func register(_ keyPress: KeyPress) {
+    private func register(_ keyPress: KeyPress) -> (attempted: Bool, registered: Bool) {
         if requiresFunctionModifierStateTracking(keyPress),
            !functionModifierTrackingAvailable {
             registrationFailures.append(ShortcutCaptureRegistrationFailure(
@@ -717,7 +860,7 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
             DiagnosticLog.log(
                 "CARBON_HOTKEY_REGISTER_FAILED status=\(eventInternalErr) keyCode=\(keyPress.keyCode) reason=function_modifier_tracking_unavailable"
             )
-            return
+            return (false, false)
         }
 
         let identifier = nextIdentifier
@@ -739,10 +882,11 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
             DiagnosticLog.log(
                 "CARBON_HOTKEY_REGISTER_FAILED status=\(status) keyCode=\(keyPress.keyCode) modifiers=\(keyPress.modifiers.rawValue)"
             )
-            return
+            return (true, false)
         }
 
         registrations[identifier] = Registration(keyPress: keyPress, ref: hotKeyRef)
+        return (true, true)
     }
 
     private func unregisterAll() {
@@ -780,7 +924,8 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
         identifier: UInt32,
         eventTimestamp: CGEventTimestamp = .max
     ) {
-        guard let registration = registrations[identifier],
+        guard handlerSession?.isLive == true,
+              let registration = registrations[identifier],
               let onKeyPress else {
             return
         }

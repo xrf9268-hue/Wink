@@ -16,6 +16,7 @@ struct ShortcutCaptureSnapshot: Equatable, Sendable {
     let shortcutsPaused: Bool
     let standardShortcutCount: Int
     let registeredStandardShortcutCount: Int
+    let standardHandlerState: ShortcutCaptureHandlerState
     let standardRegistrationFailures: [ShortcutCaptureRegistrationFailure]
     let hyperShortcutCount: Int
 }
@@ -34,9 +35,23 @@ final class ShortcutCaptureCoordinator {
     private var capturePaused = false
     private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
 
+    convenience init() {
+        self.init(
+            standardProvider: CarbonHotKeyProvider(),
+            hyperProvider: EventTapCaptureProvider()
+        )
+    }
+
+    convenience init(standardProvider: any ShortcutCaptureProvider) {
+        self.init(
+            standardProvider: standardProvider,
+            hyperProvider: EventTapCaptureProvider()
+        )
+    }
+
     init(
-        standardProvider: any ShortcutCaptureProvider = CarbonHotKeyProvider(),
-        hyperProvider: any HyperShortcutCaptureProvider = EventTapCaptureProvider()
+        standardProvider: any ShortcutCaptureProvider,
+        hyperProvider: any HyperShortcutCaptureProvider
     ) {
         self.standardProvider = standardProvider
         self.hyperProvider = hyperProvider
@@ -89,18 +104,18 @@ final class ShortcutCaptureCoordinator {
     ) -> ShortcutCaptureStatus {
         let standardRegistrationState = standardProvider.registrationState
         let standardShortcutCount = standardRegistrationState.desiredShortcutCount
-        let allStandardShortcutsRegistered = standardShortcutCount == 0
-            || standardRegistrationState.registeredShortcutCount == standardShortcutCount
+        let standardCaptureReady = standardShortcutCount == 0
+            || standardRegistrationState.isReady
         let standardInputMonitoringReady = !standardProvider.inputMonitoringRequired
             || inputMonitoringGranted
         let carbonHotKeysRegistered = !capturePaused
             && standardShortcutCount > 0
             && standardInputMonitoringReady
-            && allStandardShortcutsRegistered
+            && standardRegistrationState.isReady
         let standardReady = !capturePaused
             && accessibilityGranted
             && standardInputMonitoringReady
-            && (standardShortcutCount == 0 || allStandardShortcutsRegistered)
+            && standardCaptureReady
         let hyperReady = !capturePaused
             && accessibilityGranted
             && (hyperShortcuts.isEmpty || (inputMonitoringGranted && hyperProvider.isRunning))
@@ -116,6 +131,7 @@ final class ShortcutCaptureCoordinator {
             shortcutsPaused: capturePaused,
             standardShortcutCount: standardShortcutCount,
             registeredStandardShortcutCount: standardRegistrationState.registeredShortcutCount,
+            standardHandlerState: standardRegistrationState.handlerState,
             standardRegistrationFailures: standardRegistrationState.failures
         )
     }
@@ -128,7 +144,7 @@ final class ShortcutCaptureCoordinator {
         let carbonHotKeysRegistered = !capturePaused
             && standardShortcutCount > 0
             && standardInputMonitoringReady
-            && standardRegistrationState.registeredShortcutCount == standardShortcutCount
+            && standardRegistrationState.isReady
         return ShortcutCaptureSnapshot(
             carbonHotKeysRegistered: carbonHotKeysRegistered,
             eventTapActive: !capturePaused && hyperProvider.isRunning,
@@ -136,6 +152,7 @@ final class ShortcutCaptureCoordinator {
             shortcutsPaused: capturePaused,
             standardShortcutCount: standardShortcutCount,
             registeredStandardShortcutCount: standardRegistrationState.registeredShortcutCount,
+            standardHandlerState: standardRegistrationState.handlerState,
             standardRegistrationFailures: standardRegistrationState.failures,
             hyperShortcutCount: hyperShortcuts.count
         )

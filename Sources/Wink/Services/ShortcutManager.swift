@@ -310,10 +310,10 @@ final class ShortcutManager {
             }
             let snapshot = captureCoordinator.snapshot()
             logger.info(
-                "attemptStart: shortcuts=\(self.shortcutStore.shortcuts.count) triggerIndex=\(self.triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired) paused=true"
+                "attemptStart: shortcuts=\(self.shortcutStore.shortcuts.count) triggerIndex=\(self.triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) carbonHandler=\(snapshot.standardHandlerState.diagnosticName) carbonHandlerStatus=\(snapshot.standardHandlerState.failureStatus.map(String.init) ?? "none") eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired) paused=true"
             )
             diagnosticClient.log(
-                "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired) paused=true"
+                "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) carbonHandler=\(snapshot.standardHandlerState.diagnosticName) carbonHandlerStatus=\(snapshot.standardHandlerState.failureStatus.map(String.init) ?? "none") eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired) paused=true"
             )
             lastCaptureBlockedMessages = []
             return
@@ -335,10 +335,10 @@ final class ShortcutManager {
         }
         let snapshot = captureCoordinator.snapshot()
         logger.info(
-            "attemptStart: shortcuts=\(self.shortcutStore.shortcuts.count) triggerIndex=\(self.triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired)"
+            "attemptStart: shortcuts=\(self.shortcutStore.shortcuts.count) triggerIndex=\(self.triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) carbonHandler=\(snapshot.standardHandlerState.diagnosticName) carbonHandlerStatus=\(snapshot.standardHandlerState.failureStatus.map(String.init) ?? "none") eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired)"
         )
         diagnosticClient.log(
-            "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired)"
+            "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) carbonHandler=\(snapshot.standardHandlerState.diagnosticName) carbonHandlerStatus=\(snapshot.standardHandlerState.failureStatus.map(String.init) ?? "none") eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired)"
         )
         emitCaptureBlockedDiagnostics(snapshot: snapshot)
     }
@@ -432,11 +432,17 @@ final class ShortcutManager {
         var blockedMessages = Set<String>()
 
         if snapshot.standardShortcutCount > 0 && !snapshot.carbonHotKeysRegistered {
+            let reason: String
+            if case .installationFailed = snapshot.standardHandlerState {
+                reason = "carbon_handler_installation_failed"
+            } else if snapshot.standardInputMonitoringRequired
+                && !permissionService.isInputMonitoringTrusted() {
+                reason = "input_monitoring_missing"
+            } else {
+                reason = "missing_registration_or_system_conflict"
+            }
             blockedMessages.insert(captureBlockedMessage(
-                reason: snapshot.standardInputMonitoringRequired
-                    && !permissionService.isInputMonitoringTrusted()
-                    ? "input_monitoring_missing"
-                    : "missing_registration_or_system_conflict",
+                reason: reason,
                 route: .standard,
                 snapshot: snapshot
             ))
@@ -479,7 +485,11 @@ final class ShortcutManager {
         var message = "SHORTCUT_TRACE_BLOCKED reason=\(quoted(reason)) route=\(route == .hyper ? "hyper" : "standard") carbonRegistered=\(snapshot.carbonHotKeysRegistered) eventTapActive=\(snapshot.eventTapActive) standardShortcutCount=\(snapshot.standardShortcutCount) hyperShortcutCount=\(snapshot.hyperShortcutCount)"
 
         if route == .standard {
-            message += " registeredStandardShortcutCount=\(snapshot.registeredStandardShortcutCount)"
+            message += " registeredStandardShortcutCount=\(snapshot.registeredStandardShortcutCount) handlerState=\(snapshot.standardHandlerState.diagnosticName)"
+
+            if let handlerStatus = snapshot.standardHandlerState.failureStatus {
+                message += " handlerStatus=\(handlerStatus)"
+            }
 
             if !snapshot.standardRegistrationFailures.isEmpty {
                 let failedBindings = snapshot.standardRegistrationFailures

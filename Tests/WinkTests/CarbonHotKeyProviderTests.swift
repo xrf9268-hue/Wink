@@ -529,6 +529,149 @@ struct CarbonHotKeyProviderTests {
         #expect(provider.registrationState.allDesiredShortcutsRegistered)
         provider.stop()
     }
+
+    @Test @MainActor
+    func handlerInstallFailureRollsBackSuccessfulRegistrationsAndRetriesCleanly() throws {
+        let registrar = RecordingCarbonHotKeyRegistrar()
+        let handlerFactory = RecordingCarbonHotKeyHandlerFactory(
+            results: [Int32(eventInternalErr), nil]
+        )
+        let provider = CarbonHotKeyProvider(
+            registrationClient: registrar.client,
+            handlerFactory: handlerFactory.factory
+        )
+        let shortcut = KeyPress(
+            keyCode: CGKeyCode(kVK_ANSI_A),
+            modifiers: [.command]
+        )
+        var delivered: [KeyPress] = []
+
+        provider.updateRegisteredShortcuts([shortcut])
+        provider.start { delivered.append($0) }
+
+        let failedIdentifier = try #require(registrar.attempts.first?.identifier)
+        #expect(handlerFactory.installCount == 1)
+        #expect(registrar.attempts.count == 1)
+        #expect(registrar.registrations.isEmpty)
+        #expect(registrar.unregisteredIdentifiers == [failedIdentifier])
+        #expect(!provider.isRunning)
+        #expect(provider.registrationState.desiredShortcutCount == 1)
+        #expect(provider.registrationState.registeredShortcutCount == 0)
+        #expect(provider.registrationState.handlerState == .installationFailed(
+            status: Int32(eventInternalErr)
+        ))
+
+        provider.handleHotKeyEvent(identifier: failedIdentifier)
+        #expect(delivered.isEmpty)
+
+        provider.updateRegisteredShortcuts([shortcut])
+
+        let recoveredRegistration = try #require(registrar.registrations.first)
+        let recoveredSession = try #require(handlerFactory.sessions.first)
+        #expect(handlerFactory.installCount == 2)
+        #expect(registrar.attempts.count == 2)
+        #expect(registrar.registrations.count == 1)
+        #expect(recoveredRegistration.identifier != failedIdentifier)
+        #expect(provider.isRunning)
+        #expect(provider.registrationState.handlerState == .installed)
+        #expect(provider.registrationState.allDesiredShortcutsRegistered)
+
+        // The production coordinator calls update followed by start during a
+        // retry. Once update recovered the complete set, start must only
+        // replace the delivery closure rather than reconcile it a second time.
+        provider.start { delivered.append($0) }
+        #expect(registrar.attempts.count == 2)
+        #expect(registrar.registrations.map(\.identifier) == [recoveredRegistration.identifier])
+
+        recoveredSession.emit(identifier: recoveredRegistration.identifier)
+        #expect(delivered == [shortcut])
+        recoveredSession.emit(identifier: failedIdentifier)
+        #expect(delivered == [shortcut])
+
+        provider.stop()
+
+        #expect(registrar.registrations.isEmpty)
+        #expect(recoveredSession.stopCount == 1)
+        #expect(provider.registrationState.handlerState == .notInstalled)
+        #expect(provider.registrationState.failures.isEmpty)
+        recoveredSession.emit(identifier: recoveredRegistration.identifier)
+        #expect(delivered == [shortcut])
+
+        provider.stop()
+        #expect(recoveredSession.stopCount == 1)
+    }
+
+    @Test @MainActor
+    func stopClearsHandlerInstallationFailure() {
+        let registrar = RecordingCarbonHotKeyRegistrar()
+        let handlerFactory = RecordingCarbonHotKeyHandlerFactory(
+            results: [Int32(eventInternalErr)]
+        )
+        let provider = CarbonHotKeyProvider(
+            registrationClient: registrar.client,
+            handlerFactory: handlerFactory.factory
+        )
+
+        provider.updateRegisteredShortcuts([
+            KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.command]),
+        ])
+        provider.start { _ in }
+        #expect(provider.registrationState.handlerState == .installationFailed(
+            status: Int32(eventInternalErr)
+        ))
+
+        provider.stop()
+
+        #expect(provider.registrationState.handlerState == .notInstalled)
+        #expect(provider.registrationState.failures.isEmpty)
+        #expect(registrar.registrations.isEmpty)
+    }
+
+    @Test @MainActor
+    func coordinatorRecoveryRegistersTheIntendedSetOnlyOnce() {
+        let registrar = RecordingCarbonHotKeyRegistrar()
+        let handlerFactory = RecordingCarbonHotKeyHandlerFactory(
+            results: [Int32(eventInternalErr), nil]
+        )
+        let provider = CarbonHotKeyProvider(
+            registrationClient: registrar.client,
+            handlerFactory: handlerFactory.factory
+        )
+        let coordinator = ShortcutCaptureCoordinator(
+            standardProvider: provider,
+            hyperProvider: NoopHyperCaptureProvider()
+        )
+        coordinator.updateShortcuts([
+            AppShortcut(
+                appName: "Test",
+                bundleIdentifier: "com.example.test",
+                keyEquivalent: "a",
+                modifierFlags: ["command"]
+            ),
+        ])
+
+        coordinator.start(inputMonitoringGranted: false) { _ in }
+        #expect(registrar.attempts.count == 1)
+        #expect(registrar.registrations.isEmpty)
+
+        // Match ShortcutManager's not-ready poll sequence. Recovery happens in
+        // the first update; every following unchanged sync must preserve it.
+        coordinator.refreshInputMonitoring(granted: false)
+        coordinator.setHyperKeyEnabled(false)
+        coordinator.setCapturePaused(false)
+        coordinator.start(inputMonitoringGranted: false) { _ in }
+
+        #expect(handlerFactory.installCount == 2)
+        #expect(registrar.attempts.count == 2)
+        #expect(registrar.registrations.count == 1)
+        let status = coordinator.status(
+            accessibilityGranted: true,
+            inputMonitoringGranted: false
+        )
+        #expect(status.carbonHotKeysRegistered)
+        #expect(status.standardShortcutsReady)
+        coordinator.stop()
+    }
 }
 
 @MainActor
@@ -539,18 +682,27 @@ private final class RecordingCarbonHotKeyRegistrar {
         let identifier: UInt32
     }
 
+    private(set) var attempts: [Registration] = []
     private(set) var registrations: [Registration] = []
+    private(set) var unregisteredIdentifiers: [UInt32] = []
 
     lazy var client = CarbonHotKeyRegistrationClient(
         register: { [unowned self] keyCode, modifiers, hotKeyID in
-            registrations.append(Registration(
+            let registration = Registration(
                 keyCode: keyCode,
                 modifiers: modifiers,
                 identifier: hotKeyID.id
-            ))
+            )
+            attempts.append(registration)
+            registrations.append(registration)
             return (noErr, OpaquePointer(bitPattern: Int(hotKeyID.id)))
         },
         unregister: { [unowned self] hotKeyRef in
+            if let registration = registrations.first(where: {
+                OpaquePointer(bitPattern: Int($0.identifier)) == hotKeyRef
+            }) {
+                unregisteredIdentifiers.append(registration.identifier)
+            }
             registrations.removeAll {
                 OpaquePointer(bitPattern: Int($0.identifier)) == hotKeyRef
             }
@@ -569,6 +721,65 @@ private final class RecordingCarbonHotKeyRegistrar {
         }
         provider.handleHotKeyEvent(identifier: registration.identifier)
     }
+}
+
+@MainActor
+private final class RecordingCarbonHotKeyHandlerFactory {
+    private var results: [Int32?]
+    private(set) var installCount = 0
+    private(set) var sessions: [RecordingCarbonHotKeyHandlerSession] = []
+
+    init(results: [Int32?]) {
+        self.results = results
+    }
+
+    lazy var factory = CarbonHotKeyHandlerFactory { [unowned self] delivery in
+        installCount += 1
+        let result = results.isEmpty ? nil : results.removeFirst()
+        if let status = result {
+            return .failed(status)
+        }
+
+        let session = RecordingCarbonHotKeyHandlerSession(delivery: delivery)
+        sessions.append(session)
+        return .installed(session)
+    }
+}
+
+@MainActor
+private final class RecordingCarbonHotKeyHandlerSession: CarbonHotKeyHandlerSession {
+    private let delivery: CarbonHotKeyDelivery
+    private(set) var isLive = true
+    private(set) var stopCount = 0
+
+    init(delivery: @escaping CarbonHotKeyDelivery) {
+        self.delivery = delivery
+    }
+
+    func stop() {
+        guard isLive else { return }
+        isLive = false
+        stopCount += 1
+    }
+
+    func emit(identifier: UInt32, timestamp: CGEventTimestamp = .max) {
+        delivery(identifier, timestamp)
+    }
+}
+
+@MainActor
+private final class NoopHyperCaptureProvider: HyperShortcutCaptureProvider {
+    var isRunning = false
+    var registrationState = ShortcutCaptureRegistrationState(
+        desiredShortcutCount: 0,
+        registeredShortcutCount: 0,
+        failures: []
+    )
+
+    func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {}
+    func stop() { isRunning = false }
+    func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {}
+    func setHyperKeyEnabled(_ enabled: Bool) {}
 }
 
 @MainActor
