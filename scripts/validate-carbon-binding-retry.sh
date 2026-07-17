@@ -6,7 +6,6 @@
 # suppressed, and requires Accessibility to have been granted beforehand.
 #
 # Optional environment:
-#   APP_PATH=/absolute/path/to/Wink.app
 #   EVIDENCE_DIR=/absolute/path/to/new-or-empty-evidence-directory
 #   EXPECTED_HEAD=<40-character-commit-sha>
 #   POLL_TIMEOUT_SECONDS=30
@@ -34,7 +33,7 @@ require_command() {
     command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
 
-for command_name in codesign defaults git jq plutil pgrep ps python3 shasum; do
+for command_name in codesign defaults ditto git jq plutil pgrep ps python3 shasum tee; do
     require_command "$command_name"
 done
 [ "$(uname -s)" = "Darwin" ] || die "this runtime acceptance must run on macOS"
@@ -55,14 +54,43 @@ GIT_STATUS="$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
     die "worktree must be clean so evidence is bound to one exact source state"
 }
 
-APP_PATH="${APP_PATH:-$PROJECT_DIR/build/Wink.app}"
-if [[ "$APP_PATH" != /* ]]; then
-    APP_PATH="$PROJECT_DIR/$APP_PATH"
+EXISTING_WINK_PIDS="$(pgrep -x "$APP_NAME" || true)"
+[ -z "$EXISTING_WINK_PIDS" ] \
+    || die "stop every existing Wink process before validation (pids: ${EXISTING_WINK_PIDS//$'\n'/,})"
+
+EVIDENCE_DIR="${EVIDENCE_DIR:-$PROJECT_DIR/build/validation/issue-317-$EXPECTED_HEAD/carbon-binding-retry}"
+if [[ "$EVIDENCE_DIR" != /* ]]; then
+    EVIDENCE_DIR="$PROJECT_DIR/$EVIDENCE_DIR"
 fi
-[ ! -L "$APP_PATH" ] || die "APP_PATH must not be a symlink: $APP_PATH"
-[ -d "$APP_PATH" ] || die "app bundle not found: $APP_PATH"
-APP_PARENT="$(cd "$(dirname "$APP_PATH")" && pwd -P)"
-APP_PATH="$APP_PARENT/$(basename "$APP_PATH")"
+if [ -d "$EVIDENCE_DIR" ] && [ -n "$(find "$EVIDENCE_DIR" -mindepth 1 -print -quit)" ]; then
+    die "EVIDENCE_DIR must be new or empty: $EVIDENCE_DIR"
+fi
+mkdir -p "$EVIDENCE_DIR"
+EVIDENCE_PARENT="$(cd "$(dirname "$EVIDENCE_DIR")" && pwd -P)"
+EVIDENCE_DIR="$EVIDENCE_PARENT/$(basename "$EVIDENCE_DIR")"
+
+# Build inside this clean, exact-head process so a caller cannot accidentally
+# attribute a stale injected bundle to EXPECTED_HEAD. Preserve the resulting
+# bundle before the later clean production rebuild replaces build/Wink.app.
+BUILT_APP_PATH="$PROJECT_DIR/build/Wink.app"
+PACKAGE_OUTPUT="$EVIDENCE_DIR/package-injected.txt"
+printf 'WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION=1 WINK_VALIDATION_SOURCE_REVISION=%q bash %q\n' \
+    "$EXPECTED_HEAD" "$PROJECT_DIR/scripts/package-app.sh" >"$EVIDENCE_DIR/package-command.txt"
+WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION=1 \
+    WINK_VALIDATION_SOURCE_REVISION="$EXPECTED_HEAD" \
+    bash "$PROJECT_DIR/scripts/package-app.sh" 2>&1 | tee "$PACKAGE_OUTPUT"
+[ "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$EXPECTED_HEAD" ] \
+    || die "HEAD changed while the injected bundle was building"
+POST_BUILD_STATUS="$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
+[ -z "$POST_BUILD_STATUS" ] || {
+    printf '%s\n' "$POST_BUILD_STATUS" >&2
+    die "source worktree changed while the injected bundle was building"
+}
+[ -d "$BUILT_APP_PATH" ] || die "package script did not create $BUILT_APP_PATH"
+mkdir -p "$EVIDENCE_DIR/bundles"
+APP_PATH="$EVIDENCE_DIR/bundles/injected-Wink.app"
+ditto "$BUILT_APP_PATH" "$APP_PATH"
+
 INFO_PLIST="$APP_PATH/Contents/Info.plist"
 EXECUTABLE="$APP_PATH/Contents/MacOS/$APP_NAME"
 [ -f "$INFO_PLIST" ] || die "Info.plist not found: $INFO_PLIST"
@@ -77,6 +105,9 @@ ACTUAL_EXECUTABLE="$(plutil -extract CFBundleExecutable raw -o - "$INFO_PLIST")"
 ACTUAL_PROFILE="$(plutil -extract WinkRuntimeValidationProfile raw -o - "$INFO_PLIST" 2>/dev/null || true)"
 [ "$ACTUAL_PROFILE" = "$EXPECTED_PROFILE" ] \
     || die "expected validation profile '$EXPECTED_PROFILE', got '${ACTUAL_PROFILE:-missing}'"
+ACTUAL_SOURCE_REVISION="$(plutil -extract WinkRuntimeValidationSourceRevision raw -o - "$INFO_PLIST" 2>/dev/null || true)"
+[ "$ACTUAL_SOURCE_REVISION" = "$EXPECTED_HEAD" ] \
+    || die "injected bundle source revision '${ACTUAL_SOURCE_REVISION:-missing}' does not match $EXPECTED_HEAD"
 
 [ -f "$FIXTURE_PATH" ] || die "fixture not found: $FIXTURE_PATH"
 jq -e '
@@ -109,10 +140,6 @@ case "$WAIT_FOR_PHYSICAL" in
     *) die "WAIT_FOR_PHYSICAL must be 0 or 1" ;;
 esac
 
-EXISTING_WINK_PIDS="$(pgrep -x "$APP_NAME" || true)"
-[ -z "$EXISTING_WINK_PIDS" ] \
-    || die "stop every existing Wink process before validation (pids: ${EXISTING_WINK_PIDS//$'\n'/,})"
-
 [ ! -L "$SHORTCUTS_FILE" ] || die "refusing to replace symlinked shortcuts file: $SHORTCUTS_FILE"
 [ ! -L "$LOG_FILE" ] || die "refusing to replace symlinked diagnostic log: $LOG_FILE"
 if ORIGINAL_HYPER_VALUE="$(defaults read "$BUNDLE_ID" hyperKeyEnabled 2>/dev/null)"; then
@@ -134,17 +161,6 @@ if SHORTCUTS_PAUSED="$(defaults read "$BUNDLE_ID" shortcutsPaused 2>/dev/null)";
     esac
 fi
 
-EVIDENCE_DIR="${EVIDENCE_DIR:-$PROJECT_DIR/build/validation/issue-317-$EXPECTED_HEAD/carbon-binding-retry}"
-if [[ "$EVIDENCE_DIR" != /* ]]; then
-    EVIDENCE_DIR="$PROJECT_DIR/$EVIDENCE_DIR"
-fi
-if [ -d "$EVIDENCE_DIR" ] && [ -n "$(find "$EVIDENCE_DIR" -mindepth 1 -print -quit)" ]; then
-    die "EVIDENCE_DIR must be new or empty: $EVIDENCE_DIR"
-fi
-mkdir -p "$EVIDENCE_DIR"
-EVIDENCE_PARENT="$(cd "$(dirname "$EVIDENCE_DIR")" && pwd -P)"
-EVIDENCE_DIR="$EVIDENCE_PARENT/$(basename "$EVIDENCE_DIR")"
-
 if ! codesign --verify --deep --strict --verbose=2 "$APP_PATH" \
     >"$EVIDENCE_DIR/codesign-verification.txt" 2>&1; then
     sed -n '1,160p' "$EVIDENCE_DIR/codesign-verification.txt" >&2
@@ -153,11 +169,17 @@ fi
 codesign -dv --verbose=4 "$APP_PATH" >"$EVIDENCE_DIR/codesign-details.txt" 2>&1
 
 EXECUTABLE_SHA256="$(shasum -a 256 "$EXECUTABLE" | awk '{print $1}')"
+BUILT_EXECUTABLE="$BUILT_APP_PATH/Contents/MacOS/$APP_NAME"
+BUILT_EXECUTABLE_SHA256="$(shasum -a 256 "$BUILT_EXECUTABLE" | awk '{print $1}')"
 FIXTURE_SHA256="$(shasum -a 256 "$FIXTURE_PATH" | awk '{print $1}')"
 [[ "$EXECUTABLE_SHA256" =~ ^[0-9a-f]{64}$ ]] || die "failed to calculate executable SHA-256"
+[[ "$BUILT_EXECUTABLE_SHA256" =~ ^[0-9a-f]{64}$ ]] || die "failed to calculate built executable SHA-256"
+[ "$EXECUTABLE_SHA256" = "$BUILT_EXECUTABLE_SHA256" ] \
+    || die "preserved executable differs from the exact bundle built in this process"
 [[ "$FIXTURE_SHA256" =~ ^[0-9a-f]{64}$ ]] || die "failed to calculate fixture SHA-256"
 
 printf '%s\n' "$EXPECTED_HEAD" >"$EVIDENCE_DIR/head.txt"
+printf '%s\n' "$BUILT_APP_PATH" >"$EVIDENCE_DIR/built-app-path.txt"
 printf '%s\n' "$APP_PATH" >"$EVIDENCE_DIR/app-path.txt"
 printf '%s\n' "$EXECUTABLE" >"$EVIDENCE_DIR/executable-path.txt"
 printf '%s  %s\n' "$EXECUTABLE_SHA256" "$EXECUTABLE" >"$EVIDENCE_DIR/executable-sha256.txt"
@@ -170,12 +192,14 @@ git -C "$PROJECT_DIR" status --porcelain --untracked-files=all >"$EVIDENCE_DIR/g
 } >"$EVIDENCE_DIR/host.txt"
 {
     printf 'head=%s\n' "$EXPECTED_HEAD"
+    printf 'builtAppPath=%s\n' "$BUILT_APP_PATH"
     printf 'appPath=%s\n' "$APP_PATH"
     printf 'executablePath=%s\n' "$EXECUTABLE"
     printf 'executableSHA256=%s\n' "$EXECUTABLE_SHA256"
     printf 'fixturePath=%s\n' "$FIXTURE_PATH"
     printf 'fixtureSHA256=%s\n' "$FIXTURE_SHA256"
     printf 'profile=%s\n' "$ACTUAL_PROFILE"
+    printf 'sourceRevision=%s\n' "$ACTUAL_SOURCE_REVISION"
     printf 'faultArgument=%s\n' "$FAULT_ARGUMENT"
 } >"$EVIDENCE_DIR/identity.txt"
 
@@ -334,11 +358,25 @@ sync_count="$(grep -c 'CARBON_HOTKEY_SYNC ' "$LOG_FILE" 2>/dev/null || true)"
 [ "$sync_count" -ge $((poll_count + 1)) ] \
     || die "timed out before the retry for poll $poll_count was logged"
 
-# Freeze before teardown. The EXIT trap terminates the exact process only after
-# this immutable observation window and its counters have been persisted.
-cp "$LOG_FILE" "$EVIDENCE_DIR/runtime-frozen.log"
+# Freeze at the first completed sync after the fifth permission poll. Selecting
+# an immutable line-number prefix avoids racing the still-live three-second
+# timer if it begins a sixth poll while evidence is being copied. Retain only
+# the readiness/counter families required by this acceptance.
+SNAPSHOT_CUTOFF_LINE="$(awk '
+    /checkPermission:/ { poll_count += 1 }
+    /CARBON_HOTKEY_SYNC / && poll_count >= 5 { print NR; exit }
+' "$LOG_FILE")"
+[[ "$SNAPSHOT_CUTOFF_LINE" =~ ^[1-9][0-9]*$ ]] \
+    || die "could not locate the completed synchronization after permission poll five"
+awk -v cutoff="$SNAPSHOT_CUTOFF_LINE" '
+    NR > cutoff { exit }
+    /CARBON_HOTKEY_SYNC / \
+        || /checkPermission:/ \
+        || /CARBON_BINDING_FAULT_INJECTION / \
+        || /SHORTCUT_TRACE_BLOCKED / { print }
+' "$LOG_FILE" >"$EVIDENCE_DIR/runtime-readiness-sanitized.log"
 
-python3 - "$EVIDENCE_DIR/runtime-frozen.log" "$EVIDENCE_DIR/runtime-summary.json" <<'PY'
+python3 - "$EVIDENCE_DIR/runtime-readiness-sanitized.log" "$EVIDENCE_DIR/runtime-summary.json" <<'PY'
 import datetime
 import json
 import pathlib
@@ -516,7 +554,8 @@ if [ "$WAIT_FOR_PHYSICAL" -eq 1 ]; then
         physical_slice="$(tail -n +"$((PHYSICAL_PRE_LINES + 1))" "$LOG_FILE" 2>/dev/null || true)"
         if grep -Fq 'MATCHED: Notes - com.apple.Notes' <<<"$physical_slice" \
             && grep -Fq 'SHORTCUT_TRACE_DECISION event=matched bundle=com.apple.Notes route=standard' <<<"$physical_slice"; then
-            printf '%s\n' "$physical_slice" >"$EVIDENCE_DIR/physical-input-observation.log"
+            grep -E 'MATCHED: Notes - com\.apple\.Notes|SHORTCUT_TRACE_DECISION event=matched bundle=com\.apple\.Notes route=standard' \
+                <<<"$physical_slice" >"$EVIDENCE_DIR/physical-input-observation-sanitized.log"
             printf 'OBSERVED_PHYSICAL_STANDARD_MATCH_CTRL_ALT_COMMAND_A\n' \
                 | tee "$EVIDENCE_DIR/physical-input-observed.txt"
             break
@@ -525,8 +564,9 @@ if [ "$WAIT_FOR_PHYSICAL" -eq 1 ]; then
         elapsed=$((elapsed + 1))
     done
     if [ ! -f "$EVIDENCE_DIR/physical-input-observed.txt" ]; then
-        tail -n +"$((PHYSICAL_PRE_LINES + 1))" "$LOG_FILE" \
-            >"$EVIDENCE_DIR/physical-input-timeout.log" 2>/dev/null || true
+        tail -n +"$((PHYSICAL_PRE_LINES + 1))" "$LOG_FILE" 2>/dev/null \
+            | grep -E 'MATCHED: Notes - com\.apple\.Notes|SHORTCUT_TRACE_DECISION event=matched bundle=com\.apple\.Notes route=standard' \
+            >"$EVIDENCE_DIR/physical-input-timeout-sanitized.log" || true
     fi
     [ -f "$EVIDENCE_DIR/physical-input-observed.txt" ] \
         || die "timed out waiting for Ctrl+Alt+Command+A; human confirmation is still required"

@@ -177,13 +177,18 @@ injected-failure, and unregister counts. This profile is intended to prove that
 unchanged readiness polls retry only the failed binding while preserving every
 successful registration.
 
+The checked-in acceptance also supplies the clean 40-character head through
+`WINK_VALIDATION_SOURCE_REVISION`; injected packages record it as
+`WinkRuntimeValidationSourceRevision`, and the harness rejects any mismatch.
+Production packaging removes both runtime-validation keys.
+
 Run the checked-in 20-binding acceptance against a preserved injected bundle
-from the exact clean head. The script backs up and restores the user's Wink
-shortcuts, diagnostic log, and Hyper preference; it does not change TCC:
+from the exact clean head. The script builds and preserves that injected bundle
+itself, then backs up and restores the user's Wink shortcuts, diagnostic log,
+and Hyper preference; it does not change TCC:
 
 ```bash
 EXPECTED_HEAD="$(git rev-parse HEAD)" \
-APP_PATH="/absolute/path/to/injected-Wink.app" \
 bash scripts/validate-carbon-binding-retry.sh
 ```
 
