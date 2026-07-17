@@ -188,6 +188,7 @@ itself, then backs up and restores the user's Wink shortcuts, diagnostic log,
 and Hyper preference; it does not change TCC:
 
 ```bash
+BASE_SHA="<recorded-40-character-issue-base>" \
 EXPECTED_HEAD="$(git rev-parse HEAD)" \
 bash scripts/validate-carbon-binding-retry.sh
 ```

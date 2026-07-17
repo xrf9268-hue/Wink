@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Runtime acceptance for issue #317's incremental Carbon reconciliation.
 #
-# This script never changes TCC. It launches an already packaged, signed
-# carbon-binding-fault-injection bundle with automatic permission prompts
+# This script never changes TCC. It builds a signed Carbon binding-fault bundle,
+# launches that bundle through LaunchServices with automatic permission prompts
 # suppressed, and requires Accessibility to have been granted beforehand.
 #
-# Optional environment:
+# Environment:
+#   BASE_SHA=<recorded-40-character-base-sha>  # required
 #   EVIDENCE_DIR=/absolute/path/to/new-or-empty-evidence-directory
 #   EXPECTED_HEAD=<40-character-commit-sha>
 #   POLL_TIMEOUT_SECONDS=30
@@ -13,6 +14,7 @@
 #   WAIT_FOR_PHYSICAL=1  # set to 0 for the non-physical metrics gate only
 set -euo pipefail
 umask 077
+shopt -s nullglob
 
 APP_NAME="Wink"
 BUNDLE_ID="com.wink.app"
@@ -22,6 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 FIXTURE_PATH="$SCRIPT_DIR/fixtures/issue-317-20-standard.json"
 SHORTCUTS_FILE="$HOME/Library/Application Support/Wink/shortcuts.json"
+USAGE_DB_FILE="$HOME/Library/Application Support/Wink/usage.db"
 LOG_FILE="$HOME/.config/Wink/debug.log"
 
 die() {
@@ -33,7 +36,14 @@ require_command() {
     command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
 
-for command_name in codesign defaults ditto git jq plutil pgrep ps python3 shasum tee; do
+assert_no_wink_processes() {
+    local existing_wink_pids
+    existing_wink_pids="$(pgrep -x "$APP_NAME" || true)"
+    [ -z "$existing_wink_pids" ] \
+        || die "stop every existing Wink process before validation (pids: ${existing_wink_pids//$'\n'/,})"
+}
+
+for command_name in codesign defaults ditto git jq open plutil pgrep ps python3 shasum tee; do
     require_command "$command_name"
 done
 [ "$(uname -s)" = "Darwin" ] || die "this runtime acceptance must run on macOS"
@@ -41,12 +51,20 @@ done
 EXPECTED_HEAD="${EXPECTED_HEAD:-$(git -C "$PROJECT_DIR" rev-parse HEAD)}"
 [[ "$EXPECTED_HEAD" =~ ^[0-9a-f]{40}$ ]] \
     || die "EXPECTED_HEAD must be one lowercase 40-character SHA: $EXPECTED_HEAD"
+BASE_SHA="${BASE_SHA:-}"
+[[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] \
+    || die "BASE_SHA must be the recorded lowercase 40-character issue base"
 CURRENT_HEAD="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
 [ "$CURRENT_HEAD" = "$EXPECTED_HEAD" ] \
     || die "current HEAD $CURRENT_HEAD does not match EXPECTED_HEAD $EXPECTED_HEAD"
 RESOLVED_EXPECTED_HEAD="$(git -C "$PROJECT_DIR" rev-parse --verify "$EXPECTED_HEAD^{commit}")"
 [ "$RESOLVED_EXPECTED_HEAD" = "$EXPECTED_HEAD" ] \
     || die "EXPECTED_HEAD does not resolve to the exact current commit"
+RESOLVED_BASE_SHA="$(git -C "$PROJECT_DIR" rev-parse --verify "$BASE_SHA^{commit}")"
+[ "$RESOLVED_BASE_SHA" = "$BASE_SHA" ] \
+    || die "BASE_SHA does not resolve to the exact recorded commit"
+git -C "$PROJECT_DIR" merge-base --is-ancestor "$BASE_SHA" "$EXPECTED_HEAD" \
+    || die "BASE_SHA is not an ancestor of EXPECTED_HEAD"
 
 GIT_STATUS="$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
 [ -z "$GIT_STATUS" ] || {
@@ -54,9 +72,20 @@ GIT_STATUS="$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
     die "worktree must be clean so evidence is bound to one exact source state"
 }
 
-EXISTING_WINK_PIDS="$(pgrep -x "$APP_NAME" || true)"
-[ -z "$EXISTING_WINK_PIDS" ] \
-    || die "stop every existing Wink process before validation (pids: ${EXISTING_WINK_PIDS//$'\n'/,})"
+LOCK_DIR="${TMPDIR:-/tmp}/wink-issue-317-${UID}.lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    die "another issue #317 validation owns $LOCK_DIR; remove it only after confirming no validation is running"
+fi
+printf '%s\n' "$$" >"$LOCK_DIR/pid"
+early_cleanup() {
+    rm -f "$LOCK_DIR/pid"
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+}
+trap early_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+assert_no_wink_processes
 
 EVIDENCE_DIR="${EVIDENCE_DIR:-$PROJECT_DIR/build/validation/issue-317-$EXPECTED_HEAD/carbon-binding-retry}"
 if [[ "$EVIDENCE_DIR" != /* ]]; then
@@ -87,9 +116,11 @@ POST_BUILD_STATUS="$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=
     die "source worktree changed while the injected bundle was building"
 }
 [ -d "$BUILT_APP_PATH" ] || die "package script did not create $BUILT_APP_PATH"
+assert_no_wink_processes
 mkdir -p "$EVIDENCE_DIR/bundles"
-APP_PATH="$EVIDENCE_DIR/bundles/injected-Wink.app"
-ditto "$BUILT_APP_PATH" "$APP_PATH"
+PRESERVED_APP_PATH="$EVIDENCE_DIR/bundles/injected-Wink.app"
+ditto "$BUILT_APP_PATH" "$PRESERVED_APP_PATH"
+APP_PATH="$BUILT_APP_PATH"
 
 INFO_PLIST="$APP_PATH/Contents/Info.plist"
 EXECUTABLE="$APP_PATH/Contents/MacOS/$APP_NAME"
@@ -124,6 +155,7 @@ jq -e '
         and .modifierFlags == ["command", "option", "control"]
     )
     and (.[0] | .appName == "Notes" and .bundleIdentifier == "com.apple.Notes" and .keyEquivalent == "a")
+    and (map(select(.bundleIdentifier == "com.apple.Notes")) | length == 1)
     and (map(select(.keyEquivalent == "j")) | length == 1)
 ' "$FIXTURE_PATH" >/dev/null || die "issue #317 fixture does not match the required 20-binding standard matrix"
 
@@ -167,19 +199,26 @@ if ! codesign --verify --deep --strict --verbose=2 "$APP_PATH" \
     die "codesign verification failed for $APP_PATH"
 fi
 codesign -dv --verbose=4 "$APP_PATH" >"$EVIDENCE_DIR/codesign-details.txt" 2>&1
+if ! codesign --verify --deep --strict --verbose=2 "$PRESERVED_APP_PATH" \
+    >"$EVIDENCE_DIR/codesign-preserved-verification.txt" 2>&1; then
+    sed -n '1,160p' "$EVIDENCE_DIR/codesign-preserved-verification.txt" >&2
+    die "codesign verification failed for preserved bundle $PRESERVED_APP_PATH"
+fi
 
 EXECUTABLE_SHA256="$(shasum -a 256 "$EXECUTABLE" | awk '{print $1}')"
-BUILT_EXECUTABLE="$BUILT_APP_PATH/Contents/MacOS/$APP_NAME"
-BUILT_EXECUTABLE_SHA256="$(shasum -a 256 "$BUILT_EXECUTABLE" | awk '{print $1}')"
+PRESERVED_EXECUTABLE="$PRESERVED_APP_PATH/Contents/MacOS/$APP_NAME"
+PRESERVED_EXECUTABLE_SHA256="$(shasum -a 256 "$PRESERVED_EXECUTABLE" | awk '{print $1}')"
 FIXTURE_SHA256="$(shasum -a 256 "$FIXTURE_PATH" | awk '{print $1}')"
 [[ "$EXECUTABLE_SHA256" =~ ^[0-9a-f]{64}$ ]] || die "failed to calculate executable SHA-256"
-[[ "$BUILT_EXECUTABLE_SHA256" =~ ^[0-9a-f]{64}$ ]] || die "failed to calculate built executable SHA-256"
-[ "$EXECUTABLE_SHA256" = "$BUILT_EXECUTABLE_SHA256" ] \
+[[ "$PRESERVED_EXECUTABLE_SHA256" =~ ^[0-9a-f]{64}$ ]] || die "failed to calculate preserved executable SHA-256"
+[ "$EXECUTABLE_SHA256" = "$PRESERVED_EXECUTABLE_SHA256" ] \
     || die "preserved executable differs from the exact bundle built in this process"
 [[ "$FIXTURE_SHA256" =~ ^[0-9a-f]{64}$ ]] || die "failed to calculate fixture SHA-256"
 
 printf '%s\n' "$EXPECTED_HEAD" >"$EVIDENCE_DIR/head.txt"
+printf '%s\n' "$BASE_SHA" >"$EVIDENCE_DIR/base.txt"
 printf '%s\n' "$BUILT_APP_PATH" >"$EVIDENCE_DIR/built-app-path.txt"
+printf '%s\n' "$PRESERVED_APP_PATH" >"$EVIDENCE_DIR/preserved-app-path.txt"
 printf '%s\n' "$APP_PATH" >"$EVIDENCE_DIR/app-path.txt"
 printf '%s\n' "$EXECUTABLE" >"$EVIDENCE_DIR/executable-path.txt"
 printf '%s  %s\n' "$EXECUTABLE_SHA256" "$EXECUTABLE" >"$EVIDENCE_DIR/executable-sha256.txt"
@@ -191,8 +230,10 @@ git -C "$PROJECT_DIR" status --porcelain --untracked-files=all >"$EVIDENCE_DIR/g
     uname -m
 } >"$EVIDENCE_DIR/host.txt"
 {
+    printf 'base=%s\n' "$BASE_SHA"
     printf 'head=%s\n' "$EXPECTED_HEAD"
     printf 'builtAppPath=%s\n' "$BUILT_APP_PATH"
+    printf 'preservedAppPath=%s\n' "$PRESERVED_APP_PATH"
     printf 'appPath=%s\n' "$APP_PATH"
     printf 'executablePath=%s\n' "$EXECUTABLE"
     printf 'executableSHA256=%s\n' "$EXECUTABLE_SHA256"
@@ -201,14 +242,18 @@ git -C "$PROJECT_DIR" status --porcelain --untracked-files=all >"$EVIDENCE_DIR/g
     printf 'profile=%s\n' "$ACTUAL_PROFILE"
     printf 'sourceRevision=%s\n' "$ACTUAL_SOURCE_REVISION"
     printf 'faultArgument=%s\n' "$FAULT_ARGUMENT"
+    printf 'retryPolicy=one failed-binding attempt per three-second permission poll\n'
 } >"$EVIDENCE_DIR/identity.txt"
 
 SHORTCUTS_EXISTED=0
 LOG_EXISTED=0
+DEFAULTS_DOMAIN_EXISTED=0
 SHORTCUTS_ORIGINAL_SHA256="absent"
 LOG_ORIGINAL_SHA256="absent"
 APP_PID=""
 STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/wink-issue-317.XXXXXX")"
+mkdir -p "$STATE_DIR/usage-db"
+: >"$STATE_DIR/usage-db-manifest.txt"
 
 if [ -f "$SHORTCUTS_FILE" ]; then
     SHORTCUTS_EXISTED=1
@@ -220,11 +265,31 @@ if [ -f "$LOG_FILE" ]; then
     cp -p "$LOG_FILE" "$STATE_DIR/debug.log"
     LOG_ORIGINAL_SHA256="$(shasum -a 256 "$LOG_FILE" | awk '{print $1}')"
 fi
+if defaults export "$BUNDLE_ID" "$STATE_DIR/defaults.plist" >/dev/null 2>&1; then
+    DEFAULTS_DOMAIN_EXISTED=1
+fi
+ORIGINAL_USAGE_PATHS=("$USAGE_DB_FILE"*)
+for usage_path in "${ORIGINAL_USAGE_PATHS[@]}"; do
+    [ ! -L "$usage_path" ] || die "refusing to replace symlinked usage state: $usage_path"
+    [ -f "$usage_path" ] || die "unexpected non-file usage state: $usage_path"
+    usage_name="$(basename "$usage_path")"
+    cp -p "$usage_path" "$STATE_DIR/usage-db/$usage_name"
+    printf '%s\t%s\n' \
+        "$usage_name" \
+        "$(shasum -a 256 "$usage_path" | awk '{print $1}')" \
+        >>"$STATE_DIR/usage-db-manifest.txt"
+done
+cp "$STATE_DIR/usage-db-manifest.txt" "$EVIDENCE_DIR/usage-db-original-manifest.txt"
+
+# Packaging can take long enough for a user or another process to relaunch
+# Wink. Refuse to touch shared state unless it is still quiescent now.
+assert_no_wink_processes
 
 cleanup() {
     local status=$?
     local restore_failed=0
-    trap - EXIT INT TERM
+    trap - EXIT
+    trap '' INT TERM
     set +e
 
     if [ -n "$APP_PID" ] && kill -0 "$APP_PID" 2>/dev/null; then
@@ -278,29 +343,69 @@ cleanup() {
         [ ! -e "$LOG_FILE" ] || restore_failed=1
     fi
 
-    if [ "$HYPER_KEY_EXISTED" -eq 1 ]; then
-        if ! defaults write "$BUNDLE_ID" hyperKeyEnabled -bool "$ORIGINAL_HYPER_VALUE" \
-            || [ "$(defaults read "$BUNDLE_ID" hyperKeyEnabled 2>/dev/null)" != "$ORIGINAL_HYPER_VALUE" ]; then
-            printf 'WARNING: failed to restore hyperKeyEnabled=%s\n' "$ORIGINAL_HYPER_VALUE" >&2
+    defaults delete "$BUNDLE_ID" >/dev/null 2>&1 || true
+    if [ "$DEFAULTS_DOMAIN_EXISTED" -eq 1 ]; then
+        if ! defaults import "$BUNDLE_ID" "$STATE_DIR/defaults.plist" >/dev/null 2>&1 \
+            || ! defaults export "$BUNDLE_ID" "$STATE_DIR/defaults-restored.plist" >/dev/null 2>&1 \
+            || ! python3 - "$STATE_DIR/defaults.plist" "$STATE_DIR/defaults-restored.plist" <<'PY'
+import plistlib
+import sys
+
+with open(sys.argv[1], "rb") as expected_file:
+    expected = plistlib.load(expected_file)
+with open(sys.argv[2], "rb") as actual_file:
+    actual = plistlib.load(actual_file)
+raise SystemExit(0 if actual == expected else 1)
+PY
+        then
+            printf 'WARNING: failed to restore the com.wink.app defaults domain exactly\n' >&2
             restore_failed=1
         fi
     else
-        defaults delete "$BUNDLE_ID" hyperKeyEnabled >/dev/null 2>&1 || true
-        if defaults read "$BUNDLE_ID" hyperKeyEnabled >/dev/null 2>&1; then
-            printf 'WARNING: failed to restore absent hyperKeyEnabled key\n' >&2
+        if defaults read "$BUNDLE_ID" >/dev/null 2>&1; then
+            printf 'WARNING: failed to restore the absent com.wink.app defaults domain\n' >&2
             restore_failed=1
         fi
     fi
+
+    current_usage_paths=("$USAGE_DB_FILE"*)
+    if [ "${#current_usage_paths[@]}" -gt 0 ]; then
+        rm -f -- "${current_usage_paths[@]}" || restore_failed=1
+    fi
+    mkdir -p "$(dirname "$USAGE_DB_FILE")" || restore_failed=1
+    saved_usage_paths=("$STATE_DIR/usage-db/"*)
+    for saved_usage_path in "${saved_usage_paths[@]}"; do
+        cp -p "$saved_usage_path" "$(dirname "$USAGE_DB_FILE")/$(basename "$saved_usage_path")" \
+            || restore_failed=1
+    done
+    restored_usage_paths=("$USAGE_DB_FILE"*)
+    if [ "${#restored_usage_paths[@]}" -ne "$(wc -l <"$STATE_DIR/usage-db-manifest.txt" | tr -d ' ')" ]; then
+        printf 'WARNING: restored usage database file count does not match the backup\n' >&2
+        restore_failed=1
+    fi
+    while IFS=$'\t' read -r usage_name expected_usage_sha; do
+        [ -n "$usage_name" ] || continue
+        restored_usage_path="$(dirname "$USAGE_DB_FILE")/$usage_name"
+        if [ ! -f "$restored_usage_path" ] \
+            || [ "$(shasum -a 256 "$restored_usage_path" | awk '{print $1}')" != "$expected_usage_sha" ]; then
+            printf 'WARNING: restored usage state does not match backup: %s\n' "$usage_name" >&2
+            restore_failed=1
+        fi
+    done <"$STATE_DIR/usage-db-manifest.txt"
 
     {
         printf 'shortcutsOriginalSHA256=%s\n' "$SHORTCUTS_ORIGINAL_SHA256"
         printf 'debugLogOriginalSHA256=%s\n' "$LOG_ORIGINAL_SHA256"
         printf 'hyperKeyOriginallyPresent=%s\n' "$HYPER_KEY_EXISTED"
         printf 'hyperKeyOriginalValue=%s\n' "${ORIGINAL_HYPER_VALUE:-absent}"
+        printf 'defaultsDomainOriginallyPresent=%s\n' "$DEFAULTS_DOMAIN_EXISTED"
+        printf 'usageDatabaseFilesOriginallyPresent=%s\n' "$(wc -l <"$STATE_DIR/usage-db-manifest.txt" | tr -d ' ')"
         printf 'restored=%s\n' "$([ "$restore_failed" -eq 0 ] && printf true || printf false)"
     } >"$EVIDENCE_DIR/restoration.txt"
 
     rm -rf "$STATE_DIR" || restore_failed=1
+    rm -f "$LOCK_DIR/pid" || restore_failed=1
+    rmdir "$LOCK_DIR" || restore_failed=1
     if [ "$restore_failed" -ne 0 ]; then
         status=1
     fi
@@ -318,20 +423,33 @@ defaults write "$BUNDLE_ID" hyperKeyEnabled -bool false
 rm -f "$LOG_FILE"
 touch "$LOG_FILE"
 
-LAUNCH_OUTPUT="$EVIDENCE_DIR/launch-stdout-stderr.txt"
-"$EXECUTABLE" \
-    --suppress-automatic-permission-prompts \
-    "$FAULT_ARGUMENT" \
-    >>"$LAUNCH_OUTPUT" 2>&1 &
-APP_PID=$!
-printf '%s\n' "$APP_PID" >"$EVIDENCE_DIR/app-pid.txt"
-printf '%q %q %q\n' \
-    "$EXECUTABLE" \
+LAUNCH_OUTPUT="$EVIDENCE_DIR/launchservices-output.txt"
+printf 'open -n -a %q --args %q %q\n' \
+    "$APP_PATH" \
     "--suppress-automatic-permission-prompts" \
     "$FAULT_ARGUMENT" \
     >"$EVIDENCE_DIR/launch-command.txt"
+open -n -a "$APP_PATH" --args \
+    --suppress-automatic-permission-prompts \
+    "$FAULT_ARGUMENT" \
+    >"$LAUNCH_OUTPUT" 2>&1
 
-sleep 1
+elapsed=0
+while [ "$elapsed" -lt 10 ] && [ -z "$APP_PID" ]; do
+    for candidate_pid in $(pgrep -x "$APP_NAME" || true); do
+        candidate_command="$(ps -p "$candidate_pid" -o command= 2>/dev/null)"
+        if [[ "$candidate_command" == "$EXECUTABLE"* ]]; then
+            [ -z "$APP_PID" ] \
+                || die "multiple instances of the exact injected bundle are running"
+            APP_PID="$candidate_pid"
+        fi
+    done
+    [ -n "$APP_PID" ] && break
+    sleep 1
+    elapsed=$((elapsed + 1))
+done
+[ -n "$APP_PID" ] || die "LaunchServices did not start the exact packaged app; inspect $LAUNCH_OUTPUT"
+printf '%s\n' "$APP_PID" >"$EVIDENCE_DIR/app-pid.txt"
 kill -0 "$APP_PID" 2>/dev/null || die "exact packaged app exited during startup; inspect $LAUNCH_OUTPUT"
 RUNNING_COMMAND="$(ps -p "$APP_PID" -o command= 2>/dev/null)"
 [[ "$RUNNING_COMMAND" == "$EXECUTABLE"* ]] \
@@ -505,6 +623,8 @@ if not any(
     fail("truthful partial-readiness diagnostic (19/20, carbon=false) is absent")
 
 summary = {
+    "retryPolicy": "one failed-binding attempt per three-second permission poll",
+    "permissionPollIntervalSeconds": 3,
     "pollCount": len(poll_lines),
     "pollSpanFirstToFifthSeconds": poll_span_seconds,
     "syncCount": len(sync_lines),
@@ -533,7 +653,9 @@ print(
 PY
 
 jq -e '
-    .pollCount >= 5
+    .retryPolicy == "one failed-binding attempt per three-second permission poll"
+    and .permissionPollIntervalSeconds == 3
+    and .pollCount >= 5
     and .syncCount == (.pollCount + 1)
     and .retrySyncCount == .pollCount
     and (.finalFaultCounters.forwardedRegisterCalls | tonumber) == 19
@@ -541,39 +663,41 @@ jq -e '
 ' "$EVIDENCE_DIR/runtime-summary.json" >/dev/null \
     || die "runtime summary failed its independent jq integrity check"
 
+if [ "$WAIT_FOR_PHYSICAL" -eq 0 ]; then
+    printf 'Physical observation skipped because WAIT_FOR_PHYSICAL=0.\n' \
+        >"$EVIDENCE_DIR/physical-input-skipped.txt"
+    printf 'PASS_METRICS_ONLY_PHYSICAL_PENDING evidence=%s head=%s executableSHA256=%s\n' \
+        "$EVIDENCE_DIR" "$EXPECTED_HEAD" "$EXECUTABLE_SHA256"
+    exit 2
+fi
+
 PHYSICAL_PRE_LINES="$(wc -l <"$LOG_FILE" | tr -d ' ')"
 touch "$EVIDENCE_DIR/READY_FOR_PHYSICAL_CTRL_ALT_COMMAND_A"
 printf 'READY_FOR_PHYSICAL_CTRL_ALT_COMMAND_A\n'
-
-if [ "$WAIT_FOR_PHYSICAL" -eq 1 ]; then
-    printf 'Press physical Ctrl+Alt+Command+A now (Windows keyboard: Ctrl+Alt+Win+A).\n'
-    elapsed=0
-    while [ "$elapsed" -lt "$PHYSICAL_TIMEOUT_SECONDS" ]; do
-        kill -0 "$APP_PID" 2>/dev/null \
-            || die "exact packaged app exited while waiting for the physical key"
-        physical_slice="$(tail -n +"$((PHYSICAL_PRE_LINES + 1))" "$LOG_FILE" 2>/dev/null || true)"
-        if grep -Fq 'MATCHED: Notes - com.apple.Notes' <<<"$physical_slice" \
-            && grep -Fq 'SHORTCUT_TRACE_DECISION event=matched bundle=com.apple.Notes route=standard' <<<"$physical_slice"; then
-            grep -E 'MATCHED: Notes - com\.apple\.Notes|SHORTCUT_TRACE_DECISION event=matched bundle=com\.apple\.Notes route=standard' \
-                <<<"$physical_slice" >"$EVIDENCE_DIR/physical-input-observation-sanitized.log"
-            printf 'OBSERVED_PHYSICAL_STANDARD_MATCH_CTRL_ALT_COMMAND_A\n' \
-                | tee "$EVIDENCE_DIR/physical-input-observed.txt"
-            break
-        fi
-        sleep 1
-        elapsed=$((elapsed + 1))
-    done
-    if [ ! -f "$EVIDENCE_DIR/physical-input-observed.txt" ]; then
-        tail -n +"$((PHYSICAL_PRE_LINES + 1))" "$LOG_FILE" 2>/dev/null \
-            | grep -E 'MATCHED: Notes - com\.apple\.Notes|SHORTCUT_TRACE_DECISION event=matched bundle=com\.apple\.Notes route=standard' \
-            >"$EVIDENCE_DIR/physical-input-timeout-sanitized.log" || true
+printf 'Press physical Ctrl+Alt+Command+A now (Windows keyboard: Ctrl+Alt+Win+A).\n'
+elapsed=0
+while [ "$elapsed" -lt "$PHYSICAL_TIMEOUT_SECONDS" ]; do
+    kill -0 "$APP_PID" 2>/dev/null \
+        || die "exact packaged app exited while waiting for the physical key"
+    physical_slice="$(tail -n +"$((PHYSICAL_PRE_LINES + 1))" "$LOG_FILE" 2>/dev/null || true)"
+    if grep -Fq 'MATCHED: Notes - com.apple.Notes' <<<"$physical_slice" \
+        && grep -Fq 'SHORTCUT_TRACE_DECISION event=matched bundle=com.apple.Notes route=standard' <<<"$physical_slice"; then
+        grep -E 'MATCHED: Notes - com\.apple\.Notes|SHORTCUT_TRACE_DECISION event=matched bundle=com\.apple\.Notes route=standard' \
+            <<<"$physical_slice" >"$EVIDENCE_DIR/physical-input-observation-sanitized.log"
+        printf 'OBSERVED_PHYSICAL_STANDARD_MATCH_CTRL_ALT_COMMAND_A\n' \
+            | tee "$EVIDENCE_DIR/physical-input-observed.txt"
+        break
     fi
-    [ -f "$EVIDENCE_DIR/physical-input-observed.txt" ] \
-        || die "timed out waiting for Ctrl+Alt+Command+A; human confirmation is still required"
-else
-    printf 'Physical observation skipped because WAIT_FOR_PHYSICAL=0.\n' \
-        >"$EVIDENCE_DIR/physical-input-skipped.txt"
+    sleep 1
+    elapsed=$((elapsed + 1))
+done
+if [ ! -f "$EVIDENCE_DIR/physical-input-observed.txt" ]; then
+    tail -n +"$((PHYSICAL_PRE_LINES + 1))" "$LOG_FILE" 2>/dev/null \
+        | grep -E 'MATCHED: Notes - com\.apple\.Notes|SHORTCUT_TRACE_DECISION event=matched bundle=com\.apple\.Notes route=standard' \
+        >"$EVIDENCE_DIR/physical-input-timeout-sanitized.log" || true
 fi
+[ -f "$EVIDENCE_DIR/physical-input-observed.txt" ] \
+    || die "timed out waiting for Ctrl+Alt+Command+A; human confirmation is still required"
 
 printf 'PASS_ISSUE_317_CARBON_BINDING_RETRY evidence=%s head=%s executableSHA256=%s\n' \
     "$EVIDENCE_DIR" "$EXPECTED_HEAD" "$EXECUTABLE_SHA256"
