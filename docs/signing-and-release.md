@@ -152,13 +152,48 @@ registration, report Carbon capture as not ready, and deliver no shortcut. The
 normal readiness poll then retries: the later real handler installation must
 succeed, register the intended set once, and deliver through the real callback.
 
-The launch, EventTap, and Carbon handler injection profiles are mutually
-exclusive. Preserve
-each injected bundle at a separate absolute path, then rebuild production from
-the same 40-character Git head. The clean executable must have no runtime
-validation profile, validation argument, `LAUNCH_FAULT_INJECTION`, or
-`EVENT_TAP_FAULT_INJECTION` or `CARBON_HANDLER_FAULT_INJECTION` marker before
-normal-path E2E. Never distribute an injected bundle.
+### Carbon binding-conflict fault validation package
+
+The Carbon binding injector is compile-time-only and returns
+`eventHotKeyExistsErr` for one exact key-code/modifier tuple while forwarding
+every other `RegisterEventHotKey` and `UnregisterEventHotKey` call. Build it
+explicitly:
+
+```bash
+WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION=1 bash scripts/package-app.sh
+```
+
+The resulting bundle carries
+`WinkRuntimeValidationProfile=carbon-binding-fault-injection` and accepts
+exactly one argument in this form:
+
+```text
+--validation-carbon-binding-fault=permanent-conflict:<key-code>:<carbon-modifier-mask>
+```
+
+For example, `permanent-conflict:38:6400` blocks J with Command + Option +
+Control. Diagnostics report cumulative registration, forwarded-registration,
+injected-failure, and unregister counts. This profile is intended to prove that
+unchanged readiness polls retry only the failed binding while preserving every
+successful registration.
+
+Run the checked-in 20-binding acceptance against a preserved injected bundle
+from the exact clean head. The script backs up and restores the user's Wink
+shortcuts, diagnostic log, and Hyper preference; it does not change TCC:
+
+```bash
+EXPECTED_HEAD="$(git rev-parse HEAD)" \
+APP_PATH="/absolute/path/to/injected-Wink.app" \
+bash scripts/validate-carbon-binding-retry.sh
+```
+
+The launch, EventTap, Carbon handler, and Carbon binding injection profiles are
+mutually exclusive. Preserve each injected bundle at a separate absolute path,
+then rebuild production from the same 40-character Git head. The clean
+executable must have no runtime validation profile, validation argument,
+`LAUNCH_FAULT_INJECTION`, `EVENT_TAP_FAULT_INJECTION`,
+`CARBON_HANDLER_FAULT_INJECTION`, or `CARBON_BINDING_FAULT_INJECTION` marker
+before normal-path E2E. Never distribute an injected bundle.
 
 ### Local development signing identity ("Wink")
 

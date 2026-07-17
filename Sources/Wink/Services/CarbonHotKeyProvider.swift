@@ -644,16 +644,31 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
     private var registrationFailures: [ShortcutCaptureRegistrationFailure] = []
     private var functionModifierTrackingAvailable = true
     private var nextIdentifier: UInt32 = 1
+    private var synchronizationCount: UInt64 = 0
     private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
 
     init(
-        registrationClient: CarbonHotKeyRegistrationClient = .live,
+        registrationClient: CarbonHotKeyRegistrationClient? = nil,
         handlerFactory: CarbonHotKeyHandlerFactory? = nil,
         functionModifierStateTracker: any FunctionModifierStateTracking = CGEventTapFunctionModifierStateTracker()
     ) {
-        self.registrationClient = registrationClient
+        self.registrationClient = registrationClient ?? Self.defaultRegistrationClient()
         self.handlerFactory = handlerFactory ?? Self.defaultHandlerFactory()
         self.functionModifierStateTracker = functionModifierStateTracker
+    }
+
+    private static func defaultRegistrationClient() -> CarbonHotKeyRegistrationClient {
+        #if WINK_CARBON_BINDING_FAULT_INJECTION
+        if let configuration = CarbonBindingFaultInjectionConfiguration(
+            arguments: ProcessInfo.processInfo.arguments
+        ) {
+            return CarbonBindingFaultInjectionDriver(
+                configuration: configuration,
+                baseClient: .live
+            ).client
+        }
+        #endif
+        return .live
     }
 
     private static func defaultHandlerFactory() -> CarbonHotKeyHandlerFactory {
@@ -738,6 +753,7 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {
         let desiredStateChanged = keyPresses != desiredShortcuts
         desiredShortcuts = keyPresses
+        guard desiredStateChanged else { return }
         guard onKeyPress != nil else { return }
 
         synchronizeFunctionModifierTracking()
@@ -748,8 +764,6 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
             removeHandlerIfNeeded()
             return
         }
-
-        guard desiredStateChanged || !registrationState.isReady else { return }
 
         synchronizeRegistrations()
     }
@@ -765,8 +779,9 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
     }
 
     private func synchronizeRegistrations() {
+        synchronizationCount &+= 1
         let handlerInstalled = installHandlerIfNeeded()
-        let summary = reregisterShortcuts()
+        let summary = reconcileShortcuts()
         let rolledBackRegistrationCount: Int
         if handlerInstalled {
             rolledBackRegistrationCount = 0
@@ -776,7 +791,7 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
         }
         let state = handlerState
         DiagnosticLog.log(
-            "CARBON_HOTKEY_SYNC handlerState=\(state.diagnosticName) handlerStatus=\(state.failureStatus.map(String.init) ?? "none") desired=\(desiredShortcuts.count) lowLevelAttempts=\(summary.attempts) lowLevelSuccesses=\(summary.successes) active=\(registrations.count) rolledBack=\(rolledBackRegistrationCount)"
+            "CARBON_HOTKEY_SYNC sequence=\(synchronizationCount) handlerState=\(state.diagnosticName) handlerStatus=\(state.failureStatus.map(String.init) ?? "none") desired=\(desiredShortcuts.count) retained=\(summary.retained) lowLevelAttempts=\(summary.attempts) lowLevelSuccesses=\(summary.successes) lowLevelUnregisters=\(summary.unregistrations) active=\(registrations.count) failures=\(registrationFailures.count) rolledBack=\(rolledBackRegistrationCount)"
         )
     }
 
@@ -829,13 +844,29 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
         handlerFailureStatus = nil
     }
 
-    private func reregisterShortcuts() -> (attempts: Int, successes: Int) {
-        unregisterAll()
-        registrationFailures = []
+    private func reconcileShortcuts() -> (
+        attempts: Int,
+        successes: Int,
+        unregistrations: Int,
+        retained: Int
+    ) {
+        let identifiersToRemove = registrations.compactMap { identifier, registration in
+            desiredShortcuts.contains(registration.keyPress) ? nil : identifier
+        }.sorted()
+        for identifier in identifiersToRemove {
+            guard let registration = registrations.removeValue(forKey: identifier) else {
+                continue
+            }
+            registrationClient.unregister(registration.ref)
+        }
+        registrationFailures.removeAll { !desiredShortcuts.contains($0.keyPress) }
+
+        let registeredShortcuts = Set(registrations.values.map(\.keyPress))
+        let missingShortcuts = desiredShortcuts.subtracting(registeredShortcuts)
         var attempts = 0
         var successes = 0
 
-        let sortedShortcuts = desiredShortcuts.sorted {
+        let sortedShortcuts = missingShortcuts.sorted {
             if $0.keyCode == $1.keyCode {
                 return $0.modifiers.rawValue < $1.modifiers.rawValue
             }
@@ -843,11 +874,17 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
         }
 
         for keyPress in sortedShortcuts {
+            registrationFailures.removeAll { $0.keyPress == keyPress }
             let result = register(keyPress)
             attempts += result.attempted ? 1 : 0
             successes += result.registered ? 1 : 0
         }
-        return (attempts, successes)
+        return (
+            attempts: attempts,
+            successes: successes,
+            unregistrations: identifiersToRemove.count,
+            retained: registeredShortcuts.intersection(desiredShortcuts).count
+        )
     }
 
     private func register(_ keyPress: KeyPress) -> (attempted: Bool, registered: Bool) {

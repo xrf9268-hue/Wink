@@ -148,14 +148,17 @@ final class ShortcutManager {
         if !paused {
             _ = refreshShortcutAvailabilityIfNeeded()
         }
-        captureCoordinator.setCapturePaused(paused)
 
-        guard hasStarted else {
+        if paused {
+            captureCoordinator.setCapturePaused(true)
+            if hasStarted {
+                diagnosticClient.log("Shortcut capture paused")
+            }
             return
         }
 
-        if paused {
-            diagnosticClient.log("Shortcut capture paused")
+        guard hasStarted else {
+            captureCoordinator.setCapturePaused(false)
             return
         }
 
@@ -165,7 +168,11 @@ final class ShortcutManager {
             prompt: automaticPermissionPromptingEnabled,
             inputMonitoringRequired: shouldRequestInputMonitoring
         )
-        attemptStartIfPermitted()
+        captureCoordinator.refreshInputMonitoring(
+            granted: permissionService.isInputMonitoringTrusted()
+        )
+        captureCoordinator.setCapturePaused(false)
+        attemptStartIfPermitted(retryStandardProvider: false)
     }
 
     func requestPermissions() {
@@ -173,9 +180,6 @@ final class ShortcutManager {
         _ = permissionService.requestIfNeeded(
             prompt: true,
             inputMonitoringRequired: inputMonitoringRequired
-        )
-        captureCoordinator.refreshInputMonitoring(
-            granted: permissionService.isInputMonitoringTrusted()
         )
         attemptStartIfPermitted()
     }
@@ -247,7 +251,7 @@ final class ShortcutManager {
             return
         }
 
-        let availabilityChanged = refreshShortcutAvailabilityIfNeeded()
+        let availabilityRefresh = refreshShortcutAvailabilityIfNeeded()
         let inputMonitoringRequirementChanged = !inputMonitoringWasRequired
             && captureCoordinator.inputMonitoringRequired
 
@@ -273,14 +277,18 @@ final class ShortcutManager {
             inputMonitoringGranted: imGranted
         )
         let captureNeedsResync = !currentStatus.standardShortcutsReady || !currentStatus.hyperShortcutsReady
-        guard accessibilityChanged || inputMonitoringChanged || captureNeedsResync || availabilityChanged else {
+        guard accessibilityChanged
+            || inputMonitoringChanged
+            || captureNeedsResync
+            || availabilityRefresh.availabilityChanged else {
             return
         }
 
-        captureCoordinator.refreshInputMonitoring(granted: imGranted)
         logger.notice("Accessibility ready — syncing shortcut capture")
         diagnosticClient.log("Accessibility ready — syncing shortcut capture")
-        attemptStartIfPermitted()
+        attemptStartIfPermitted(
+            retryStandardProvider: !availabilityRefresh.standardShortcutsChanged
+        )
     }
 
     /// Send a user notification when a specific permission is revoked.
@@ -296,13 +304,12 @@ final class ShortcutManager {
         }
     }
 
-    private func attemptStartIfPermitted() {
-        captureCoordinator.refreshInputMonitoring(granted: permissionService.isInputMonitoringTrusted())
-        captureCoordinator.setHyperKeyEnabled(hyperKeyEnabled)
-        captureCoordinator.setCapturePaused(shortcutsPaused)
-
+    private func attemptStartIfPermitted(retryStandardProvider: Bool = true) {
         if shortcutsPaused {
-            captureCoordinator.start(inputMonitoringGranted: permissionService.isInputMonitoringTrusted()) { [weak self] keyPress in
+            captureCoordinator.start(
+                inputMonitoringGranted: permissionService.isInputMonitoringTrusted(),
+                retryStandardProvider: retryStandardProvider
+            ) { [weak self] keyPress in
                 #if DEBUG
                 logger.debug("KeyPress received: keyCode=\(keyPress.keyCode) modifiers=\(keyPress.modifiers.rawValue)")
                 #endif
@@ -327,7 +334,10 @@ final class ShortcutManager {
             return
         }
 
-        captureCoordinator.start(inputMonitoringGranted: permissionService.isInputMonitoringTrusted()) { [weak self] keyPress in
+        captureCoordinator.start(
+            inputMonitoringGranted: permissionService.isInputMonitoringTrusted(),
+            retryStandardProvider: retryStandardProvider
+        ) { [weak self] keyPress in
             #if DEBUG
             logger.debug("KeyPress received: keyCode=\(keyPress.keyCode) modifiers=\(keyPress.modifiers.rawValue)")
             #endif
@@ -368,17 +378,22 @@ final class ShortcutManager {
     // MARK: - Key handling
 
     private func rebuildIndex() {
-        applyAvailabilitySnapshot(availabilitySnapshot())
+        _ = applyAvailabilitySnapshot(availabilitySnapshot())
     }
 
-    private func refreshShortcutAvailabilityIfNeeded() -> Bool {
+    private func refreshShortcutAvailabilityIfNeeded() -> (
+        availabilityChanged: Bool,
+        standardShortcutsChanged: Bool
+    ) {
         let snapshot = availabilitySnapshot()
         guard snapshot.availableBundleIdentifiers != lastAvailableShortcutBundleIdentifiers else {
-            return false
+            return (availabilityChanged: false, standardShortcutsChanged: false)
         }
 
-        applyAvailabilitySnapshot(snapshot)
-        return true
+        return (
+            availabilityChanged: true,
+            standardShortcutsChanged: applyAvailabilitySnapshot(snapshot)
+        )
     }
 
     private func availabilitySnapshot() -> (activeShortcuts: [AppShortcut], availableBundleIdentifiers: Set<String>) {
@@ -399,10 +414,10 @@ final class ShortcutManager {
 
     private func applyAvailabilitySnapshot(
         _ snapshot: (activeShortcuts: [AppShortcut], availableBundleIdentifiers: Set<String>)
-    ) {
+    ) -> Bool {
         lastAvailableShortcutBundleIdentifiers = snapshot.availableBundleIdentifiers
         triggerIndex = keyMatcher.buildIndex(for: snapshot.activeShortcuts)
-        captureCoordinator.updateShortcuts(snapshot.activeShortcuts)
+        return captureCoordinator.updateShortcuts(snapshot.activeShortcuts)
     }
 
     /// Returns `true` if the key press matched a shortcut (so the event should be consumed).

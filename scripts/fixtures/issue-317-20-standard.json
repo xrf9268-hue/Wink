@@ -1,0 +1,162 @@
+[
+  {
+    "appName": "Notes",
+    "bundleIdentifier": "com.apple.Notes",
+    "id": "03170000-0000-4000-8000-000000000001",
+    "isEnabled": true,
+    "keyEquivalent": "a",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "id": "03170000-0000-4000-8000-000000000002",
+    "isEnabled": true,
+    "keyEquivalent": "b",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Notes",
+    "bundleIdentifier": "com.apple.Notes",
+    "id": "03170000-0000-4000-8000-000000000003",
+    "isEnabled": true,
+    "keyEquivalent": "c",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "id": "03170000-0000-4000-8000-000000000004",
+    "isEnabled": true,
+    "keyEquivalent": "d",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Notes",
+    "bundleIdentifier": "com.apple.Notes",
+    "id": "03170000-0000-4000-8000-000000000005",
+    "isEnabled": true,
+    "keyEquivalent": "e",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "id": "03170000-0000-4000-8000-000000000006",
+    "isEnabled": true,
+    "keyEquivalent": "f",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Notes",
+    "bundleIdentifier": "com.apple.Notes",
+    "id": "03170000-0000-4000-8000-000000000007",
+    "isEnabled": true,
+    "keyEquivalent": "g",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "id": "03170000-0000-4000-8000-000000000008",
+    "isEnabled": true,
+    "keyEquivalent": "h",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Notes",
+    "bundleIdentifier": "com.apple.Notes",
+    "id": "03170000-0000-4000-8000-000000000009",
+    "isEnabled": true,
+    "keyEquivalent": "i",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "id": "03170000-0000-4000-8000-000000000010",
+    "isEnabled": true,
+    "keyEquivalent": "j",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Notes",
+    "bundleIdentifier": "com.apple.Notes",
+    "id": "03170000-0000-4000-8000-000000000011",
+    "isEnabled": true,
+    "keyEquivalent": "k",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "id": "03170000-0000-4000-8000-000000000012",
+    "isEnabled": true,
+    "keyEquivalent": "l",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Notes",
+    "bundleIdentifier": "com.apple.Notes",
+    "id": "03170000-0000-4000-8000-000000000013",
+    "isEnabled": true,
+    "keyEquivalent": "m",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "id": "03170000-0000-4000-8000-000000000014",
+    "isEnabled": true,
+    "keyEquivalent": "n",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Notes",
+    "bundleIdentifier": "com.apple.Notes",
+    "id": "03170000-0000-4000-8000-000000000015",
+    "isEnabled": true,
+    "keyEquivalent": "o",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "id": "03170000-0000-4000-8000-000000000016",
+    "isEnabled": true,
+    "keyEquivalent": "p",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Notes",
+    "bundleIdentifier": "com.apple.Notes",
+    "id": "03170000-0000-4000-8000-000000000017",
+    "isEnabled": true,
+    "keyEquivalent": "q",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "id": "03170000-0000-4000-8000-000000000018",
+    "isEnabled": true,
+    "keyEquivalent": "r",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Notes",
+    "bundleIdentifier": "com.apple.Notes",
+    "id": "03170000-0000-4000-8000-000000000019",
+    "isEnabled": true,
+    "keyEquivalent": "s",
+    "modifierFlags": ["command", "option", "control"]
+  },
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "id": "03170000-0000-4000-8000-000000000020",
+    "isEnabled": true,
+    "keyEquivalent": "t",
+    "modifierFlags": ["command", "option", "control"]
+  }
+]
