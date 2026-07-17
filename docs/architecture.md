@@ -177,7 +177,9 @@ Responsibilities:
   - first timeout -> in-place re-enable
   - 3 timeouts within 30 seconds -> full recreation
   - 2 recreation failures within 120 seconds -> degraded readiness state
-- recreate the tap on the same background thread using a reusable readiness mechanism instead of a one-shot startup handshake
+- own the Hyper tap, source, callback box, and RunLoop thread as one generation-scoped session; readiness never substitutes for ownership during stop/restart teardown
+- recreate the tap on the same background thread using a reusable readiness mechanism instead of a one-shot startup handshake; a failed first replacement executes its retry, while the retry limit tears down the complete session before reporting degraded readiness
+- reject queued key/recovery callbacks whose generation no longer matches the current session, and join the old RunLoop thread before releasing its callback box or publishing a replacement owner
 
 ### Activation and toggle logic
 - `AppSwitcher`
