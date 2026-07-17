@@ -721,6 +721,8 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
             return
         }
 
+        guard !registrationState.isReady else { return }
+
         synchronizeRegistrations()
     }
 
@@ -734,6 +736,7 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
     }
 
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {
+        let desiredStateChanged = keyPresses != desiredShortcuts
         desiredShortcuts = keyPresses
         guard onKeyPress != nil else { return }
 
@@ -745,6 +748,8 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
             removeHandlerIfNeeded()
             return
         }
+
+        guard desiredStateChanged || !registrationState.isReady else { return }
 
         synchronizeRegistrations()
     }
