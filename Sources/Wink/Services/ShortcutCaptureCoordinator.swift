@@ -35,9 +35,23 @@ final class ShortcutCaptureCoordinator {
     private var capturePaused = false
     private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
 
+    convenience init() {
+        self.init(
+            standardProvider: CarbonHotKeyProvider(),
+            hyperProvider: EventTapCaptureProvider()
+        )
+    }
+
+    convenience init(standardProvider: any ShortcutCaptureProvider) {
+        self.init(
+            standardProvider: standardProvider,
+            hyperProvider: EventTapCaptureProvider()
+        )
+    }
+
     init(
-        standardProvider: any ShortcutCaptureProvider = CarbonHotKeyProvider(),
-        hyperProvider: any HyperShortcutCaptureProvider = EventTapCaptureProvider()
+        standardProvider: any ShortcutCaptureProvider,
+        hyperProvider: any HyperShortcutCaptureProvider
     ) {
         self.standardProvider = standardProvider
         self.hyperProvider = hyperProvider
