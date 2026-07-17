@@ -75,6 +75,7 @@ private final class FakeCaptureProvider: ShortcutCaptureProvider {
     var isRunning = false
     var inputMonitoringRequired = false
     var startSucceeds = true
+    var handlerState: ShortcutCaptureHandlerState = .installed
     var failingShortcuts: Set<KeyPress> = []
     private(set) var startCallCount = 0
     private(set) var stopCallCount = 0
@@ -86,6 +87,7 @@ private final class FakeCaptureProvider: ShortcutCaptureProvider {
         ShortcutCaptureRegistrationState(
             desiredShortcutCount: registeredShortcuts.count,
             registeredShortcutCount: activeShortcuts.count,
+            handlerState: handlerState,
             failures: failingShortcuts.map {
                 ShortcutCaptureRegistrationFailure(keyPress: $0, status: Int32(eventHotKeyExistsErr))
             }.sorted {
@@ -829,6 +831,34 @@ func missingStandardRegistrationEmitsCaptureBlockedDiagnostic() throws {
         $0.contains("SHORTCUT_TRACE_BLOCKED")
             && $0.contains("reason=\"missing_registration_or_system_conflict\"")
             && $0.contains("route=standard")
+    })
+}
+
+@Test @MainActor
+func completeRegistrationCountDoesNotMaskFailedCarbonHandler() throws {
+    let diagnostics = DiagnosticCapture()
+    let standardProvider = FakeCaptureProvider()
+    standardProvider.handlerState = .installationFailed(status: Int32(eventInternalErr))
+    let (manager, _, _, _) = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        standardProvider: standardProvider,
+        diagnosticSink: diagnostics.record
+    )
+    try manager.save(shortcuts: [standardShortcut()])
+
+    manager.start()
+    let status = manager.shortcutCaptureStatus()
+
+    #expect(status.registeredStandardShortcutCount == status.standardShortcutCount)
+    #expect(status.standardHandlerState == .installationFailed(status: Int32(eventInternalErr)))
+    #expect(status.carbonHotKeysRegistered == false)
+    #expect(status.standardShortcutsReady == false)
+    #expect(status.standardRegistrationWarning == "Standard shortcut capture failed to start. Check logs for the Carbon handler status.")
+    #expect(diagnostics.messages.contains {
+        $0.contains("SHORTCUT_TRACE_BLOCKED")
+            && $0.contains("reason=\"carbon_handler_installation_failed\"")
+            && $0.contains("handlerState=installation_failed")
+            && $0.contains("handlerStatus=\(eventInternalErr)")
     })
 }
 

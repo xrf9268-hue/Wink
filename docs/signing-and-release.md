@@ -129,12 +129,36 @@ fail/stop-twice/restart generations, probes stopped-generation callbacks, proves
 one owner after each restart, and finishes with all owned-resource counters at
 zero.
 
-The launch and EventTap injection profiles are mutually exclusive. Preserve
+### Carbon handler readiness fault validation package
+
+The Carbon handler injector is compile-time-only and fails exactly the first
+`InstallEventHandler` attempt while leaving `RegisterEventHotKey` on its real
+path. Build it explicitly:
+
+```bash
+WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION=1 bash scripts/package-app.sh
+```
+
+The resulting bundle carries
+`WinkRuntimeValidationProfile=carbon-handler-fault-injection` and accepts
+exactly this argument:
+
+```text
+--validation-carbon-handler-fault=fail-once
+```
+
+The failed synchronization must immediately roll back every successful hot-key
+registration, report Carbon capture as not ready, and deliver no shortcut. The
+normal readiness poll then retries: the later real handler installation must
+succeed, register the intended set once, and deliver through the real callback.
+
+The launch, EventTap, and Carbon handler injection profiles are mutually
+exclusive. Preserve
 each injected bundle at a separate absolute path, then rebuild production from
 the same 40-character Git head. The clean executable must have no runtime
 validation profile, validation argument, `LAUNCH_FAULT_INJECTION`, or
-`EVENT_TAP_FAULT_INJECTION` marker before normal-path E2E. Never distribute an
-injected bundle.
+`EVENT_TAP_FAULT_INJECTION` or `CARBON_HANDLER_FAULT_INJECTION` marker before
+normal-path E2E. Never distribute an injected bundle.
 
 ### Local development signing identity ("Wink")
 
