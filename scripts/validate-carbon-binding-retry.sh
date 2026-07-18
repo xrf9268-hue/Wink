@@ -72,6 +72,7 @@ GIT_STATUS="$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
     die "worktree must be clean so evidence is bound to one exact source state"
 }
 
+STATE_DIR=""
 LOCK_DIR="${TMPDIR:-/tmp}/wink-issue-317-${UID}.lock"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     die "another issue #317 validation owns $LOCK_DIR; remove it only after confirming no validation is running"
