@@ -224,7 +224,12 @@ extension ApplicationObservation.Client {
             NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         },
         windowObservation: { app in
-            captureWindowObservation(for: app)
+            #if WINK_AX_WINDOW_OBSERVATION_FAULT_INJECTION
+            if let driver = AXWindowObservationFaultInjectionRuntime.driver {
+                return driver.windowObservation(for: app, base: captureWindowObservation)
+            }
+            #endif
+            return captureWindowObservation(for: app)
         },
         activationPolicy: { app in
             app.activationPolicy

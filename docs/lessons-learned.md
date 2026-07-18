@@ -243,7 +243,7 @@ Treat Hyper enablement as desired provider state, not just a fire-and-forget imp
 On macOS, hide is an asynchronous request. The immediate API return does not reliably express whether the app will disappear a few milliseconds later.
 
 **Practical guidance**
-Log the direct hide request for transport visibility, but treat `TOGGLE_HIDE_CONFIRMED` as the operational success signal. Confirm hide via `NSWorkspace.didHideApplicationNotification` and workspace/frontmost plus hidden-or-windowless observation, not via the raw boolean return value.
+Log the direct hide request for transport visibility, but treat `TOGGLE_HIDE_CONFIRMED` as the operational success signal. Confirm hide via `NSWorkspace.didHideApplicationNotification` and workspace/frontmost plus an independent hidden signal or a successful zero-window observation, not via the raw boolean return value. When the AX windows read fails, zero is an unknown placeholder and must not confirm deactivation.
 
 ## Permission Polling Must Not Imply Capture Re-Registration
 

@@ -664,7 +664,9 @@ final class AppSwitcher: AppSwitching {
     }
 
     private func canConfirmDeactivation(with snapshot: ActivationObservationSnapshot) -> Bool {
-        !snapshot.targetIsObservedFrontmost && (snapshot.targetIsHidden || !snapshot.targetHasVisibleWindows)
+        !snapshot.targetIsObservedFrontmost &&
+            (snapshot.targetIsHidden ||
+                (snapshot.windowObservationSucceeded && !snapshot.targetHasVisibleWindows))
     }
 
     private func isTargetCurrentlyFrontmost(
@@ -1773,11 +1775,21 @@ extension AppSwitcher.FallbackActivationClient {
 
 extension AppSwitcher.HideRequestClient {
     @MainActor
-    static let live = AppSwitcher.HideRequestClient(
-        hideApplication: { app in
+    static let live: AppSwitcher.HideRequestClient = {
+        let client = AppSwitcher.HideRequestClient(hideApplication: { app in
             app.hide()
+        })
+
+        #if WINK_AX_WINDOW_OBSERVATION_FAULT_INJECTION
+        if let driver = AXWindowObservationFaultInjectionRuntime.driver {
+            return AppSwitcher.HideRequestClient(hideApplication: { app in
+                driver.hideApplication(app, base: client.hideApplication)
+            })
         }
-    )
+        #endif
+
+        return client
+    }()
 }
 
 extension AppSwitcher.AppLookupClient {
