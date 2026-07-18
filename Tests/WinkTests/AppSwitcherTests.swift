@@ -935,6 +935,19 @@ func deactivationConfirmationKeepsSessionWhenWindowObservationFailsUntilHiddenSi
             observedFrontmostBundleIdentifier: "com.apple.Terminal",
             targetIsActive: false,
             targetIsHidden: false,
+            visibleWindowCount: 1,
+            hasFocusedWindow: false,
+            hasMainWindow: false,
+            windowObservationSucceeded: true,
+            windowObservationFailureReason: nil,
+            classification: .regularWindowed,
+            classificationReason: "window still visible behind previous app"
+        ),
+        ActivationObservationSnapshot(
+            targetBundleIdentifier: "com.apple.Safari",
+            observedFrontmostBundleIdentifier: "com.apple.Terminal",
+            targetIsActive: false,
+            targetIsHidden: false,
             visibleWindowCount: 0,
             hasFocusedWindow: false,
             hasMainWindow: false,
@@ -967,6 +980,13 @@ func deactivationConfirmationKeepsSessionWhenWindowObservationFailsUntilHiddenSi
         }
     )
 
+    scheduler.runNext()
+
+    #expect(switcher.stableActivationState?.bundleIdentifier == "com.apple.Safari")
+    #expect(switcher.pendingDeactivationState == deactivation)
+    #expect(coordinator.session(for: "com.apple.Safari")?.phase == .deactivating)
+
+    clock.time = 201.1
     scheduler.runNext()
 
     #expect(switcher.stableActivationState?.bundleIdentifier == "com.apple.Safari")
