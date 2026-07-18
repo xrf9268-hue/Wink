@@ -13,12 +13,15 @@ struct PersistenceService: Sendable {
 
     enum SaveError: Error, LocalizedError, Sendable {
         case storageUnavailable
+        case duplicateShortcutID(path: String, id: UUID)
         case writeFailed(path: String, reason: String)
 
         var errorDescription: String? {
             switch self {
             case .storageUnavailable:
                 return "Failed to save shortcuts: path unavailable"
+            case let .duplicateShortcutID(path, id):
+                return "Failed to save shortcuts: path=\(path) schema=duplicate-shortcut-id id=\(id.uuidString)"
             case let .writeFailed(path, reason):
                 return "Failed to save shortcuts: path=\(path) reason=\(reason)"
             }
@@ -29,6 +32,7 @@ struct PersistenceService: Sendable {
         case storageUnavailable
         case fileReadFailed(path: String, reason: String)
         case decodeFailed(path: String, reason: String, preservedCopyPath: String?)
+        case duplicateShortcutID(path: String, id: UUID, preservedCopyPath: String?)
 
         var errorDescription: String? {
             switch self {
@@ -39,6 +43,9 @@ struct PersistenceService: Sendable {
             case let .decodeFailed(path, reason, preservedCopyPath):
                 let backupDescription = preservedCopyPath ?? "none"
                 return "Failed to load shortcuts: path=\(path) reason=\(reason) preservedCopyPath=\(backupDescription)"
+            case let .duplicateShortcutID(path, id, preservedCopyPath):
+                let backupDescription = preservedCopyPath ?? "none"
+                return "Failed to load shortcuts: path=\(path) schema=duplicate-shortcut-id id=\(id.uuidString) preservedCopyPath=\(backupDescription)"
             }
         }
     }
@@ -82,10 +89,11 @@ struct PersistenceService: Sendable {
             throw loadError
         }
 
+        let shortcuts: [AppShortcut]
         do {
-            return try JSONDecoder().decode([AppShortcut].self, from: data)
+            shortcuts = try JSONDecoder().decode([AppShortcut].self, from: data)
         } catch {
-            let preservedCopyPath = preserveUnreadablePayload(data, originalURL: url)
+            let preservedCopyPath = preserveRejectedPayload(data, originalURL: url)
             let loadError = LoadError.decodeFailed(
                 path: url.path,
                 reason: error.localizedDescription,
@@ -94,6 +102,19 @@ struct PersistenceService: Sendable {
             logLoadFailure(loadError)
             throw loadError
         }
+
+        if let duplicateID = firstDuplicateID(in: shortcuts) {
+            let preservedCopyPath = preserveRejectedPayload(data, originalURL: url)
+            let loadError = LoadError.duplicateShortcutID(
+                path: url.path,
+                id: duplicateID,
+                preservedCopyPath: preservedCopyPath
+            )
+            logLoadFailure(loadError)
+            throw loadError
+        }
+
+        return shortcuts
     }
 
     func save(_ shortcuts: [AppShortcut]) throws {
@@ -102,6 +123,13 @@ struct PersistenceService: Sendable {
             logSaveFailure(error)
             throw error
         }
+
+        if let duplicateID = firstDuplicateID(in: shortcuts) {
+            let error = SaveError.duplicateShortcutID(path: url.path, id: duplicateID)
+            logSaveFailure(error)
+            throw error
+        }
+
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
 
@@ -124,14 +152,22 @@ struct PersistenceService: Sendable {
         diagnosticClient.log(message)
     }
 
-    private func preserveUnreadablePayload(_ data: Data, originalURL: URL) -> String? {
+    private func firstDuplicateID(in shortcuts: [AppShortcut]) -> UUID? {
+        var seenIDs = Set<UUID>()
+        for shortcut in shortcuts where !seenIDs.insert(shortcut.id).inserted {
+            return shortcut.id
+        }
+        return nil
+    }
+
+    private func preserveRejectedPayload(_ data: Data, originalURL: URL) -> String? {
         let backupURL = backupURL(for: originalURL)
 
         do {
             try data.write(to: backupURL, options: .atomic)
             return backupURL.path
         } catch {
-            let message = "Failed to preserve unreadable shortcuts payload: path=\(originalURL.path) backupPath=\(backupURL.path) reason=\(error.localizedDescription)"
+            let message = "Failed to preserve rejected shortcuts payload: path=\(originalURL.path) backupPath=\(backupURL.path) reason=\(error.localizedDescription)"
             logger.error("\(message, privacy: .public)")
             diagnosticClient.log(message)
             return nil
