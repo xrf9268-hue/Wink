@@ -34,6 +34,7 @@ final class ShortcutCaptureCoordinator {
     private var inputMonitoringGranted = false
     private var capturePaused = false
     private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
+    private var standardProviderStarted = false
 
     convenience init() {
         self.init(
@@ -59,37 +60,58 @@ final class ShortcutCaptureCoordinator {
 
     func start(
         inputMonitoringGranted: Bool,
+        retryStandardProvider: Bool = true,
         onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void
     ) {
         self.inputMonitoringGranted = inputMonitoringGranted
         self.onKeyPress = onKeyPress
-        syncProviders()
+        syncProviders(retryStandardProvider: retryStandardProvider)
     }
 
     func stop() {
         standardProvider.stop()
         hyperProvider.stop()
+        standardProviderStarted = false
         onKeyPress = nil
     }
 
-    func updateShortcuts(_ shortcuts: [AppShortcut]) {
+    @discardableResult
+    func updateShortcuts(_ shortcuts: [AppShortcut]) -> Bool {
+        let previousStandardShortcuts = standardShortcuts
+        let previousHyperShortcuts = hyperShortcuts
         self.shortcuts = shortcuts
         rebuildRoutes()
-        syncProviders()
+        let standardShortcutsChanged = standardShortcuts != previousStandardShortcuts
+        let hyperShortcutsChanged = hyperShortcuts != previousHyperShortcuts
+        guard standardShortcutsChanged || hyperShortcutsChanged else { return false }
+        syncProviders(
+            standardShortcutsChanged: standardShortcutsChanged,
+            hyperShortcutsChanged: hyperShortcutsChanged
+        )
+        return standardShortcutsChanged
     }
 
     func setHyperKeyEnabled(_ enabled: Bool) {
+        guard hyperKeyEnabled != enabled else { return }
+        let previousStandardShortcuts = standardShortcuts
+        let previousHyperShortcuts = hyperShortcuts
         hyperKeyEnabled = enabled
         rebuildRoutes()
-        syncProviders()
+        syncProviders(
+            standardShortcutsChanged: standardShortcuts != previousStandardShortcuts,
+            hyperShortcutsChanged: hyperShortcuts != previousHyperShortcuts,
+            hyperConfigurationChanged: true
+        )
     }
 
     func refreshInputMonitoring(granted: Bool) {
+        guard inputMonitoringGranted != granted else { return }
         inputMonitoringGranted = granted
-        syncProviders()
+        syncProviders(retryStandardProvider: standardProvider.inputMonitoringRequired)
     }
 
     func setCapturePaused(_ paused: Bool) {
+        guard capturePaused != paused else { return }
         capturePaused = paused
         syncProviders()
     }
@@ -179,21 +201,39 @@ final class ShortcutCaptureCoordinator {
         hyperShortcuts = hyper
     }
 
-    private func syncProviders() {
-        standardProvider.updateRegisteredShortcuts(standardShortcuts)
-        hyperProvider.updateRegisteredShortcuts(hyperShortcuts)
-        hyperProvider.setHyperKeyEnabled(hyperKeyEnabled && !hyperShortcuts.isEmpty)
+    private func syncProviders(
+        standardShortcutsChanged: Bool = false,
+        hyperShortcutsChanged: Bool = false,
+        hyperConfigurationChanged: Bool = false,
+        retryStandardProvider: Bool = false
+    ) {
+        if standardShortcutsChanged {
+            standardProvider.updateRegisteredShortcuts(standardShortcuts)
+        }
+        if hyperShortcutsChanged {
+            hyperProvider.updateRegisteredShortcuts(hyperShortcuts)
+        }
+        if hyperConfigurationChanged || hyperShortcutsChanged {
+            hyperProvider.setHyperKeyEnabled(hyperKeyEnabled && !hyperShortcuts.isEmpty)
+        }
 
         guard let onKeyPress, !capturePaused else {
             standardProvider.stop()
             hyperProvider.stop()
+            standardProviderStarted = false
             return
         }
 
         if standardShortcuts.isEmpty {
             standardProvider.stop()
-        } else {
+            standardProviderStarted = false
+        } else if standardShortcutsChanged && standardProviderStarted {
+            // An already-started provider reconciles a changed desired set in
+            // updateRegisteredShortcuts. Calling start immediately afterwards
+            // would retry the same partial failure twice in one logical sync.
+        } else if !standardProviderStarted || retryStandardProvider {
             standardProvider.start(onKeyPress: onKeyPress)
+            standardProviderStarted = true
         }
 
         if inputMonitoringGranted && !hyperShortcuts.isEmpty {

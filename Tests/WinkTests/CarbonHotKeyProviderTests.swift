@@ -373,6 +373,188 @@ struct CarbonHotKeyProviderTests {
     }
 
     @Test @MainActor
+    func identicalDesiredUpdateIsAnExactCarbonNoopDuringPartialReadiness() {
+        let registrar = RecordingCarbonHotKeyRegistrar()
+        let provider = CarbonHotKeyProvider(registrationClient: registrar.client)
+        let working = KeyPress(
+            keyCode: CGKeyCode(kVK_ANSI_A),
+            modifiers: [.command]
+        )
+        let conflicting = KeyPress(
+            keyCode: CGKeyCode(kVK_ANSI_B),
+            modifiers: [.command]
+        )
+        registrar.failingKeyCodes = [UInt32(conflicting.keyCode)]
+
+        provider.updateRegisteredShortcuts([working, conflicting])
+        provider.start { _ in }
+        defer { provider.stop() }
+
+        let attemptsBeforeIdenticalUpdate = registrar.attempts
+        let unregistrationsBeforeIdenticalUpdate = registrar.unregistrations
+        let workingIdentifier = registrar.registrations.first {
+            $0.keyCode == UInt32(working.keyCode)
+        }?.identifier
+
+        provider.updateRegisteredShortcuts([working, conflicting])
+
+        #expect(registrar.attempts.count == attemptsBeforeIdenticalUpdate.count)
+        #expect(registrar.unregistrations.count == unregistrationsBeforeIdenticalUpdate.count)
+        #expect(registrar.registrations.first {
+            $0.keyCode == UInt32(working.keyCode)
+        }?.identifier == workingIdentifier)
+        #expect(provider.registrationState.registeredShortcutCount == 1)
+        #expect(provider.registrationState.failures.map(\.keyPress) == [conflicting])
+    }
+
+    @Test @MainActor
+    func removingOneBindingPreservesUnrelatedCarbonRegistrations() throws {
+        let registrar = RecordingCarbonHotKeyRegistrar()
+        let provider = CarbonHotKeyProvider(registrationClient: registrar.client)
+        let shortcuts: Set<KeyPress> = [
+            KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.command]),
+            KeyPress(keyCode: CGKeyCode(kVK_ANSI_B), modifiers: [.command]),
+            KeyPress(keyCode: CGKeyCode(kVK_ANSI_C), modifiers: [.command]),
+        ]
+        let removed = try #require(shortcuts.first {
+            $0.keyCode == CGKeyCode(kVK_ANSI_B)
+        })
+
+        provider.updateRegisteredShortcuts(shortcuts)
+        provider.start { _ in }
+        defer { provider.stop() }
+
+        let identifiersBeforeRemoval = Dictionary(
+            uniqueKeysWithValues: registrar.registrations.map {
+                ($0.keyCode, $0.identifier)
+            }
+        )
+        let attemptsBeforeRemoval = registrar.attempts.count
+        let unregistrationsBeforeRemoval = registrar.unregistrations.count
+
+        provider.updateRegisteredShortcuts(shortcuts.subtracting([removed]))
+
+        #expect(registrar.attempts.count == attemptsBeforeRemoval)
+        #expect(registrar.unregistrations.count == unregistrationsBeforeRemoval + 1)
+        #expect(registrar.unregistrations.last?.keyCode == UInt32(removed.keyCode))
+        for registration in registrar.registrations {
+            #expect(registration.identifier == identifiersBeforeRemoval[registration.keyCode])
+        }
+        #expect(provider.registrationState.isReady)
+    }
+
+    @Test @MainActor
+    func oneLogicalDesiredChangePerformsOneDeltaReconciliation() throws {
+        let registrar = RecordingCarbonHotKeyRegistrar()
+        let provider = CarbonHotKeyProvider(registrationClient: registrar.client)
+        let coordinator = ShortcutCaptureCoordinator(
+            standardProvider: provider,
+            hyperProvider: NoopHyperCaptureProvider()
+        )
+        let shortcutA = AppShortcut(
+            appName: "A",
+            bundleIdentifier: "com.example.a",
+            keyEquivalent: "a",
+            modifierFlags: ["command"]
+        )
+        let shortcutB = AppShortcut(
+            appName: "B",
+            bundleIdentifier: "com.example.b",
+            keyEquivalent: "b",
+            modifierFlags: ["command"]
+        )
+        let shortcutC = AppShortcut(
+            appName: "C",
+            bundleIdentifier: "com.example.c",
+            keyEquivalent: "c",
+            modifierFlags: ["command"]
+        )
+
+        coordinator.updateShortcuts([shortcutA, shortcutB])
+        coordinator.start(inputMonitoringGranted: false) { _ in }
+        defer { coordinator.stop() }
+
+        let aIdentifier = try #require(registrar.registrations.first {
+            $0.keyCode == UInt32(kVK_ANSI_A)
+        }?.identifier)
+        let attemptsBeforeChange = registrar.attempts.count
+        let unregistrationsBeforeChange = registrar.unregistrations.count
+        registrar.failingKeyCodes = [UInt32(kVK_ANSI_C)]
+
+        coordinator.updateShortcuts([shortcutA, shortcutC])
+
+        #expect(registrar.attempts.count == attemptsBeforeChange + 1)
+        #expect(registrar.attempts.last?.keyCode == UInt32(kVK_ANSI_C))
+        #expect(registrar.unregistrations.count == unregistrationsBeforeChange + 1)
+        #expect(registrar.unregistrations.last?.keyCode == UInt32(kVK_ANSI_B))
+        #expect(registrar.registrations.first {
+            $0.keyCode == UInt32(kVK_ANSI_A)
+        }?.identifier == aIdentifier)
+        #expect(provider.registrationState.registeredShortcutCount == 1)
+        #expect(provider.registrationState.failures.map(\.keyPress) == [
+            KeyPress(keyCode: CGKeyCode(kVK_ANSI_C), modifiers: [.command]),
+        ])
+    }
+
+    @Test @MainActor
+    func twentyBindingsWithOnePermanentFailureRetryOnlyThatBindingOncePerPoll() {
+        let registrar = RecordingCarbonHotKeyRegistrar()
+        let provider = CarbonHotKeyProvider(registrationClient: registrar.client)
+        let shortcuts = Set((0..<20).map { rawKeyCode in
+            KeyPress(keyCode: CGKeyCode(rawKeyCode), modifiers: [.command])
+        })
+        let conflictingKeyCode = UInt32(9)
+        registrar.failingKeyCodes = [conflictingKeyCode]
+
+        provider.updateRegisteredShortcuts(shortcuts)
+        provider.start { _ in }
+        defer { provider.stop() }
+
+        #expect(registrar.attempts.count == 20)
+        #expect(registrar.registrations.count == 19)
+        let workingIdentifiers = Dictionary(
+            uniqueKeysWithValues: registrar.registrations.map {
+                ($0.keyCode, $0.identifier)
+            }
+        )
+
+        for _ in 0..<5 {
+            provider.start { _ in }
+        }
+
+        #expect(registrar.attempts.filter {
+            $0.keyCode == conflictingKeyCode
+        }.count == 6)
+        for keyCode in workingIdentifiers.keys {
+            #expect(registrar.attempts.filter { $0.keyCode == keyCode }.count == 1)
+            #expect(registrar.unregistrations.contains { $0.keyCode == keyCode } == false)
+            #expect(registrar.registrations.first {
+                $0.keyCode == keyCode
+            }?.identifier == workingIdentifiers[keyCode])
+        }
+        #expect(provider.registrationState.registeredShortcutCount == 19)
+        #expect(provider.registrationState.failures.count == 1)
+        #expect(provider.registrationState.handlerState == .installed)
+        #expect(!provider.registrationState.isReady)
+
+        registrar.failingKeyCodes = []
+        provider.start { _ in }
+
+        #expect(registrar.attempts.filter {
+            $0.keyCode == conflictingKeyCode
+        }.count == 7)
+        #expect(registrar.registrations.count == 20)
+        #expect(provider.registrationState.isReady)
+
+        let attemptsAfterRecovery = registrar.attempts.count
+        let unregistrationsAfterRecovery = registrar.unregistrations.count
+        provider.updateRegisteredShortcuts(shortcuts)
+        provider.start { _ in }
+        #expect(registrar.attempts.count == attemptsAfterRecovery)
+        #expect(registrar.unregistrations.count == unregistrationsAfterRecovery)
+    }
+
+    @Test @MainActor
     func functionShortcutRegistersWithFnAndBareKeyCannotDeliver() throws {
         let registrar = RecordingCarbonHotKeyRegistrar()
         let modifierState = RecordingFunctionModifierStateTracker(isFunctionPressed: true)
@@ -564,7 +746,7 @@ struct CarbonHotKeyProviderTests {
         provider.handleHotKeyEvent(identifier: failedIdentifier)
         #expect(delivered.isEmpty)
 
-        provider.updateRegisteredShortcuts([shortcut])
+        provider.start { delivered.append($0) }
 
         let recoveredRegistration = try #require(registrar.registrations.first)
         let recoveredSession = try #require(handlerFactory.sessions.first)
@@ -576,9 +758,8 @@ struct CarbonHotKeyProviderTests {
         #expect(provider.registrationState.handlerState == .installed)
         #expect(provider.registrationState.allDesiredShortcutsRegistered)
 
-        // The production coordinator calls update followed by start during a
-        // retry. Once update recovered the complete set, start must only
-        // replace the delivery closure rather than reconcile it a second time.
+        // Once the explicit retry recovered the complete set, a later start
+        // only replaces the delivery closure rather than reconciling again.
         provider.start { delivered.append($0) }
         #expect(registrar.attempts.count == 2)
         #expect(registrar.registrations.map(\.identifier) == [recoveredRegistration.identifier])
@@ -685,6 +866,8 @@ private final class RecordingCarbonHotKeyRegistrar {
     private(set) var attempts: [Registration] = []
     private(set) var registrations: [Registration] = []
     private(set) var unregisteredIdentifiers: [UInt32] = []
+    private(set) var unregistrations: [Registration] = []
+    var failingKeyCodes: Set<UInt32> = []
 
     lazy var client = CarbonHotKeyRegistrationClient(
         register: { [unowned self] keyCode, modifiers, hotKeyID in
@@ -694,6 +877,9 @@ private final class RecordingCarbonHotKeyRegistrar {
                 identifier: hotKeyID.id
             )
             attempts.append(registration)
+            guard !failingKeyCodes.contains(keyCode) else {
+                return (Int32(eventHotKeyExistsErr), nil)
+            }
             registrations.append(registration)
             return (noErr, OpaquePointer(bitPattern: Int(hotKeyID.id)))
         },
@@ -702,6 +888,7 @@ private final class RecordingCarbonHotKeyRegistrar {
                 OpaquePointer(bitPattern: Int($0.identifier)) == hotKeyRef
             }) {
                 unregisteredIdentifiers.append(registration.identifier)
+                unregistrations.append(registration)
             }
             registrations.removeAll {
                 OpaquePointer(bitPattern: Int($0.identifier)) == hotKeyRef

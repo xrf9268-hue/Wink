@@ -79,6 +79,7 @@ private final class FakeCaptureProvider: ShortcutCaptureProvider {
     var failingShortcuts: Set<KeyPress> = []
     private(set) var startCallCount = 0
     private(set) var stopCallCount = 0
+    private(set) var updateCallCount = 0
     private(set) var registeredShortcuts: Set<KeyPress> = []
     private(set) var activeShortcuts: Set<KeyPress> = []
     private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
@@ -113,6 +114,7 @@ private final class FakeCaptureProvider: ShortcutCaptureProvider {
     }
 
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {
+        updateCallCount += 1
         registeredShortcuts = keyPresses
         refreshRunningState()
     }
@@ -732,6 +734,115 @@ func unchangedPermissionsDoNotResyncCaptureRepeatedly() throws {
 
     #expect(standardProvider.startCallCount == standardStartsAfterLaunch)
     #expect(hyperProvider.startCallCount == hyperStartsAfterLaunch)
+}
+
+@Test @MainActor
+func partialReadinessRetriesStandardCaptureOncePerPermissionPoll() throws {
+    let permissionService = MutablePermissionService(ax: true, input: false)
+    let standardProvider = FakeCaptureProvider()
+    standardProvider.failingShortcuts = [alternateStandardShortcutKeyPress()]
+    let (manager, _, hyperProvider, _) = makeShortcutManager(
+        permissionService: permissionService,
+        standardProvider: standardProvider
+    )
+    try manager.save(shortcuts: [standardShortcut(), alternateStandardShortcut()])
+    manager.start()
+
+    let startsBeforePolls = standardProvider.startCallCount
+    let updatesBeforePolls = standardProvider.updateCallCount
+    let hyperStartsBeforePolls = hyperProvider.startCallCount
+
+    for _ in 0..<5 {
+        manager.checkPermissionChange()
+    }
+
+    #expect(standardProvider.startCallCount == startsBeforePolls + 5)
+    #expect(standardProvider.updateCallCount == updatesBeforePolls)
+    #expect(hyperProvider.startCallCount == hyperStartsBeforePolls)
+    let status = manager.shortcutCaptureStatus()
+    #expect(status.registeredStandardShortcutCount == 1)
+    #expect(status.standardRegistrationFailures.count == 1)
+    #expect(!status.standardShortcutsReady)
+}
+
+@Test @MainActor
+func resumingPartialStandardCapturePerformsOneLogicalRetry() throws {
+    let standardProvider = FakeCaptureProvider()
+    standardProvider.failingShortcuts = [standardShortcutKeyPress()]
+    let context = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        standardProvider: standardProvider
+    )
+    try context.manager.save(shortcuts: [standardShortcut()])
+    context.manager.start()
+    context.manager.setShortcutsPaused(true)
+
+    let startsBeforeResume = standardProvider.startCallCount
+    let updatesBeforeResume = standardProvider.updateCallCount
+
+    context.manager.setShortcutsPaused(false)
+
+    #expect(standardProvider.startCallCount == startsBeforeResume + 1)
+    #expect(standardProvider.updateCallCount == updatesBeforeResume)
+    #expect(!context.manager.shortcutCaptureStatus().standardShortcutsReady)
+}
+
+@Test @MainActor
+func explicitPermissionRequestRetriesPartialStandardCaptureOnce() throws {
+    let permissionService = MutablePermissionService(ax: true, input: false)
+    let standardProvider = FakeCaptureProvider()
+    standardProvider.inputMonitoringRequired = true
+    standardProvider.failingShortcuts = [standardShortcutKeyPress()]
+    let context = makeShortcutManager(
+        permissionService: permissionService,
+        standardProvider: standardProvider
+    )
+    try context.manager.save(shortcuts: [standardShortcut()])
+    context.manager.start()
+
+    let startsBeforeRequest = standardProvider.startCallCount
+    let updatesBeforeRequest = standardProvider.updateCallCount
+    permissionService.grantInputMonitoringOnPrompt = true
+
+    context.manager.requestPermissions()
+
+    #expect(permissionService.input)
+    #expect(standardProvider.startCallCount == startsBeforeRequest + 1)
+    #expect(standardProvider.updateCallCount == updatesBeforeRequest)
+    #expect(!context.manager.shortcutCaptureStatus().standardShortcutsReady)
+}
+
+@Test @MainActor
+func availabilityChangeDoesNotRetryAnAlreadyReconciledPartialStandardSet() throws {
+    let bundleLocatorState = MutableAppBundleLocatorState(entries: [
+        "com.apple.Safari": URL(fileURLWithPath: "/Applications/Safari.app"),
+    ])
+    let standardProvider = FakeCaptureProvider()
+    standardProvider.failingShortcuts = [standardShortcutKeyPress()]
+    let context = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        standardProvider: standardProvider,
+        appBundleLocator: AppBundleLocator { bundleIdentifier in
+            bundleLocatorState.entries[bundleIdentifier]
+        }
+    )
+    try context.manager.save(shortcuts: [standardShortcut(), alternateStandardShortcut()])
+    context.manager.start()
+
+    let startsBeforeAvailabilityChange = standardProvider.startCallCount
+    let updatesBeforeAvailabilityChange = standardProvider.updateCallCount
+    bundleLocatorState.entries["com.apple.Terminal"] = URL(
+        fileURLWithPath: "/Applications/Utilities/Terminal.app"
+    )
+
+    context.manager.checkPermissionChange()
+
+    #expect(standardProvider.updateCallCount == updatesBeforeAvailabilityChange + 1)
+    #expect(standardProvider.startCallCount == startsBeforeAvailabilityChange)
+    let status = context.manager.shortcutCaptureStatus()
+    #expect(status.registeredStandardShortcutCount == 1)
+    #expect(status.standardRegistrationFailures.count == 1)
+    #expect(!status.standardShortcutsReady)
 }
 
 @Test @MainActor

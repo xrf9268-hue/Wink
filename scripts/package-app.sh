@@ -3,6 +3,7 @@
 #   WINK_VALIDATION_LAUNCH_FAULT_INJECTION=1 ./scripts/package-app.sh
 #   WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION=1 ./scripts/package-app.sh
 #   WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION=1 ./scripts/package-app.sh
+#   WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION=1 ./scripts/package-app.sh
 # Then launch the packaged app with exactly one validation argument, for example:
 #   open -n build/Wink.app --args \
 #     --validation-launch-fault=stale-error:com.apple.TextEdit
@@ -10,6 +11,8 @@
 #     --validation-event-tap-fault=replacement-tap-once
 #   open -n build/Wink.app --args \
 #     --validation-carbon-handler-fault=fail-once
+#   open -n build/Wink.app --args \
+#     --validation-carbon-binding-fault=permanent-conflict:38:6400
 set -euo pipefail
 
 APP_NAME="Wink"
@@ -35,6 +38,8 @@ SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}"
 WINK_VALIDATION_LAUNCH_FAULT_INJECTION="${WINK_VALIDATION_LAUNCH_FAULT_INJECTION:-0}"
 WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION="${WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION:-0}"
 WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION="${WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION:-0}"
+WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION="${WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION:-0}"
+WINK_VALIDATION_SOURCE_REVISION="${WINK_VALIDATION_SOURCE_REVISION:-}"
 
 case "$WINK_VALIDATION_LAUNCH_FAULT_INJECTION" in
     0|1) ;;
@@ -60,16 +65,31 @@ case "$WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION" in
         ;;
 esac
 
-case "$WINK_VALIDATION_LAUNCH_FAULT_INJECTION:$WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION:$WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION" in
-    0:0:0) PACKAGE_PROFILE="production" ;;
-    1:0:0) PACKAGE_PROFILE="launch-fault-injection" ;;
-    0:1:0) PACKAGE_PROFILE="event-tap-fault-injection" ;;
-    0:0:1) PACKAGE_PROFILE="carbon-handler-fault-injection" ;;
+case "$WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION" in
+    0|1) ;;
     *)
-        echo "Error: launch, EventTap, and Carbon handler fault-injection profiles are mutually exclusive" >&2
+        echo "Error: WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION must be 0 or 1" >&2
         exit 1
         ;;
 esac
+
+case "$WINK_VALIDATION_LAUNCH_FAULT_INJECTION:$WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION:$WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION:$WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION" in
+    0:0:0:0) PACKAGE_PROFILE="production" ;;
+    1:0:0:0) PACKAGE_PROFILE="launch-fault-injection" ;;
+    0:1:0:0) PACKAGE_PROFILE="event-tap-fault-injection" ;;
+    0:0:1:0) PACKAGE_PROFILE="carbon-handler-fault-injection" ;;
+    0:0:0:1) PACKAGE_PROFILE="carbon-binding-fault-injection" ;;
+    *)
+        echo "Error: launch, EventTap, Carbon handler, and Carbon binding fault-injection profiles are mutually exclusive" >&2
+        exit 1
+        ;;
+esac
+
+if [ -n "$WINK_VALIDATION_SOURCE_REVISION" ] \
+    && [[ ! "$WINK_VALIDATION_SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "Error: WINK_VALIDATION_SOURCE_REVISION must be empty or one lowercase 40-character SHA" >&2
+    exit 1
+fi
 BUILD_SCRATCH_PATH="$PROJECT_DIR/.build"
 
 SWIFT_BUILD_FLAGS=(
@@ -83,6 +103,8 @@ elif [ "$PACKAGE_PROFILE" = "event-tap-fault-injection" ]; then
     SWIFT_BUILD_FLAGS+=(-Xswiftc -DWINK_EVENT_TAP_FAULT_INJECTION)
 elif [ "$PACKAGE_PROFILE" = "carbon-handler-fault-injection" ]; then
     SWIFT_BUILD_FLAGS+=(-Xswiftc -DWINK_CARBON_HANDLER_FAULT_INJECTION)
+elif [ "$PACKAGE_PROFILE" = "carbon-binding-fault-injection" ]; then
+    SWIFT_BUILD_FLAGS+=(-Xswiftc -DWINK_CARBON_BINDING_FAULT_INJECTION)
 fi
 
 clean_package_products() {
@@ -102,7 +124,8 @@ if [ "$PACKAGE_PROFILE" != "production" ]; then
 elif [ -f "$BUILD_SCRATCH_PATH/release/${APP_NAME}" ] \
     && { LC_ALL=C grep -aFq 'LAUNCH_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}" \
         || LC_ALL=C grep -aFq 'EVENT_TAP_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}" \
-        || LC_ALL=C grep -aFq 'CARBON_HANDLER_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}"; }; then
+        || LC_ALL=C grep -aFq 'CARBON_HANDLER_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}" \
+        || LC_ALL=C grep -aFq 'CARBON_BINDING_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}"; }; then
     echo "==> Removing fault-injection products before production build..."
     clean_package_products
 fi
@@ -167,8 +190,15 @@ apply_validation_profile() {
     if [ "$PACKAGE_PROFILE" != "production" ]; then
         plutil -replace WinkRuntimeValidationProfile -string "$PACKAGE_PROFILE" "$plist_path" 2>/dev/null \
             || plutil -insert WinkRuntimeValidationProfile -string "$PACKAGE_PROFILE" "$plist_path"
+        if [ -n "$WINK_VALIDATION_SOURCE_REVISION" ]; then
+            plutil -replace WinkRuntimeValidationSourceRevision -string "$WINK_VALIDATION_SOURCE_REVISION" "$plist_path" 2>/dev/null \
+                || plutil -insert WinkRuntimeValidationSourceRevision -string "$WINK_VALIDATION_SOURCE_REVISION" "$plist_path"
+        else
+            plutil -remove WinkRuntimeValidationSourceRevision "$plist_path" >/dev/null 2>&1 || true
+        fi
     else
         plutil -remove WinkRuntimeValidationProfile "$plist_path" >/dev/null 2>&1 || true
+        plutil -remove WinkRuntimeValidationSourceRevision "$plist_path" >/dev/null 2>&1 || true
     fi
 }
 
