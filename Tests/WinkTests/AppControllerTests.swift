@@ -192,23 +192,7 @@ func startupSequenceAppliesPersistedPreferencesBeforeStartingShortcutManager() {
 func duplicatePersistencePayloadNeverPublishesIntoSettingsModels() async throws {
     let harness = TestPersistenceHarness()
     defer { harness.cleanup() }
-    let duplicateID = UUID(uuidString: "12345678-1234-1234-1234-123456789012")!
-    let invalidPayload = try JSONEncoder().encode([
-        AppShortcut(
-            id: duplicateID,
-            appName: "Safari",
-            bundleIdentifier: "com.apple.Safari",
-            keyEquivalent: "s",
-            modifierFlags: ["command"]
-        ),
-        AppShortcut(
-            id: duplicateID,
-            appName: "Notes",
-            bundleIdentifier: "com.apple.Notes",
-            keyEquivalent: "n",
-            modifierFlags: ["command", "option"]
-        ),
-    ])
+    let invalidPayload = try JSONEncoder().encode(makeDuplicateShortcutIDFixture())
     try invalidPayload.write(to: harness.shortcutsURL)
 
     let service = harness.makePersistenceService(backupIDProvider: { "startup-duplicate" })

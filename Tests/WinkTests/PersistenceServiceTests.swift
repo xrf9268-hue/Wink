@@ -99,24 +99,7 @@ struct PersistenceServiceDiskLoadingTests {
         let harness = TestPersistenceHarness()
         defer { harness.cleanup() }
         let diagnostics = DiagnosticRecorder()
-        let duplicateID = UUID(uuidString: "12345678-1234-1234-1234-123456789012")!
-        let invalidPayload = try JSONEncoder().encode([
-            AppShortcut(
-                id: duplicateID,
-                appName: "Safari",
-                bundleIdentifier: "com.apple.Safari",
-                keyEquivalent: "s",
-                modifierFlags: ["command"]
-            ),
-            AppShortcut(
-                id: duplicateID,
-                appName: "Notes",
-                bundleIdentifier: "com.apple.Notes",
-                keyEquivalent: "n",
-                modifierFlags: ["command", "option"],
-                isEnabled: false
-            ),
-        ])
+        let invalidPayload = try JSONEncoder().encode(makeDuplicateShortcutIDFixture())
         try invalidPayload.write(to: harness.shortcutsURL)
 
         let service = harness.makePersistenceService(
@@ -135,7 +118,7 @@ struct PersistenceServiceDiskLoadingTests {
                 return
             }
             #expect(path == harness.shortcutsURL.path)
-            #expect(id == duplicateID)
+            #expect(id == duplicateShortcutFixtureID)
             #expect(
                 preservedCopyPath
                     == harness.directory
@@ -149,7 +132,7 @@ struct PersistenceServiceDiskLoadingTests {
         #expect(try Data(contentsOf: backupURL) == invalidPayload)
         #expect(diagnostics.messages.contains {
             $0.contains("path=\(harness.shortcutsURL.path)")
-                && $0.contains(duplicateID.uuidString)
+                && $0.contains(duplicateShortcutFixtureID.uuidString)
                 && $0.contains("preservedCopyPath=\(backupURL.path)")
         })
 
@@ -173,7 +156,6 @@ struct PersistenceServiceDiskLoadingTests {
         let harness = TestPersistenceHarness()
         defer { harness.cleanup() }
         let diagnostics = DiagnosticRecorder()
-        let duplicateID = UUID(uuidString: "12345678-1234-1234-1234-123456789012")!
         let service = harness.makePersistenceService(
             diagnosticClient: .init(log: { message in
                 diagnostics.append(message)
@@ -189,23 +171,7 @@ struct PersistenceServiceDiskLoadingTests {
         ]
         try service.save(canonical)
         let canonicalPayload = try Data(contentsOf: harness.shortcutsURL)
-        let duplicateShortcuts = [
-            AppShortcut(
-                id: duplicateID,
-                appName: "Notes",
-                bundleIdentifier: "com.apple.Notes",
-                keyEquivalent: "n",
-                modifierFlags: ["command"]
-            ),
-            AppShortcut(
-                id: duplicateID,
-                appName: "Terminal",
-                bundleIdentifier: "com.apple.Terminal",
-                keyEquivalent: "t",
-                modifierFlags: ["command", "option"],
-                isEnabled: false
-            ),
-        ]
+        let duplicateShortcuts = makeDuplicateShortcutIDFixture()
 
         do {
             try service.save(duplicateShortcuts)
@@ -216,14 +182,14 @@ struct PersistenceServiceDiskLoadingTests {
                 return
             }
             #expect(path == harness.shortcutsURL.path)
-            #expect(id == duplicateID)
+            #expect(id == duplicateShortcutFixtureID)
         }
 
         #expect(try Data(contentsOf: harness.shortcutsURL) == canonicalPayload)
         #expect(try service.load() == canonical)
         #expect(diagnostics.messages.contains {
             $0.contains("path=\(harness.shortcutsURL.path)")
-                && $0.contains(duplicateID.uuidString)
+                && $0.contains(duplicateShortcutFixtureID.uuidString)
         })
     }
 
