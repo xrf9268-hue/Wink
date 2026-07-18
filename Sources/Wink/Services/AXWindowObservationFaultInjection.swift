@@ -1,12 +1,13 @@
 #if WINK_AX_WINDOW_OBSERVATION_FAULT_INJECTION
 import AppKit
 
-/// Compile-time-only validation profile for deactivation confirmation when an
-/// AX windows read is unknown. Production builds contain neither this parser,
-/// driver, nor its diagnostic markers.
+/// Compile-time-only validation profile for activation/deactivation behavior
+/// when AX window evidence is withheld. Production builds contain neither this
+/// parser, driver, nor its diagnostic markers.
 struct AXWindowObservationFaultInjectionConfiguration: Equatable, Sendable {
     enum Mode: String, Sendable {
         case deactivationOnce = "deactivation-once"
+        case activationPersistent = "activation-persistent"
     }
 
     private static let argumentPrefix = "--validation-ax-window-observation-fault="
@@ -42,6 +43,7 @@ final class AXWindowObservationFaultInjectionDriver {
     private let diagnosticLog: (String) -> Void
     private var matchingHideWasSuppressed = false
     private var failedObservationWasInjected = false
+    private var withheldObservationCount = 0
 
     init(
         configuration: AXWindowObservationFaultInjectionConfiguration,
@@ -64,6 +66,12 @@ final class AXWindowObservationFaultInjectionDriver {
             return base(app)
         }
 
+        if configuration.mode == .activationPersistent {
+            let result = base(app)
+            log(event: "hide_forwarded", details: "apiReturn=\(result)")
+            return result
+        }
+
         guard !matchingHideWasSuppressed else {
             let result = base(app)
             log(event: "hide_forwarded", details: "apiReturn=\(result)")
@@ -79,8 +87,27 @@ final class AXWindowObservationFaultInjectionDriver {
         for app: NSRunningApplication,
         base: (NSRunningApplication) -> WindowObservation
     ) -> WindowObservation {
-        guard app.bundleIdentifier == configuration.targetBundleIdentifier,
-              matchingHideWasSuppressed,
+        guard app.bundleIdentifier == configuration.targetBundleIdentifier else {
+            return base(app)
+        }
+
+        if configuration.mode == .activationPersistent {
+            withheldObservationCount += 1
+            log(
+                event: "window_evidence_withheld",
+                details: "ordinal=\(withheldObservationCount) frontmost=\(currentFrontmostBundleIdentifier() ?? "nil") targetActive=\(app.isActive) targetHidden=\(app.isHidden) windowsReadSucceeded=false"
+            )
+            return WindowObservation(
+                windows: nil,
+                visibleWindowCount: 0,
+                hasFocusedWindow: false,
+                hasMainWindow: false,
+                windowsReadSucceeded: false,
+                failureReason: "validationInjectedActivationWindowEvidenceFailure"
+            )
+        }
+
+        guard matchingHideWasSuppressed,
               !failedObservationWasInjected,
               !app.isHidden,
               let frontmostBundleIdentifier = currentFrontmostBundleIdentifier(),

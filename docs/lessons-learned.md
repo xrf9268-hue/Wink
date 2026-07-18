@@ -407,7 +407,7 @@ Repeated shortcut presses can flap between "activate" and "toggle off" if Wink d
 The first trigger may only have started activation, while the second trigger arrives before the app has reached a stable frontmost state with a usable window.
 
 **Practical guidance**
-Do not let "activation requested" mean "activation complete". Require a short post-activation confirmation pass and only allow toggle-off from a stable active state. During pending or degraded activation, a repeat trigger should re-confirm or re-attempt activation instead of making hide/reactivate decisions from a transient snapshot.
+Do not let "activation requested" mean "activation complete". Require a short post-activation confirmation pass and only allow toggle-off from a stable active state. Recovery exhaustion must retain one generation-owned degraded attempt. A repeat trigger atomically checks the absolute ceiling, degraded-idle expiry, and retry cap before re-attempting; cap or ceiling termination must enter idle before any further activation, hide, AX raise, reopen, or Command-N side effect.
 
 ## Retiring Previous-App Memory When It Stops Driving Behavior
 
@@ -429,7 +429,7 @@ Launch -> quit -> relaunch flows can leave Wink believing a target is both "stab
 When bundle-keyed session tracking is duplicated across multiple owners, termination or pid rollover can clear one owner while the other still holds stale stable/pending state. That is how relaunch paths degrade into `phase=no_session`, `hide_untracked`, or other ownership confusion right after an otherwise valid launch.
 
 **Practical guidance**
-Make `ToggleSessionCoordinator` the only lifecycle owner. Keep pid, attempt id, phase, activation path, and timing on that single session object, and reset or replace the session on termination and pid rollover. `AppSwitcher` may expose derived read-only views, but it must not become a second mutable lifecycle owner.
+Make `ToggleSessionCoordinator` the only lifecycle owner. Keep pid, attempt id, phase, activation path, and timing on that single session object. Termination or explicit reset idles an affected degraded session, while pid rollover replaces an incompatible process-owned session. `AppSwitcher` may expose derived read-only views, but it must not become a second mutable lifecycle owner.
 
 Do not throw away the `NSRunningApplication` returned by `NSWorkspace.openApplication`. The launch completion is the cleanest process-identity seam Wink gets for a just-launched target. Attach that pid back onto the existing `launching` session immediately and run the same confirmation pipeline used by activate/unhide, or the next press can still fall through to `hide_untracked` despite an otherwise successful launch.
 
@@ -464,7 +464,7 @@ Stable toggle state can become stale as soon as the user changes apps outside Wi
 Polling or one-shot snapshots miss external activation and termination changes, especially while a toggle session is still marked `activeStable` or `deactivating`.
 
 **Practical guidance**
-Use `NSWorkspace.didActivateApplicationNotification` to drop stable/deactivating sessions when another app becomes frontmost, and `NSWorkspace.didTerminateApplicationNotification` to clear sessions for terminated targets. This keeps runtime state aligned with user-visible app focus without adding polling noise.
+Use `NSWorkspace.didActivateApplicationNotification` to drop stable/deactivating sessions when another app becomes frontmost, and `NSWorkspace.didTerminateApplicationNotification` to clear ordinary sessions or transition an affected degraded session to idle. This keeps runtime state aligned with user-visible app focus without adding polling noise.
 
 ## System Apps Need Honest Downgrade Rules
 
@@ -475,7 +475,7 @@ Apps such as Home can produce visible windows without behaving like normal key-w
 Some system utilities use nonstandard scene, hide/unhide, or window activation behavior that does not match assumptions baked into regular AppKit apps.
 
 **Practical guidance**
-Do not force all apps through one generic "front app with visible window means success" rule. Keep a degraded-success path for system or window-weird apps, log why the app is degraded, and avoid counting degraded activation as safe toggle-off state.
+Do not force all apps through one generic "front app with visible window means success" rule. Allow explicitly classified non-regular apps to stabilize without ordinary window evidence. For unresolved regular-app evidence failures, enter a bounded degraded recovery state, log the reason, and never count degraded activation as safe toggle-off state.
 
 ## Untracked Frontmost Apps Need a Direct Hide Path
 

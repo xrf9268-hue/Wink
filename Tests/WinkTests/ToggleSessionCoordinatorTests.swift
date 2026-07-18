@@ -125,6 +125,29 @@ func degradedReconfirmResetsIdleExpiryTimer() {
 }
 
 @Test @MainActor
+func degradedReconfirmAfterIdleExpiryReturnsNotDegradedAndIdlesSession() {
+    let clock = CoordinatorTestClock(time: 100)
+    let coordinator = ToggleSessionCoordinator(
+        configuration: .init(
+            degradedIdleExpiry: 2,
+            absoluteActivationCeiling: 10,
+            degradedRetryCap: 2
+        ),
+        now: { clock.time }
+    )
+
+    coordinator.beginActivation(for: "com.apple.Home")
+    coordinator.markDegraded(for: "com.apple.Home", reason: "no windows")
+    clock.time = 102.1
+
+    let result = coordinator.reconfirmDegraded(for: "com.apple.Home")
+
+    #expect(result == .notDegraded)
+    #expect(coordinator.session(for: "com.apple.Home")?.phase == .idle)
+    #expect(coordinator.session(for: "com.apple.Home")?.retryCount == 0)
+}
+
+@Test @MainActor
 func degradedReconfirmDoesNotResetAbsoluteActivationCeiling() {
     let clock = CoordinatorTestClock(time: 100)
     let coordinator = ToggleSessionCoordinator(
@@ -294,15 +317,37 @@ func evictionDoesNotEvictCurrentlyMutatingSession() {
 }
 
 @Test @MainActor
-func terminatedTargetClearsDegradedSession() {
+func terminatedTargetTransitionsDegradedSessionToIdle() {
     let coordinator = ToggleSessionCoordinator(now: { 100 })
 
     coordinator.beginActivation(for: "com.apple.Home")
     coordinator.markDegraded(for: "com.apple.Home", reason: "no windows")
+    coordinator.beginActivation(for: "com.apple.Clock")
+    coordinator.markDegraded(for: "com.apple.Clock", reason: "clock has no windows")
+    let unrelatedSession = coordinator.session(for: "com.apple.Clock")
 
     coordinator.handleTermination(bundleIdentifier: "com.apple.Home")
 
-    #expect(coordinator.session(for: "com.apple.Home") == nil)
+    #expect(coordinator.session(for: "com.apple.Home")?.phase == .idle)
+    #expect(coordinator.session(for: "com.apple.Home")?.degradedReason == "no windows")
+    #expect(coordinator.session(for: "com.apple.Clock") == unrelatedSession)
+}
+
+@Test @MainActor
+func explicitResetIdlesOnlyAffectedDegradedSession() {
+    let coordinator = ToggleSessionCoordinator(now: { 100 })
+
+    coordinator.beginActivation(for: "com.apple.Home")
+    coordinator.markDegraded(for: "com.apple.Home", reason: "no windows")
+    coordinator.beginActivation(for: "com.apple.Clock")
+    coordinator.markDegraded(for: "com.apple.Clock", reason: "clock has no windows")
+    let unrelatedSession = coordinator.session(for: "com.apple.Clock")
+
+    coordinator.resetSession(for: "com.apple.Home")
+
+    #expect(coordinator.session(for: "com.apple.Home")?.phase == .idle)
+    #expect(coordinator.session(for: "com.apple.Home")?.degradedReason == "no windows")
+    #expect(coordinator.session(for: "com.apple.Clock") == unrelatedSession)
 }
 
 @Test @MainActor

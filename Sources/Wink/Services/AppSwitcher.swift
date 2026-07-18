@@ -163,6 +163,13 @@ final class AppSwitcher: AppSwitching {
         let schedule: @MainActor (TimeInterval, @escaping @MainActor () -> Void) -> Void
     }
 
+    struct RecoveryClient {
+        let perform: @MainActor (
+            WindowRecoveryStage,
+            @escaping @MainActor () -> Void
+        ) -> Void
+    }
+
     private let frontmostTracker: FrontmostApplicationTracker
     private let applicationObservation: ApplicationObservation
     private let activationClient: ActivationClient
@@ -170,6 +177,7 @@ final class AppSwitcher: AppSwitching {
     private let hideRequestClient: HideRequestClient
     private let appLookupClient: AppLookupClient
     private let confirmationClient: ConfirmationClient
+    private let recoveryClient: RecoveryClient?
     private let sessionCoordinator: ToggleSessionCoordinator
     private var frontmostTargetBehavior: FrontmostTargetBehavior = .toggle
 
@@ -208,6 +216,7 @@ final class AppSwitcher: AppSwitching {
         hideRequestClient: HideRequestClient = .live,
         appLookupClient: AppLookupClient = .live,
         confirmationClient: ConfirmationClient = .live,
+        recoveryClient: RecoveryClient? = nil,
         sessionCoordinator: ToggleSessionCoordinator? = nil
     ) {
         self.frontmostTracker = frontmostTracker
@@ -217,6 +226,7 @@ final class AppSwitcher: AppSwitching {
         self.hideRequestClient = hideRequestClient
         self.appLookupClient = appLookupClient
         self.confirmationClient = confirmationClient
+        self.recoveryClient = recoveryClient
         self.sessionCoordinator = sessionCoordinator ?? ToggleSessionCoordinator(now: confirmationClient.now)
         self.sessionCoordinator.startObservingWorkspaceNotifications()
         self.sessionCoordinator.setFrontmostTargetBehavior(frontmostTargetBehavior)
@@ -511,14 +521,20 @@ final class AppSwitcher: AppSwitching {
             }
 
             guard let nextRecoveryStage = self.nextRecoveryStage(for: snapshot, candidate: nextRecoveryStage) else {
+                guard self.sessionCoordinator.markDegraded(
+                    for: state.bundleIdentifier,
+                    reason: "activation_recovery_exhausted",
+                    generation: state.generation
+                ) != nil else {
+                    return
+                }
                 self.logToggleTrace(
-                    family: .reset,
+                    family: .confirmation,
                     bundleIdentifier: state.bundleIdentifier,
-                    event: "session_cleared",
+                    event: "degraded",
                     reason: "activation_recovery_exhausted",
                     activationPath: activationPath
                 )
-                self.clearActivationTracking(for: state.bundleIdentifier)
                 return
             }
 
@@ -679,6 +695,17 @@ final class AppSwitcher: AppSwitching {
         sessionCoordinator.resetSession(for: bundleIdentifier)
     }
 
+    private func degradedReconfirmationDetails(
+        result: String,
+        session: ToggleSessionCoordinator.Session?
+    ) -> String {
+        let retryCount = session?.retryCount ?? 0
+        let elapsedMilliseconds = session.map {
+            Int(($0.lastActivityAt - $0.activationStartedAt) * 1_000)
+        } ?? 0
+        return "result=\(result) retryCount=\(retryCount) retryCap=\(sessionCoordinator.configuration.degradedRetryCap) absoluteCeilingMs=\(Int(sessionCoordinator.configuration.absoluteActivationCeiling * 1_000)) elapsedMs=\(elapsedMilliseconds)"
+    }
+
     private func completePendingDeactivation(for bundleIdentifier: String) {
         sessionCoordinator.completeDeactivation(for: bundleIdentifier)
     }
@@ -810,16 +837,78 @@ final class AppSwitcher: AppSwitching {
             return false
         }
 
-        _ = sessionCoordinator.updateProcessIdentifier(
+        var reconfirmingDegradedSession: ToggleSessionCoordinator.Session?
+        let degradedReconfirmDecision = sessionCoordinator.reconfirmDegradedSession(
+            for: shortcut.bundleIdentifier
+        )
+        switch degradedReconfirmDecision.result {
+        case .accepted:
+            reconfirmingDegradedSession = degradedReconfirmDecision.session
+            logToggleTrace(
+                family: .decision,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "degraded_reconfirm",
+                reason: degradedReconfirmationDetails(
+                    result: "accepted",
+                    session: degradedReconfirmDecision.session
+                ),
+                activationPath: nil,
+                sessionSnapshot: degradedReconfirmDecision.session
+            )
+        case .retryCapped:
+            logToggleTrace(
+                family: .decision,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "degraded_reconfirm",
+                reason: degradedReconfirmationDetails(
+                    result: "retry_capped",
+                    session: degradedReconfirmDecision.session
+                ),
+                activationPath: nil,
+                sessionSnapshot: degradedReconfirmDecision.session
+            )
+            return true
+        case .absoluteCeilingReached:
+            logToggleTrace(
+                family: .decision,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "degraded_reconfirm",
+                reason: degradedReconfirmationDetails(
+                    result: "absolute_ceiling_reached",
+                    session: degradedReconfirmDecision.session
+                ),
+                activationPath: nil,
+                sessionSnapshot: degradedReconfirmDecision.session
+            )
+            return true
+        case .notDegraded:
+            reconfirmingDegradedSession = nil
+        }
+
+        let processUpdatedSession = sessionCoordinator.updateProcessIdentifier(
             for: shortcut.bundleIdentifier,
             pid: runningApp.processIdentifier
         )
+        if reconfirmingDegradedSession != nil {
+            reconfirmingDegradedSession = processUpdatedSession ?? reconfirmingDegradedSession
+        }
 
         let preActionWindowObservation = applicationObservation.windowObservation(for: runningApp)
         let preActionSnapshot = applicationObservation.snapshot(
             for: runningApp,
             windowObservation: preActionWindowObservation
         )
+
+        if let reconfirmingDegradedSession {
+            return performDegradedReconfirmation(
+                shortcut: shortcut,
+                runningApp: runningApp,
+                windowObservation: preActionWindowObservation,
+                snapshot: preActionSnapshot,
+                attemptStartedAt: attemptStartedAt,
+                session: reconfirmingDegradedSession
+            )
+        }
 
         if stableActivationState?.bundleIdentifier == shortcut.bundleIdentifier,
            pendingDeactivationState?.bundleIdentifier != shortcut.bundleIdentifier,
@@ -1006,6 +1095,13 @@ final class AppSwitcher: AppSwitching {
             runningApp.unhide()
         }
         unminimizeWindows(of: runningApp, observation: preActionWindowObservation)
+        logToggleTrace(
+            family: .decision,
+            bundleIdentifier: shortcut.bundleIdentifier,
+            event: "activation_side_effect",
+            reason: "front_process",
+            activationPath: activationPath
+        )
         let activated = activateViaWindowServer(runningApp, windows: preActionWindowObservation.windows)
         guard activated || continuingPendingActivation else {
             clearActivationTracking(for: shortcut.bundleIdentifier)
@@ -1032,8 +1128,103 @@ final class AppSwitcher: AppSwitching {
                 pid: runningApp.processIdentifier
             )
         }
-        schedulePendingConfirmation(
+        scheduleRuntimeActivationConfirmation(
             state: pendingState,
+            shortcut: shortcut,
+            runningApp: runningApp,
+            activationPath: activationPath
+        )
+        return true
+    }
+
+    private func performDegradedReconfirmation(
+        shortcut: AppShortcut,
+        runningApp: NSRunningApplication,
+        windowObservation: ApplicationObservation.WindowObservation,
+        snapshot: ActivationObservationSnapshot,
+        attemptStartedAt: CFAbsoluteTime,
+        session: ToggleSessionCoordinator.Session
+    ) -> Bool {
+        if canPromoteToStable(with: snapshot) {
+            logToggleTrace(
+                family: .decision,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "pending_promoted",
+                reason: "degraded_reconfirm_now_stable",
+                activationPath: session.activationPath,
+                sessionSnapshot: session
+            )
+            guard let stableSession = sessionCoordinator.markStable(
+                for: shortcut.bundleIdentifier,
+                generation: session.generation
+            ) else {
+                return true
+            }
+            logToggleTrace(
+                family: .confirmation,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "confirmed",
+                reason: "degraded_reconfirm_stable",
+                activationPath: stableSession.activationPath,
+                sessionSnapshot: stableSession
+            )
+            return true
+        }
+
+        let activationPath: ActivationPath = runningApp.isHidden ? .unhideActivate : .activate
+        logger.info("TOGGLE[\(shortcut.appName)]: DEGRADED RECONFIRM → activating, isHidden=\(runningApp.isHidden)")
+        DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: DEGRADED RECONFIRM → activating, isHidden=\(runningApp.isHidden)")
+        logToggleLifecycle(
+            for: shortcut,
+            lifecycle: .attempt,
+            activationPath: activationPath,
+            snapshot: snapshot,
+            elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt),
+            sessionSnapshot: session
+        )
+        if runningApp.isHidden {
+            runningApp.unhide()
+        }
+        unminimizeWindows(of: runningApp, observation: windowObservation)
+        logToggleTrace(
+            family: .decision,
+            bundleIdentifier: shortcut.bundleIdentifier,
+            event: "activation_side_effect",
+            reason: "degraded_reconfirm_front_process",
+            activationPath: activationPath,
+            sessionSnapshot: session
+        )
+        _ = activateViaWindowServer(runningApp, windows: windowObservation.windows)
+
+        guard let continuedSession = sessionCoordinator.continueActivation(
+            for: shortcut.bundleIdentifier,
+            activationPath: activationPath,
+            pid: runningApp.processIdentifier
+        ) else {
+            return true
+        }
+        let pendingState = PendingActivationState(
+            bundleIdentifier: continuedSession.bundleIdentifier,
+            generation: continuedSession.generation,
+            startedAt: continuedSession.activationStartedAt
+        )
+        scheduleRuntimeActivationConfirmation(
+            state: pendingState,
+            shortcut: shortcut,
+            runningApp: runningApp,
+            activationPath: activationPath
+        )
+        return true
+    }
+
+    private func scheduleRuntimeActivationConfirmation(
+        state: PendingActivationState,
+        shortcut: AppShortcut,
+        runningApp: NSRunningApplication,
+        activationPath: ActivationPath
+    ) {
+        schedulePendingConfirmation(
+            state: state,
             shortcut: shortcut,
             activationPath: activationPath,
             observe: { [weak self] in
@@ -1059,24 +1250,28 @@ final class AppSwitcher: AppSwitching {
                 )
             },
             recoverIfNeeded: { [weak self] stage, completion in
-                self?.recoverActivation(
+                guard let self else { return }
+                if let recoveryClient = self.recoveryClient {
+                    recoveryClient.perform(stage, completion)
+                    return
+                }
+                self.recoverActivation(
                     runningApp,
                     shortcut: shortcut,
                     stage: stage,
                     fallbackActivate: {
-                        self?.requestFallbackActivation(
+                        self.requestFallbackActivation(
                             bundleURL: runningApp.bundleURL,
                             bundleIdentifier: runningApp.bundleIdentifier ?? "\(runningApp.processIdentifier)",
                             plainActivate: {
                                 runningApp.activate()
                             }
-                        ) ?? false
+                        )
                     },
                     completion: completion
                 )
             }
         )
-        return true
     }
 
     private func performFrontmostFocus(
@@ -1470,6 +1665,14 @@ final class AppSwitcher: AppSwitching {
                 return
             }
 
+            logToggleTrace(
+                family: .confirmation,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "recovery_side_effect",
+                reason: "stage=makeKeyWindow",
+                activationPath: nil
+            )
+
             switch activateProcess(
                 pid: app.processIdentifier,
                 windowID: windowID,
@@ -1485,6 +1688,13 @@ final class AppSwitcher: AppSwitching {
             completion()
         case .axRaise:
             let windows = fetchWindows(of: app)
+            logToggleTrace(
+                family: .confirmation,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "recovery_side_effect",
+                reason: "stage=axRaise",
+                activationPath: nil
+            )
             if hasVisibleWindows(of: app, windows: windows) {
                 raiseFirstWindow(from: windows)
                 logger.info("TOGGLE[\(shortcut.appName)]: activation recovery stage=axRaise")
@@ -1510,6 +1720,14 @@ final class AppSwitcher: AppSwitching {
                 return
             }
 
+            logToggleTrace(
+                family: .confirmation,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "recovery_side_effect",
+                reason: "stage=reopen",
+                activationPath: nil
+            )
+
             let config = NSWorkspace.OpenConfiguration()
             fallbackActivationClient.openApplication(appURL, config) { @Sendable _, error in
                 if let error {
@@ -1525,6 +1743,13 @@ final class AppSwitcher: AppSwitching {
                 }
             }
         case .commandN:
+            logToggleTrace(
+                family: .confirmation,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "recovery_side_effect",
+                reason: "stage=commandN",
+                activationPath: nil
+            )
             logger.info("TOGGLE[\(shortcut.appName)]: sending ⌘N as fallback")
             DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: sending ⌘N as fallback")
             openNewWindow(of: app)
@@ -1646,7 +1871,8 @@ final class AppSwitcher: AppSwitching {
         activationPath: ActivationPath,
         snapshot: ActivationObservationSnapshot? = nil,
         elapsedMilliseconds: Int,
-        effectiveStable: Bool? = nil
+        effectiveStable: Bool? = nil,
+        sessionSnapshot: ToggleSessionCoordinator.Session? = nil
     ) -> String {
         var fields = [
             "target=\(shortcut.bundleIdentifier)",
@@ -1659,7 +1885,10 @@ final class AppSwitcher: AppSwitching {
         } else {
             fields.append(ActivationObservationSnapshot.quotedField("frontmost", frontmostTracker.currentFrontmostBundleIdentifier()))
         }
-        fields.append(contentsOf: sessionLogFields(for: shortcut.bundleIdentifier))
+        fields.append(contentsOf: sessionLogFields(
+            for: shortcut.bundleIdentifier,
+            sessionSnapshot: sessionSnapshot
+        ))
 
         return "TOGGLE[\(shortcut.appName)]: \(lifecycle.rawValue) \(fields.joined(separator: " "))"
     }
@@ -1670,7 +1899,8 @@ final class AppSwitcher: AppSwitching {
         activationPath: ActivationPath,
         snapshot: ActivationObservationSnapshot? = nil,
         elapsedMilliseconds: Int,
-        effectiveStable: Bool? = nil
+        effectiveStable: Bool? = nil,
+        sessionSnapshot: ToggleSessionCoordinator.Session? = nil
     ) {
         let message = toggleLifecycleLogMessage(
             for: shortcut,
@@ -1678,7 +1908,8 @@ final class AppSwitcher: AppSwitching {
             activationPath: activationPath,
             snapshot: snapshot,
             elapsedMilliseconds: elapsedMilliseconds,
-            effectiveStable: effectiveStable
+            effectiveStable: effectiveStable,
+            sessionSnapshot: sessionSnapshot
         )
         logger.info("\(message)")
         DiagnosticLog.log(message)
@@ -1688,8 +1919,11 @@ final class AppSwitcher: AppSwitching {
         Int((confirmationClient.now() - startedAt) * 1000)
     }
 
-    private func sessionLogFields(for bundleIdentifier: String) -> [String] {
-        guard let session = sessionCoordinator.session(for: bundleIdentifier) else {
+    private func sessionLogFields(
+        for bundleIdentifier: String,
+        sessionSnapshot: ToggleSessionCoordinator.Session? = nil
+    ) -> [String] {
+        guard let session = sessionSnapshot ?? sessionCoordinator.session(for: bundleIdentifier) else {
             return ["attemptId=nil", "generation=nil", "pid=nil", "phase=nil"]
         }
         return [
@@ -1705,9 +1939,10 @@ final class AppSwitcher: AppSwitching {
         bundleIdentifier: String,
         event: String,
         reason: String?,
-        activationPath: ActivationPath?
+        activationPath: ActivationPath?,
+        sessionSnapshot: ToggleSessionCoordinator.Session? = nil
     ) {
-        let session = sessionCoordinator.session(for: bundleIdentifier)
+        let session = sessionSnapshot ?? sessionCoordinator.session(for: bundleIdentifier)
         let message = ToggleDiagnosticEvent(
             family: family,
             attemptID: session?.attemptID,

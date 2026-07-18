@@ -172,8 +172,8 @@ On 2026-04-09, packaged-app runtime validation moved past the original TCC block
 
 ## Implemented Behavioral Guarantees
 - Half-active frontmost mismatches are not promoted to stable: `ActivationObservationSnapshot.isStableActivation` requires target/frontmost agreement, `targetIsActive == true`, `targetIsHidden == false`, and supporting window evidence before `AppSwitcher` can promote a pending activation
-- A second press during pending activation does not toggle off: `pendingActivationState` blocks `shouldToggleOff`, and a repeat accepted trigger refreshes confirmation generation instead of restoring away
-- Confirmation failure does not trigger flicker-inducing restore-away rollback: failed confirmation either advances through the staged recovery path or drops the session back to idle/degraded without restoring the previous app automatically
+- A second press during pending activation does not toggle off: `pendingActivationState` blocks `shouldToggleOff`; after recovery exhaustion, a repeat atomically re-confirms the same attempt and generation instead of restoring away or allocating a fresh recovery budget
+- Confirmation failure does not trigger flicker-inducing restore-away rollback: exhausted recovery enters generation-owned `degraded`; accepted repeats return to `activating`, while retry-cap or absolute-ceiling termination enters `idle` before any further activation, hide, or recovery side effect
 - Stable toggle-off now enters an explicit `deactivating` phase, requests `hide()` on the target app, and clears runtime session state only after hide confirmation succeeds
 - Event tap recovery now either recreates the tap successfully on the existing background RunLoop thread or leaves an explicit degraded readiness state after repeated recreation failures
 - Standard shortcuts and Hyper shortcuts now report readiness independently, so missing Input Monitoring only degrades Hyper capture instead of the whole app
@@ -182,6 +182,7 @@ On 2026-04-09, packaged-app runtime validation moved past the original TCC block
 - `NSWorkspace.openApplication` completion is now used as a process-identity seam: the returned `NSRunningApplication` feeds pid attachment and the same confirmation pipeline used by activate/unhide, instead of leaving launch as fire-and-forget
 - Regular apps cannot silently succeed toggle-on without usable window evidence; only targets with `activationPolicy != .regular` may remain stable without visible/focused/main-window proof
 - `hide_untracked` now creates an explicit coordinator-owned `deactivating` session before dispatching `hide()`, so external activation still gets a real `HIDE_REQUEST` / confirmation pair instead of only logging the branch
+- Activation recovery exhaustion is now wired into the production coordinator flow: degraded repeats retain one `attemptID`/generation, consume at most the configured retry budget, and cannot execute another AX raise, reopen, Command-N, hide, or activation action after the retry cap or absolute ceiling terminates the session
 
 ## Toggle Reliability Recovery (2026-04-09)
 - `ToggleSessionCoordinator` now owns pid-aware attempt sessions with explicit `launching`, `activating`, `activeStable`, `deactivating`, `degraded`, and `idle` phases.
@@ -194,12 +195,15 @@ On 2026-04-09, packaged-app runtime validation moved past the original TCC block
 - Toggle-off settled: `TOGGLE_TRACE_CONFIRMATION attemptId=... event=confirmed reason="hide_confirmed"`
 - Owned launch path started correctly: `TOGGLE_TRACE_SESSION attemptId=... event=session_started activationPath=launch reason="not_running_launch_request"`
 - Owned launch attached to the real process: `TOGGLE_TRACE_SESSION attemptId=... event=launch_attached activationPath=launch reason="launch_completion_process_lookup"`
+- Activation recovery exhausted under the owned attempt: `TOGGLE_TRACE_CONFIRMATION attemptId=... event=degraded reason="activation_recovery_exhausted"`
+- Degraded repeat decision: `TOGGLE_TRACE_DECISION attemptId=... event=degraded_reconfirm reason="result=accepted|retry_capped|absolute_ceiling_reached ..."`
 - Hyper-routed IINA in the current local config: `SHORTCUT_TRACE_DECISION event=matched bundle=com.colliderli.iina route=hyper`
 
 ### Trace signatures to treat as failure or follow-up
 - Regular app frontmost but still unusable: `TOGGLE_TRACE_CONFIRMATION attemptId=... event=awaiting_window_evidence reason="frontmost_without_window_evidence"`
 - Hide request degraded instead of settling: `TOGGLE_TRACE_CONFIRMATION attemptId=... event=degraded reason="partial_hide_degraded"`
-- Session reset: `TOGGLE_TRACE_RESET attemptId=... event=session_cleared reason="termination" | "pid_rollover" | "launch_failed" | "activation_recovery_exhausted"`
+- Degraded target termination: `TOGGLE_TRACE_RESET attemptId=... event=session_idled reason="termination"`
+- Session reset outside degraded recovery: `TOGGLE_TRACE_RESET attemptId=... event=session_cleared reason="termination" | "pid_rollover" | "launch_failed"`
 - Stale tracking corrected: `TOGGLE_TRACE_RESET attemptId=... event=session_invalidated reason="stale_state_invalidated"`
 - Capture path blocked before toggle dispatch: `SHORTCUT_TRACE_BLOCKED reason="missing_registration_or_system_conflict" | "input_monitoring_missing" | "event_tap_inactive"`
 
