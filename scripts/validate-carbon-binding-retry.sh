@@ -78,6 +78,9 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
 fi
 printf '%s\n' "$$" >"$LOCK_DIR/pid"
 early_cleanup() {
+    if [ -n "${STATE_DIR:-}" ] && [ -d "$STATE_DIR" ]; then
+        rm -rf "$STATE_DIR"
+    fi
     rm -f "$LOCK_DIR/pid"
     rmdir "$LOCK_DIR" 2>/dev/null || true
 }
@@ -266,8 +269,10 @@ if [ -f "$LOG_FILE" ]; then
     cp -p "$LOG_FILE" "$STATE_DIR/debug.log"
     LOG_ORIGINAL_SHA256="$(shasum -a 256 "$LOG_FILE" | awk '{print $1}')"
 fi
-if defaults export "$BUNDLE_ID" "$STATE_DIR/defaults.plist" >/dev/null 2>&1; then
+if defaults read "$BUNDLE_ID" >/dev/null 2>&1; then
     DEFAULTS_DOMAIN_EXISTED=1
+    defaults export "$BUNDLE_ID" "$STATE_DIR/defaults.plist" >/dev/null 2>&1 \
+        || die "failed to back up the existing com.wink.app defaults domain"
 fi
 ORIGINAL_USAGE_PATHS=("$USAGE_DB_FILE"*)
 for usage_path in "${ORIGINAL_USAGE_PATHS[@]}"; do
