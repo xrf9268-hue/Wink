@@ -159,7 +159,8 @@ jq -e '
     and (map(select(.keyEquivalent == "j")) | length == 1)
 ' "$FIXTURE_PATH" >/dev/null || die "issue #317 fixture does not match the required 20-binding standard matrix"
 
-[ -d /System/Applications/Safari.app ] || die "Safari.app is unavailable"
+[ -d /Applications/Safari.app ] || [ -d /System/Applications/Safari.app ] \
+    || die "Safari.app is unavailable"
 [ -d /System/Applications/Notes.app ] || die "Notes.app is unavailable"
 
 POLL_TIMEOUT_SECONDS="${POLL_TIMEOUT_SECONDS:-30}"
