@@ -877,7 +877,7 @@ func shouldToggleOffKeepsStableStateWhileDeactivationIsPending() {
 }
 
 @Test @MainActor
-func deactivationConfirmationWaitsUntilTargetIsActuallyHidden() {
+func deactivationConfirmationKeepsSessionWhenWindowObservationFailsUntilHiddenSignalArrives() {
     let clock = MutableClock(time: 200)
     let scheduler = ManualConfirmationScheduler()
     let coordinator = ToggleSessionCoordinator(now: { clock.time })
@@ -935,13 +935,13 @@ func deactivationConfirmationWaitsUntilTargetIsActuallyHidden() {
             observedFrontmostBundleIdentifier: "com.apple.Terminal",
             targetIsActive: false,
             targetIsHidden: false,
-            visibleWindowCount: 1,
+            visibleWindowCount: 0,
             hasFocusedWindow: false,
             hasMainWindow: false,
-            windowObservationSucceeded: true,
-            windowObservationFailureReason: nil,
-            classification: .regularWindowed,
-            classificationReason: "window still visible behind previous app"
+            windowObservationSucceeded: false,
+            windowObservationFailureReason: "axWindowsReadFailed=-25204",
+            classification: .nonStandardWindowed,
+            classificationReason: "window observation failed"
         ),
         ActivationObservationSnapshot(
             targetBundleIdentifier: "com.apple.Safari",
@@ -951,10 +951,10 @@ func deactivationConfirmationWaitsUntilTargetIsActuallyHidden() {
             visibleWindowCount: 0,
             hasFocusedWindow: false,
             hasMainWindow: false,
-            windowObservationSucceeded: true,
-            windowObservationFailureReason: nil,
-            classification: .regularWindowed,
-            classificationReason: "app is hidden"
+            windowObservationSucceeded: false,
+            windowObservationFailureReason: "axWindowsReadFailed=-25204",
+            classification: .nonStandardWindowed,
+            classificationReason: "app is hidden despite failed window observation"
         )
     ]
 
@@ -979,6 +979,61 @@ func deactivationConfirmationWaitsUntilTargetIsActuallyHidden() {
     #expect(switcher.pendingDeactivationState == nil)
     #expect(switcher.stableActivationState == nil)
     #expect(coordinator.session(for: "com.apple.Safari")?.phase == .idle)
+}
+
+@Test @MainActor
+func deactivationConfirmationPreservesSuccessfulZeroWindowBehavior() {
+    let clock = MutableClock(time: 250)
+    let scheduler = ManualConfirmationScheduler()
+    let coordinator = ToggleSessionCoordinator(now: { clock.time })
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        sessionCoordinator: coordinator
+    )
+    let deactivation = switcher.acceptPendingDeactivation(
+        for: "com.apple.Home",
+        appName: "Home",
+        activationPath: .hideUntracked,
+        startedAt: clock.time
+    )
+    let shortcut = AppShortcut(
+        appName: "Home",
+        bundleIdentifier: "com.apple.Home",
+        keyEquivalent: "h",
+        modifierFlags: ["command"]
+    )
+
+    switcher.schedulePendingDeactivation(
+        state: deactivation,
+        shortcut: shortcut,
+        activationPath: .hideUntracked,
+        observe: {
+            ActivationObservationSnapshot(
+                targetBundleIdentifier: "com.apple.Home",
+                observedFrontmostBundleIdentifier: "com.apple.Terminal",
+                targetIsActive: false,
+                targetIsHidden: false,
+                visibleWindowCount: 0,
+                hasFocusedWindow: false,
+                hasMainWindow: false,
+                windowObservationSucceeded: true,
+                windowObservationFailureReason: nil,
+                classification: .nonStandardWindowed,
+                classificationReason: "successful windowless observation"
+            )
+        }
+    )
+
+    scheduler.runNext()
+
+    #expect(switcher.pendingDeactivationState == nil)
+    #expect(coordinator.session(for: "com.apple.Home")?.phase == .idle)
 }
 
 @Test @MainActor
@@ -1044,13 +1099,13 @@ func deactivationConfirmationRevertsToStableWhenHideDoesNotSettleBeforeDeadline(
                 observedFrontmostBundleIdentifier: "com.apple.Terminal",
                 targetIsActive: false,
                 targetIsHidden: false,
-                visibleWindowCount: 1,
+                visibleWindowCount: 0,
                 hasFocusedWindow: false,
                 hasMainWindow: false,
-                windowObservationSucceeded: true,
-                windowObservationFailureReason: nil,
-                classification: .regularWindowed,
-                classificationReason: "window remains visible"
+                windowObservationSucceeded: false,
+                windowObservationFailureReason: "axWindowsReadFailed=-25204",
+                classification: .nonStandardWindowed,
+                classificationReason: "window observation remains unavailable"
             )
         }
     )

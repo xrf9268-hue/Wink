@@ -193,13 +193,43 @@ EXPECTED_HEAD="$(git rev-parse HEAD)" \
 bash scripts/validate-carbon-binding-retry.sh
 ```
 
-The launch, EventTap, Carbon handler, and Carbon binding injection profiles are
-mutually exclusive. Preserve each injected bundle at a separate absolute path,
-then rebuild production from the same 40-character Git head. The clean
-executable must have no runtime validation profile, validation argument,
-`LAUNCH_FAULT_INJECTION`, `EVENT_TAP_FAULT_INJECTION`,
-`CARBON_HANDLER_FAULT_INJECTION`, or `CARBON_BINDING_FAULT_INJECTION` marker
-before normal-path E2E. Never distribute an injected bundle.
+### AX window-observation fault validation package
+
+The AX window-observation injector is compile-time-only. It suppresses the
+first matching hide request, then injects one failed windows observation only
+after the real target has lost frontmost status while `isHidden` is still
+false. Build it explicitly:
+
+```bash
+WINK_VALIDATION_AX_WINDOW_OBSERVATION_FAULT_INJECTION=1 bash scripts/package-app.sh
+```
+
+The resulting bundle carries
+`WinkRuntimeValidationProfile=ax-window-observation-fault-injection` and accepts
+exactly one argument in this form:
+
+```text
+--validation-ax-window-observation-fault=deactivation-once:<target-bundle-id>
+```
+
+Before the target loses frontmost status, window reads remain on the real AX
+path. After the matching hide request arms the injector, the first observation
+with a different resolved frontmost bundle and `targetHidden=false` reports
+`windowsReadSucceeded=false`, zero visible windows, and
+`validationInjectedAXWindowsReadFailure`. The next observation is real again.
+Validation must show a `POST_HIDE_STATE` line with
+`windowObservationSucceeded=false`, `confirmed=false`, and
+`phase=deactivating`, followed by a real hide or
+`NSWorkspace.didHideApplicationNotification` completing that same attempt.
+
+The launch, EventTap, Carbon handler, Carbon binding, and AX window-observation
+injection profiles are mutually exclusive. Preserve each injected bundle at a
+separate absolute path, then rebuild production from the same 40-character Git
+head. The clean executable must have no runtime validation profile, validation
+argument, `LAUNCH_FAULT_INJECTION`, `EVENT_TAP_FAULT_INJECTION`,
+`CARBON_HANDLER_FAULT_INJECTION`, `CARBON_BINDING_FAULT_INJECTION`, or
+`AX_WINDOW_OBSERVATION_FAULT_INJECTION` marker before normal-path E2E. Never
+distribute an injected bundle.
 
 ### Local development signing identity ("Wink")
 

@@ -4,6 +4,7 @@
 #   WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION=1 ./scripts/package-app.sh
 #   WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION=1 ./scripts/package-app.sh
 #   WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION=1 ./scripts/package-app.sh
+#   WINK_VALIDATION_AX_WINDOW_OBSERVATION_FAULT_INJECTION=1 ./scripts/package-app.sh
 # Then launch the packaged app with exactly one validation argument, for example:
 #   open -n build/Wink.app --args \
 #     --validation-launch-fault=stale-error:com.apple.TextEdit
@@ -13,6 +14,8 @@
 #     --validation-carbon-handler-fault=fail-once
 #   open -n build/Wink.app --args \
 #     --validation-carbon-binding-fault=permanent-conflict:38:6400
+#   open -n build/Wink.app --args \
+#     --validation-ax-window-observation-fault=deactivation-once:com.apple.Calculator
 set -euo pipefail
 
 APP_NAME="Wink"
@@ -39,6 +42,7 @@ WINK_VALIDATION_LAUNCH_FAULT_INJECTION="${WINK_VALIDATION_LAUNCH_FAULT_INJECTION
 WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION="${WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION:-0}"
 WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION="${WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION:-0}"
 WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION="${WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION:-0}"
+WINK_VALIDATION_AX_WINDOW_OBSERVATION_FAULT_INJECTION="${WINK_VALIDATION_AX_WINDOW_OBSERVATION_FAULT_INJECTION:-0}"
 WINK_VALIDATION_SOURCE_REVISION="${WINK_VALIDATION_SOURCE_REVISION:-}"
 
 case "$WINK_VALIDATION_LAUNCH_FAULT_INJECTION" in
@@ -73,14 +77,23 @@ case "$WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION" in
         ;;
 esac
 
-case "$WINK_VALIDATION_LAUNCH_FAULT_INJECTION:$WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION:$WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION:$WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION" in
-    0:0:0:0) PACKAGE_PROFILE="production" ;;
-    1:0:0:0) PACKAGE_PROFILE="launch-fault-injection" ;;
-    0:1:0:0) PACKAGE_PROFILE="event-tap-fault-injection" ;;
-    0:0:1:0) PACKAGE_PROFILE="carbon-handler-fault-injection" ;;
-    0:0:0:1) PACKAGE_PROFILE="carbon-binding-fault-injection" ;;
+case "$WINK_VALIDATION_AX_WINDOW_OBSERVATION_FAULT_INJECTION" in
+    0|1) ;;
     *)
-        echo "Error: launch, EventTap, Carbon handler, and Carbon binding fault-injection profiles are mutually exclusive" >&2
+        echo "Error: WINK_VALIDATION_AX_WINDOW_OBSERVATION_FAULT_INJECTION must be 0 or 1" >&2
+        exit 1
+        ;;
+esac
+
+case "$WINK_VALIDATION_LAUNCH_FAULT_INJECTION:$WINK_VALIDATION_EVENT_TAP_FAULT_INJECTION:$WINK_VALIDATION_CARBON_HANDLER_FAULT_INJECTION:$WINK_VALIDATION_CARBON_BINDING_FAULT_INJECTION:$WINK_VALIDATION_AX_WINDOW_OBSERVATION_FAULT_INJECTION" in
+    0:0:0:0:0) PACKAGE_PROFILE="production" ;;
+    1:0:0:0:0) PACKAGE_PROFILE="launch-fault-injection" ;;
+    0:1:0:0:0) PACKAGE_PROFILE="event-tap-fault-injection" ;;
+    0:0:1:0:0) PACKAGE_PROFILE="carbon-handler-fault-injection" ;;
+    0:0:0:1:0) PACKAGE_PROFILE="carbon-binding-fault-injection" ;;
+    0:0:0:0:1) PACKAGE_PROFILE="ax-window-observation-fault-injection" ;;
+    *)
+        echo "Error: launch, EventTap, Carbon handler, Carbon binding, and AX window observation fault-injection profiles are mutually exclusive" >&2
         exit 1
         ;;
 esac
@@ -105,6 +118,8 @@ elif [ "$PACKAGE_PROFILE" = "carbon-handler-fault-injection" ]; then
     SWIFT_BUILD_FLAGS+=(-Xswiftc -DWINK_CARBON_HANDLER_FAULT_INJECTION)
 elif [ "$PACKAGE_PROFILE" = "carbon-binding-fault-injection" ]; then
     SWIFT_BUILD_FLAGS+=(-Xswiftc -DWINK_CARBON_BINDING_FAULT_INJECTION)
+elif [ "$PACKAGE_PROFILE" = "ax-window-observation-fault-injection" ]; then
+    SWIFT_BUILD_FLAGS+=(-Xswiftc -DWINK_AX_WINDOW_OBSERVATION_FAULT_INJECTION)
 fi
 
 clean_package_products() {
@@ -125,7 +140,8 @@ elif [ -f "$BUILD_SCRATCH_PATH/release/${APP_NAME}" ] \
     && { LC_ALL=C grep -aFq 'LAUNCH_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}" \
         || LC_ALL=C grep -aFq 'EVENT_TAP_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}" \
         || LC_ALL=C grep -aFq 'CARBON_HANDLER_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}" \
-        || LC_ALL=C grep -aFq 'CARBON_BINDING_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}"; }; then
+        || LC_ALL=C grep -aFq 'CARBON_BINDING_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}" \
+        || LC_ALL=C grep -aFq 'AX_WINDOW_OBSERVATION_FAULT_INJECTION' "$BUILD_SCRATCH_PATH/release/${APP_NAME}"; }; then
     echo "==> Removing fault-injection products before production build..."
     clean_package_products
 fi
