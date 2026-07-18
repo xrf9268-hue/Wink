@@ -48,6 +48,11 @@ final class ToggleSessionCoordinator {
         case notDegraded
     }
 
+    struct ReconfirmDecision: Equatable {
+        let result: ReconfirmResult
+        let session: Session?
+    }
+
     let configuration: Configuration
     private(set) var frontmostTargetBehavior: FrontmostTargetBehavior = .toggle
     private let now: @MainActor () -> CFAbsoluteTime
@@ -217,9 +222,16 @@ final class ToggleSessionCoordinator {
     }
 
     func reconfirmDegraded(for bundleIdentifier: String) -> ReconfirmResult {
+        reconfirmDegradedSession(for: bundleIdentifier).result
+    }
+
+    func reconfirmDegradedSession(for bundleIdentifier: String) -> ReconfirmDecision {
         guard var session = sessions[bundleIdentifier],
               session.phase == .degraded else {
-            return .notDegraded
+            return ReconfirmDecision(
+                result: .notDegraded,
+                session: sessions[bundleIdentifier]
+            )
         }
 
         let currentTime = now()
@@ -228,21 +240,28 @@ final class ToggleSessionCoordinator {
             session.phase = .idle
             session.lastActivityAt = currentTime
             sessions[bundleIdentifier] = session
-            return .absoluteCeilingReached
+            return ReconfirmDecision(result: .absoluteCeilingReached, session: session)
+        }
+
+        if currentTime - session.lastActivityAt > configuration.degradedIdleExpiry {
+            session.phase = .idle
+            session.lastActivityAt = currentTime
+            sessions[bundleIdentifier] = session
+            return ReconfirmDecision(result: .notDegraded, session: session)
         }
 
         if session.retryCount >= configuration.degradedRetryCap {
             session.phase = .idle
             session.lastActivityAt = currentTime
             sessions[bundleIdentifier] = session
-            return .retryCapped
+            return ReconfirmDecision(result: .retryCapped, session: session)
         }
 
         session.retryCount += 1
         session.phase = .activating
         session.lastActivityAt = currentTime
         sessions[bundleIdentifier] = session
-        return .accepted
+        return ReconfirmDecision(result: .accepted, session: session)
     }
 
     @discardableResult
@@ -335,8 +354,9 @@ final class ToggleSessionCoordinator {
     }
 
     func handleTermination(bundleIdentifier: String, pid: pid_t? = nil) {
-        guard let session = sessions[bundleIdentifier] else { return }
+        guard var session = sessions[bundleIdentifier] else { return }
         guard pid == nil || session.pid == nil || session.pid == pid else { return }
+        let idlesDegradedSession = session.phase == .degraded
         DiagnosticLog.log(
             ToggleDiagnosticEvent(
                 family: .reset,
@@ -345,12 +365,18 @@ final class ToggleSessionCoordinator {
                 pid: session.pid,
                 generation: session.generation,
                 phase: session.phase,
-                event: "session_cleared",
+                event: idlesDegradedSession ? "session_idled" : "session_cleared",
                 activationPath: session.activationPath,
                 reason: "termination"
             ).logMessage
         )
-        sessions.removeValue(forKey: bundleIdentifier)
+        if idlesDegradedSession {
+            session.phase = .idle
+            session.lastActivityAt = now()
+            sessions[bundleIdentifier] = session
+        } else {
+            sessions.removeValue(forKey: bundleIdentifier)
+        }
     }
 
     // MARK: - Live notification wiring

@@ -28,6 +28,13 @@ struct AXWindowObservationFaultInjectionTests {
         ]))
         #expect(configuration.mode == .deactivationOnce)
         #expect(configuration.targetBundleIdentifier == "com.apple.Calculator")
+
+        let activationConfiguration = try #require(AXWindowObservationFaultInjectionConfiguration(arguments: [
+            "Wink",
+            "--validation-ax-window-observation-fault=activation-persistent:com.apple.Calculator",
+        ]))
+        #expect(activationConfiguration.mode == .activationPersistent)
+        #expect(activationConfiguration.targetBundleIdentifier == "com.apple.Calculator")
     }
 
     @Test @MainActor
@@ -91,6 +98,83 @@ struct AXWindowObservationFaultInjectionTests {
         #expect(logs.contains {
             $0.contains("event=window_read_failed") && $0.contains("windowsReadSucceeded=false")
         })
+    }
+
+    @Test @MainActor
+    func activationPersistentModeWithholdsEveryMatchingObservationAndForwardsHide() throws {
+        let app = try #require(NSWorkspace.shared.frontmostApplication)
+        let bundleIdentifier = try #require(app.bundleIdentifier)
+        let configuration = try #require(AXWindowObservationFaultInjectionConfiguration(arguments: [
+            "Wink",
+            "--validation-ax-window-observation-fault=activation-persistent:\(bundleIdentifier)",
+        ]))
+        var baseObservationCalls = 0
+        var baseHideCalls = 0
+        var logs: [String] = []
+        let driver = AXWindowObservationFaultInjectionDriver(
+            configuration: configuration,
+            currentFrontmostBundleIdentifier: { bundleIdentifier },
+            diagnosticLog: { logs.append($0) }
+        )
+        let baseObservation: (NSRunningApplication) -> ApplicationObservation.WindowObservation = { _ in
+            baseObservationCalls += 1
+            return ApplicationObservation.WindowObservation(
+                windows: nil,
+                visibleWindowCount: 1,
+                hasFocusedWindow: true,
+                hasMainWindow: true,
+                windowsReadSucceeded: true,
+                failureReason: nil
+            )
+        }
+
+        let first = driver.windowObservation(for: app, base: baseObservation)
+        let second = driver.windowObservation(for: app, base: baseObservation)
+        let hideResult = driver.hideApplication(app, base: { _ in
+            baseHideCalls += 1
+            return false
+        })
+
+        #expect(first.windowsReadSucceeded == false)
+        #expect(first.failureReason == "validationInjectedActivationWindowEvidenceFailure")
+        #expect(second.windowsReadSucceeded == false)
+        #expect(second.failureReason == "validationInjectedActivationWindowEvidenceFailure")
+        #expect(baseObservationCalls == 0)
+        #expect(hideResult == false)
+        #expect(baseHideCalls == 1)
+        #expect(logs.contains { $0.contains("event=window_evidence_withheld") && $0.contains("ordinal=1") })
+        #expect(logs.contains { $0.contains("event=window_evidence_withheld") && $0.contains("ordinal=2") })
+    }
+
+    @Test @MainActor
+    func activationPersistentModeLeavesNonMatchingApplicationsOnBaseObservation() throws {
+        let app = try #require(NSWorkspace.shared.frontmostApplication)
+        let bundleIdentifier = try #require(app.bundleIdentifier)
+        let configuration = try #require(AXWindowObservationFaultInjectionConfiguration(arguments: [
+            "Wink",
+            "--validation-ax-window-observation-fault=activation-persistent:com.example.different-target",
+        ]))
+        let driver = AXWindowObservationFaultInjectionDriver(
+            configuration: configuration,
+            currentFrontmostBundleIdentifier: { bundleIdentifier },
+            diagnosticLog: { _ in }
+        )
+        var baseObservationCalls = 0
+
+        let observation = driver.windowObservation(for: app, base: { _ in
+            baseObservationCalls += 1
+            return ApplicationObservation.WindowObservation(
+                windows: nil,
+                visibleWindowCount: 1,
+                hasFocusedWindow: true,
+                hasMainWindow: true,
+                windowsReadSucceeded: true,
+                failureReason: nil
+            )
+        })
+
+        #expect(observation.windowsReadSucceeded == true)
+        #expect(baseObservationCalls == 1)
     }
 }
 #endif

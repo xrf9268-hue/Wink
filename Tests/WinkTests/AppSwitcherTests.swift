@@ -729,6 +729,585 @@ func hiddenLagOnlyRetriesObservationOnceBeforeRecoveryEscalation() {
     #expect(switcher.stableActivationState?.bundleIdentifier == "dev.zed.Zed")
 }
 
+@Test @MainActor
+func activationRecoveryExhaustionEntersGenerationOwnedDegradedSession() {
+    let clock = MutableClock(time: 90)
+    let scheduler = ManualConfirmationScheduler()
+    let coordinator = ToggleSessionCoordinator(now: { clock.time })
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        sessionCoordinator: coordinator
+    )
+    let state = switcher.acceptPendingActivation(
+        for: "com.apple.Safari",
+        startedAt: clock.time
+    )
+    let originalSession = coordinator.session(for: state.bundleIdentifier)
+    let shortcut = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: state.bundleIdentifier,
+        keyEquivalent: "s",
+        modifierFlags: ["command"]
+    )
+    let failedObservation = ActivationObservationSnapshot(
+        targetBundleIdentifier: state.bundleIdentifier,
+        observedFrontmostBundleIdentifier: state.bundleIdentifier,
+        targetIsActive: true,
+        targetIsHidden: false,
+        visibleWindowCount: 0,
+        hasFocusedWindow: false,
+        hasMainWindow: false,
+        windowObservationSucceeded: false,
+        windowObservationFailureReason: "axWindowsReadFailed=-25204",
+        classification: .nonStandardWindowed,
+        classificationReason: "window observation failed"
+    )
+    var recoveryStages: [AppSwitcher.WindowRecoveryStage] = []
+
+    switcher.schedulePendingConfirmation(
+        state: state,
+        shortcut: shortcut,
+        activationPath: .activate,
+        observe: { failedObservation },
+        recoverIfNeeded: { stage, completion in
+            recoveryStages.append(stage)
+            completion()
+        }
+    )
+
+    scheduler.runNext()
+    scheduler.runNext()
+    scheduler.runNext()
+    scheduler.runNext()
+
+    let degraded = coordinator.session(for: state.bundleIdentifier)
+    #expect(recoveryStages == [.axRaise, .reopen, .commandN])
+    #expect(degraded?.phase == .degraded)
+    #expect(degraded?.degradedReason == "activation_recovery_exhausted")
+    #expect(degraded?.attemptID == originalSession?.attemptID)
+    #expect(degraded?.generation == state.generation)
+    #expect(degraded?.retryCount == 0)
+}
+
+@Test @MainActor
+func degradedRepeatReconfirmsSameGenerationAndStopsAfterStableEvidence() throws {
+    let target = try #require(NSWorkspace.shared.frontmostApplication)
+    let bundleIdentifier = try #require(target.bundleIdentifier)
+    let clock = MutableClock(time: 100)
+    let scheduler = ManualConfirmationScheduler()
+    let coordinator = ToggleSessionCoordinator(now: { clock.time })
+    let original = coordinator.beginActivation(
+        for: bundleIdentifier,
+        appName: target.localizedName,
+        pid: target.processIdentifier,
+        startedAt: clock.time
+    )
+    _ = coordinator.markDegraded(
+        for: bundleIdentifier,
+        reason: "activation_recovery_exhausted",
+        generation: original.generation
+    )
+    var activationCalls = 0
+    var hideCalls = 0
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: { bundleIdentifier },
+            windowObservation: { _ in
+                .init(
+                    windows: nil,
+                    visibleWindowCount: 1,
+                    hasFocusedWindow: true,
+                    hasMainWindow: true,
+                    windowsReadSucceeded: true,
+                    failureReason: nil
+                )
+            },
+            activationPolicy: { _ in .regular }
+        )),
+        activationClient: .init(activateFrontProcess: { _, _ in
+            activationCalls += 1
+            return .success(ProcessSerialNumber())
+        }),
+        hideRequestClient: .init(hideApplication: { _ in
+            hideCalls += 1
+            return true
+        }),
+        appLookupClient: .init(
+            runningApplications: { _ in [target] },
+            applicationURL: { _ in nil }
+        ),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        sessionCoordinator: coordinator
+    )
+    let shortcut = AppShortcut(
+        appName: target.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "r",
+        modifierFlags: ["command", "option"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+
+    let stable = coordinator.session(for: bundleIdentifier)
+    #expect(stable?.phase == .activeStable)
+    #expect(stable?.attemptID == original.attemptID)
+    #expect(stable?.generation == original.generation)
+    #expect(stable?.retryCount == 1)
+    #expect(activationCalls == 0)
+    #expect(hideCalls == 0)
+    #expect(scheduler.pendingCount == 0)
+}
+
+@Test @MainActor
+func degradedRepeatObservationCannotExpireAcceptedSessionIntoNewGeneration() throws {
+    let target = try #require(NSWorkspace.shared.frontmostApplication)
+    let bundleIdentifier = try #require(target.bundleIdentifier)
+    let clock = MutableClock(time: 104.999)
+    let scheduler = ManualConfirmationScheduler()
+    let coordinator = ToggleSessionCoordinator(
+        configuration: .init(
+            degradedIdleExpiry: 2,
+            absoluteActivationCeiling: 5,
+            degradedRetryCap: 2
+        ),
+        now: { clock.time }
+    )
+    let original = coordinator.beginActivation(
+        for: bundleIdentifier,
+        appName: target.localizedName,
+        pid: target.processIdentifier,
+        startedAt: 100
+    )
+    _ = coordinator.markDegraded(
+        for: bundleIdentifier,
+        reason: "activation_recovery_exhausted",
+        generation: original.generation
+    )
+    var activationCalls = 0
+    var hideCalls = 0
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: { bundleIdentifier },
+            windowObservation: { _ in
+                clock.time = 105.001
+                return .init(
+                    windows: nil,
+                    visibleWindowCount: 1,
+                    hasFocusedWindow: true,
+                    hasMainWindow: true,
+                    windowsReadSucceeded: true,
+                    failureReason: nil
+                )
+            },
+            activationPolicy: { _ in .regular }
+        )),
+        activationClient: .init(activateFrontProcess: { _, _ in
+            activationCalls += 1
+            return .success(ProcessSerialNumber())
+        }),
+        hideRequestClient: .init(hideApplication: { _ in
+            hideCalls += 1
+            return true
+        }),
+        appLookupClient: .init(
+            runningApplications: { _ in [target] },
+            applicationURL: { _ in nil }
+        ),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        sessionCoordinator: coordinator
+    )
+    let shortcut = AppShortcut(
+        appName: target.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "b",
+        modifierFlags: ["command", "shift"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+
+    let stable = coordinator.session(for: bundleIdentifier)
+    #expect(stable?.phase == .activeStable)
+    #expect(stable?.attemptID == original.attemptID)
+    #expect(stable?.generation == original.generation)
+    #expect(stable?.retryCount == 1)
+    #expect(activationCalls == 0)
+    #expect(hideCalls == 0)
+    #expect(scheduler.pendingCount == 0)
+}
+
+@Test @MainActor
+func degradedRepeatsStopAtRetryCapWithoutFurtherSideEffects() throws {
+    let target = try #require(NSWorkspace.shared.frontmostApplication)
+    let bundleIdentifier = try #require(target.bundleIdentifier)
+    let clock = MutableClock(time: 200)
+    let scheduler = ManualConfirmationScheduler()
+    let coordinator = ToggleSessionCoordinator(
+        configuration: .init(
+            degradedIdleExpiry: 2,
+            absoluteActivationCeiling: 20,
+            degradedRetryCap: 2
+        ),
+        now: { clock.time }
+    )
+    let original = coordinator.beginActivation(
+        for: bundleIdentifier,
+        appName: target.localizedName,
+        pid: target.processIdentifier,
+        startedAt: clock.time
+    )
+    _ = coordinator.markDegraded(
+        for: bundleIdentifier,
+        reason: "activation_recovery_exhausted",
+        generation: original.generation
+    )
+    var observationCalls = 0
+    var activationCalls = 0
+    var fallbackCalls = 0
+    var hideCalls = 0
+    var recoveryStages: [AppSwitcher.WindowRecoveryStage] = []
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: { bundleIdentifier },
+            windowObservation: { _ in
+                observationCalls += 1
+                return .init(
+                    windows: nil,
+                    visibleWindowCount: 0,
+                    hasFocusedWindow: false,
+                    hasMainWindow: false,
+                    windowsReadSucceeded: false,
+                    failureReason: "axWindowsReadFailed=-25204"
+                )
+            },
+            activationPolicy: { _ in .regular }
+        )),
+        activationClient: .init(activateFrontProcess: { _, _ in
+            activationCalls += 1
+            return .success(ProcessSerialNumber())
+        }),
+        fallbackActivationClient: .init(openApplication: { _, _, completion in
+            fallbackCalls += 1
+            completion(nil, nil)
+        }),
+        hideRequestClient: .init(hideApplication: { _ in
+            hideCalls += 1
+            return true
+        }),
+        appLookupClient: .init(
+            runningApplications: { _ in [target] },
+            applicationURL: { _ in nil }
+        ),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        recoveryClient: .init(perform: { stage, completion in
+            recoveryStages.append(stage)
+            completion()
+        }),
+        sessionCoordinator: coordinator
+    )
+    let shortcut = AppShortcut(
+        appName: target.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "r",
+        modifierFlags: ["command", "option"]
+    )
+
+    for expectedRetryCount in 1...2 {
+        clock.time += 0.5
+        #expect(switcher.toggleApplication(for: shortcut) == true)
+        scheduler.runAll()
+
+        let degraded = coordinator.session(for: bundleIdentifier)
+        #expect(degraded?.phase == .degraded)
+        #expect(degraded?.attemptID == original.attemptID)
+        #expect(degraded?.generation == original.generation)
+        #expect(degraded?.retryCount == expectedRetryCount)
+    }
+
+    #expect(activationCalls == 2)
+    #expect(recoveryStages == [.axRaise, .reopen, .commandN, .axRaise, .reopen, .commandN])
+    let observationCallsBeforeCap = observationCalls
+    let activationCallsBeforeCap = activationCalls
+    let fallbackCallsBeforeCap = fallbackCalls
+    let hideCallsBeforeCap = hideCalls
+    let recoveryStagesBeforeCap = recoveryStages
+    let scheduledBeforeCap = scheduler.pendingCount
+
+    clock.time += 0.5
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+
+    let capped = coordinator.session(for: bundleIdentifier)
+    #expect(capped?.phase == .idle)
+    #expect(capped?.attemptID == original.attemptID)
+    #expect(capped?.generation == original.generation)
+    #expect(capped?.retryCount == 2)
+    #expect(observationCalls == observationCallsBeforeCap)
+    #expect(activationCalls == activationCallsBeforeCap)
+    #expect(fallbackCalls == fallbackCallsBeforeCap)
+    #expect(hideCalls == hideCallsBeforeCap)
+    #expect(recoveryStages == recoveryStagesBeforeCap)
+    #expect(scheduler.pendingCount == scheduledBeforeCap)
+
+    scheduler.runAll()
+    #expect(observationCalls == observationCallsBeforeCap)
+    #expect(activationCalls == activationCallsBeforeCap)
+    #expect(fallbackCalls == fallbackCallsBeforeCap)
+    #expect(hideCalls == hideCallsBeforeCap)
+    #expect(recoveryStages == recoveryStagesBeforeCap)
+}
+
+@Test @MainActor
+func degradedRepeatStopsAtAbsoluteCeilingWithoutAnySideEffect() throws {
+    let target = try #require(NSWorkspace.shared.frontmostApplication)
+    let bundleIdentifier = try #require(target.bundleIdentifier)
+    let clock = MutableClock(time: 300)
+    let scheduler = ManualConfirmationScheduler()
+    let coordinator = ToggleSessionCoordinator(
+        configuration: .init(
+            degradedIdleExpiry: 2,
+            absoluteActivationCeiling: 1,
+            degradedRetryCap: 10
+        ),
+        now: { clock.time }
+    )
+    var lookupCalls = 0
+    var observationCalls = 0
+    var activationCalls = 0
+    var fallbackCalls = 0
+    var hideCalls = 0
+    var recoveryStages: [AppSwitcher.WindowRecoveryStage] = []
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: { bundleIdentifier },
+            windowObservation: { _ in
+                observationCalls += 1
+                return .init(
+                    windows: nil,
+                    visibleWindowCount: 0,
+                    hasFocusedWindow: false,
+                    hasMainWindow: false,
+                    windowsReadSucceeded: false,
+                    failureReason: "axWindowsReadFailed=-25204"
+                )
+            },
+            activationPolicy: { _ in .regular }
+        )),
+        activationClient: .init(activateFrontProcess: { _, _ in
+            activationCalls += 1
+            return .success(ProcessSerialNumber())
+        }),
+        fallbackActivationClient: .init(openApplication: { _, _, completion in
+            fallbackCalls += 1
+            completion(nil, nil)
+        }),
+        hideRequestClient: .init(hideApplication: { _ in
+            hideCalls += 1
+            return true
+        }),
+        appLookupClient: .init(
+            runningApplications: { _ in
+                lookupCalls += 1
+                return [target]
+            },
+            applicationURL: { _ in nil }
+        ),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        recoveryClient: .init(perform: { stage, completion in
+            recoveryStages.append(stage)
+            completion()
+        }),
+        sessionCoordinator: coordinator
+    )
+    let shortcut = AppShortcut(
+        appName: target.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "control"]
+    )
+
+    let state = switcher.acceptPendingActivation(
+        for: bundleIdentifier,
+        startedAt: clock.time,
+        pid: target.processIdentifier
+    )
+    let original = try #require(coordinator.session(for: bundleIdentifier))
+    let failedObservation = ActivationObservationSnapshot(
+        targetBundleIdentifier: bundleIdentifier,
+        observedFrontmostBundleIdentifier: bundleIdentifier,
+        targetIsActive: true,
+        targetIsHidden: false,
+        visibleWindowCount: 0,
+        hasFocusedWindow: false,
+        hasMainWindow: false,
+        windowObservationSucceeded: false,
+        windowObservationFailureReason: "axWindowsReadFailed=-25204",
+        classification: .nonStandardWindowed,
+        classificationReason: "window observation failed"
+    )
+    switcher.schedulePendingConfirmation(
+        state: state,
+        shortcut: shortcut,
+        activationPath: .activate,
+        observe: { failedObservation },
+        recoverIfNeeded: { stage, completion in
+            recoveryStages.append(stage)
+            completion()
+        }
+    )
+    scheduler.runAll()
+
+    let initiallyDegraded = coordinator.session(for: bundleIdentifier)
+    #expect(initiallyDegraded?.phase == .degraded)
+    #expect(initiallyDegraded?.attemptID == original.attemptID)
+    #expect(initiallyDegraded?.generation == original.generation)
+    #expect(initiallyDegraded?.activationStartedAt == original.activationStartedAt)
+    #expect(recoveryStages == [.axRaise, .reopen, .commandN])
+
+    clock.time += 0.5
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    scheduler.runAll()
+
+    let retried = coordinator.session(for: bundleIdentifier)
+    #expect(retried?.phase == .degraded)
+    #expect(retried?.attemptID == original.attemptID)
+    #expect(retried?.generation == original.generation)
+    #expect(retried?.activationStartedAt == original.activationStartedAt)
+    #expect(retried?.retryCount == 1)
+    #expect(activationCalls == 1)
+    #expect(recoveryStages == [.axRaise, .reopen, .commandN, .axRaise, .reopen, .commandN])
+
+    let lookupCallsBeforeCeiling = lookupCalls
+    let observationCallsBeforeCeiling = observationCalls
+    let activationCallsBeforeCeiling = activationCalls
+    let fallbackCallsBeforeCeiling = fallbackCalls
+    let hideCallsBeforeCeiling = hideCalls
+    let recoveryStagesBeforeCeiling = recoveryStages
+    let scheduledBeforeCeiling = scheduler.pendingCount
+
+    clock.time += 0.6
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+
+    let ended = coordinator.session(for: bundleIdentifier)
+    #expect(ended?.phase == .idle)
+    #expect(ended?.attemptID == original.attemptID)
+    #expect(ended?.generation == original.generation)
+    #expect(ended?.activationStartedAt == original.activationStartedAt)
+    #expect(ended?.retryCount == 1)
+    #expect(lookupCalls == lookupCallsBeforeCeiling + 1)
+    #expect(observationCalls == observationCallsBeforeCeiling)
+    #expect(activationCalls == activationCallsBeforeCeiling)
+    #expect(fallbackCalls == fallbackCallsBeforeCeiling)
+    #expect(hideCalls == hideCallsBeforeCeiling)
+    #expect(recoveryStages == recoveryStagesBeforeCeiling)
+    #expect(scheduler.pendingCount == scheduledBeforeCeiling)
+
+    scheduler.runAll()
+    #expect(observationCalls == observationCallsBeforeCeiling)
+    #expect(activationCalls == activationCallsBeforeCeiling)
+    #expect(fallbackCalls == fallbackCallsBeforeCeiling)
+    #expect(hideCalls == hideCallsBeforeCeiling)
+    #expect(recoveryStages == recoveryStagesBeforeCeiling)
+}
+
+@Test @MainActor
+func staleScheduledActivationConfirmationCannotMutateNewerDegradedSession() {
+    let scheduler = ManualConfirmationScheduler()
+    let coordinator = ToggleSessionCoordinator(now: { 400 })
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        confirmationClient: .init(
+            now: { 400 },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        sessionCoordinator: coordinator
+    )
+    let staleState = switcher.acceptPendingActivation(
+        for: "com.apple.Safari",
+        startedAt: 400
+    )
+    let shortcut = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: staleState.bundleIdentifier,
+        keyEquivalent: "s",
+        modifierFlags: ["command"]
+    )
+    var observationCalls = 0
+    var recoveryCalls = 0
+    switcher.schedulePendingConfirmation(
+        state: staleState,
+        shortcut: shortcut,
+        activationPath: .activate,
+        observe: {
+            observationCalls += 1
+            return ActivationObservationSnapshot(
+                targetBundleIdentifier: staleState.bundleIdentifier,
+                observedFrontmostBundleIdentifier: staleState.bundleIdentifier,
+                targetIsActive: true,
+                targetIsHidden: false,
+                visibleWindowCount: 0,
+                hasFocusedWindow: false,
+                hasMainWindow: false,
+                windowObservationSucceeded: false,
+                windowObservationFailureReason: "stale callback must not observe",
+                classification: .nonStandardWindowed,
+                classificationReason: "stale callback"
+            )
+        },
+        recoverIfNeeded: { _, completion in
+            recoveryCalls += 1
+            completion()
+        }
+    )
+
+    let currentState = switcher.acceptPendingActivation(
+        for: staleState.bundleIdentifier,
+        startedAt: 400
+    )
+    _ = coordinator.markDegraded(
+        for: currentState.bundleIdentifier,
+        reason: "newer_activation_recovery_exhausted",
+        generation: currentState.generation
+    )
+    let currentSession = coordinator.session(for: currentState.bundleIdentifier)
+
+    scheduler.runNext()
+
+    #expect(observationCalls == 0)
+    #expect(recoveryCalls == 0)
+    #expect(coordinator.session(for: currentState.bundleIdentifier) == currentSession)
+}
+
 // MARK: - Coordinator integration tests
 
 @Test @MainActor
@@ -1860,5 +2439,16 @@ private final class ManualConfirmationScheduler {
         }
         let operation = operations.removeFirst()
         operation()
+    }
+
+    func runAll(limit: Int = 100) {
+        var executed = 0
+        while !operations.isEmpty, executed < limit {
+            executed += 1
+            runNext()
+        }
+        if !operations.isEmpty {
+            Issue.record("Scheduled confirmation operations exceeded the bounded drain limit")
+        }
     }
 }

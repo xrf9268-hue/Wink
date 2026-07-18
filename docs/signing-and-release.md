@@ -195,10 +195,13 @@ bash scripts/validate-carbon-binding-retry.sh
 
 ### AX window-observation fault validation package
 
-The AX window-observation injector is compile-time-only. It suppresses the
-first matching hide request, then injects one failed windows observation only
-after the real target has lost frontmost status while `isHidden` is still
-false. Build it explicitly:
+The AX window-observation injector is compile-time-only. Its
+`deactivation-once` mode suppresses the first matching hide request, then
+injects one failed windows observation only after the real target has lost
+frontmost status while `isHidden` is still false. Its `activation-persistent`
+mode leaves hide requests untouched and withholds every matching activation
+window observation so the complete recovery ladder and degraded-repeat limits
+can be exercised. Build either mode explicitly:
 
 ```bash
 WINK_VALIDATION_AX_WINDOW_OBSERVATION_FAULT_INJECTION=1 bash scripts/package-app.sh
@@ -206,10 +209,11 @@ WINK_VALIDATION_AX_WINDOW_OBSERVATION_FAULT_INJECTION=1 bash scripts/package-app
 
 The resulting bundle carries
 `WinkRuntimeValidationProfile=ax-window-observation-fault-injection` and accepts
-exactly one argument in this form:
+exactly one argument in one of these forms:
 
 ```text
 --validation-ax-window-observation-fault=deactivation-once:<target-bundle-id>
+--validation-ax-window-observation-fault=activation-persistent:<target-bundle-id>
 ```
 
 Before the target loses frontmost status, window reads remain on the real AX
@@ -221,6 +225,36 @@ Validation must show a `POST_HIDE_STATE` line with
 `windowObservationSucceeded=false`, `confirmed=false`, and
 `phase=deactivating`, followed by a real hide or
 `NSWorkspace.didHideApplicationNotification` completing that same attempt.
+
+For `activation-persistent`, each matching read records
+`event=window_evidence_withheld`, an ordinal, real frontmost/active/hidden
+state, and `windowsReadSucceeded=false`, then returns zero visible/focused/main
+evidence with reason `validationInjectedActivationWindowEvidenceFailure`.
+Matching hide requests remain real, and non-matching apps use the unmodified AX
+observation path. With no validation argument the driver is not created; the
+default clean package does not compile the seam at all.
+
+Validate the retry cap and absolute ceiling in separate launches because the
+default retry cap can terminate the attempt before the ceiling. Use a standard
+Calculator fixture such as Control+Option+Command+J (Ctrl+Alt+Win+J on a
+Windows-layout keyboard; no Fn or Caps Lock). For the cap run, trigger once
+through recovery exhaustion, then repeat after at least 600 ms while keeping
+each gap below the 2-second degraded-idle expiry: retry 1, retry 2, then a
+fourth trigger must report `retry_capped`. The terminal repeat must add zero
+observation, activation, hide, AX raise, reopen, Command-N, or scheduled-
+confirmation side effects. For the ceiling run, start a new session and trigger
+near t=0, 1.6, 3.3, and 5.2 seconds. Each degraded gap remains below the idle
+expiry while the final trigger crosses the 5-second ceiling before the retry
+cap; that slice must report `absolute_ceiling_reached` and likewise add zero
+side effects. Both traces must retain one `attemptId` and generation through
+`degraded → activating → degraded`, then finish in `idle` with
+`result=retry_capped` or `result=absolute_ceiling_reached`.
+
+After preserving the injected bundle and sanitized trace, rebuild the default
+package from the same exact head. Relaunch without a validation argument and
+prove that the same target reaches `activeStable` and toggles off normally.
+Then run standard-only and mixed standard+Hyper E2E plus a physical held-key
+repeat check against that clean bundle.
 
 The launch, EventTap, Carbon handler, Carbon binding, and AX window-observation
 injection profiles are mutually exclusive. Preserve each injected bundle at a

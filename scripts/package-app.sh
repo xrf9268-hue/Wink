@@ -16,6 +16,8 @@
 #     --validation-carbon-binding-fault=permanent-conflict:38:6400
 #   open -n build/Wink.app --args \
 #     --validation-ax-window-observation-fault=deactivation-once:com.apple.Calculator
+#   open -n build/Wink.app --args \
+#     --validation-ax-window-observation-fault=activation-persistent:com.apple.Calculator
 set -euo pipefail
 
 APP_NAME="Wink"
