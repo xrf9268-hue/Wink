@@ -189,6 +189,79 @@ func startupSequenceAppliesPersistedPreferencesBeforeStartingShortcutManager() {
 }
 
 @Test @MainActor
+func duplicatePersistencePayloadNeverPublishesIntoSettingsModels() async throws {
+    let harness = TestPersistenceHarness()
+    defer { harness.cleanup() }
+    let duplicateID = UUID(uuidString: "12345678-1234-1234-1234-123456789012")!
+    let invalidPayload = try JSONEncoder().encode([
+        AppShortcut(
+            id: duplicateID,
+            appName: "Safari",
+            bundleIdentifier: "com.apple.Safari",
+            keyEquivalent: "s",
+            modifierFlags: ["command"]
+        ),
+        AppShortcut(
+            id: duplicateID,
+            appName: "Notes",
+            bundleIdentifier: "com.apple.Notes",
+            keyEquivalent: "n",
+            modifierFlags: ["command", "option"]
+        ),
+    ])
+    try invalidPayload.write(to: harness.shortcutsURL)
+
+    let service = harness.makePersistenceService(backupIDProvider: { "startup-duplicate" })
+    let store = ShortcutStore()
+    var didReplaceShortcuts = false
+    var didStartShortcutManager = false
+
+    AppController.runStartupSequence(
+        startUpdateService: {},
+        loadShortcuts: { try service.load() },
+        replaceShortcuts: { shortcuts in
+            didReplaceShortcuts = true
+            store.replaceAll(with: shortcuts)
+        },
+        reapplyHyperIfNeeded: { false },
+        isHyperEnabled: { false },
+        setHyperKeyEnabled: { _ in },
+        startShortcutManager: { didStartShortcutManager = true }
+    )
+
+    #expect(didReplaceShortcuts == false)
+    #expect(didStartShortcutManager)
+    #expect(store.shortcuts.isEmpty)
+    #expect(try Data(contentsOf: harness.shortcutsURL) == invalidPayload)
+    #expect(
+        try Data(
+            contentsOf: harness.directory
+                .appendingPathComponent("shortcuts.load-failure-startup-duplicate.json")
+        ) == invalidPayload
+    )
+
+    let statusProvider = ShortcutStatusProvider(
+        client: .init(
+            applicationURL: { _ in nil },
+            runningBundleIdentifiers: { [] }
+        ),
+        workspaceNotificationCenter: NotificationCenter(),
+        appNotificationCenter: NotificationCenter()
+    )
+    statusProvider.track(store.shortcuts)
+    #expect(statusProvider.statusesByShortcutID.isEmpty)
+
+    let insights = InsightsViewModel(
+        usageTracker: EmptyUsageTracker(),
+        shortcutStore: store
+    )
+    await insights.refresh(for: .week)
+    #expect(insights.ranking.isEmpty)
+    #expect(insights.appRows.isEmpty)
+    #expect(insights.unusedShortcutNames.isEmpty)
+}
+
+@Test @MainActor
 func openPrimarySettingsWindowUsesInstalledSettingsLauncherHandler() throws {
     ensureAppKitApplication()
 
@@ -230,4 +303,14 @@ func openPrimarySettingsWindowQueuesPendingOpenUntilHandlerInstalls() throws {
 @MainActor
 private func ensureAppKitApplication() {
     _ = NSApplication.shared
+}
+
+private actor EmptyUsageTracker: UsageTracking {
+    func usageCounts(days: Int, relativeTo now: Date) async -> [UUID: Int] { [:] }
+    func dailyCounts(days: Int, relativeTo now: Date) async -> [String: [(date: String, count: Int)]] { [:] }
+    func totalSwitches(days: Int, relativeTo now: Date) async -> Int { 0 }
+    func hourlyCounts(days: Int, relativeTo now: Date) async -> [HourlyUsageBucket] { [] }
+    func previousPeriodTotal(days: Int, relativeTo now: Date) async -> Int { 0 }
+    func streakDays(relativeTo now: Date) async -> Int { 0 }
+    func usageTimeZone() async -> TimeZone { .current }
 }

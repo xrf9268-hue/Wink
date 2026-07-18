@@ -95,6 +95,139 @@ struct PersistenceServiceDiskLoadingTests {
     }
 
     @Test
+    func duplicateIDsAreRejectedBeforeLoadReturns() throws {
+        let harness = TestPersistenceHarness()
+        defer { harness.cleanup() }
+        let diagnostics = DiagnosticRecorder()
+        let duplicateID = UUID(uuidString: "12345678-1234-1234-1234-123456789012")!
+        let invalidPayload = try JSONEncoder().encode([
+            AppShortcut(
+                id: duplicateID,
+                appName: "Safari",
+                bundleIdentifier: "com.apple.Safari",
+                keyEquivalent: "s",
+                modifierFlags: ["command"]
+            ),
+            AppShortcut(
+                id: duplicateID,
+                appName: "Notes",
+                bundleIdentifier: "com.apple.Notes",
+                keyEquivalent: "n",
+                modifierFlags: ["command", "option"],
+                isEnabled: false
+            ),
+        ])
+        try invalidPayload.write(to: harness.shortcutsURL)
+
+        let service = harness.makePersistenceService(
+            diagnosticClient: .init(log: { message in
+                diagnostics.append(message)
+            }),
+            backupIDProvider: { "duplicate-id" }
+        )
+
+        do {
+            let shortcuts = try service.load()
+            Issue.record("Expected duplicate shortcut IDs to fail loading; loaded \(shortcuts.count) shortcuts")
+        } catch let error as PersistenceService.LoadError {
+            guard case let .duplicateShortcutID(path, id, preservedCopyPath) = error else {
+                Issue.record("Expected duplicateShortcutID, got \(error)")
+                return
+            }
+            #expect(path == harness.shortcutsURL.path)
+            #expect(id == duplicateID)
+            #expect(
+                preservedCopyPath
+                    == harness.directory
+                        .appendingPathComponent("shortcuts.load-failure-duplicate-id.json")
+                        .path
+            )
+        }
+
+        let backupURL = harness.directory.appendingPathComponent("shortcuts.load-failure-duplicate-id.json")
+        #expect(try Data(contentsOf: harness.shortcutsURL) == invalidPayload)
+        #expect(try Data(contentsOf: backupURL) == invalidPayload)
+        #expect(diagnostics.messages.contains {
+            $0.contains("path=\(harness.shortcutsURL.path)")
+                && $0.contains(duplicateID.uuidString)
+                && $0.contains("preservedCopyPath=\(backupURL.path)")
+        })
+
+        let replacement = [
+            AppShortcut(
+                appName: "Terminal",
+                bundleIdentifier: "com.apple.Terminal",
+                keyEquivalent: "t",
+                modifierFlags: ["command"]
+            ),
+        ]
+        let replacementPayload = try JSONEncoder().encode(replacement)
+        try replacementPayload.write(to: harness.shortcutsURL, options: .atomic)
+
+        #expect(try service.load() == replacement)
+        #expect(try Data(contentsOf: backupURL) == invalidPayload)
+    }
+
+    @Test
+    func duplicateIDsAreRejectedBeforeSaveOverwritesCanonicalPayload() throws {
+        let harness = TestPersistenceHarness()
+        defer { harness.cleanup() }
+        let diagnostics = DiagnosticRecorder()
+        let duplicateID = UUID(uuidString: "12345678-1234-1234-1234-123456789012")!
+        let service = harness.makePersistenceService(
+            diagnosticClient: .init(log: { message in
+                diagnostics.append(message)
+            })
+        )
+        let canonical = [
+            AppShortcut(
+                appName: "Safari",
+                bundleIdentifier: "com.apple.Safari",
+                keyEquivalent: "s",
+                modifierFlags: ["command"]
+            ),
+        ]
+        try service.save(canonical)
+        let canonicalPayload = try Data(contentsOf: harness.shortcutsURL)
+        let duplicateShortcuts = [
+            AppShortcut(
+                id: duplicateID,
+                appName: "Notes",
+                bundleIdentifier: "com.apple.Notes",
+                keyEquivalent: "n",
+                modifierFlags: ["command"]
+            ),
+            AppShortcut(
+                id: duplicateID,
+                appName: "Terminal",
+                bundleIdentifier: "com.apple.Terminal",
+                keyEquivalent: "t",
+                modifierFlags: ["command", "option"],
+                isEnabled: false
+            ),
+        ]
+
+        do {
+            try service.save(duplicateShortcuts)
+            Issue.record("Expected duplicate shortcut IDs to fail saving")
+        } catch let error as PersistenceService.SaveError {
+            guard case let .duplicateShortcutID(path, id) = error else {
+                Issue.record("Expected duplicateShortcutID, got \(error)")
+                return
+            }
+            #expect(path == harness.shortcutsURL.path)
+            #expect(id == duplicateID)
+        }
+
+        #expect(try Data(contentsOf: harness.shortcutsURL) == canonicalPayload)
+        #expect(try service.load() == canonical)
+        #expect(diagnostics.messages.contains {
+            $0.contains("path=\(harness.shortcutsURL.path)")
+                && $0.contains(duplicateID.uuidString)
+        })
+    }
+
+    @Test
     func rejectsMissingIsEnabledPayloadWithoutSilentMigration() throws {
         let harness = TestPersistenceHarness()
         defer { harness.cleanup() }
