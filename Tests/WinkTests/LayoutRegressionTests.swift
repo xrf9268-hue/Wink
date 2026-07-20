@@ -799,6 +799,7 @@ private extension NSPoint {
 }
 
 private actor StaticUsageTracker: UsageTracking {
+    func deleteUsage(shortcutId: UUID) {}
     let shortcutId: UUID
 
     init(shortcutId: UUID) {
@@ -843,6 +844,7 @@ private actor StaticUsageTracker: UsageTracking {
 }
 
 private actor MultiShortcutUsageTracker: UsageTracking {
+    func deleteUsage(shortcutId: UUID) {}
     private let counts: [UUID: Int]
     private let dailyCountsByShortcut: [String: [(date: String, count: Int)]]
     private let hourlyBuckets: [HourlyUsageBucket]

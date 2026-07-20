@@ -334,6 +334,7 @@ private final class PopoverRuntimeState {
 }
 
 private actor StaticUsageTracker: UsageTracking {
+    func deleteUsage(shortcutId: UUID) {}
     let total: Int
 
     init(total: Int) {

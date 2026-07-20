@@ -862,3 +862,124 @@ private func makeEditorContext(
 
     return (editor, manager, shortcutStore, harness, callbackCount)
 }
+
+@Test @MainActor
+func staleUsageRefreshCannotOverwriteNewerPublishedUsageData() async {
+    let shortcutStore = ShortcutStore()
+    let manager = ShortcutManager(
+        shortcutStore: shortcutStore,
+        persistenceService: TestPersistenceHarness().makePersistenceService(),
+        appSwitcher: FakeAppSwitcher(),
+        captureCoordinator: ShortcutCaptureCoordinator(
+            standardProvider: FakeCaptureProvider(),
+            hyperProvider: FakeHyperCaptureProvider()
+        ),
+        permissionService: FakePermissionService(ax: true, input: false),
+        diagnosticClient: .init(log: { _ in })
+    )
+    let tracker = GatedUsageTracker()
+    let editor = ShortcutEditorState(
+        shortcutStore: shortcutStore,
+        shortcutManager: manager,
+        usageTracker: tracker
+    )
+    let shortcutID = UUID()
+
+    // Drain the init-scheduled refresh so the scenario owns the gate.
+    await waitForPendingUsageCounts(on: tracker, count: 1)
+    await tracker.releaseFirstUsageCounts(returning: [:])
+    await waitForPendingUsageCounts(on: tracker, count: 0)
+
+    let staleLastUsed = [shortcutID: Date(timeIntervalSinceReferenceDate: 100)]
+    let freshLastUsed = [shortcutID: Date(timeIntervalSinceReferenceDate: 900)]
+
+    await tracker.setLastUsedValue(staleLastUsed)
+    let staleRefresh = Task { await editor.refreshUsageCounts() }
+    await waitForPendingUsageCounts(on: tracker, count: 1)
+
+    await tracker.setLastUsedValue(freshLastUsed)
+    let freshRefresh = Task { await editor.refreshUsageCounts() }
+    await waitForPendingUsageCounts(on: tracker, count: 2)
+
+    // The newer refresh completes first and publishes.
+    await tracker.releaseLastUsageCounts(returning: [shortcutID: 9])
+    await freshRefresh.value
+
+    #expect(editor.usageCounts == [shortcutID: 9])
+    #expect(editor.lastUsed == freshLastUsed)
+
+    // The superseded refresh finishes afterwards; its stale result must be
+    // discarded instead of tearing the published usage maps.
+    await tracker.releaseFirstUsageCounts(returning: [shortcutID: 1])
+    await staleRefresh.value
+
+    #expect(editor.usageCounts == [shortcutID: 9])
+    #expect(editor.lastUsed == freshLastUsed)
+}
+
+@MainActor
+private func waitForPendingUsageCounts(on tracker: GatedUsageTracker, count: Int) async {
+    for _ in 0..<5000 {
+        if await tracker.pendingUsageCountsCount() == count {
+            return
+        }
+        await Task.yield()
+    }
+    Issue.record("timed out waiting for \(count) pending usageCounts calls")
+}
+
+private actor GatedUsageTracker: UsageTracking {
+    func deleteUsage(shortcutId: UUID) {}
+    private var pendingUsageCounts: [CheckedContinuation<[UUID: Int], Never>] = []
+    private var lastUsedValue: [UUID: Date] = [:]
+
+    func setLastUsedValue(_ value: [UUID: Date]) {
+        lastUsedValue = value
+    }
+
+    func pendingUsageCountsCount() -> Int {
+        pendingUsageCounts.count
+    }
+
+    func releaseFirstUsageCounts(returning value: [UUID: Int]) {
+        guard !pendingUsageCounts.isEmpty else { return }
+        pendingUsageCounts.removeFirst().resume(returning: value)
+    }
+
+    func releaseLastUsageCounts(returning value: [UUID: Int]) {
+        guard !pendingUsageCounts.isEmpty else { return }
+        pendingUsageCounts.removeLast().resume(returning: value)
+    }
+
+    func usageCounts(days: Int, relativeTo now: Date) async -> [UUID: Int] {
+        await withCheckedContinuation { pendingUsageCounts.append($0) }
+    }
+
+    func dailyCounts(days: Int, relativeTo now: Date) async -> [String: [(date: String, count: Int)]] {
+        [:]
+    }
+
+    func totalSwitches(days: Int, relativeTo now: Date) async -> Int {
+        0
+    }
+
+    func hourlyCounts(days: Int, relativeTo now: Date) async -> [HourlyUsageBucket] {
+        []
+    }
+
+    func previousPeriodTotal(days: Int, relativeTo now: Date) async -> Int {
+        0
+    }
+
+    func streakDays(relativeTo now: Date) async -> Int {
+        0
+    }
+
+    func usageTimeZone() async -> TimeZone {
+        .current
+    }
+
+    func lastUsedPerShortcut() async -> [UUID: Date] {
+        lastUsedValue
+    }
+}

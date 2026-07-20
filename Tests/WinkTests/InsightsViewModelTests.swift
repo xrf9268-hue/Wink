@@ -3,6 +3,7 @@ import Testing
 @testable import Wink
 
 actor DelayedUsageTracker: UsageTracking {
+    func deleteUsage(shortcutId: UUID) {}
     let shortcutId: UUID
 
     init(shortcutId: UUID) {
@@ -42,6 +43,7 @@ actor DelayedUsageTracker: UsageTracking {
 }
 
 actor BoundaryCrossingUsageTracker: UsageTracking {
+    func deleteUsage(shortcutId: UUID) {}
     let shortcutId: UUID
 
     init(shortcutId: UUID) {
@@ -78,6 +80,7 @@ actor BoundaryCrossingUsageTracker: UsageTracking {
 }
 
 actor TimeZoneAlignedUsageTracker: UsageTracking {
+    func deleteUsage(shortcutId: UUID) {}
     let shortcutId: UUID
     let timeZone: TimeZone
 
