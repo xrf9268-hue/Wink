@@ -118,53 +118,42 @@ final class InsightsViewModel {
 
         let days = period.days
         let appSparklineDays = max(days, 7)
-        let reportingTimeZone = await usageTracker.usageTimeZone()
-        let previousReference = UsageWindowMath.previousWindowReference(
+        let request = UsageDashboardRequest(
             days: days,
-            relativeTo: now,
-            in: reportingTimeZone
+            sparklineDays: appSparklineDays,
+            referenceDate: now
         )
 
-        async let totalCountResult = usageTracker.totalSwitches(days: days, relativeTo: now)
-        async let previousPeriodTotalResult = usageTracker.previousPeriodTotal(days: days, relativeTo: now)
-        async let countsResult = usageTracker.usageCounts(days: days, relativeTo: now)
-        async let previousCountsResult = usageTracker.usageCounts(days: days, relativeTo: previousReference)
-        async let dailyCountsResult = usageTracker.dailyCounts(days: appSparklineDays, relativeTo: now)
-        async let hourlyCountsResult = usageTracker.hourlyCounts(days: days, relativeTo: now)
-        async let heatmapBucketsResult = usageTracker.hourlyCounts(days: 7, relativeTo: now)
-        async let unusedCountsResult = usageTracker.usageCounts(days: 7, relativeTo: now)
-        async let streakResult = usageTracker.streakDays(relativeTo: now)
+        // One coherent snapshot from one read boundary; nil means the refresh
+        // was cancelled mid-flight and a superseding refresh owns the UI.
+        guard let snapshot = await usageTracker.dashboardSnapshot(for: request) else {
+            return
+        }
 
-        let totalCount = await totalCountResult
-        let previousPeriodTotal = await previousPeriodTotalResult
-        let counts = await countsResult
-        let previousCounts = await previousCountsResult
-        let dailyCounts = await dailyCountsResult
-        let hourlyCounts = await hourlyCountsResult
-        let heatmapBuckets = await heatmapBucketsResult
-        let unusedCounts = await unusedCountsResult
-        let streakDays = await streakResult
+        let reportingTimeZone = snapshot.timeZone
+        let dailyCounts = snapshot.dailyCounts
+        let previousCounts = snapshot.previousCounts
         let shortcuts = shortcutStore.shortcuts
         let shortcutMap = Dictionary(uniqueKeysWithValues: shortcuts.map { ($0.id, $0) })
 
         guard !Task.isCancelled else { return }
         guard generation == refreshGeneration else { return }
 
-        self.totalCount = totalCount
-        self.previousPeriodTotal = previousPeriodTotal
-        self.currentStreakDays = streakDays
+        self.totalCount = snapshot.totalCount
+        self.previousPeriodTotal = snapshot.previousPeriodTotal
+        self.currentStreakDays = snapshot.streakDays
         self.activationSparklinePoints = Self.activationSparklinePoints(
             for: period,
-            hourlyCounts: hourlyCounts
+            hourlyCounts: snapshot.hourlyCounts
         )
-        self.heatmapBuckets = heatmapBuckets
+        self.heatmapBuckets = snapshot.heatmapBuckets
         self.unusedShortcutNames = shortcuts
             .filter(\.isEnabled)
-            .filter { (unusedCounts[$0.id] ?? 0) == 0 }
+            .filter { (snapshot.unusedCounts[$0.id] ?? 0) == 0 }
             .map(\.appName)
 
         var ranked: [RankedShortcut] = []
-        for (id, count) in counts {
+        for (id, count) in snapshot.counts {
             guard let shortcut = shortcutMap[id] else { continue }
             ranked.append(
                 RankedShortcut(

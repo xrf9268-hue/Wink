@@ -44,6 +44,32 @@ enum UsageWindowMath {
     }
 }
 
+/// Parameters for one Insights refresh. The single `referenceDate` anchor is
+/// shared by every dataset in the resulting snapshot.
+struct UsageDashboardRequest: Sendable, Equatable {
+    /// Days in the selected period window.
+    let days: Int
+    /// Days of daily history for per-app sparklines (`max(days, 7)`).
+    let sparklineDays: Int
+    let referenceDate: Date
+}
+
+/// Every dataset one Insights refresh needs, produced from one coherent read
+/// boundary. The fixed 7-day datasets (heatmap, unused detection) reuse the
+/// period datasets when the period itself is 7 days.
+struct UsageDashboardSnapshot: Sendable {
+    let timeZone: TimeZone
+    let totalCount: Int
+    let previousPeriodTotal: Int
+    let counts: [UUID: Int]
+    let previousCounts: [UUID: Int]
+    let dailyCounts: [String: [(date: String, count: Int)]]
+    let hourlyCounts: [HourlyUsageBucket]
+    let heatmapBuckets: [HourlyUsageBucket]
+    let unusedCounts: [UUID: Int]
+    let streakDays: Int
+}
+
 protocol UsageTracking: Sendable {
     func usageCounts(days: Int, relativeTo now: Date) async -> [UUID: Int]
     func dailyCounts(days: Int, relativeTo now: Date) async -> [String: [(date: String, count: Int)]]
@@ -53,6 +79,10 @@ protocol UsageTracking: Sendable {
     func streakDays(relativeTo now: Date) async -> Int
     func usageTimeZone() async -> TimeZone
     func lastUsedPerShortcut() async -> [UUID: Date]
+    /// Returns nil when the surrounding task was cancelled; a cancelled
+    /// refresh stops issuing further queries instead of completing the
+    /// remaining phases.
+    func dashboardSnapshot(for request: UsageDashboardRequest) async -> UsageDashboardSnapshot?
 }
 
 extension UsageTracking {
@@ -82,5 +112,65 @@ extension UsageTracking {
 
     func lastUsedPerShortcut() async -> [UUID: Date] {
         [:]
+    }
+
+    /// Serial composition over the individual query methods with a
+    /// cancellation check before each phase and the 7-day datasets
+    /// deduplicated. Conformers backed by real storage should override this
+    /// with an implementation that also guarantees one coherent read
+    /// boundary (see `UsageTracker`).
+    func dashboardSnapshot(for request: UsageDashboardRequest) async -> UsageDashboardSnapshot? {
+        guard !Task.isCancelled else { return nil }
+        let timeZone = await usageTimeZone()
+        let previousReference = UsageWindowMath.previousWindowReference(
+            days: request.days,
+            relativeTo: request.referenceDate,
+            in: timeZone
+        )
+
+        guard !Task.isCancelled else { return nil }
+        let totalCount = await totalSwitches(days: request.days, relativeTo: request.referenceDate)
+        guard !Task.isCancelled else { return nil }
+        let previousPeriodTotal = await previousPeriodTotal(days: request.days, relativeTo: request.referenceDate)
+        guard !Task.isCancelled else { return nil }
+        let counts = await usageCounts(days: request.days, relativeTo: request.referenceDate)
+        guard !Task.isCancelled else { return nil }
+        let previousCounts = await usageCounts(days: request.days, relativeTo: previousReference)
+        guard !Task.isCancelled else { return nil }
+        let dailyCounts = await dailyCounts(days: request.sparklineDays, relativeTo: request.referenceDate)
+        guard !Task.isCancelled else { return nil }
+        let hourlyCounts = await hourlyCounts(days: request.days, relativeTo: request.referenceDate)
+
+        let heatmapBuckets: [HourlyUsageBucket]
+        if request.days == 7 {
+            heatmapBuckets = hourlyCounts
+        } else {
+            guard !Task.isCancelled else { return nil }
+            heatmapBuckets = await self.hourlyCounts(days: 7, relativeTo: request.referenceDate)
+        }
+
+        let unusedCounts: [UUID: Int]
+        if request.days == 7 {
+            unusedCounts = counts
+        } else {
+            guard !Task.isCancelled else { return nil }
+            unusedCounts = await usageCounts(days: 7, relativeTo: request.referenceDate)
+        }
+
+        guard !Task.isCancelled else { return nil }
+        let streakDays = await streakDays(relativeTo: request.referenceDate)
+
+        return UsageDashboardSnapshot(
+            timeZone: timeZone,
+            totalCount: totalCount,
+            previousPeriodTotal: previousPeriodTotal,
+            counts: counts,
+            previousCounts: previousCounts,
+            dailyCounts: dailyCounts,
+            hourlyCounts: hourlyCounts,
+            heatmapBuckets: heatmapBuckets,
+            unusedCounts: unusedCounts,
+            streakDays: streakDays
+        )
     }
 }
