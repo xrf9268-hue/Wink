@@ -106,10 +106,7 @@ struct InsightsHourlyHeatmap: View {
     }
 
     private func dayLabel(for dateString: String) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = .current
+        let formatter = UsageWindowMath.dateKeyFormatter(timeZone: .current)
 
         guard let date = formatter.date(from: dateString) else {
             return dateString

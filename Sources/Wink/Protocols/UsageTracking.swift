@@ -13,6 +13,20 @@ enum UsageWindowMath {
         return calendar
     }
 
+    /// Canonical formatter for persisted usage date keys. `en_US_POSIX` pins
+    /// ASCII digits so keys stay byte-stable and lexicographically ordered
+    /// regardless of the user's locale or numbering system (issue #323);
+    /// Arabic/Persian locales otherwise emit localized digits that fall
+    /// outside ASCII TEXT range queries.
+    static func dateKeyFormatter(timeZone: TimeZone) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = timeZone
+        return formatter
+    }
+
     static func previousWindowReference(days: Int, relativeTo now: Date, in timeZone: TimeZone) -> Date {
         calendar(timeZone: timeZone).date(byAdding: .day, value: -max(days, 1), to: now) ?? now
     }

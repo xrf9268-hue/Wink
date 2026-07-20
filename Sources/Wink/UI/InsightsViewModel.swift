@@ -249,10 +249,7 @@ final class InsightsViewModel {
 
     private static func dateKeys(days: Int, relativeTo now: Date, timeZone: TimeZone) -> [String] {
         let window = UsageWindowMath.windowDates(days: days, relativeTo: now, in: timeZone)
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = timeZone
+        let formatter = UsageWindowMath.dateKeyFormatter(timeZone: timeZone)
 
         return window.days.map { date in
             formatter.string(from: date)

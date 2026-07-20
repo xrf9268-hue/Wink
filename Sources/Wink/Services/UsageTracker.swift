@@ -477,7 +477,6 @@ actor UsageTracker: UsageTracking {
                 ON usage_hourly(date, hour);
             CREATE INDEX IF NOT EXISTS idx_daily_usage_date
                 ON daily_usage(date);
-            PRAGMA user_version = \(UsageDatabaseBootstrap.requiredSchemaVersion);
             """
 
         var errorMessage: UnsafeMutablePointer<CChar>?
@@ -487,6 +486,20 @@ actor UsageTracker: UsageTracking {
             DiagnosticLog.log("Failed to create usage tables: \(error)")
             sqlite3_free(errorMessage)
             return
+        }
+
+        // Only a fresh database (user_version 0) is stamped here. Existing
+        // files reach this point already stamped by the bootstrap, except a
+        // v2 file whose locale migration failed — that one must keep its old
+        // version so the next launch retries the migration instead of having
+        // an unconditional stamp mask it forever.
+        if UsageDatabaseBootstrap.schemaVersion(in: db) == 0 {
+            let stampSQL = "PRAGMA user_version = \(UsageDatabaseBootstrap.requiredSchemaVersion)"
+            if sqlite3_exec(db, stampSQL, nil, nil, nil) != SQLITE_OK {
+                let error = String(cString: sqlite3_errmsg(db))
+                logger.error("Failed to stamp usage schema version: \(error, privacy: .public)")
+                DiagnosticLog.log("Failed to stamp usage schema version: \(error)")
+            }
         }
     }
 
@@ -580,10 +593,6 @@ actor UsageTracker: UsageTracking {
     }
 
     private static func makeDateFormatter(for timeZone: TimeZone) -> (DateFormatter, String) {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = timeZone
-        return (formatter, timeZone.identifier)
+        (UsageWindowMath.dateKeyFormatter(timeZone: timeZone), timeZone.identifier)
     }
 }
