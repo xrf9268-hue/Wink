@@ -377,20 +377,34 @@ actor UsageTracker: UsageTracking {
         timeZoneProvider()
     }
 
-    func lastUsedPerShortcut() async -> [UUID: Date] {
-        let sql = """
-            SELECT shortcut_id, date, hour
-            FROM (
-                SELECT shortcut_id, date, hour,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY shortcut_id
-                           ORDER BY date DESC, hour DESC
-                       ) AS rn
+    /// Loose index scan over the (shortcut_id, date, hour) primary-key index:
+    /// one reverse seek per shortcut instead of window-sorting the complete
+    /// retained history, so cost scales with the number of shortcuts, not
+    /// with total rows (issue #324). Kept as a named constant so tests can
+    /// assert the executed plan never falls back to a temporary B-tree.
+    static let lastUsedPerShortcutSQL = """
+        WITH RECURSIVE latest(shortcut_id, date, hour) AS (
+            SELECT * FROM (
+                SELECT shortcut_id, date, hour
                 FROM usage_hourly
+                ORDER BY shortcut_id DESC, date DESC, hour DESC
+                LIMIT 1
             )
-            WHERE rn = 1
-            """
-        guard let stmt = cachedStatement(&lastUsedPerShortcutStmt, sql: sql) else {
+          UNION ALL
+            SELECT u.shortcut_id, u.date, u.hour
+            FROM latest l
+            JOIN usage_hourly u ON u.rowid = (
+                SELECT u2.rowid FROM usage_hourly u2
+                WHERE u2.shortcut_id < l.shortcut_id
+                ORDER BY u2.shortcut_id DESC, u2.date DESC, u2.hour DESC
+                LIMIT 1
+            )
+        )
+        SELECT shortcut_id, date, hour FROM latest
+        """
+
+    func lastUsedPerShortcut() async -> [UUID: Date] {
+        guard let stmt = cachedStatement(&lastUsedPerShortcutStmt, sql: Self.lastUsedPerShortcutSQL) else {
             return [:]
         }
 
