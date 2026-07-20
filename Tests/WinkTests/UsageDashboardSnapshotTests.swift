@@ -216,6 +216,7 @@ struct UsageDashboardSnapshotTests {
 }
 
 private actor RecordingUsageTracker: UsageTracking {
+    func deleteUsage(shortcutId: UUID) {}
     let shortcutId: UUID
     private var counts: [String: Int] = [:]
 

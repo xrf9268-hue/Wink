@@ -1,9 +1,53 @@
 import AppKit
 import SwiftUI
 
+/// Collapses bursts of reactivation notifications into at most one usage
+/// refresh per window. Held as view `@State` so the window survives across
+/// body evaluations; only dispatched refreshes consume the window, so a
+/// suppressed tab (General) never blocks a later real refresh.
+@MainActor
+final class SettingsUsageRefreshCoalescer {
+    static let minimumInterval: TimeInterval = 1.0
+
+    private let now: @Sendable () -> Date
+    private var lastRefreshAt: Date?
+
+    nonisolated init(now: @escaping @Sendable () -> Date = Date.init) {
+        self.now = now
+    }
+
+    func shouldRefresh() -> Bool {
+        let timestamp = now()
+        if let lastRefreshAt, timestamp.timeIntervalSince(lastRefreshAt) < Self.minimumInterval {
+            return false
+        }
+
+        lastRefreshAt = timestamp
+        return true
+    }
+}
+
 @MainActor
 struct SettingsViewLifecycleHandler {
     let preferences: AppPreferences
+    var usageRefreshCoalescer: SettingsUsageRefreshCoalescer
+    var selectedTab: () -> SettingsTab
+    var refreshInsightsUsage: () -> Void
+    var refreshShortcutsUsage: () -> Void
+
+    init(
+        preferences: AppPreferences,
+        usageRefreshCoalescer: SettingsUsageRefreshCoalescer = SettingsUsageRefreshCoalescer(),
+        selectedTab: @escaping () -> SettingsTab = { .shortcuts },
+        refreshInsightsUsage: @escaping () -> Void = {},
+        refreshShortcutsUsage: @escaping () -> Void = {}
+    ) {
+        self.preferences = preferences
+        self.usageRefreshCoalescer = usageRefreshCoalescer
+        self.selectedTab = selectedTab
+        self.refreshInsightsUsage = refreshInsightsUsage
+        self.refreshShortcutsUsage = refreshShortcutsUsage
+    }
 
     func handleAppear() {
         preferences.refreshPermissions()
@@ -13,6 +57,22 @@ struct SettingsViewLifecycleHandler {
     func handleAppDidBecomeActive() {
         preferences.refreshPermissions()
         preferences.refreshLaunchAtLoginStatus()
+        refreshUsageForSelectedTab()
+    }
+
+    /// Reactivation refreshes only the visible tab's usage model; the hidden
+    /// tab gets its own fresh query when it is selected (issue #326).
+    private func refreshUsageForSelectedTab() {
+        switch selectedTab() {
+        case .insights:
+            guard usageRefreshCoalescer.shouldRefresh() else { return }
+            refreshInsightsUsage()
+        case .shortcuts:
+            guard usageRefreshCoalescer.shouldRefresh() else { return }
+            refreshShortcutsUsage()
+        case .general:
+            break
+        }
     }
 }
 
@@ -27,9 +87,16 @@ struct SettingsView: View {
     @Bindable var settingsLauncher: SettingsLauncher
 
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var usageRefreshCoalescer = SettingsUsageRefreshCoalescer()
 
     private var lifecycleHandler: SettingsViewLifecycleHandler {
-        SettingsViewLifecycleHandler(preferences: preferences)
+        SettingsViewLifecycleHandler(
+            preferences: preferences,
+            usageRefreshCoalescer: usageRefreshCoalescer,
+            selectedTab: { settingsLauncher.selectedTab },
+            refreshInsightsUsage: { insightsViewModel.scheduleRefresh() },
+            refreshShortcutsUsage: { editor.scheduleUsageRefresh() }
+        )
     }
 
     var body: some View {
@@ -76,8 +143,13 @@ struct SettingsView: View {
             }
         }
         .onChange(of: settingsLauncher.selectedTab) { _, newTab in
-            if newTab == .insights {
+            switch newTab {
+            case .insights:
                 insightsViewModel.scheduleRefresh()
+            case .shortcuts:
+                editor.scheduleUsageRefresh()
+            case .general:
+                break
             }
         }
         .onAppear {
