@@ -26,6 +26,16 @@ struct LaunchAtLoginSnapshot: Equatable {
     let availability: LaunchAtLoginAvailability
 }
 
+enum LaunchAtLoginMutation: String, Equatable, Sendable {
+    case register
+    case unregister
+}
+
+struct LaunchAtLoginMutationFailure: Equatable, Sendable {
+    let mutation: LaunchAtLoginMutation
+    let reason: String
+}
+
 struct LaunchAtLoginService {
     struct Client: Sendable {
         let status: @Sendable () -> SMAppService.Status
@@ -92,7 +102,7 @@ struct LaunchAtLoginService {
         status.isEnabled
     }
 
-    func setEnabled(_ enabled: Bool) {
+    func setEnabled(_ enabled: Bool) -> LaunchAtLoginMutationFailure? {
         do {
             if enabled {
                 try client.register()
@@ -101,9 +111,14 @@ struct LaunchAtLoginService {
                 try client.unregister()
                 logger.info("Unregistered as login item")
             }
+            return nil
         } catch {
             logger.error("Failed to \(enabled ? "register" : "unregister") login item: \(error)")
             DiagnosticLog.log("Failed to \(enabled ? "register" : "unregister") login item: \(error)")
+            return LaunchAtLoginMutationFailure(
+                mutation: enabled ? .register : .unregister,
+                reason: error.localizedDescription
+            )
         }
     }
 

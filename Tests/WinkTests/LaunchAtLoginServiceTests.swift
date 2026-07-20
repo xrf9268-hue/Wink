@@ -1,3 +1,4 @@
+import Foundation
 import ServiceManagement
 import Testing
 @testable import Wink
@@ -56,4 +57,59 @@ func notFoundInsideApplicationsStaysConfigurationMissing() {
     ))
 
     #expect(service.snapshot.availability == LaunchAtLoginAvailability.missingConfiguration)
+}
+
+@Test
+func setEnabledReturnsNilWhenMutationSucceeds() {
+    let service = LaunchAtLoginService(client: .init(
+        status: { .notRegistered },
+        register: {},
+        unregister: {},
+        openSystemSettingsLoginItems: {}
+    ))
+
+    #expect(service.setEnabled(true) == nil)
+    #expect(service.setEnabled(false) == nil)
+}
+
+@Test
+func setEnabledReturnsRegisterFailureWhenRegisterThrows() {
+    let service = LaunchAtLoginService(client: .init(
+        status: { .notRegistered },
+        register: { throw MutationTestError.registerFailed },
+        unregister: {},
+        openSystemSettingsLoginItems: {}
+    ))
+
+    #expect(service.setEnabled(true) == LaunchAtLoginMutationFailure(
+        mutation: .register,
+        reason: MutationTestError.registerFailed.localizedDescription
+    ))
+}
+
+@Test
+func setEnabledReturnsUnregisterFailureWhenUnregisterThrows() {
+    let service = LaunchAtLoginService(client: .init(
+        status: { .enabled },
+        register: {},
+        unregister: { throw MutationTestError.unregisterFailed },
+        openSystemSettingsLoginItems: {}
+    ))
+
+    #expect(service.setEnabled(false) == LaunchAtLoginMutationFailure(
+        mutation: .unregister,
+        reason: MutationTestError.unregisterFailed.localizedDescription
+    ))
+}
+
+private enum MutationTestError: LocalizedError {
+    case registerFailed
+    case unregisterFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .registerFailed: "register denied by policy"
+        case .unregisterFailed: "unregister denied by policy"
+        }
+    }
 }
