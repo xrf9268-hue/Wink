@@ -14,6 +14,14 @@ actor UsageTracker: UsageTracking {
     private var dateFormatter: DateFormatter
     private var dateFormatterTimeZoneIdentifier: String
 
+    /// Executions per logical query, so tests can prove a dashboard snapshot
+    /// runs each dataset at most once and a cancelled snapshot stops issuing
+    /// further statements.
+    private var queryExecutionCounts: [String: Int] = [:]
+    /// Invoked before each dashboard phase's cancellation check; lets tests
+    /// cancel deterministically at a chosen phase boundary.
+    private var dashboardPhaseHook: (@Sendable (String) -> Void)?
+
     private nonisolated(unsafe) var recordDailyUsageStmt: OpaquePointer?
     private nonisolated(unsafe) var recordHourlyUsageStmt: OpaquePointer?
     private nonisolated(unsafe) var deleteDailyUsageStmt: OpaquePointer?
@@ -166,6 +174,11 @@ actor UsageTracker: UsageTracking {
     }
 
     func usageCounts(days: Int, relativeTo now: Date) async -> [UUID: Int] {
+        usageCounts(days: days, relativeTo: now, in: timeZoneProvider())
+    }
+
+    private func usageCounts(days: Int, relativeTo now: Date, in tz: TimeZone) -> [UUID: Int] {
+        recordQueryExecution("usageCounts")
         let sql = """
             SELECT shortcut_id, SUM(count)
             FROM daily_usage
@@ -176,7 +189,6 @@ actor UsageTracker: UsageTracking {
             return [:]
         }
 
-        let tz = timeZoneProvider()
         let range = windowDateRange(days: days, relativeTo: now, in: tz)
         sqlite3_bind_text(stmt, 1, (range.start as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
         sqlite3_bind_text(stmt, 2, (range.end as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
@@ -201,6 +213,11 @@ actor UsageTracker: UsageTracking {
     }
 
     func dailyCounts(days: Int, relativeTo now: Date) async -> [String: [(date: String, count: Int)]] {
+        dailyCounts(days: days, relativeTo: now, in: timeZoneProvider())
+    }
+
+    private func dailyCounts(days: Int, relativeTo now: Date, in tz: TimeZone) -> [String: [(date: String, count: Int)]] {
+        recordQueryExecution("dailyCounts")
         let sql = """
             SELECT shortcut_id, date, count
             FROM daily_usage
@@ -211,7 +228,6 @@ actor UsageTracker: UsageTracking {
             return [:]
         }
 
-        let tz = timeZoneProvider()
         let range = windowDateRange(days: days, relativeTo: now, in: tz)
         sqlite3_bind_text(stmt, 1, (range.start as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
         sqlite3_bind_text(stmt, 2, (range.end as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
@@ -239,6 +255,11 @@ actor UsageTracker: UsageTracking {
     }
 
     func totalSwitches(days: Int, relativeTo now: Date) async -> Int {
+        totalSwitches(days: days, relativeTo: now, in: timeZoneProvider())
+    }
+
+    private func totalSwitches(days: Int, relativeTo now: Date, in tz: TimeZone) -> Int {
+        recordQueryExecution("totalSwitches")
         let sql = """
             SELECT COALESCE(SUM(count), 0)
             FROM usage_hourly
@@ -248,7 +269,6 @@ actor UsageTracker: UsageTracking {
             return 0
         }
 
-        let tz = timeZoneProvider()
         let range = windowDateRange(days: days, relativeTo: now, in: tz)
         sqlite3_bind_text(stmt, 1, (range.start as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
         sqlite3_bind_text(stmt, 2, (range.end as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
@@ -265,6 +285,11 @@ actor UsageTracker: UsageTracking {
     }
 
     func hourlyCounts(days: Int, relativeTo now: Date) async -> [HourlyUsageBucket] {
+        hourlyCounts(days: days, relativeTo: now, in: timeZoneProvider())
+    }
+
+    private func hourlyCounts(days: Int, relativeTo now: Date, in tz: TimeZone) -> [HourlyUsageBucket] {
+        recordQueryExecution("hourlyCounts")
         let sql = """
             SELECT date, hour, COALESCE(SUM(count), 0)
             FROM usage_hourly
@@ -276,7 +301,6 @@ actor UsageTracker: UsageTracking {
             return []
         }
 
-        let tz = timeZoneProvider()
         let range = windowDateRange(days: days, relativeTo: now, in: tz)
         sqlite3_bind_text(stmt, 1, (range.start as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
         sqlite3_bind_text(stmt, 2, (range.end as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
@@ -311,6 +335,11 @@ actor UsageTracker: UsageTracking {
     }
 
     func previousPeriodTotal(days: Int, relativeTo now: Date) async -> Int {
+        previousPeriodTotal(days: days, relativeTo: now, in: timeZoneProvider())
+    }
+
+    private func previousPeriodTotal(days: Int, relativeTo now: Date, in tz: TimeZone) -> Int {
+        recordQueryExecution("previousPeriodTotal")
         let sql = """
             SELECT COALESCE(SUM(count), 0)
             FROM usage_hourly
@@ -320,7 +349,6 @@ actor UsageTracker: UsageTracking {
             return 0
         }
 
-        let tz = timeZoneProvider()
         let previousRange = previousWindowDateRange(days: days, relativeTo: now, in: tz)
         sqlite3_bind_text(stmt, 1, (previousRange.start as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
         sqlite3_bind_text(stmt, 2, (previousRange.end as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
@@ -333,6 +361,11 @@ actor UsageTracker: UsageTracking {
     }
 
     func streakDays(relativeTo now: Date) async -> Int {
+        streakDays(relativeTo: now, in: timeZoneProvider())
+    }
+
+    private func streakDays(relativeTo now: Date, in tz: TimeZone) -> Int {
+        recordQueryExecution("streakDays")
         // Bounded to dates up to "today" so future-dated rows (clock skew,
         // corrupt insert) cannot break the walk on the first iteration, and
         // capped so the scan never materializes unbounded history. Served by
@@ -348,7 +381,6 @@ actor UsageTracker: UsageTracking {
             return 0
         }
 
-        let tz = timeZoneProvider()
         let calendar = UsageWindowMath.calendar(timeZone: tz)
         var expectedDate = calendar.startOfDay(for: now)
         var streak = 0
@@ -375,6 +407,103 @@ actor UsageTracker: UsageTracking {
 
     func usageTimeZone() async -> TimeZone {
         timeZoneProvider()
+    }
+
+    /// One coherent read boundary for a full Insights refresh: a single
+    /// actor-isolated pass with no suspension points, wrapped in a deferred
+    /// read transaction, over one time-zone snapshot and one reference date.
+    /// A concurrent `recordUsage` therefore lands entirely before or entirely
+    /// after the snapshot, never in between. Cancellation is checked before
+    /// every phase so an obsolete refresh stops scheduling further SQLite
+    /// work; the 7-day heatmap/unused datasets reuse the period datasets when
+    /// the period is 7 days.
+    func dashboardSnapshot(for request: UsageDashboardRequest) async -> UsageDashboardSnapshot? {
+        let tz = timeZoneProvider()
+        let previousReference = UsageWindowMath.previousWindowReference(
+            days: request.days,
+            relativeTo: request.referenceDate,
+            in: tz
+        )
+
+        var openedReadTransaction = false
+        if let db {
+            openedReadTransaction = execute(
+                sql: "BEGIN DEFERRED",
+                in: db,
+                failurePrefix: "Failed to begin dashboard snapshot read transaction"
+            )
+        }
+        defer {
+            if openedReadTransaction, let db {
+                _ = execute(
+                    sql: "COMMIT",
+                    in: db,
+                    failurePrefix: "Failed to end dashboard snapshot read transaction"
+                )
+            }
+        }
+
+        guard passesDashboardCheckpoint("totalSwitches") else { return nil }
+        let totalCount = totalSwitches(days: request.days, relativeTo: request.referenceDate, in: tz)
+        guard passesDashboardCheckpoint("previousPeriodTotal") else { return nil }
+        let previousPeriodTotal = previousPeriodTotal(days: request.days, relativeTo: request.referenceDate, in: tz)
+        guard passesDashboardCheckpoint("usageCounts") else { return nil }
+        let counts = usageCounts(days: request.days, relativeTo: request.referenceDate, in: tz)
+        guard passesDashboardCheckpoint("previousUsageCounts") else { return nil }
+        let previousCounts = usageCounts(days: request.days, relativeTo: previousReference, in: tz)
+        guard passesDashboardCheckpoint("dailyCounts") else { return nil }
+        let dailyCounts = dailyCounts(days: request.sparklineDays, relativeTo: request.referenceDate, in: tz)
+        guard passesDashboardCheckpoint("hourlyCounts") else { return nil }
+        let hourlyCounts = hourlyCounts(days: request.days, relativeTo: request.referenceDate, in: tz)
+
+        let heatmapBuckets: [HourlyUsageBucket]
+        if request.days == 7 {
+            heatmapBuckets = hourlyCounts
+        } else {
+            guard passesDashboardCheckpoint("heatmapBuckets") else { return nil }
+            heatmapBuckets = self.hourlyCounts(days: 7, relativeTo: request.referenceDate, in: tz)
+        }
+
+        let unusedCounts: [UUID: Int]
+        if request.days == 7 {
+            unusedCounts = counts
+        } else {
+            guard passesDashboardCheckpoint("unusedCounts") else { return nil }
+            unusedCounts = usageCounts(days: 7, relativeTo: request.referenceDate, in: tz)
+        }
+
+        guard passesDashboardCheckpoint("streakDays") else { return nil }
+        let streakDays = streakDays(relativeTo: request.referenceDate, in: tz)
+
+        return UsageDashboardSnapshot(
+            timeZone: tz,
+            totalCount: totalCount,
+            previousPeriodTotal: previousPeriodTotal,
+            counts: counts,
+            previousCounts: previousCounts,
+            dailyCounts: dailyCounts,
+            hourlyCounts: hourlyCounts,
+            heatmapBuckets: heatmapBuckets,
+            unusedCounts: unusedCounts,
+            streakDays: streakDays
+        )
+    }
+
+    func queryExecutionCountsForTesting() -> [String: Int] {
+        queryExecutionCounts
+    }
+
+    func setDashboardPhaseHookForTesting(_ hook: (@Sendable (String) -> Void)?) {
+        dashboardPhaseHook = hook
+    }
+
+    private func passesDashboardCheckpoint(_ phase: String) -> Bool {
+        dashboardPhaseHook?(phase)
+        return !Task.isCancelled
+    }
+
+    private func recordQueryExecution(_ name: String) {
+        queryExecutionCounts[name, default: 0] += 1
     }
 
     /// Loose index scan over the (shortcut_id, date, hour) primary-key index:
