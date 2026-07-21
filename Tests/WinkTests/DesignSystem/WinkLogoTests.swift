@@ -56,14 +56,18 @@ struct WinkLogoTests {
     }
 
     @Test @MainActor
-    func appIconUsesLatestVioletAnchorGradient() throws {
+    func appIconUsesInkNavyAnchorTile() throws {
         let bitmap = try renderBitmap(
             WinkAppIcon(size: 52),
             size: NSSize(width: 52, height: 52)
         )
         let color = try #require(bitmap.colorAt(x: 12, y: 12))
 
-        #expect(color.redComponent > color.greenComponent)
+        // Ink-navy tile: blue channel leads and the sample stays dark —
+        // distinguishes the amber-rebrand tile from the old violet gradient
+        // (red-led) without pinning exact anti-aliased pixel values.
+        #expect(color.blueComponent > color.redComponent)
+        #expect(color.blueComponent < 0.5)
     }
 
     @Test
@@ -73,13 +77,14 @@ struct WinkLogoTests {
             encoding: .utf8
         )
 
-        #expect(svg.contains("#8A5BE3"))
-        #expect(svg.contains("#5E3FC7"))
-        #expect(svg.contains("#4A7BE8"))
+        #expect(svg.contains("#1E2638"))
+        #expect(svg.contains("#10141E"))
+        #expect(svg.contains("#0A0D14"))
+        #expect(svg.contains("#FFB454"))
         #expect(svg.contains("M12 7 a9 9 0 1 0 0 18"))
-        #expect(!svg.contains("#5B8DEF"))
-        #expect(!svg.contains("#8A6CF0"))
-        #expect(!svg.contains("#B86CD9"))
+        #expect(!svg.contains("#8A5BE3"))
+        #expect(!svg.contains("#5E3FC7"))
+        #expect(!svg.contains("#4A7BE8"))
     }
 
     @Test
@@ -89,12 +94,12 @@ struct WinkLogoTests {
             encoding: .utf8
         )
 
-        #expect(svg.contains("#8A5BE3"))
-        #expect(svg.contains("#5E3FC7"))
-        #expect(svg.contains("#4A7BE8"))
-        #expect(!svg.contains("#5B8DEF"))
-        #expect(!svg.contains("#8A6CF0"))
-        #expect(!svg.contains("#B86CD9"))
+        #expect(svg.contains("#E08A00"))
+        #expect(svg.contains("#A8620A"))
+        #expect(svg.contains("#1E2638"))
+        #expect(!svg.contains("#8A5BE3"))
+        #expect(!svg.contains("#5E3FC7"))
+        #expect(!svg.contains("#4A7BE8"))
     }
 
     @Test

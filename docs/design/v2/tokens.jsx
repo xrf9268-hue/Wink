@@ -37,24 +37,22 @@ const lightTheme = {
   fieldBorder: 'rgba(0,0,0,0.10)',
 
   // Accents
-  accent: '#0064E0',            // refined system blue (lower chroma)
-  accentRgb: '0,100,224',
-  accentHover: '#004FC2',
-  accentBgSoft: 'rgba(0,100,224,0.08)',
-  accentBorderSoft: 'rgba(0,100,224,0.18)',
-  violet: '#6B48C9',             // Hyper key
-  violetBgSoft: 'rgba(107,72,201,0.10)',
+  accent: '#A8620A',            // Wink amber, deep cut — 4.75:1 on white for AA fills
+  accentRgb: '168,98,10',
+  accentHover: '#96590A',
+  accentBgSoft: 'rgba(224,138,0,0.10)',
+  accentBorderSoft: 'rgba(224,138,0,0.22)',
   green: '#2EA045',              // running dot
   greenSoft: 'rgba(46,160,69,0.10)',
   red: '#D13B3B',
   redBgSoft: 'rgba(209,59,59,0.08)',
   redBorderSoft: 'rgba(209,59,59,0.20)',
-  amber: '#C77800',
-  amberBgSoft: 'rgba(199,120,0,0.10)',
+  amber: '#A8620A',            // warn shares the brand amber; distinguish by icon, not hue
+  amberBgSoft: 'rgba(224,138,0,0.10)',
 
   // Misc
-  heatmapBase: 'rgba(0,100,224,0.10)',
-  focusRing: 'rgba(0,100,224,0.35)',
+  heatmapBase: 'rgba(224,138,0,0.10)',
+  focusRing: 'rgba(224,138,0,0.40)',
 };
 
 const darkTheme = {
@@ -75,7 +73,7 @@ const darkTheme = {
   textPrimary: 'rgba(255,255,255,0.92)',
   textSecondary: 'rgba(235,235,245,0.55)',
   textTertiary: 'rgba(235,235,245,0.32)',
-  textOnAccent: '#FFFFFF',
+  textOnAccent: '#1A1206',      // dark ink on bright amber (~10.9:1); white fails on #FFB454
 
   hairline: 'rgba(255,255,255,0.08)',
   hairlineStrong: 'rgba(255,255,255,0.14)',
@@ -87,23 +85,21 @@ const darkTheme = {
   fieldBg: '#2A2A2C',
   fieldBorder: 'rgba(255,255,255,0.08)',
 
-  accent: '#2A8FFF',             // slightly softer than pure #0A84FF — easier on eyes
-  accentRgb: '42,143,255',
-  accentHover: '#4AA0FF',
-  accentBgSoft: 'rgba(42,143,255,0.16)',
-  accentBorderSoft: 'rgba(42,143,255,0.28)',
-  violet: '#A689F0',
-  violetBgSoft: 'rgba(166,137,240,0.18)',
+  accent: '#FFB454',             // Wink amber, bright cut for dark ground
+  accentRgb: '255,180,84',
+  accentHover: '#FFC377',
+  accentBgSoft: 'rgba(255,180,84,0.15)',
+  accentBorderSoft: 'rgba(255,180,84,0.30)',
   green: '#40C060',
   greenSoft: 'rgba(64,192,96,0.16)',
   red: '#FF5F58',
   redBgSoft: 'rgba(255,95,88,0.12)',
   redBorderSoft: 'rgba(255,95,88,0.24)',
-  amber: '#F5B53F',
-  amberBgSoft: 'rgba(245,181,63,0.14)',
+  amber: '#FFB454',
+  amberBgSoft: 'rgba(255,180,84,0.15)',
 
-  heatmapBase: 'rgba(42,143,255,0.20)',
-  focusRing: 'rgba(42,143,255,0.45)',
+  heatmapBase: 'rgba(255,180,84,0.20)',
+  focusRing: 'rgba(255,180,84,0.45)',
 };
 
 // App icon placeholders (solid rounded squares w/ letter) — we don't

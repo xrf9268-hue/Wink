@@ -41,13 +41,13 @@ function AppIcon({ app = 'zed', size = 28, theme = 'light' }) {
 }
 
 // The Wink app icon itself — the actual logo used as a product icon.
-// Violet→blue gradient tile with the Twin mark centered.
+// Ink-navy gradient tile with the amber Twin mark centered (2026-07 amber rebrand).
 function WinkAppIcon({ size = 28, radius, theme = 'light' }) {
   const r = radius ?? Math.round(size * 0.24);
   return (
     <div style={{
       width: size, height: size, borderRadius: r,
-      background: `linear-gradient(135deg, #8A5BE3 0%, #5E3FC7 55%, #4A7BE8 100%)`,
+      background: `linear-gradient(135deg, #1E2638 0%, #10141E 55%, #0A0D14 100%)`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       color: '#fff',
       flexShrink: 0,
@@ -55,7 +55,7 @@ function WinkAppIcon({ size = 28, radius, theme = 'light' }) {
         ? 'inset 0 0.5px 0 rgba(255,255,255,0.18), 0 1px 2px rgba(0,0,0,0.35)'
         : 'inset 0 0.5px 0 rgba(255,255,255,0.35), 0 1px 2px rgba(0,0,0,0.12)',
     }}>
-      <window.Logo_WinkTwin size={Math.round(size * 0.7)} color="#fff" />
+      <window.Logo_WinkTwin size={Math.round(size * 0.7)} color="#FFB454" />
     </div>
   );
 }
@@ -95,15 +95,15 @@ function ShortcutGlyph({ keys, t, size }) {
   );
 }
 
-// Hyper badge — small violet pill
+// Hyper badge — small amber pill (Hyper wears the brand accent)
 function HyperBadge({ t, size = 'md' }) {
   const h = size === 'sm' ? 15 : 17;
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       height: h, padding: '0 6px',
-      background: t.violetBgSoft,
-      color: t.violet,
+      background: t.accentBgSoft,
+      color: t.accent,
       borderRadius: 3,
       fontSize: size === 'sm' ? 10 : 11,
       fontWeight: 700,
