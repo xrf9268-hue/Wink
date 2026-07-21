@@ -220,11 +220,23 @@ final class AppController {
         }
 
         // Hold events arrive on the tap thread; hop once to the main actor
-        // where the cheat-sheet controller lives.
+        // via the main QUEUE, whose FIFO ordering keeps began/ended in
+        // emission order (sibling Tasks carry no such guarantee, and a
+        // reordered quick tap would arm a timer after its release).
         let cheatSheet = cheatSheetHUD
         shortcutManager.setHyperHoldObserver { event in
-            Task { @MainActor in
-                cheatSheet.handle(event)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    cheatSheet.handle(event)
+                }
+            }
+        }
+        appPreferences.onHyperKeyEnabledChange = { [weak self] enabled in
+            if !enabled {
+                // Disabling Hyper mid-hold clears tap state without an
+                // `ended`; reset so no timer stays armed and no presented
+                // sheet sticks.
+                self?.cheatSheetHUD.reset()
             }
         }
 

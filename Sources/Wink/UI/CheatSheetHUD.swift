@@ -51,6 +51,12 @@ final class CheatSheetHUDController {
         }
     }
 
+    /// Cancels any armed timer and dismisses a presented sheet. Used when
+    /// configuration changes cut the gesture short with no `ended` event.
+    func reset() {
+        handle(.ended)
+    }
+
     func handle(_ event: HyperHoldEvent) {
         switch event {
         case .began:
@@ -62,7 +68,11 @@ final class CheatSheetHUDController {
             schedule(Self.holdThreshold) { [weak self] in
                 guard let self,
                       self.holdTimerActive,
-                      self.pendingHoldGeneration == generation else { return }
+                      self.pendingHoldGeneration == generation,
+                      // Re-checked at fire time: Hyper (or the sheet) may
+                      // have been disabled mid-hold, and the tap clears its
+                      // state without emitting `ended`.
+                      self.isEnabled() else { return }
                 self.holdTimerActive = false
                 let rows = self.rowsProvider()
                 guard !rows.isEmpty else { return }

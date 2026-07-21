@@ -151,7 +151,7 @@ func handleEventTapEvent(
             DispatchQueue.global(qos: .utility).async {
                 DiagnosticLog.log("HYPER_F19_DOWN: keyCode=\(keyCode) flags=\(modifierFlags.rawValue) ts=\(eventTimestamp)")
             }
-            box.onHyperHoldEvent?(.began)
+            box.notifyHyperHoldEvent(.began)
             return nil
         }
 
@@ -192,7 +192,7 @@ func handleEventTapEvent(
                 )
             }
             if injectHyper {
-                box.onHyperHoldEvent?(.chordConsumed)
+                box.notifyHyperHoldEvent(.chordConsumed)
             }
             box.onKeyPress?(keyPress)
             return nil
@@ -227,7 +227,7 @@ func handleEventTapEvent(
             }
             // Sent for the 80ms toggle-quirk case too: a tap (not a hold)
             // must cancel the consumer's hold timer.
-            box.onHyperHoldEvent?(.ended)
+            box.notifyHyperHoldEvent(.ended)
         }
         box.recordObservedEvent(
             type: .keyUp,
@@ -247,6 +247,7 @@ func handleEventTapEvent(
             from: NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
         )
         let hasCapsLock = event.flags.contains(.maskAlphaShift)
+        var flagsHoldTransition: HyperHoldEvent?
         let swallowFlags = box.withLock { () -> Bool in
             guard box._hyperKeyEnabled && flagsKeyCode == HyperKeyService.f19KeyCode else {
                 return false
@@ -264,10 +265,16 @@ func handleEventTapEvent(
             box._prevCapsLockFlag = hasCapsLock
             if changed {
                 box._isHyperHeld = !box._isHyperHeld
+                // This path performed the hold transition, so it owns the
+                // observer notification (the keyDown/keyUp sites never ran).
+                flagsHoldTransition = box._isHyperHeld ? .began : .ended
             }
             return true
         }
         if swallowFlags {
+            if let flagsHoldTransition {
+                box.notifyHyperHoldEvent(flagsHoldTransition)
+            }
             box.recordObservedEvent(
                 type: .flagsChanged,
                 keyCode: flagsKeyCode,
@@ -408,7 +415,7 @@ final class EventTapManager: EventTapManaging {
                   | (1 << CGEventType.flagsChanged.rawValue)
 
         let box = EventTapBox()
-        box.onHyperHoldEvent = hyperHoldObserver
+        box.setHyperHoldObserver(hyperHoldObserver)
         box.onKeyPress = MatchedShortcutDelivery.makeHandler { [weak self] keyPress in
             self?.handleAsync(keyPress, generation: generation)
         }
@@ -508,7 +515,7 @@ final class EventTapManager: EventTapManaging {
 
     func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {
         hyperHoldObserver = observer
-        owner?.box.onHyperHoldEvent = observer
+        owner?.box.setHyperHoldObserver(observer)
     }
 
     /// Enable or disable Hyper Key (F19) interception in the event tap callback.
@@ -1057,8 +1064,19 @@ final class EventTapBox: @unchecked Sendable {
     var reenableTap: (@Sendable () -> Void)?
     /// Background-safe closure that hops to the main actor before invoking app logic.
     var onKeyPress: (@Sendable (KeyPress) -> Void)?
-    /// Display-only observer; invoked on the tap thread outside the lock.
-    var onHyperHoldEvent: (@Sendable (HyperHoldEvent) -> Void)?
+    /// Display-only observer. Written under the lock (it can be swapped
+    /// after the tap is live); read via `notifyHyperHoldEvent`, which
+    /// snapshots under the lock and invokes outside it.
+    private var _onHyperHoldEvent: (@Sendable (HyperHoldEvent) -> Void)?
+
+    func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {
+        withLock { _onHyperHoldEvent = observer }
+    }
+
+    func notifyHyperHoldEvent(_ event: HyperHoldEvent) {
+        let observer = withLock { _onHyperHoldEvent }
+        observer?(event)
+    }
     /// Background-safe closure for asynchronous timeout diagnostics.
     var onTapDisabled: (@Sendable (EventTapDiagnosticsSnapshot) -> Void)?
     /// Background-safe closure dispatched when the lifecycle tracker decides

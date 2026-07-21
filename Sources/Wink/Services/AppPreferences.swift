@@ -67,6 +67,8 @@ final class AppPreferences {
     /// Idle-hold Hyper cheat sheet (display-only overlay).
     private(set) var hyperCheatSheetEnabled: Bool = true
     var onSuggestShortcutsConfigurationChange: (@MainActor (_ enabled: Bool) -> Void)?
+    /// Set by AppController wiring; called after the Hyper key toggles.
+    var onHyperKeyEnabledChange: (@MainActor (_ enabled: Bool) -> Void)?
     /// Apple's own DTS guidance: `SMAppService.Status.notFound` is the normal
     /// pre-registration baseline ("the system has never seen your service"),
     /// not inherently an error — `.notRegistered` is only reached after a
@@ -443,6 +445,7 @@ final class AppPreferences {
         }
         hyperKeyEnabled = hyperKeyService.isEnabled
         shortcutManager.setHyperKeyEnabled(hyperKeyEnabled)
+        onHyperKeyEnabledChange?(hyperKeyEnabled)
         refreshPermissions()
     }
 

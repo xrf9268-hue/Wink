@@ -99,3 +99,26 @@ func chordWhilePresentedDismisses() {
     #expect(harness.dismissals == 1)
     #expect(!harness.controller.isPresented)
 }
+
+@Test @MainActor
+func timerFireRechecksEnabledStateAfterMidHoldDisable() {
+    let harness = CheatSheetHarness()
+    harness.controller.handle(.began)
+    // Hyper (or the sheet) disabled mid-hold: the tap clears its state
+    // without emitting `ended`, so the armed timer must not present.
+    harness.enabled = false
+    harness.fireTimer()
+    #expect(harness.presented.isEmpty)
+}
+
+@Test @MainActor
+func resetDismissesPresentedSheetAndCancelsTimer() {
+    let harness = CheatSheetHarness()
+    harness.controller.handle(.began)
+    harness.fireTimer()
+    #expect(harness.controller.isPresented)
+
+    harness.controller.reset()
+    #expect(harness.dismissals == 1)
+    #expect(!harness.controller.isPresented)
+}
