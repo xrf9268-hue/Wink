@@ -5,12 +5,14 @@ enum FrontmostTargetBehavior: String, CaseIterable, Equatable, Sendable {
     case hide
     case toggle
     case focus
+    case cycleWindows
 
     var title: String {
         switch self {
         case .hide: return "Hide"
         case .toggle: return "Toggle"
         case .focus: return "Focus"
+        case .cycleWindows: return "Cycle"
         }
     }
 }

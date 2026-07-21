@@ -211,7 +211,7 @@ struct GeneralTabView: View {
                         ),
                         accessibilityLabel: "When target is frontmost"
                     )
-                    .frame(width: 172)
+                    .frame(width: 224)
                 }
             }
         }
