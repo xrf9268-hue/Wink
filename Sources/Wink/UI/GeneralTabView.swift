@@ -217,6 +217,17 @@ struct GeneralTabView: View {
                 Divider().overlay(palette.hairline)
 
                 SettingsToggleRow(
+                    title: "Suggest shortcuts from app usage",
+                    subtitle: "Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.",
+                    isOn: Binding(
+                        get: { preferences.suggestShortcutsFromUsage },
+                        set: { preferences.setSuggestShortcutsFromUsage($0) }
+                    )
+                )
+
+                Divider().overlay(palette.hairline)
+
+                SettingsToggleRow(
                     title: "Pause in exception apps",
                     subtitle: "Hand shortcuts back to the system while a listed app (VM, remote desktop) is frontmost.",
                     isOn: Binding(

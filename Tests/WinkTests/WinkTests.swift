@@ -1008,3 +1008,22 @@ struct UsageTrackerTests {
         #expect(entries?.isEmpty == false)
     }
 }
+
+@Test
+func appActivationRecordQueryAndClearRoundTrip() async {
+    let tracker = UsageTracker(databasePath: ":memory:")
+
+    await tracker.recordAppActivation(bundleIdentifier: "com.apple.Safari")
+    await tracker.recordAppActivation(bundleIdentifier: "com.apple.Safari")
+    await tracker.recordAppActivation(bundleIdentifier: "com.apple.mail")
+
+    let totals = await tracker.appActivationTotals(days: 1)
+    #expect(totals.first?.bundleIdentifier == "com.apple.Safari")
+    #expect(totals.first?.count == 2)
+    #expect(totals.count == 2)
+
+    // The privacy toggle's off-path clears everything.
+    await tracker.deleteAllAppActivations()
+    let cleared = await tracker.appActivationTotals(days: 1)
+    #expect(cleared.isEmpty)
+}

@@ -41,6 +41,28 @@ struct InsightsTabView: View {
             mostUsedCard
 
             InsightsUnusedNudge(appNames: viewModel.unusedShortcutNames)
+
+            if !viewModel.suggestedApps.isEmpty {
+                WinkCard(title: { Text("Suggested shortcuts") }) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Apps you switch to often that have no shortcut yet. Add one in Shortcuts.")
+                            .font(WinkType.labelSmall)
+                            .foregroundStyle(palette.textSecondary)
+                        ForEach(viewModel.suggestedApps) { suggestion in
+                            HStack(spacing: 8) {
+                                AppIconView(bundleIdentifier: suggestion.bundleIdentifier, size: 20)
+                                Text(suggestion.name)
+                                    .font(WinkType.bodyText)
+                                    .foregroundStyle(palette.textPrimary)
+                                Spacer(minLength: 8)
+                                Text("\(suggestion.count)× this period")
+                                    .font(WinkType.labelSmall)
+                                    .foregroundStyle(palette.textTertiary)
+                            }
+                        }
+                    }
+                }
+            }
         }
         .padding(.top, 18)
         .padding(.bottom, 22)

@@ -67,6 +67,11 @@ final class AppController {
             self?.appPreferences.refreshPermissions()
         }
     )
+    private lazy var appActivationRecorder = AppActivationRecorder(
+        onActivation: { [weak self] bundleIdentifier in
+            self?.recordAppActivation(bundleIdentifier)
+        }
+    )
     private lazy var insightsViewModel = InsightsViewModel(
         usageTracker: usageTracker,
         shortcutStore: shortcutStore
@@ -109,6 +114,11 @@ final class AppController {
         menuBarSceneServicesStorage
     }
 
+    private func recordAppActivation(_ bundleIdentifier: String) {
+        let tracker = usageTracker
+        Task { await tracker.recordAppActivation(bundleIdentifier: bundleIdentifier) }
+    }
+
     func start() {
         DiagnosticLog.rotateIfNeeded()
         DiagnosticLog.log("Wink starting, version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
@@ -142,6 +152,16 @@ final class AppController {
             ruleBundleIdentifiers: appPreferences.frontmostExceptionRules
         )
         frontmostExceptionMonitor.startObservingWorkspaceNotifications()
+
+        appPreferences.onSuggestShortcutsConfigurationChange = { [weak self] enabled in
+            self?.appActivationRecorder.setEnabled(enabled)
+            if !enabled, let usageTracker = self?.usageTracker {
+                // The toggle is a privacy control: off means stop AND clear.
+                Task { await usageTracker.deleteAllAppActivations() }
+            }
+        }
+        appActivationRecorder.setEnabled(appPreferences.suggestShortcutsFromUsage)
+        appActivationRecorder.startObservingWorkspaceNotifications()
 
         // Configured BEFORE the startup sequence so launching while an
         // exception app is frontmost never lets capture (or permission
