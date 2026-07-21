@@ -4,6 +4,35 @@ Newest first. One `## X.Y.Z` section per release, written by hand **before** run
 `scripts/bump-version.sh X.Y.Z`. `scripts/release-notes.sh X.Y.Z` extracts a section as the
 GitHub Release body; the release workflow fails if the tagged version has no section here.
 
+## 0.6.2
+
+Shortcut reliability fixes, preserved usage history, and fresher stats.
+
+- **Fn shortcuts fire again** — bindings that use the Fn key were registered
+  without the Fn modifier, so they could stay silent or trigger on the bare
+  key instead.
+- **Shortcut capture recovers cleanly after interruptions** — a system
+  timeout, a permission change, or a failed re-registration could leave
+  capture half-active while Settings still reported it as ready. Those paths
+  now restore fully, retry only what is missing, and report their real state.
+- **Toggling off waits for real evidence** — when macOS cannot tell Wink
+  whether a target app still has windows, Wink no longer treats that silence
+  as proof the app was hidden, and an app that stops responding can no longer
+  stall the keypress path.
+- **Usage history survives a language change** — under Arabic and Persian
+  system languages Wink recorded dates in localized digits, which made past
+  activity disappear from Insights. Existing history is converted
+  automatically the first time you open this version.
+- **Settings explains a failed Launch at Login** — the switch used to snap
+  back with no message; it now says what went wrong and offers to open Login
+  Items.
+- **Fresher, faster stats** — Insights and the Shortcuts list update when you
+  come back to Wink, and "Last used" no longer slows down as usage history
+  grows.
+- **Damaged shortcut files are refused, not silently loaded** — a file
+  containing duplicate shortcut entries is now rejected and preserved for
+  inspection instead of being partially applied.
+
 ## 0.6.1
 
 Accessibility, a false-positive warning fix, and interface polish.
