@@ -76,6 +76,12 @@ enum WinkPalette {
 
         // Misc
         let heatmapEmpty: Color
+        /// Base color for occupied heatmap cells (applied at 0.18–0.90
+        /// opacity). Deliberately brighter than `accent` in light mode:
+        /// large fields of the deep AA-safe accent read coffee-brown, while
+        /// this marigold cut keeps the heatmap lively. No text sits on
+        /// heatmap cells, so it carries no contrast obligation.
+        let heatmapTint: Color
         let focusRing: Color
 
         /// Fixed neutral grey for the "no app chosen" placeholder swatch.
@@ -130,7 +136,8 @@ enum WinkPalette {
         amberBgSoft:      .winkSRGB(0xE0, 0x8A, 0x00, 0.10),
 
         heatmapEmpty:   .winkBlack(0.04),
-        focusRing:      .winkSRGB(0xE0, 0x8A, 0x00, 0.40),
+        heatmapTint:    .winkSRGB(0xE0, 0x8A, 0x00),
+        focusRing:      .winkSRGB(0xE0, 0x8A, 0x00, 0.35),
 
         appPlaceholderSwatchBg: .winkSRGB(0xD8, 0xD8, 0xD8)
     )
@@ -184,6 +191,7 @@ enum WinkPalette {
         amberBgSoft:      .winkSRGB(0xFF, 0xB4, 0x54, 0.15),
 
         heatmapEmpty:   .winkWhite(0.04),
+        heatmapTint:    .winkSRGB(0xFF, 0xB4, 0x54),
         focusRing:      .winkSRGB(0xFF, 0xB4, 0x54, 0.45),
 
         appPlaceholderSwatchBg: .winkSRGB(0x5A, 0x5A, 0x5C)
