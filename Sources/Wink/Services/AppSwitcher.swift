@@ -777,7 +777,24 @@ final class AppSwitcher: AppSwitching {
     }
 
     @discardableResult
-    func toggleApplication(for shortcut: AppShortcut) -> Bool {
+    func toggleApplication(for requestedShortcut: AppShortcut) -> Bool {
+        let shortcut: AppShortcut
+        if requestedShortcut.isFrontmostAppTarget {
+            guard let resolved = resolveFrontmostAppTarget(requestedShortcut) else {
+                logToggleTrace(
+                    family: .decision,
+                    bundleIdentifier: requestedShortcut.bundleIdentifier,
+                    event: "blocked",
+                    reason: "frontmost_target_unresolved",
+                    activationPath: nil
+                )
+                return false
+            }
+            shortcut = resolved
+        } else {
+            shortcut = requestedShortcut
+        }
+
         let attemptStartedAt = confirmationClient.now()
 
         // Re-entry guard
@@ -1056,18 +1073,23 @@ final class AppSwitcher: AppSwitching {
                     return true
                 }
                 // Fewer than two cyclable windows (or a windows read failure
-                // with no gesture in flight): fall through to standard
-                // toggle semantics so the shortcut keeps its "step aside"
-                // ability.
+                // with no gesture in flight). A frontmost-app pseudo-target
+                // ends here as a no-op — "cycle the current app" must never
+                // hide the app the user is working in. Concrete-app
+                // shortcuts fall through to standard toggle semantics so
+                // they keep their "step aside" ability.
                 logToggleTrace(
                     family: .decision,
                     bundleIdentifier: shortcut.bundleIdentifier,
-                    event: "cycle_fallback",
+                    event: shortcut.isFrontmostAppTarget ? "cycle_noop" : "cycle_fallback",
                     reason: preActionWindowObservation.windowsReadSucceeded
                         ? "insufficient_cyclable_windows"
                         : "windows_read_failed",
                     activationPath: nil
                 )
+                if shortcut.isFrontmostAppTarget {
+                    return true
+                }
             case .toggle:
                 break
             }
@@ -1506,6 +1528,30 @@ final class AppSwitcher: AppSwitching {
     /// override when set, the global preference otherwise.
     private func effectiveFrontmostBehavior(for shortcut: AppShortcut) -> FrontmostTargetBehavior {
         shortcut.frontmostBehaviorOverride ?? frontmostTargetBehavior
+    }
+
+    /// Rewrite a frontmost-app pseudo-target onto the app that is frontmost
+    /// right now, so the rest of the pipeline (cooldown keying, cycle
+    /// session identity, traces, usage) sees a concrete bundle. The copy
+    /// keeps `target` so downstream lanes can tell it came from a
+    /// pseudo-target, and defaults the behavior to Cycle — the whole point
+    /// of the key — unless the user explicitly overrode it.
+    private func resolveFrontmostAppTarget(_ shortcut: AppShortcut) -> AppShortcut? {
+        guard let frontmostApp = frontmostTracker.currentFrontmostApplication(),
+              let bundleIdentifier = frontmostApp.bundleIdentifier,
+              bundleIdentifier != Bundle.main.bundleIdentifier else {
+            return nil
+        }
+        return AppShortcut(
+            id: shortcut.id,
+            appName: frontmostApp.localizedName ?? bundleIdentifier,
+            bundleIdentifier: bundleIdentifier,
+            keyEquivalent: shortcut.keyEquivalent,
+            modifierFlags: shortcut.modifierFlags,
+            isEnabled: shortcut.isEnabled,
+            frontmostBehaviorOverride: shortcut.frontmostBehaviorOverride ?? .cycleWindows,
+            target: shortcut.target
+        )
     }
 
     // MARK: - Toggle-off lanes

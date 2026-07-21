@@ -57,7 +57,7 @@ struct WinkRecipeCodecTests {
         let payload = Data(
             """
             {
-              "schemaVersion": 2,
+              "schemaVersion": 3,
               "shortcuts": []
             }
             """.utf8
@@ -68,5 +68,20 @@ struct WinkRecipeCodecTests {
         #expect(throws: WinkRecipeCodec.Error.self) {
             try codec.decode(payload)
         }
+    }
+
+    @Test
+    func acceptsFrontmostTargetSchemaVersion() throws {
+        let payload = Data(
+            """
+            {
+              "schemaVersion": 2,
+              "shortcuts": []
+            }
+            """.utf8
+        )
+
+        let recipe = try WinkRecipeCodec().decode(payload)
+        #expect(recipe.schemaVersion == 2)
     }
 }

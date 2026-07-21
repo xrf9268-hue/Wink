@@ -2,15 +2,28 @@ import Foundation
 
 struct WinkRecipe: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 1
+    /// Version written when a recipe contains features older builds must
+    /// reject cleanly (frontmost-app targets): those builds' strict
+    /// version check fails with unsupportedSchemaVersion instead of
+    /// importing rows they would render as dead sentinels.
+    static let frontmostTargetSchemaVersion = 2
+    static let supportedSchemaVersions = 1...2
 
     var schemaVersion: Int
     var shortcuts: [WinkRecipeShortcut]
 
     init(
-        schemaVersion: Int = WinkRecipe.currentSchemaVersion,
+        schemaVersion: Int? = nil,
         shortcuts: [WinkRecipeShortcut]
     ) {
-        self.schemaVersion = schemaVersion
+        // Content-driven default: plain recipes stay v1 for maximum
+        // compatibility; only recipes carrying frontmost-app targets pay
+        // the v2 rejection on older builds.
+        self.schemaVersion = schemaVersion ?? (
+            shortcuts.contains { $0.shortcutTarget == .frontmostApp }
+                ? WinkRecipe.frontmostTargetSchemaVersion
+                : WinkRecipe.currentSchemaVersion
+        )
         self.shortcuts = shortcuts
     }
 
@@ -29,6 +42,10 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
     /// behavior value this build doesn't know, and older builds simply
     /// ignore the extra optional key. Mapped to the enum at import time.
     var frontmostBehaviorOverride: String?
+    /// Raw string for the same leniency reasons; `.frontmostApp` content
+    /// additionally bumps the recipe's schema version so pre-target builds
+    /// reject the file cleanly.
+    var target: String?
 
     init(
         appName: String,
@@ -36,7 +53,8 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
         keyEquivalent: String,
         modifierFlags: [String],
         isEnabled: Bool,
-        frontmostBehaviorOverride: String? = nil
+        frontmostBehaviorOverride: String? = nil,
+        target: String? = nil
     ) {
         self.appName = appName
         self.bundleIdentifier = bundleIdentifier
@@ -44,6 +62,7 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
         self.modifierFlags = modifierFlags
         self.isEnabled = isEnabled
         self.frontmostBehaviorOverride = frontmostBehaviorOverride
+        self.target = target
     }
 
     init(_ shortcut: AppShortcut) {
@@ -53,7 +72,8 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
             keyEquivalent: shortcut.keyEquivalent,
             modifierFlags: shortcut.modifierFlags,
             isEnabled: shortcut.isEnabled,
-            frontmostBehaviorOverride: shortcut.frontmostBehaviorOverride?.rawValue
+            frontmostBehaviorOverride: shortcut.frontmostBehaviorOverride?.rawValue,
+            target: shortcut.target?.rawValue
         )
     }
 
@@ -61,5 +81,10 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
     /// the global setting".
     var behaviorOverride: FrontmostTargetBehavior? {
         frontmostBehaviorOverride.flatMap(FrontmostTargetBehavior.init(rawValue:))
+    }
+
+    /// Lenient enum mapping: absent or unknown raw values mean `.app`.
+    var shortcutTarget: ShortcutTarget? {
+        target.flatMap(ShortcutTarget.init(rawValue:))
     }
 }
