@@ -1066,3 +1066,39 @@ func manualAndExceptionPausesComposeWithManualWinning() {
     manager.setAutoPausedByException(false)
     #expect(manager.shortcutCaptureStatus().shortcutsPaused == false)
 }
+
+@Test @MainActor
+func captureStatusReflectsSecureInputProbeAndPollNotifiesOnChange() {
+    let shortcutStore = ShortcutStore()
+    var secureInput = false
+    var statusChangeNotifications = 0
+    let manager = ShortcutManager(
+        shortcutStore: shortcutStore,
+        persistenceService: TestPersistenceHarness().makePersistenceService(),
+        appSwitcher: FakeAppSwitcher(),
+        captureCoordinator: ShortcutCaptureCoordinator(
+            standardProvider: FakeCaptureProvider(),
+            hyperProvider: FakeHyperCaptureProvider()
+        ),
+        permissionService: FakePermissionService(ax: true, input: false),
+        secureInputProbe: { secureInput },
+        diagnosticClient: .init(log: { _ in })
+    )
+    manager.onCaptureStatusChange = {
+        statusChangeNotifications += 1
+    }
+
+    #expect(manager.shortcutCaptureStatus().secureInputActive == false)
+
+    secureInput = true
+    #expect(manager.shortcutCaptureStatus().secureInputActive == true)
+
+    // The 3s poll notifies exactly once per transition, both directions.
+    manager.checkPermissionChange()
+    #expect(statusChangeNotifications == 1)
+    manager.checkPermissionChange()
+    #expect(statusChangeNotifications == 1)
+    secureInput = false
+    manager.checkPermissionChange()
+    #expect(statusChangeNotifications == 2)
+}

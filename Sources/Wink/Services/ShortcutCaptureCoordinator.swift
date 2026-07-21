@@ -122,7 +122,8 @@ final class ShortcutCaptureCoordinator {
 
     func status(
         accessibilityGranted: Bool,
-        inputMonitoringGranted: Bool
+        inputMonitoringGranted: Bool,
+        secureInputActive: Bool = false
     ) -> ShortcutCaptureStatus {
         let standardRegistrationState = standardProvider.registrationState
         let standardShortcutCount = standardRegistrationState.desiredShortcutCount
@@ -154,7 +155,8 @@ final class ShortcutCaptureCoordinator {
             standardShortcutCount: standardShortcutCount,
             registeredStandardShortcutCount: standardRegistrationState.registeredShortcutCount,
             standardHandlerState: standardRegistrationState.handlerState,
-            standardRegistrationFailures: standardRegistrationState.failures
+            standardRegistrationFailures: standardRegistrationState.failures,
+            secureInputActive: secureInputActive
         )
     }
 

@@ -92,6 +92,10 @@ final class MenuBarPopoverModel {
         preferences.autoPauseTriggerAppName
     }
 
+    var secureInputActive: Bool {
+        preferences.shortcutCaptureStatus.secureInputActive
+    }
+
     var isCheckForUpdatesEnabled: Bool {
         preferences.updatePresentation.checkForUpdatesEnabled
     }
@@ -310,7 +314,8 @@ struct MenuBarPopoverView: View {
 
             MenuBarStatusPill(
                 paused: model.shortcutsPaused || model.autoPauseTriggerAppName != nil,
-                autoPausedBy: model.autoPauseTriggerAppName
+                autoPausedBy: model.autoPauseTriggerAppName,
+                secureInputActive: model.secureInputActive
             )
         }
     }
@@ -461,9 +466,14 @@ private struct MenuBarStatusPill: View {
 
     let paused: Bool
     var autoPausedBy: String?
+    var secureInputActive: Bool = false
 
     private var title: String {
-        guard paused else { return "Ready" }
+        guard paused else {
+            // Secure Input silently starves the Hyper/event-tap route;
+            // name it instead of showing a false "Ready".
+            return secureInputActive ? "Limited · Secure Input" : "Ready"
+        }
         // Exception auto-pause names its trigger so "my shortcuts are
         // dead" never reads as a mystery.
         if let autoPausedBy {
@@ -472,16 +482,23 @@ private struct MenuBarStatusPill: View {
         return "Paused"
     }
 
+    private var degraded: Bool {
+        paused || secureInputActive
+    }
+
     private var background: Color {
-        paused ? palette.amberBgSoft : palette.greenSoft
+        degraded ? palette.amberBgSoft : palette.greenSoft
     }
 
     private var foreground: Color {
-        paused ? palette.amber : palette.green
+        degraded ? palette.amber : palette.green
     }
 
     var body: some View {
         Text(title)
+            .help(secureInputActive && !paused
+                ? "A password field or secure prompt is capturing keyboard input. Hyper shortcuts may not fire until it ends; standard shortcuts keep working."
+                : "")
             .font(WinkType.labelSmall.weight(.semibold))
             .foregroundStyle(foreground)
             .padding(.horizontal, 8)

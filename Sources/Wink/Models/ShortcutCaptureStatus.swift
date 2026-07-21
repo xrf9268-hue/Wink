@@ -11,6 +11,10 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
     let registeredStandardShortcutCount: Int
     let standardHandlerState: ShortcutCaptureHandlerState
     let standardRegistrationFailures: [ShortcutCaptureRegistrationFailure]
+    /// macOS Secure Event Input is engaged (password field, secure prompt):
+    /// the Hyper/event-tap route stops receiving key events until it ends.
+    /// Surfaced so degradation is visible instead of silent.
+    let secureInputActive: Bool
 
     init(
         accessibilityGranted: Bool,
@@ -24,10 +28,12 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
         standardShortcutCount: Int = 0,
         registeredStandardShortcutCount: Int = 0,
         standardHandlerState: ShortcutCaptureHandlerState = .installed,
-        standardRegistrationFailures: [ShortcutCaptureRegistrationFailure] = []
+        standardRegistrationFailures: [ShortcutCaptureRegistrationFailure] = [],
+        secureInputActive: Bool = false
     ) {
         self.accessibilityGranted = accessibilityGranted
         self.inputMonitoringGranted = inputMonitoringGranted
+        self.secureInputActive = secureInputActive
         self.inputMonitoringRequired = inputMonitoringRequired
         self.carbonHotKeysRegistered = carbonHotKeysRegistered
         self.eventTapActive = eventTapActive
