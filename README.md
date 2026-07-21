@@ -46,10 +46,12 @@ Always launch the packaged app with `open build/Wink.app` when testing permissio
 Wink exposes its toggle semantics on a `wink://` URL scheme, so Raycast, Karabiner, BetterTouchTool, Stream Deck, or plain shell scripts can drive it — including the SkyLight forced activation that scripts cannot perform themselves:
 
 ```bash
-open "wink://toggle?bundle=com.google.Chrome"   # toggle an installed app
-open "wink://pause"                             # pause all shortcuts
-open "wink://resume"                            # resume
+open -g "wink://toggle?bundle=com.google.Chrome"   # toggle an installed app
+open -g "wink://pause"                             # pause all shortcuts
+open -g "wink://resume"                            # resume
 ```
+
+Use `open -g` (background): a plain `open` activates Wink to deliver the URL, which makes the target count as "not frontmost" and turns every toggle into an activate.
 
 Unknown commands and uninstalled bundles are logged and ignored. Automation presses respect the per-bundle cooldown but never count toward Insights usage.
 
