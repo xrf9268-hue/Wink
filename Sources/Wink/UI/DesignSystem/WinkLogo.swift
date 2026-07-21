@@ -53,7 +53,8 @@ struct Logo_WinkTwin: View {
     }
 }
 
-/// Product app icon — Twin on a violet→blue gradient squircle. Used in
+/// Product app icon — amber Twin on an ink-navy gradient squircle
+/// (2026-07 amber rebrand, matching the landing-page identity). Used in
 /// the menu bar popover header, About card and dock icon (Phase 4).
 ///
 /// Two overlays stacked on the gradient mirror the JSX source:
@@ -73,19 +74,19 @@ struct WinkAppIcon: View {
             .fill(
                 LinearGradient(
                     colors: [
-                        .winkSRGB(0x8A, 0x5B, 0xE3),  // #8A5BE3
-                        .winkSRGB(0x5E, 0x3F, 0xC7),  // #5E3FC7
-                        .winkSRGB(0x4A, 0x7B, 0xE8)   // #4A7BE8
+                        .winkSRGB(0x1E, 0x26, 0x38),  // #1E2638
+                        .winkSRGB(0x10, 0x14, 0x1E),  // #10141E
+                        .winkSRGB(0x0A, 0x0D, 0x14)   // #0A0D14
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
             )
             .overlay(
-                // Inset top highlight — fades from a 35% white wash at the
-                // very top to clear by the vertical midpoint.
+                // Inset top highlight — a subtle 18% white wash (the old 35%
+                // read milky on the dark ink tile) fading out by mid-tile.
                 LinearGradient(
-                    colors: [.winkWhite(0.35), .clear],
+                    colors: [.winkWhite(0.18), .clear],
                     startPoint: .top,
                     endPoint: .center
                 )
@@ -93,7 +94,7 @@ struct WinkAppIcon: View {
                 .allowsHitTesting(false)
             )
             .overlay(
-                Logo_WinkTwin(size: size * 0.7, color: .white)
+                Logo_WinkTwin(size: size * 0.7, color: .winkSRGB(0xFF, 0xB4, 0x54))
             )
             .frame(width: size, height: size)
             .shadow(color: .winkBlack(0.12), radius: 1, y: 0.5)

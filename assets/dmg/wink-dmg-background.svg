@@ -9,11 +9,11 @@
       <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.54" />
       <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
     </radialGradient>
-    <radialGradient id="violetWash" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+    <radialGradient id="amberWash" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
       gradientTransform="translate(120 366) rotate(-8) scale(274 188)">
-      <stop offset="0%" stop-color="#8A5BE3" stop-opacity="0.10" />
-      <stop offset="68%" stop-color="#5E3FC7" stop-opacity="0.05" />
-      <stop offset="100%" stop-color="#5E3FC7" stop-opacity="0" />
+      <stop offset="0%" stop-color="#E08A00" stop-opacity="0.10" />
+      <stop offset="68%" stop-color="#C77100" stop-opacity="0.05" />
+      <stop offset="100%" stop-color="#C77100" stop-opacity="0" />
     </radialGradient>
     <radialGradient id="iconHaloLeft" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
       gradientTransform="translate(122 300) scale(118 104)">
@@ -28,23 +28,23 @@
       <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
     </radialGradient>
     <linearGradient id="arrowStroke" x1="254" y1="306" x2="426" y2="306" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#8A5BE3" stop-opacity="0.42" />
-      <stop offset="55%" stop-color="#5E3FC7" stop-opacity="0.62" />
-      <stop offset="100%" stop-color="#4A7BE8" stop-opacity="0.42" />
+      <stop offset="0%" stop-color="#C77100" stop-opacity="0.42" />
+      <stop offset="55%" stop-color="#A8620A" stop-opacity="0.62" />
+      <stop offset="100%" stop-color="#E08A00" stop-opacity="0.42" />
     </linearGradient>
     <filter id="lowShadow" x="-30%" y="-80%" width="160%" height="260%">
       <feGaussianBlur stdDeviation="17" />
     </filter>
     <filter id="arrowShadow" x="-20%" y="-100%" width="160%" height="300%">
-      <feDropShadow dx="0" dy="7" stdDeviation="10" flood-color="#5E3FC7" flood-opacity="0.15" />
+      <feDropShadow dx="0" dy="7" stdDeviation="10" flood-color="#A8620A" flood-opacity="0.15" />
     </filter>
   </defs>
 
   <rect width="680" height="429" fill="url(#paper)" />
   <rect width="680" height="429" fill="url(#topWash)" />
-  <rect width="680" height="429" fill="url(#violetWash)" />
+  <rect width="680" height="429" fill="url(#amberWash)" />
 
-  <g opacity="0.08" fill="#5E3FC7" transform="translate(460 -30) scale(8.75)">
+  <g opacity="0.08" fill="#A8620A" transform="translate(460 -30) scale(8.75)">
     <path
       d="M12 7 a9 9 0 1 0 0 18 a9 9 0 1 0 0 -18 Z M15.2 5.4 a8 8 0 1 1 0 16 a8 8 0 1 1 0 -16 Z"
       fill-rule="evenodd"
@@ -54,7 +54,7 @@
 
   <g font-family="SF Pro Display, SF Pro Text, -apple-system, BlinkMacSystemFont, Helvetica Neue, Arial, sans-serif"
     text-anchor="start">
-    <text x="44" y="44" font-size="11" font-weight="760" fill="#5E3FC7" opacity="0.85">
+    <text x="44" y="44" font-size="11" font-weight="760" fill="#A8620A" opacity="0.85">
       INSTALL
     </text>
     <text x="44" y="76" font-size="28" font-weight="720" fill="#2A2021">
@@ -71,14 +71,14 @@
   <ellipse cx="122" cy="300" rx="120" ry="104" fill="url(#iconHaloLeft)" />
   <ellipse cx="558" cy="300" rx="120" ry="104" fill="url(#iconHaloRight)" />
   <g filter="url(#lowShadow)" opacity="0.24">
-    <ellipse cx="122" cy="325" rx="62" ry="13" fill="#5E3FC7" />
-    <ellipse cx="558" cy="325" rx="62" ry="13" fill="#4A7BE8" />
+    <ellipse cx="122" cy="325" rx="62" ry="13" fill="#1E2638" />
+    <ellipse cx="558" cy="325" rx="62" ry="13" fill="#1E2638" />
   </g>
 
   <g filter="url(#arrowShadow)">
-    <circle cx="254" cy="306" r="1.7" fill="#5E3FC7" opacity="0.28" />
-    <circle cx="268" cy="306" r="1.7" fill="#5E3FC7" opacity="0.36" />
-    <circle cx="282" cy="306" r="1.7" fill="#5E3FC7" opacity="0.44" />
+    <circle cx="254" cy="306" r="1.7" fill="#A8620A" opacity="0.28" />
+    <circle cx="268" cy="306" r="1.7" fill="#A8620A" opacity="0.36" />
+    <circle cx="282" cy="306" r="1.7" fill="#A8620A" opacity="0.44" />
     <path
       d="M298 306 C332 312 365 312 398 306 C410 304 419 301 426 297"
       fill="none"

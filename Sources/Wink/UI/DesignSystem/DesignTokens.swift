@@ -54,13 +54,18 @@ enum WinkPalette {
         let fieldBorder: Color
         let progressTrackBg: Color
 
-        // Accents
+        // Accents.
+        //
+        // The brand accent is Wink amber (2026-07 rebrand, matching the
+        // landing page / design-system identity). `amber` remains a separate
+        // semantic token for warn/attention states but intentionally shares
+        // the accent values — warn states are distinguished by icon and
+        // context, never by hue alone. The former `violet` Hyper tokens are
+        // gone: Hyper is the brand moment, so it wears the accent.
         let accent: Color
         let accentHover: Color
         let accentBgSoft: Color
         let accentBorderSoft: Color
-        let violet: Color
-        let violetBgSoft: Color
         let green: Color
         let greenSoft: Color
         let red: Color
@@ -109,22 +114,23 @@ enum WinkPalette {
         fieldBorder:    .winkBlack(0.10),
         progressTrackBg: .winkBlack(0.04),
 
-        accent:           .winkSRGB(0x00, 0x64, 0xE0),
-        accentHover:      .winkSRGB(0x00, 0x4F, 0xC2),
-        accentBgSoft:     .winkSRGB(0x00, 0x64, 0xE0, 0.08),
-        accentBorderSoft: .winkSRGB(0x00, 0x64, 0xE0, 0.18),
-        violet:           .winkSRGB(0x6B, 0x48, 0xC9),
-        violetBgSoft:     .winkSRGB(0x6B, 0x48, 0xC9, 0.10),
+        // Deep amber: 4.75:1 against white, so textOnAccent (.white) stays AA
+        // on filled controls. Soft tints use the brighter #E08A00 so washes
+        // read warm rather than brown.
+        accent:           .winkSRGB(0xA8, 0x62, 0x0A),
+        accentHover:      .winkSRGB(0x96, 0x59, 0x0A),
+        accentBgSoft:     .winkSRGB(0xE0, 0x8A, 0x00, 0.10),
+        accentBorderSoft: .winkSRGB(0xE0, 0x8A, 0x00, 0.22),
         green:            .winkSRGB(0x2E, 0xA0, 0x45),
         greenSoft:        .winkSRGB(0x2E, 0xA0, 0x45, 0.10),
         red:              .winkSRGB(0xD1, 0x3B, 0x3B),
         redBgSoft:        .winkSRGB(0xD1, 0x3B, 0x3B, 0.08),
         redBorderSoft:    .winkSRGB(0xD1, 0x3B, 0x3B, 0.20),
-        amber:            .winkSRGB(0xC7, 0x78, 0x00),
-        amberBgSoft:      .winkSRGB(0xC7, 0x78, 0x00, 0.10),
+        amber:            .winkSRGB(0xA8, 0x62, 0x0A),
+        amberBgSoft:      .winkSRGB(0xE0, 0x8A, 0x00, 0.10),
 
         heatmapEmpty:   .winkBlack(0.04),
-        focusRing:      .winkSRGB(0x00, 0x64, 0xE0, 0.35),
+        focusRing:      .winkSRGB(0xE0, 0x8A, 0x00, 0.40),
 
         appPlaceholderSwatchBg: .winkSRGB(0xD8, 0xD8, 0xD8)
     )
@@ -150,7 +156,9 @@ enum WinkPalette {
         textPrimary:    .winkWhite(0.92),
         textSecondary:  .winkSRGB(0xEB, 0xEB, 0xF5, 0.55),
         textTertiary:   .winkSRGB(0xEB, 0xEB, 0xF5, 0.32),
-        textOnAccent:   .white,
+        // Dark ink on the bright amber fill (≈10.9:1) — white would be
+        // illegible on #FFB454. Mirrors the landing page's dark-theme CTA.
+        textOnAccent:   .winkSRGB(0x1A, 0x12, 0x06),
 
         hairline:        .winkWhite(0.08),
         hairlineStrong:  .winkWhite(0.14),
@@ -163,22 +171,20 @@ enum WinkPalette {
         fieldBorder:    .winkWhite(0.08),
         progressTrackBg: .winkWhite(0.05),
 
-        accent:           .winkSRGB(0x2A, 0x8F, 0xFF),
-        accentHover:      .winkSRGB(0x4A, 0xA0, 0xFF),
-        accentBgSoft:     .winkSRGB(0x2A, 0x8F, 0xFF, 0.16),
-        accentBorderSoft: .winkSRGB(0x2A, 0x8F, 0xFF, 0.28),
-        violet:           .winkSRGB(0xA6, 0x89, 0xF0),
-        violetBgSoft:     .winkSRGB(0xA6, 0x89, 0xF0, 0.18),
+        accent:           .winkSRGB(0xFF, 0xB4, 0x54),
+        accentHover:      .winkSRGB(0xFF, 0xC3, 0x77),
+        accentBgSoft:     .winkSRGB(0xFF, 0xB4, 0x54, 0.15),
+        accentBorderSoft: .winkSRGB(0xFF, 0xB4, 0x54, 0.30),
         green:            .winkSRGB(0x40, 0xC0, 0x60),
         greenSoft:        .winkSRGB(0x40, 0xC0, 0x60, 0.16),
         red:              .winkSRGB(0xFF, 0x5F, 0x58),
         redBgSoft:        .winkSRGB(0xFF, 0x5F, 0x58, 0.12),
         redBorderSoft:    .winkSRGB(0xFF, 0x5F, 0x58, 0.24),
-        amber:            .winkSRGB(0xF5, 0xB5, 0x3F),
-        amberBgSoft:      .winkSRGB(0xF5, 0xB5, 0x3F, 0.14),
+        amber:            .winkSRGB(0xFF, 0xB4, 0x54),
+        amberBgSoft:      .winkSRGB(0xFF, 0xB4, 0x54, 0.15),
 
         heatmapEmpty:   .winkWhite(0.04),
-        focusRing:      .winkSRGB(0x2A, 0x8F, 0xFF, 0.45),
+        focusRing:      .winkSRGB(0xFF, 0xB4, 0x54, 0.45),
 
         appPlaceholderSwatchBg: .winkSRGB(0x5A, 0x5A, 0x5C)
     )

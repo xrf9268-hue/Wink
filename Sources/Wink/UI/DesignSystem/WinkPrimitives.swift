@@ -216,10 +216,10 @@ struct WinkHyperBadge: View {
         Text("HYPER")
             .font(font)
             .tracking(0.4)
-            .foregroundStyle(palette.violet)
+            .foregroundStyle(palette.accent)
             .padding(.horizontal, 6)
             .frame(minHeight: height)
-            .background(palette.violetBgSoft)
+            .background(palette.accentBgSoft)
             .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
     }
 }

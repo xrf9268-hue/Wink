@@ -14,7 +14,9 @@ struct ShortcutRecorderView: View {
     @State private var errorMessage: String?
 
     private var tint: Color {
-        errorMessage == nil ? palette.accent : palette.amber
+        // Red, not amber: warn-amber now shares the brand accent hue, so an
+        // amber error state would be indistinguishable from idle recording.
+        errorMessage == nil ? palette.accent : palette.red
     }
 
     var body: some View {

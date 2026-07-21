@@ -20,15 +20,14 @@ struct DesignTokensTests {
     @Test
     func lightTokensMatchDesignSpec() {
         let l = WinkPalette.light
-        // Spot-check the values that anchor the v2 design — chrome, accent,
-        // green status, hyper violet, hairline.
+        // Spot-check the values that anchor the design — chrome, the amber
+        // brand accent (2026-07 rebrand), green status, hairline.
         assertSRGB(l.chromeBg, expected: (0xEC, 0xEC, 0xEC, 1.0))
         assertSRGB(l.windowBg, expected: (0xF5, 0xF5, 0xF5, 1.0))
         assertSRGB(l.cardBg,   expected: (0xFF, 0xFF, 0xFF, 1.0))
-        assertSRGB(l.accent,   expected: (0x00, 0x64, 0xE0, 1.0))
-        assertSRGB(l.violet,   expected: (0x6B, 0x48, 0xC9, 1.0))
+        assertSRGB(l.accent,   expected: (0xA8, 0x62, 0x0A, 1.0))
         assertSRGB(l.green,    expected: (0x2E, 0xA0, 0x45, 1.0))
-        assertSRGB(l.amber,    expected: (0xC7, 0x78, 0x00, 1.0))
+        assertSRGB(l.amber,    expected: (0xA8, 0x62, 0x0A, 1.0))
         assertSRGB(l.hairline, expected: (0x00, 0x00, 0x00, 0.08))
         assertSRGB(l.textPrimary, expected: (0x00, 0x00, 0x00, 0.88))
     }
@@ -39,10 +38,9 @@ struct DesignTokensTests {
         assertSRGB(d.chromeBg, expected: (0x2C, 0x2C, 0x2E, 1.0))
         assertSRGB(d.windowBg, expected: (0x1C, 0x1C, 0x1E, 1.0))
         assertSRGB(d.cardBg,   expected: (0x23, 0x23, 0x26, 1.0))
-        assertSRGB(d.accent,   expected: (0x2A, 0x8F, 0xFF, 1.0))
-        assertSRGB(d.violet,   expected: (0xA6, 0x89, 0xF0, 1.0))
+        assertSRGB(d.accent,   expected: (0xFF, 0xB4, 0x54, 1.0))
         assertSRGB(d.green,    expected: (0x40, 0xC0, 0x60, 1.0))
-        assertSRGB(d.amber,    expected: (0xF5, 0xB5, 0x3F, 1.0))
+        assertSRGB(d.amber,    expected: (0xFF, 0xB4, 0x54, 1.0))
         assertSRGB(d.hairline, expected: (0xFF, 0xFF, 0xFF, 0.08))
         assertSRGB(d.textPrimary, expected: (0xFF, 0xFF, 0xFF, 0.92))
     }
