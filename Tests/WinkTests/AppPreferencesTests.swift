@@ -48,6 +48,164 @@ func setLaunchAtLoginDoesNotUpdateStateWhenRegistrationFails() {
 
     #expect(preferences.launchAtLoginStatus == .disabled)
     #expect(preferences.launchAtLoginEnabled == false)
+    #expect(preferences.launchAtLoginMutationFailure == LaunchAtLoginMutationFailure(
+        mutation: .register,
+        reason: TestError.registerFailed.localizedDescription
+    ))
+    let presentation = preferences.launchAtLoginPresentation
+    #expect(presentation.toggleIsOn == false)
+    #expect(presentation.toggleIsEnabled == true)
+    #expect(presentation.messageStyle == .error)
+    #expect(presentation.message == "Wink couldn't enable Launch at Login: register denied by policy. Try again, or manage it in System Settings › Login Items.")
+    #expect(presentation.showsOpenSettingsButton == true)
+}
+
+@Test @MainActor
+func setLaunchAtLoginSurfacesUnregisterFailureWhenUnregistrationFails() {
+    let state = MutableLaunchAtLoginState(status: .enabled)
+    state.unregisterError = TestError.unregisterFailed
+    let preferences = makePreferences(state: state)
+
+    preferences.setLaunchAtLogin(false)
+
+    #expect(preferences.launchAtLoginStatus == .enabled)
+    #expect(preferences.launchAtLoginEnabled == true)
+    #expect(preferences.launchAtLoginMutationFailure == LaunchAtLoginMutationFailure(
+        mutation: .unregister,
+        reason: TestError.unregisterFailed.localizedDescription
+    ))
+    let presentation = preferences.launchAtLoginPresentation
+    #expect(presentation.toggleIsOn == true)
+    #expect(presentation.toggleIsEnabled == true)
+    #expect(presentation.messageStyle == .error)
+    #expect(presentation.message == "Wink couldn't disable Launch at Login: unregister denied by policy. Try again, or manage it in System Settings › Login Items.")
+    #expect(presentation.showsOpenSettingsButton == true)
+}
+
+@Test @MainActor
+func setLaunchAtLoginClearsRegisterFailureAfterSuccessfulRetry() {
+    let state = MutableLaunchAtLoginState(status: .notRegistered)
+    state.registerError = TestError.registerFailed
+    let preferences = makePreferences(state: state)
+
+    preferences.setLaunchAtLogin(true)
+    #expect(preferences.launchAtLoginMutationFailure != nil)
+
+    state.registerError = nil
+    preferences.setLaunchAtLogin(true)
+
+    #expect(preferences.launchAtLoginMutationFailure == nil)
+    #expect(preferences.launchAtLoginStatus == .enabled)
+    let presentation = preferences.launchAtLoginPresentation
+    #expect(presentation.toggleIsOn == true)
+    #expect(presentation.toggleIsEnabled == true)
+    #expect(presentation.message == nil)
+    #expect(presentation.messageStyle == .none)
+    #expect(presentation.showsOpenSettingsButton == false)
+}
+
+@Test @MainActor
+func setLaunchAtLoginClearsUnregisterFailureAfterSuccessfulRetry() {
+    let state = MutableLaunchAtLoginState(status: .enabled)
+    state.unregisterError = TestError.unregisterFailed
+    let preferences = makePreferences(state: state)
+
+    preferences.setLaunchAtLogin(false)
+    #expect(preferences.launchAtLoginMutationFailure != nil)
+
+    state.unregisterError = nil
+    preferences.setLaunchAtLogin(false)
+
+    #expect(preferences.launchAtLoginMutationFailure == nil)
+    #expect(preferences.launchAtLoginStatus == .disabled)
+    let presentation = preferences.launchAtLoginPresentation
+    #expect(presentation.toggleIsOn == false)
+    #expect(presentation.toggleIsEnabled == true)
+    #expect(presentation.message == nil)
+    #expect(presentation.messageStyle == .none)
+    #expect(presentation.showsOpenSettingsButton == false)
+}
+
+@Test @MainActor
+func refreshLaunchAtLoginStatusClearsStaleRegisterFailureWhenEnabledExternally() {
+    let state = MutableLaunchAtLoginState(status: .notRegistered)
+    state.registerError = TestError.registerFailed
+    let preferences = makePreferences(state: state)
+
+    preferences.setLaunchAtLogin(true)
+    #expect(preferences.launchAtLoginMutationFailure != nil)
+
+    // User fixes it in System Settings › Login Items.
+    state.status = .enabled
+    preferences.refreshLaunchAtLoginStatus()
+
+    #expect(preferences.launchAtLoginMutationFailure == nil)
+    #expect(preferences.launchAtLoginStatus == .enabled)
+    let presentation = preferences.launchAtLoginPresentation
+    #expect(presentation.toggleIsOn == true)
+    #expect(presentation.message == nil)
+    #expect(presentation.messageStyle == .none)
+    #expect(presentation.showsOpenSettingsButton == false)
+}
+
+@Test @MainActor
+func launchAtLoginMutationFailureDoesNotOverrideRequiresApprovalPresentation() {
+    // A failed unregister that leaves the service awaiting approval keeps
+    // the failure recorded, but the .requiresApproval branch retains its
+    // more specific informational copy.
+    let state = MutableLaunchAtLoginState(status: .requiresApproval)
+    state.unregisterError = TestError.unregisterFailed
+    let preferences = makePreferences(state: state)
+
+    preferences.setLaunchAtLogin(false)
+
+    #expect(preferences.launchAtLoginStatus == .requiresApproval)
+    #expect(preferences.launchAtLoginMutationFailure == LaunchAtLoginMutationFailure(
+        mutation: .unregister,
+        reason: TestError.unregisterFailed.localizedDescription
+    ))
+    let presentation = preferences.launchAtLoginPresentation
+    #expect(presentation.toggleIsOn == true)
+    #expect(presentation.toggleIsEnabled == true)
+    #expect(presentation.messageStyle == .informational)
+    #expect(presentation.message == "Wink is registered to launch at login, but macOS still needs your approval in Login Items.")
+    #expect(presentation.showsOpenSettingsButton == true)
+}
+
+@Test @MainActor
+func launchAtLoginMutationFailureDoesNotOverrideNotFoundPresentations() {
+    // In Applications: the post-attempt configuration-error copy wins.
+    let missingConfigurationState = MutableLaunchAtLoginState(status: .notFound)
+    missingConfigurationState.registerError = TestError.registerFailed
+    let inApplications = makePreferences(state: missingConfigurationState)
+
+    inApplications.setLaunchAtLogin(true)
+
+    #expect(inApplications.launchAtLoginMutationFailure != nil)
+    let configurationPresentation = inApplications.launchAtLoginPresentation
+    #expect(configurationPresentation.toggleIsOn == false)
+    #expect(configurationPresentation.toggleIsEnabled == false)
+    #expect(configurationPresentation.messageStyle == .error)
+    #expect(configurationPresentation.message == "Wink couldn't find its login item configuration. This usually points to an installation or packaging problem.")
+    #expect(configurationPresentation.showsOpenSettingsButton == false)
+
+    // Outside Applications: the install guidance copy wins.
+    let outsideState = MutableLaunchAtLoginState(status: .notFound)
+    outsideState.registerError = TestError.registerFailed
+    let outsideApplications = makePreferences(
+        state: outsideState,
+        bundleURL: URL(fileURLWithPath: "/tmp/Wink.app")
+    )
+
+    outsideApplications.setLaunchAtLogin(true)
+
+    #expect(outsideApplications.launchAtLoginMutationFailure != nil)
+    let guidancePresentation = outsideApplications.launchAtLoginPresentation
+    #expect(guidancePresentation.toggleIsOn == false)
+    #expect(guidancePresentation.toggleIsEnabled == false)
+    #expect(guidancePresentation.messageStyle == .informational)
+    #expect(guidancePresentation.message == "Launch at Login is only available after installing Wink.app in the Applications folder and reopening it.")
+    #expect(guidancePresentation.showsOpenSettingsButton == false)
 }
 
 @Test @MainActor
@@ -611,9 +769,16 @@ private func makeCaptureCoordinator() -> ShortcutCaptureCoordinator {
     )
 }
 
-private enum TestError: Error {
+private enum TestError: LocalizedError {
     case registerFailed
     case unregisterFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .registerFailed: "register denied by policy"
+        case .unregisterFailed: "unregister denied by policy"
+        }
+    }
 }
 
 private final class OpenSettingsRecorder: @unchecked Sendable {

@@ -39,6 +39,7 @@ final class AppPreferences {
     private(set) var shortcutCaptureStatus: ShortcutCaptureStatus
     private(set) var launchAtLoginStatus: LaunchAtLoginStatus = .disabled
     private(set) var launchAtLoginAvailability: LaunchAtLoginAvailability = .available
+    private(set) var launchAtLoginMutationFailure: LaunchAtLoginMutationFailure?
     private(set) var hyperKeyEnabled: Bool = false
     private(set) var shortcutsPaused: Bool = false
     /// Apple's own DTS guidance: `SMAppService.Status.notFound` is the normal
@@ -91,21 +92,44 @@ final class AppPreferences {
     var launchAtLoginPresentation: LaunchAtLoginPresentation {
         switch launchAtLoginStatus {
         case .enabled:
-            LaunchAtLoginPresentation(
-                toggleIsOn: true,
-                toggleIsEnabled: true,
-                message: nil,
-                messageStyle: .none,
-                showsOpenSettingsButton: false
-            )
+            // The toggle reflects the real post-attempt state; only the
+            // banner carries the mutation failure. .requiresApproval and
+            // .notFound keep their more specific presentations below.
+            if let failure = launchAtLoginMutationFailure {
+                LaunchAtLoginPresentation(
+                    toggleIsOn: true,
+                    toggleIsEnabled: true,
+                    message: Self.mutationFailureMessage(failure),
+                    messageStyle: .error,
+                    showsOpenSettingsButton: true
+                )
+            } else {
+                LaunchAtLoginPresentation(
+                    toggleIsOn: true,
+                    toggleIsEnabled: true,
+                    message: nil,
+                    messageStyle: .none,
+                    showsOpenSettingsButton: false
+                )
+            }
         case .disabled:
-            LaunchAtLoginPresentation(
-                toggleIsOn: false,
-                toggleIsEnabled: true,
-                message: nil,
-                messageStyle: .none,
-                showsOpenSettingsButton: false
-            )
+            if let failure = launchAtLoginMutationFailure {
+                LaunchAtLoginPresentation(
+                    toggleIsOn: false,
+                    toggleIsEnabled: true,
+                    message: Self.mutationFailureMessage(failure),
+                    messageStyle: .error,
+                    showsOpenSettingsButton: true
+                )
+            } else {
+                LaunchAtLoginPresentation(
+                    toggleIsOn: false,
+                    toggleIsEnabled: true,
+                    message: nil,
+                    messageStyle: .none,
+                    showsOpenSettingsButton: false
+                )
+            }
         case .requiresApproval:
             LaunchAtLoginPresentation(
                 toggleIsOn: true,
@@ -214,7 +238,9 @@ final class AppPreferences {
         if enabled {
             hasAttemptedLaunchAtLoginRegistration = true
         }
-        launchAtLoginService.setEnabled(enabled)
+        // A successful later attempt clears any stale failure because the
+        // result is nil on success.
+        launchAtLoginMutationFailure = launchAtLoginService.setEnabled(enabled)
         refreshLaunchAtLoginStatus()
     }
 
@@ -233,6 +259,20 @@ final class AppPreferences {
         let launchAtLoginSnapshot = launchAtLoginService.snapshot
         launchAtLoginStatus = launchAtLoginSnapshot.status
         launchAtLoginAvailability = launchAtLoginSnapshot.availability
+
+        // Clear a stale failure once the observed status shows the failed
+        // mutation's intent was achieved externally (e.g. in System Settings).
+        // A failed register leaves the status .disabled and a failed
+        // unregister leaves it .enabled, so a fresh failure stays visible.
+        guard let failure = launchAtLoginMutationFailure else { return }
+        let isRegistered = launchAtLoginStatus == .enabled || launchAtLoginStatus == .requiresApproval
+        let intentAchieved = switch failure.mutation {
+        case .register: isRegistered
+        case .unregister: !isRegistered
+        }
+        if intentAchieved {
+            launchAtLoginMutationFailure = nil
+        }
     }
 
     func openLoginItemsSettings() {
@@ -330,6 +370,15 @@ final class AppPreferences {
         hyperKeyEnabled = hyperKeyService.isEnabled
         shortcutManager.setHyperKeyEnabled(hyperKeyEnabled)
         refreshPermissions()
+    }
+
+    private static func mutationFailureMessage(_ failure: LaunchAtLoginMutationFailure) -> String {
+        switch failure.mutation {
+        case .register:
+            "Wink couldn't enable Launch at Login: \(failure.reason). Try again, or manage it in System Settings › Login Items."
+        case .unregister:
+            "Wink couldn't disable Launch at Login: \(failure.reason). Try again, or manage it in System Settings › Login Items."
+        }
     }
 
     private static func currentVersionString(bundle: Bundle = .main) -> String {
