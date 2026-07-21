@@ -148,6 +148,7 @@ private final class SearchPopoverRuntimeState {
 }
 
 private actor SearchNoopUsageTracker: UsageTracking {
+    func deleteUsage(shortcutId: UUID) {}
     func usageCounts(days: Int, relativeTo now: Date) async -> [UUID: Int] { [:] }
     func dailyCounts(days: Int, relativeTo now: Date) async -> [String: [(date: String, count: Int)]] { [:] }
     func totalSwitches(days: Int, relativeTo now: Date) async -> Int { 0 }

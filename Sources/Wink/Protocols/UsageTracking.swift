@@ -79,6 +79,7 @@ protocol UsageTracking: Sendable {
     func streakDays(relativeTo now: Date) async -> Int
     func usageTimeZone() async -> TimeZone
     func lastUsedPerShortcut() async -> [UUID: Date]
+    func deleteUsage(shortcutId: UUID) async
     /// Returns nil when the surrounding task was cancelled; a cancelled
     /// refresh stops issuing further queries instead of completing the
     /// remaining phases.
@@ -113,6 +114,11 @@ extension UsageTracking {
     func lastUsedPerShortcut() async -> [UUID: Date] {
         [:]
     }
+
+    // deleteUsage deliberately has NO extension default: an async default
+    // alongside UsageTracker's synchronous actor method would create a
+    // sync/async overload pair, and async contexts prefer the async
+    // candidate — silently routing concrete calls to a no-op.
 
     /// Serial composition over the individual query methods with a
     /// cancellation check before each phase and the 7-day datasets

@@ -65,6 +65,189 @@ func handleAppDidBecomeActiveRefreshesShortcutCaptureAndLaunchAtLoginStatus() {
     #expect(preferences.launchAtLoginStatus == .enabled)
 }
 
+@Test @MainActor
+func didBecomeActiveWithInsightsSelectedRefreshesInsightsUsageOnly() {
+    let counters = UsageRefreshCounters()
+    let handler = makeLifecycleHandler(selectedTab: .insights, counters: counters)
+
+    handler.handleAppDidBecomeActive()
+
+    #expect(counters.insights == 1)
+    #expect(counters.shortcuts == 0)
+}
+
+@Test @MainActor
+func didBecomeActiveWithShortcutsSelectedRefreshesShortcutsUsageOnly() {
+    let counters = UsageRefreshCounters()
+    let handler = makeLifecycleHandler(selectedTab: .shortcuts, counters: counters)
+
+    handler.handleAppDidBecomeActive()
+
+    #expect(counters.insights == 0)
+    #expect(counters.shortcuts == 1)
+}
+
+@Test @MainActor
+func didBecomeActiveWithGeneralSelectedRefreshesNoUsage() {
+    let counters = UsageRefreshCounters()
+    let handler = makeLifecycleHandler(selectedTab: .general, counters: counters)
+
+    handler.handleAppDidBecomeActive()
+
+    #expect(counters.insights == 0)
+    #expect(counters.shortcuts == 0)
+}
+
+@Test @MainActor
+func reactivationBurstCoalescesToOneUsageRefreshPerWindow() {
+    let counters = UsageRefreshCounters()
+    let clock = MutableDateBox(date: Date(timeIntervalSinceReferenceDate: 0))
+    let handler = makeLifecycleHandler(
+        selectedTab: .insights,
+        counters: counters,
+        coalescer: SettingsUsageRefreshCoalescer(now: { clock.date })
+    )
+
+    handler.handleAppDidBecomeActive()
+    clock.date = Date(timeIntervalSinceReferenceDate: 0.2)
+    handler.handleAppDidBecomeActive()
+    clock.date = Date(timeIntervalSinceReferenceDate: 0.9)
+    handler.handleAppDidBecomeActive()
+
+    #expect(counters.insights == 1)
+
+    clock.date = Date(timeIntervalSinceReferenceDate: 1.5)
+    handler.handleAppDidBecomeActive()
+
+    #expect(counters.insights == 2)
+}
+
+@Test @MainActor
+func backwardClockJumpDoesNotSuppressReactivationRefreshes() {
+    let counters = UsageRefreshCounters()
+    let clock = MutableDateBox(date: Date(timeIntervalSinceReferenceDate: 600))
+    let handler = makeLifecycleHandler(
+        selectedTab: .insights,
+        counters: counters,
+        coalescer: SettingsUsageRefreshCoalescer(now: { clock.date })
+    )
+
+    handler.handleAppDidBecomeActive()
+    #expect(counters.insights == 1)
+
+    // The wall clock steps back 10 minutes; the stale stamp must not
+    // suppress refreshes until the clock re-passes it.
+    clock.date = Date(timeIntervalSinceReferenceDate: 0)
+    handler.handleAppDidBecomeActive()
+
+    #expect(counters.insights == 2)
+
+    // The window restarts from the new (earlier) stamp.
+    clock.date = Date(timeIntervalSinceReferenceDate: 0.5)
+    handler.handleAppDidBecomeActive()
+    #expect(counters.insights == 2)
+    clock.date = Date(timeIntervalSinceReferenceDate: 1.5)
+    handler.handleAppDidBecomeActive()
+    #expect(counters.insights == 3)
+}
+
+@Test @MainActor
+func generalTabActivationDoesNotConsumeTheCoalescingWindow() {
+    let counters = UsageRefreshCounters()
+    let clock = MutableDateBox(date: Date(timeIntervalSinceReferenceDate: 0))
+    let selectedTab = MutableTabBox(tab: .general)
+    let coalescer = SettingsUsageRefreshCoalescer(now: { clock.date })
+    let handler = SettingsViewLifecycleHandler(
+        preferences: makePreferences(
+            permissionState: MutablePermissionState(ax: false, input: false),
+            launchAtLoginState: MutableLaunchAtLoginState(status: .notRegistered)
+        ),
+        usageRefreshCoalescer: coalescer,
+        selectedTab: { selectedTab.tab },
+        refreshInsightsUsage: { counters.insights += 1 },
+        refreshShortcutsUsage: { counters.shortcuts += 1 }
+    )
+
+    handler.handleAppDidBecomeActive()
+    #expect(counters.insights == 0)
+
+    // A suppressed General activation must not start the window; a refresh
+    // 0.2s later on Insights still runs.
+    selectedTab.tab = .insights
+    clock.date = Date(timeIntervalSinceReferenceDate: 0.2)
+    handler.handleAppDidBecomeActive()
+
+    #expect(counters.insights == 1)
+}
+
+@Test @MainActor
+func didBecomeActiveStillRefreshesPermissionsAndLaunchAtLoginAlongsideUsage() {
+    let permissionState = MutablePermissionState(ax: false, input: false)
+    let launchAtLoginState = MutableLaunchAtLoginState(status: .requiresApproval)
+    let counters = UsageRefreshCounters()
+    let preferences = makePreferences(
+        permissionState: permissionState,
+        launchAtLoginState: launchAtLoginState
+    )
+    let handler = SettingsViewLifecycleHandler(
+        preferences: preferences,
+        selectedTab: { .insights },
+        refreshInsightsUsage: { counters.insights += 1 },
+        refreshShortcutsUsage: { counters.shortcuts += 1 }
+    )
+
+    permissionState.ax = true
+    permissionState.input = true
+    launchAtLoginState.statusValue = .enabled
+
+    handler.handleAppDidBecomeActive()
+
+    #expect(preferences.launchAtLoginStatus == .enabled)
+    #expect(preferences.shortcutCaptureStatus.accessibilityGranted)
+    #expect(counters.insights == 1)
+}
+
+@MainActor
+private func makeLifecycleHandler(
+    selectedTab: SettingsTab,
+    counters: UsageRefreshCounters,
+    coalescer: SettingsUsageRefreshCoalescer = SettingsUsageRefreshCoalescer()
+) -> SettingsViewLifecycleHandler {
+    SettingsViewLifecycleHandler(
+        preferences: makePreferences(
+            permissionState: MutablePermissionState(ax: false, input: false),
+            launchAtLoginState: MutableLaunchAtLoginState(status: .notRegistered)
+        ),
+        usageRefreshCoalescer: coalescer,
+        selectedTab: { selectedTab },
+        refreshInsightsUsage: { counters.insights += 1 },
+        refreshShortcutsUsage: { counters.shortcuts += 1 }
+    )
+}
+
+@MainActor
+private final class UsageRefreshCounters {
+    var insights = 0
+    var shortcuts = 0
+}
+
+private final class MutableDateBox: @unchecked Sendable {
+    var date: Date
+
+    init(date: Date) {
+        self.date = date
+    }
+}
+
+@MainActor
+private final class MutableTabBox {
+    var tab: SettingsTab
+
+    init(tab: SettingsTab) {
+        self.tab = tab
+    }
+}
+
 @MainActor
 private func makePreferences(
     permissionState: MutablePermissionState,

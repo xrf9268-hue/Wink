@@ -83,7 +83,8 @@ final class ShortcutEditorState {
 
     private let shortcutStore: ShortcutStore
     private let shortcutManager: ShortcutManager
-    private let usageTracker: UsageTracker?
+    private let usageTracker: (any UsageTracking)?
+    @ObservationIgnored private var usageRefreshGeneration: UInt64 = 0
     private let onShortcutConfigurationChange: @MainActor () -> Void
     private let shortcutValidator = ShortcutValidator()
     private let recipeCodec: WinkRecipeCodec
@@ -94,7 +95,7 @@ final class ShortcutEditorState {
     init(
         shortcutStore: ShortcutStore,
         shortcutManager: ShortcutManager,
-        usageTracker: UsageTracker? = nil,
+        usageTracker: (any UsageTracking)? = nil,
         recipeCodec: WinkRecipeCodec = WinkRecipeCodec(),
         recipeImportPlanner: WinkRecipeImportPlanner = WinkRecipeImportPlanner(),
         recipeTransferClient: RecipeTransferClient = .live,
@@ -323,12 +324,25 @@ final class ShortcutEditorState {
         pendingRecipeImport = nil
     }
 
+    /// Fire-and-forget wrapper for lifecycle triggers (tab selection, app
+    /// reactivation) that have no async context of their own.
+    func scheduleUsageRefresh() {
+        Task { await refreshUsageCounts() }
+    }
+
     func refreshUsageCounts() async {
         guard let usageTracker else { return }
+        usageRefreshGeneration &+= 1
+        let generation = usageRefreshGeneration
         async let counts = usageTracker.usageCounts(days: 7)
         async let lastUsedMap = usageTracker.lastUsedPerShortcut()
-        usageCounts = await counts
-        lastUsed = await lastUsedMap
+        let fetchedCounts = await counts
+        let fetchedLastUsed = await lastUsedMap
+        // A newer refresh owns the published maps; dropping the stale result
+        // keeps usageCounts/lastUsed from mixing two different fetches.
+        guard generation == usageRefreshGeneration else { return }
+        usageCounts = fetchedCounts
+        lastUsed = fetchedLastUsed
     }
 
     /// Saves through the manager (disk first, then in-memory store). On
