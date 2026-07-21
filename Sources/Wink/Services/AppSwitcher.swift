@@ -1510,7 +1510,8 @@ final class AppSwitcher: AppSwitching {
                 bundleIdentifier: shortcut.bundleIdentifier,
                 stepIndex: session.stepIndex,
                 windowCount: session.windowCount,
-                windowTitle: windowCycleClient.windowTitle(targetElement)
+                windowTitle: windowCycleClient.windowTitle(targetElement),
+                targetWindowID: targetWindowID
             ))
         }
 

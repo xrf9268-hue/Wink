@@ -1056,6 +1056,7 @@ func hudAppearsFromSecondConsecutivePressWithPositionAndTitle() {
     #expect(recorder.hudPresentations.first?.stepIndex == 3)
     #expect(recorder.hudPresentations.first?.windowCount == 3)
     #expect(recorder.hudPresentations.first?.windowTitle == "Window 103")
+    #expect(recorder.hudPresentations.first?.targetWindowID == 103)
     #expect(recorder.hudPresentations.last?.stepIndex == 1)
     #expect(recorder.hudPresentations.last?.windowTitle == "Window 101")
 }
