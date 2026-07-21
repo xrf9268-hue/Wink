@@ -218,11 +218,7 @@ struct GeneralTabView: View {
 
                 SettingsToggleRow(
                     title: "Hyper cheat sheet",
-                    subtitle: preferences.hyperCheatSheetEnabled
-                        && preferences.hyperKeyEnabled
-                        && !preferences.shortcutCaptureStatus.eventTapActive
-                        ? "Hold Caps Lock without a second key to see all shortcuts. Needs at least one enabled Hyper shortcut."
-                        : "Hold Caps Lock without a second key to see all shortcuts.",
+                    subtitle: hyperCheatSheetSubtitle,
                     isOn: Binding(
                         get: { preferences.hyperCheatSheetEnabled },
                         set: { preferences.setHyperCheatSheetEnabled($0) }
@@ -282,6 +278,18 @@ struct GeneralTabView: View {
                 }
             }
         }
+    }
+
+    private var hyperCheatSheetSubtitle: String {
+        let base = "Hold Caps Lock without a second key to see all shortcuts."
+        guard preferences.hyperCheatSheetEnabled else { return base }
+        if !preferences.hyperKeyEnabled {
+            return base + " Needs Hyper Key enabled."
+        }
+        if !preferences.shortcutCaptureStatus.eventTapActive {
+            return base + " Needs at least one enabled Hyper shortcut."
+        }
+        return base
     }
 
     private func addExceptionApp() {
