@@ -455,6 +455,216 @@ struct UsageDatabaseBootstrapTests {
     }
 }
 
+@Suite("Usage date key locale migration")
+struct UsageDateKeyLocaleMigrationTests {
+    private static let arabicKey = "\u{0662}\u{0660}\u{0662}\u{0665}-\u{0660}\u{0661}-\u{0660}\u{0661}"
+    private static let persianSameDayKey = "\u{06F2}\u{06F0}\u{06F2}\u{06F5}-\u{06F0}\u{06F1}-\u{06F0}\u{06F1}"
+    private static let persianOtherDayKey = "\u{06F2}\u{06F0}\u{06F2}\u{06F5}-\u{06F0}\u{06F1}-\u{06F0}\u{06F2}"
+    private static let malformedKey = "\u{0662}\u{0660}\u{0662}\u{0665}-\u{0660}\u{0661}"
+
+    @Test
+    func dateKeyFormatterPinsPOSIXLocaleAndEmitsASCIIKeys() {
+        let formatter = UsageWindowMath.dateKeyFormatter(timeZone: TimeZone(secondsFromGMT: 0)!)
+
+        #expect(formatter.locale.identifier == "en_US_POSIX")
+        #expect(formatter.string(from: isoDateTime("2025-01-01T12:00:00Z")) == "2025-01-01")
+
+        // The bug this pin fixes: an unpinned formatter under an Arabic
+        // locale emits localized digits for the same Gregorian date.
+        let unpinned = DateFormatter()
+        unpinned.locale = Locale(identifier: "ar_SA")
+        unpinned.calendar = Calendar(identifier: .gregorian)
+        unpinned.dateFormat = "yyyy-MM-dd"
+        unpinned.timeZone = TimeZone(secondsFromGMT: 0)
+        #expect(unpinned.string(from: isoDateTime("2025-01-01T12:00:00Z")) == Self.arabicKey)
+    }
+
+    @Test
+    func normalizedASCIIDateKeyTranslatesLocalizedDigitsAndRejectsMalformedKeys() {
+        #expect(UsageDatabaseBootstrap.normalizedASCIIDateKey(Self.arabicKey) == "2025-01-01")
+        #expect(UsageDatabaseBootstrap.normalizedASCIIDateKey(Self.persianSameDayKey) == "2025-01-01")
+        #expect(UsageDatabaseBootstrap.normalizedASCIIDateKey("2025-01-01") == "2025-01-01")
+        #expect(UsageDatabaseBootstrap.normalizedASCIIDateKey(Self.malformedKey) == nil)
+        #expect(UsageDatabaseBootstrap.normalizedASCIIDateKey("2025-01-0a") == nil)
+        #expect(UsageDatabaseBootstrap.normalizedASCIIDateKey("") == nil)
+    }
+
+    @Test
+    func migrationNormalizesLocalizedKeysInPlaceAndMergesCollisions() throws {
+        let harness = TestPersistenceHarness()
+        defer { harness.cleanup() }
+        let diagnostics = DiagnosticRecorder()
+        let databaseURL = harness.directory.appendingPathComponent("usage.db")
+
+        try seedLocalizedV2UsageDatabase(at: databaseURL)
+
+        UsageDatabaseBootstrap.prepareDatabase(
+            at: databaseURL.path,
+            diagnosticClient: .init(log: { diagnostics.append($0) })
+        )
+
+        #expect(FileManager.default.fileExists(atPath: databaseURL.path))
+        #expect(try userVersion(at: databaseURL) == UsageDatabaseBootstrap.requiredSchemaVersion)
+
+        // S1 2025-01-01 merges ASCII(3) + Arabic-Indic(2) + Persian(7) = 12.
+        #expect(try rowCount("SELECT count FROM daily_usage WHERE shortcut_id = 'S1' AND date = '2025-01-01'", at: databaseURL) == 12)
+        // S2 Persian-only key normalizes without collision.
+        #expect(try rowCount("SELECT count FROM daily_usage WHERE shortcut_id = 'S2' AND date = '2025-01-02'", at: databaseURL) == 5)
+        // Malformed key is preserved untouched rather than guessed at.
+        #expect(try rowCount("SELECT count FROM daily_usage WHERE shortcut_id = 'S3' AND date = '\(Self.malformedKey)'", at: databaseURL) == 1)
+        // Every other daily key is ASCII now.
+        #expect(try rowCount("SELECT COUNT(*) FROM daily_usage WHERE date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'", at: databaseURL) == 2)
+        #expect(try rowCount("SELECT COUNT(*) FROM daily_usage", at: databaseURL) == 3)
+        // Global daily total is exactly preserved after merging.
+        #expect(try rowCount("SELECT SUM(count) FROM daily_usage", at: databaseURL) == 18)
+
+        // Hourly: same-hour collision merges, distinct hour normalizes alongside.
+        #expect(try rowCount("SELECT count FROM usage_hourly WHERE shortcut_id = 'S1' AND date = '2025-01-01' AND hour = 9", at: databaseURL) == 5)
+        #expect(try rowCount("SELECT count FROM usage_hourly WHERE shortcut_id = 'S1' AND date = '2025-01-01' AND hour = 10", at: databaseURL) == 4)
+        #expect(try rowCount("SELECT count FROM usage_hourly WHERE shortcut_id = 'S2' AND date = '2025-01-02' AND hour = 0", at: databaseURL) == 5)
+        #expect(try rowCount("SELECT COUNT(*) FROM usage_hourly", at: databaseURL) == 3)
+        #expect(try rowCount("SELECT SUM(count) FROM usage_hourly", at: databaseURL) == 14)
+
+        #expect(diagnostics.messages.contains {
+            $0.contains("Migrated usage date keys to locale-stable schema v3")
+                && $0.contains("dailyKeysNormalized=3")
+                && $0.contains("hourlyKeysNormalized=3")
+        })
+        #expect(diagnostics.messages.allSatisfy { !$0.contains("Reset usage database") })
+    }
+
+    @Test
+    func migrationIsIdempotentAcrossRepeatedBootstraps() throws {
+        let harness = TestPersistenceHarness()
+        defer { harness.cleanup() }
+        let databaseURL = harness.directory.appendingPathComponent("usage.db")
+
+        try seedLocalizedV2UsageDatabase(at: databaseURL)
+
+        for _ in 0..<3 {
+            UsageDatabaseBootstrap.prepareDatabase(at: databaseURL.path, diagnosticClient: .init(log: { _ in }))
+        }
+
+        #expect(try userVersion(at: databaseURL) == UsageDatabaseBootstrap.requiredSchemaVersion)
+        #expect(try rowCount("SELECT SUM(count) FROM daily_usage", at: databaseURL) == 18)
+        #expect(try rowCount("SELECT COUNT(*) FROM daily_usage", at: databaseURL) == 3)
+        #expect(try rowCount("SELECT SUM(count) FROM usage_hourly", at: databaseURL) == 14)
+        #expect(try rowCount("SELECT COUNT(*) FROM usage_hourly", at: databaseURL) == 3)
+    }
+
+    @Test
+    func failedMigrationRollsBackBothTablesAndKeepsRetryableVersion() throws {
+        let harness = TestPersistenceHarness()
+        defer { harness.cleanup() }
+        let diagnostics = DiagnosticRecorder()
+        let databaseURL = harness.directory.appendingPathComponent("usage.db")
+
+        try seedLocalizedV2UsageDatabase(at: databaseURL)
+        try withSQLiteDatabase(at: databaseURL) { db in
+            try executeSQL(
+                """
+                CREATE TRIGGER fail_usage_hourly_normalization
+                BEFORE INSERT ON usage_hourly
+                BEGIN
+                    SELECT RAISE(FAIL, 'forced hourly normalization failure');
+                END;
+                """,
+                in: db
+            )
+        }
+
+        UsageDatabaseBootstrap.prepareDatabase(
+            at: databaseURL.path,
+            diagnosticClient: .init(log: { diagnostics.append($0) })
+        )
+
+        // daily_usage was processed first; the hourly failure must roll it back too.
+        #expect(try userVersion(at: databaseURL) == UsageDatabaseBootstrap.localeMigratableSchemaVersion)
+        #expect(try rowCount("SELECT COUNT(*) FROM daily_usage", at: databaseURL) == 5)
+        #expect(try rowCount("SELECT count FROM daily_usage WHERE shortcut_id = 'S1' AND date = '2025-01-01'", at: databaseURL) == 3)
+        #expect(try rowCount("SELECT count FROM daily_usage WHERE shortcut_id = 'S1' AND date = '\(Self.arabicKey)'", at: databaseURL) == 2)
+        #expect(try rowCount("SELECT COUNT(*) FROM usage_hourly", at: databaseURL) == 4)
+        // The reason must carry the actual SQLite failure, captured before
+        // ROLLBACK resets sqlite3_errmsg to "not an error".
+        #expect(diagnostics.messages.contains {
+            $0.contains("Failed to migrate usage date keys")
+                && $0.contains("forced hourly normalization failure")
+        })
+        #expect(FileManager.default.fileExists(atPath: databaseURL.path))
+
+        // A fresh UsageTracker boot over the failed migration must not stamp
+        // the new version and strand the localized rows.
+        _ = UsageTracker(databasePath: databaseURL.path)
+        #expect(try userVersion(at: databaseURL) == UsageDatabaseBootstrap.localeMigratableSchemaVersion)
+
+        // Removing the fault lets the next bootstrap complete the migration.
+        try withSQLiteDatabase(at: databaseURL) { db in
+            try executeSQL("DROP TRIGGER fail_usage_hourly_normalization", in: db)
+        }
+        UsageDatabaseBootstrap.prepareDatabase(at: databaseURL.path, diagnosticClient: .init(log: { _ in }))
+        #expect(try userVersion(at: databaseURL) == UsageDatabaseBootstrap.requiredSchemaVersion)
+        #expect(try rowCount("SELECT SUM(count) FROM daily_usage", at: databaseURL) == 18)
+    }
+
+    @Test
+    func trackerBootMigratesLocalizedKeysAndServesMergedQueries() async throws {
+        let harness = TestPersistenceHarness()
+        defer { harness.cleanup() }
+        let databaseURL = harness.directory.appendingPathComponent("usage.db")
+        let shortcutID = UUID()
+
+        try seedLocalizedV2UsageDatabase(at: databaseURL, shortcutID: shortcutID.uuidString)
+
+        let tracker = UsageTracker(
+            databasePath: databaseURL.path,
+            timeZoneProvider: { TimeZone(secondsFromGMT: 0)! }
+        )
+
+        let counts = await tracker.usageCounts(days: 7, relativeTo: isoDateTime("2025-01-03T12:00:00Z"))
+        #expect(counts[shortcutID] == 12)
+
+        let lastUsed = await tracker.lastUsedPerShortcut()
+        #expect(lastUsed[shortcutID] == isoDateTime("2025-01-01T10:00:00Z"))
+    }
+
+    private func seedLocalizedV2UsageDatabase(at url: URL, shortcutID: String = "S1") throws {
+        try withSQLiteDatabase(at: url) { db in
+            try executeSQL(
+                """
+                CREATE TABLE daily_usage (
+                    shortcut_id TEXT NOT NULL,
+                    date        TEXT NOT NULL,
+                    count       INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (shortcut_id, date)
+                );
+                CREATE TABLE usage_hourly (
+                    shortcut_id TEXT NOT NULL,
+                    date        TEXT NOT NULL,
+                    hour        INTEGER NOT NULL CHECK(hour BETWEEN 0 AND 23),
+                    count       INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (shortcut_id, date, hour)
+                );
+                CREATE INDEX idx_usage_hourly_date_hour ON usage_hourly(date, hour);
+                CREATE INDEX idx_daily_usage_date ON daily_usage(date);
+                INSERT INTO daily_usage (shortcut_id, date, count) VALUES
+                    ('\(shortcutID)', '2025-01-01', 3),
+                    ('\(shortcutID)', '\(Self.arabicKey)', 2),
+                    ('\(shortcutID)', '\(Self.persianSameDayKey)', 7),
+                    ('S2', '\(Self.persianOtherDayKey)', 5),
+                    ('S3', '\(Self.malformedKey)', 1);
+                INSERT INTO usage_hourly (shortcut_id, date, hour, count) VALUES
+                    ('\(shortcutID)', '2025-01-01', 9, 3),
+                    ('\(shortcutID)', '\(Self.arabicKey)', 9, 2),
+                    ('\(shortcutID)', '\(Self.persianSameDayKey)', 10, 4),
+                    ('S2', '\(Self.persianOtherDayKey)', 0, 5);
+                PRAGMA user_version = 2;
+                """,
+                in: db
+            )
+        }
+    }
+}
+
 private func isoDateTime(_ value: String) -> Date {
     let formatter = ISO8601DateFormatter()
     formatter.timeZone = TimeZone(secondsFromGMT: 0)

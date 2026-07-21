@@ -213,9 +213,10 @@ Responsibilities:
 - `UsageTracker`
 
 Responsibilities:
-- record shortcut activations with SQLite daily and hourly aggregation using fixed Gregorian `yyyy-MM-dd` buckets
+- record shortcut activations with SQLite daily and hourly aggregation using locale-pinned (`en_US_POSIX`) ASCII Gregorian `yyyy-MM-dd` buckets, shared through `UsageWindowMath.dateKeyFormatter` by every writer and parser of persisted date keys (issue #323)
 - provide current-window counts, previous-period totals, streaks, and hourly heatmap buckets for Insights and the menu bar Today view
-- reset a legacy usage database shape explicitly before startup opens the live database, instead of keeping a half-migrated schema around
+- migrate supported v2 databases in place to schema v3 during bootstrap: localized-digit date keys are normalized to ASCII inside one transaction, primary-key collisions merge by summing counts, unrecognizable keys are left untouched, and any failure (including a failed key scan) rolls back completely and stays at v2 so the next launch retries
+- still reset only pre-v2/unknown legacy database shapes explicitly before startup opens the live database, instead of keeping a half-migrated schema around; the fresh-database version stamp happens only at `user_version` 0 so a failed migration is never masked
 - run off the main actor via Swift actor isolation
 
 ### Permissions and packaging

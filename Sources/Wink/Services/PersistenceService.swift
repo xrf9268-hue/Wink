@@ -190,7 +190,10 @@ struct PersistenceService: Sendable {
 }
 
 enum UsageDatabaseBootstrap {
-    static let requiredSchemaVersion = 2
+    static let requiredSchemaVersion = 3
+    /// Hourly schema whose only delta to v3 is that date keys may carry
+    /// localized (non-ASCII) digits; migrated in place, never reset.
+    static let localeMigratableSchemaVersion = 2
 
     static func prepareDatabase(
         at path: String,
@@ -225,12 +228,18 @@ enum UsageDatabaseBootstrap {
         let userVersion = integerPragma("PRAGMA user_version", in: db) ?? 0
         let dailyColumns = tableColumns(named: "daily_usage", in: db)
         let hourlyColumns = tableColumns(named: "usage_hourly", in: db)
-        let shouldReset =
-            userVersion != requiredSchemaVersion ||
-            dailyColumns != ["shortcut_id", "date", "count"] ||
-            hourlyColumns != ["shortcut_id", "date", "hour", "count"]
+        let columnsMatchHourlySchema =
+            dailyColumns == ["shortcut_id", "date", "count"] &&
+            hourlyColumns == ["shortcut_id", "date", "hour", "count"]
 
-        guard shouldReset else {
+        if userVersion == requiredSchemaVersion && columnsMatchHourlySchema {
+            return
+        }
+
+        if userVersion == localeMigratableSchemaVersion && columnsMatchHourlySchema {
+            // On failure the transaction rolls back and user_version stays at
+            // v2, so the next launch retries instead of losing history.
+            migrateDateKeysToASCII(in: db, path: path, diagnosticClient: diagnosticClient)
             return
         }
 
@@ -250,6 +259,201 @@ enum UsageDatabaseBootstrap {
             let message = "Failed to reset usage database for hourly schema migration: path=\(path) reason=\(error.localizedDescription)"
             logger.error("\(message, privacy: .public)")
             diagnosticClient.log(message)
+        }
+    }
+
+    /// Reads the schema version recorded in the database header.
+    static func schemaVersion(in db: OpaquePointer?) -> Int? {
+        integerPragma("PRAGMA user_version", in: db)
+    }
+
+    /// Maps a persisted date key to canonical ASCII `yyyy-MM-dd`, translating
+    /// decimal digits from any numbering system (Arabic-Indic, Eastern
+    /// Arabic/Persian, ...). Returns nil when the key does not have the
+    /// expected shape, so unrecognizable rows are left untouched rather than
+    /// guessed at.
+    static func normalizedASCIIDateKey(_ key: String) -> String? {
+        var ascii = ""
+        for character in key {
+            if character == "-" {
+                ascii.append("-")
+                continue
+            }
+
+            guard
+                character.unicodeScalars.count == 1,
+                let scalar = character.unicodeScalars.first,
+                scalar.properties.numericType == .decimal,
+                let digit = character.wholeNumberValue,
+                (0...9).contains(digit)
+            else {
+                return nil
+            }
+
+            ascii.append(String(digit))
+        }
+
+        let shape = ascii.split(separator: "-", omittingEmptySubsequences: false)
+        guard shape.count == 3, shape[0].count == 4, shape[1].count == 2, shape[2].count == 2 else {
+            return nil
+        }
+
+        return ascii
+    }
+
+    private static func migrateDateKeysToASCII(
+        in db: OpaquePointer?,
+        path: String,
+        diagnosticClient: PersistenceService.DiagnosticClient
+    ) {
+        guard executeSQL("BEGIN IMMEDIATE", in: db) else {
+            logMigrationFailure(path: path, reason: "begin failed: \(errorMessage(in: db))", diagnosticClient: diagnosticClient)
+            return
+        }
+
+        var normalizedKeyCounts: [String: Int] = [:]
+        let tables: [(name: String, mergeSQL: String)] = [
+            (
+                name: "daily_usage",
+                mergeSQL: """
+                    INSERT INTO daily_usage (shortcut_id, date, count)
+                    SELECT shortcut_id, ?1, count FROM daily_usage WHERE date = ?2
+                    ON CONFLICT(shortcut_id, date) DO UPDATE SET count = count + excluded.count
+                    """
+            ),
+            (
+                name: "usage_hourly",
+                mergeSQL: """
+                    INSERT INTO usage_hourly (shortcut_id, date, hour, count)
+                    SELECT shortcut_id, ?1, hour, count FROM usage_hourly WHERE date = ?2
+                    ON CONFLICT(shortcut_id, date, hour) DO UPDATE SET count = count + excluded.count
+                    """
+            ),
+        ]
+
+        for table in tables {
+            // A failed key scan must abort the migration: treating it as an
+            // empty table would commit and stamp v3 with localized rows still
+            // unread, which this migration exists to prevent.
+            guard let dateKeys = stringColumnValues("SELECT DISTINCT date FROM \(table.name)", in: db) else {
+                let reason = "reading \(table.name) date keys failed: \(errorMessage(in: db))"
+                _ = executeSQL("ROLLBACK", in: db)
+                logMigrationFailure(path: path, reason: reason, diagnosticClient: diagnosticClient)
+                return
+            }
+
+            for key in dateKeys {
+                guard let normalized = normalizedASCIIDateKey(key), normalized != key else {
+                    continue
+                }
+
+                guard
+                    executeUpdate(table.mergeSQL, bindings: [normalized, key], in: db),
+                    executeUpdate("DELETE FROM \(table.name) WHERE date = ?1", bindings: [key], in: db)
+                else {
+                    // Capture the failure before ROLLBACK: a successful
+                    // rollback resets sqlite3_errmsg to "not an error".
+                    let reason = "normalizing \(table.name) key failed: \(errorMessage(in: db))"
+                    _ = executeSQL("ROLLBACK", in: db)
+                    logMigrationFailure(path: path, reason: reason, diagnosticClient: diagnosticClient)
+                    return
+                }
+
+                normalizedKeyCounts[table.name, default: 0] += 1
+            }
+        }
+
+        guard
+            executeSQL("PRAGMA user_version = \(requiredSchemaVersion)", in: db),
+            executeSQL("COMMIT", in: db)
+        else {
+            let reason = "commit failed: \(errorMessage(in: db))"
+            _ = executeSQL("ROLLBACK", in: db)
+            logMigrationFailure(path: path, reason: reason, diagnosticClient: diagnosticClient)
+            return
+        }
+
+        let message = """
+            Migrated usage date keys to locale-stable schema v\(requiredSchemaVersion): path=\(path) \
+            dailyKeysNormalized=\(normalizedKeyCounts["daily_usage", default: 0]) \
+            hourlyKeysNormalized=\(normalizedKeyCounts["usage_hourly", default: 0])
+            """
+        logger.info("\(message, privacy: .public)")
+        diagnosticClient.log(message)
+    }
+
+    private static func logMigrationFailure(
+        path: String,
+        reason: String,
+        diagnosticClient: PersistenceService.DiagnosticClient
+    ) {
+        let message = "Failed to migrate usage date keys to locale-stable schema: path=\(path) reason=\(reason)"
+        logger.error("\(message, privacy: .public)")
+        diagnosticClient.log(message)
+    }
+
+    private static func errorMessage(in db: OpaquePointer?) -> String {
+        guard let db else {
+            return "unknown"
+        }
+        return String(cString: sqlite3_errmsg(db))
+    }
+
+    private static func executeSQL(_ sql: String, in db: OpaquePointer?) -> Bool {
+        guard let db else {
+            return false
+        }
+        return sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK
+    }
+
+    private static func executeUpdate(_ sql: String, bindings: [String], in db: OpaquePointer?) -> Bool {
+        guard let db else {
+            return false
+        }
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            sqlite3_finalize(stmt)
+            return false
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        for (index, value) in bindings.enumerated() {
+            guard sqlite3_bind_text(stmt, Int32(index + 1), (value as NSString).utf8String, -1, transient) == SQLITE_OK else {
+                return false
+            }
+        }
+
+        return sqlite3_step(stmt) == SQLITE_DONE
+    }
+
+    /// Returns nil on any prepare or step error so callers can distinguish
+    /// "no rows" from a scan that ended early (corruption, I/O error).
+    private static func stringColumnValues(_ sql: String, in db: OpaquePointer?) -> [String]? {
+        guard let db else {
+            return nil
+        }
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            sqlite3_finalize(stmt)
+            return nil
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        var values: [String] = []
+        while true {
+            switch sqlite3_step(stmt) {
+            case SQLITE_ROW:
+                if let text = sqlite3_column_text(stmt, 0) {
+                    values.append(String(cString: text))
+                }
+            case SQLITE_DONE:
+                return values
+            default:
+                return nil
+            }
         }
     }
 
