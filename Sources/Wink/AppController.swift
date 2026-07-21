@@ -182,6 +182,12 @@ final class AppController {
         }
         appActivationRecorder.setEnabled(appPreferences.suggestShortcutsFromUsage)
         appActivationRecorder.startObservingWorkspaceNotifications()
+        if !appPreferences.suggestShortcutsFromUsage {
+            // Quitting before the async opt-out purge ran leaves rows on
+            // disk with the preference off; sweep them on every disabled
+            // startup so re-enabling never resurfaces pre-opt-out counts.
+            purgeAppActivations()
+        }
 
         // Configured BEFORE the startup sequence so launching while an
         // exception app is frontmost never lets capture (or permission
