@@ -165,6 +165,10 @@ final class ShortcutManager {
         appSwitcher.setFrontmostTargetBehavior(behavior)
     }
 
+    func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {
+        captureCoordinator.setHyperHoldObserver(observer)
+    }
+
     func setShortcutsPaused(_ paused: Bool) {
         guard shortcutsPaused != paused else {
             return

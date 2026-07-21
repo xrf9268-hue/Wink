@@ -75,4 +75,11 @@ extension ShortcutCaptureProvider {
 @MainActor
 protocol HyperShortcutCaptureProvider: ShortcutCaptureProvider {
     func setHyperKeyEnabled(_ enabled: Bool)
+    func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?)
+}
+
+extension HyperShortcutCaptureProvider {
+    // Sync no-op default; only the live event-tap provider surfaces
+    // Hyper hold phases.
+    func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {}
 }

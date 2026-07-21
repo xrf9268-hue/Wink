@@ -67,6 +67,29 @@ final class AppController {
             self?.appPreferences.refreshPermissions()
         }
     )
+    private lazy var cheatSheetHUD = CheatSheetHUDController(
+        rowsProvider: { [weak self] in
+            guard let self else { return [] }
+            return self.shortcutStore.shortcuts
+                .filter(\.isEnabled)
+                .map { shortcut in
+                    CheatSheetRow(
+                        id: shortcut.id,
+                        appName: shortcut.appName,
+                        bundleIdentifier: shortcut.bundleIdentifier,
+                        keyDisplay: ModifierFormatting.displayText(
+                            modifierFlags: shortcut.modifierFlags,
+                            keyEquivalent: shortcut.keyEquivalent
+                        )
+                    )
+                }
+        },
+        isEnabled: { [weak self] in
+            guard let self else { return false }
+            return self.appPreferences.hyperCheatSheetEnabled
+                && self.appPreferences.hyperKeyEnabled
+        }
+    )
     private lazy var appActivationRecorder = AppActivationRecorder(
         onActivation: { [weak self] bundleIdentifier in
             self?.recordAppActivation(bundleIdentifier)
@@ -194,6 +217,15 @@ final class AppController {
         // prompts) fire ahead of the auto-pause.
         shortcutManager.onCaptureStatusChange = { [weak self] in
             self?.appPreferences.refreshPermissions()
+        }
+
+        // Hold events arrive on the tap thread; hop once to the main actor
+        // where the cheat-sheet controller lives.
+        let cheatSheet = cheatSheetHUD
+        shortcutManager.setHyperHoldObserver { event in
+            Task { @MainActor in
+                cheatSheet.handle(event)
+            }
         }
 
         Self.runStartupSequence(

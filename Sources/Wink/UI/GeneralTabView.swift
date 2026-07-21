@@ -217,6 +217,17 @@ struct GeneralTabView: View {
                 Divider().overlay(palette.hairline)
 
                 SettingsToggleRow(
+                    title: "Hyper cheat sheet",
+                    subtitle: "Hold Caps Lock without a second key to see all shortcuts.",
+                    isOn: Binding(
+                        get: { preferences.hyperCheatSheetEnabled },
+                        set: { preferences.setHyperCheatSheetEnabled($0) }
+                    )
+                )
+
+                Divider().overlay(palette.hairline)
+
+                SettingsToggleRow(
                     title: "Suggest shortcuts from app usage",
                     subtitle: "Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.",
                     isOn: Binding(
