@@ -714,6 +714,9 @@ struct ShortcutsTabView: View {
             onRemove: {
                 editor.removeShortcut(id: shortcut.id)
             },
+            onSetFrontmostBehaviorOverride: { behavior in
+                editor.setFrontmostBehaviorOverride(id: shortcut.id, behavior: behavior)
+            },
             reorderHandlers: reorderHandlers
         )
     }
@@ -827,6 +830,7 @@ struct ShortcutsListRow: View {
     let isReordering: Bool
     let onToggleEnabled: @MainActor () -> Void
     let onRemove: @MainActor () -> Void
+    let onSetFrontmostBehaviorOverride: @MainActor (FrontmostTargetBehavior?) -> Void
     let reorderHandlers: ShortcutRowReorderHandlers?
 
     @State private var isRowHovering = false
@@ -1002,6 +1006,19 @@ struct ShortcutsListRow: View {
             .disabled(importPreviewActive)
 
             Menu {
+                Picker("When Frontmost", selection: Binding(
+                    get: { shortcut.frontmostBehaviorOverride },
+                    set: { onSetFrontmostBehaviorOverride($0) }
+                )) {
+                    Text("Default").tag(FrontmostTargetBehavior?.none)
+                    ForEach(FrontmostTargetBehavior.allCases, id: \.self) { behavior in
+                        Text(behavior.title).tag(FrontmostTargetBehavior?.some(behavior))
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Divider()
+
                 Button("Delete Shortcut", role: .destructive, action: onRemove)
             } label: {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)

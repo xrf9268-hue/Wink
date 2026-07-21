@@ -206,6 +206,15 @@ final class ShortcutEditorState {
         onShortcutConfigurationChange()
     }
 
+    func setFrontmostBehaviorOverride(id: UUID, behavior: FrontmostTargetBehavior?) {
+        guard let index = shortcuts.firstIndex(where: { $0.id == id }),
+              shortcuts[index].frontmostBehaviorOverride != behavior else { return }
+        var updated = shortcuts
+        updated[index].frontmostBehaviorOverride = behavior
+        guard persist(updated) else { return }
+        onShortcutConfigurationChange()
+    }
+
     func setAllEnabled(_ enabled: Bool) {
         var updated = shortcuts
         for index in updated.indices {

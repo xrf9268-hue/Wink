@@ -25,19 +25,25 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
     var keyEquivalent: String
     var modifierFlags: [String]
     var isEnabled: Bool
+    /// Raw string on purpose (schema stays v1): decoding never fails on a
+    /// behavior value this build doesn't know, and older builds simply
+    /// ignore the extra optional key. Mapped to the enum at import time.
+    var frontmostBehaviorOverride: String?
 
     init(
         appName: String,
         bundleIdentifier: String,
         keyEquivalent: String,
         modifierFlags: [String],
-        isEnabled: Bool
+        isEnabled: Bool,
+        frontmostBehaviorOverride: String? = nil
     ) {
         self.appName = appName
         self.bundleIdentifier = bundleIdentifier
         self.keyEquivalent = keyEquivalent
         self.modifierFlags = modifierFlags
         self.isEnabled = isEnabled
+        self.frontmostBehaviorOverride = frontmostBehaviorOverride
     }
 
     init(_ shortcut: AppShortcut) {
@@ -46,7 +52,14 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
             bundleIdentifier: shortcut.bundleIdentifier,
             keyEquivalent: shortcut.keyEquivalent,
             modifierFlags: shortcut.modifierFlags,
-            isEnabled: shortcut.isEnabled
+            isEnabled: shortcut.isEnabled,
+            frontmostBehaviorOverride: shortcut.frontmostBehaviorOverride?.rawValue
         )
+    }
+
+    /// Lenient enum mapping: absent or unknown raw values mean "follow
+    /// the global setting".
+    var behaviorOverride: FrontmostTargetBehavior? {
+        frontmostBehaviorOverride.flatMap(FrontmostTargetBehavior.init(rawValue:))
     }
 }

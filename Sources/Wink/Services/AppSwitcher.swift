@@ -278,9 +278,15 @@ final class AppSwitcher: AppSwitching {
     func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior) {
         frontmostTargetBehavior = behavior
         sessionCoordinator.setFrontmostTargetBehavior(behavior)
-        if behavior != .cycleWindows {
-            windowCycleCoordinator.invalidate(reason: "behavior_changed")
-        }
+        // Unconditional: overrides decouple live sessions from the global
+        // value, so even a change *to* .cycleWindows can hand a stale
+        // cursor (created by an override-Cycle shortcut) to a different
+        // shortcut that now follows the new global setting.
+        windowCycleCoordinator.invalidate(reason: "behavior_changed")
+    }
+
+    func invalidateWindowCycleSession(reason: String) {
+        windowCycleCoordinator.invalidate(reason: reason)
     }
 
     var pendingActivationState: PendingActivationState? {
@@ -983,7 +989,7 @@ final class AppSwitcher: AppSwitching {
         }
 
         if isTargetCurrentlyFrontmost(snapshot: preActionSnapshot) {
-            switch frontmostTargetBehavior {
+            switch effectiveFrontmostBehavior(for: shortcut) {
             case .focus:
                 return performFrontmostFocus(
                     shortcut: shortcut,
@@ -1488,12 +1494,18 @@ final class AppSwitcher: AppSwitching {
     /// window targets, first repeat press — behind the standard 0.4s safety
     /// net, so non-cycle actions never run at the relaxed cadence.
     private func effectiveToggleCooldown(for shortcut: AppShortcut) -> TimeInterval {
-        guard frontmostTargetBehavior == .cycleWindows,
+        guard effectiveFrontmostBehavior(for: shortcut) == .cycleWindows,
               windowCycleCoordinator.liveSession(for: shortcut.bundleIdentifier) != nil,
               frontmostTracker.currentFrontmostBundleIdentifier() == shortcut.bundleIdentifier else {
             return toggleCooldown
         }
         return cycleToggleCooldown
+    }
+
+    /// The frontmost-target behavior this shortcut actually runs: its own
+    /// override when set, the global preference otherwise.
+    private func effectiveFrontmostBehavior(for shortcut: AppShortcut) -> FrontmostTargetBehavior {
+        shortcut.frontmostBehaviorOverride ?? frontmostTargetBehavior
     }
 
     // MARK: - Toggle-off lanes

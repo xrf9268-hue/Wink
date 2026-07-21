@@ -1,7 +1,10 @@
 import Foundation
 import Observation
 
-enum FrontmostTargetBehavior: String, CaseIterable, Equatable, Sendable {
+// Codable: encoded inside AppShortcut/WinkRecipe. Decoding there is
+// deliberately lenient (unknown rawValue → nil override), so adding cases
+// stays backward-safe; see AppShortcut.init(from:).
+enum FrontmostTargetBehavior: String, Codable, CaseIterable, Equatable, Sendable {
     case hide
     case toggle
     case focus
