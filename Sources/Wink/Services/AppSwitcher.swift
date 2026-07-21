@@ -1795,66 +1795,6 @@ final class AppSwitcher: AppSwitching {
         return true
     }
 
-    /// Byte layout of the CGSEventRecord posted to make another app's window
-    /// key. Offsets follow CGSInternal's CGSEvent.h; values track current
-    /// alt-tab-macos/yabai practice.
-    private enum MakeKeyWindowEvent {
-        /// The record declares 0xf8 bytes but the buffer is 0x100: on
-        /// macOS 14.7.4+ the WindowServer's CGSEncodeEventRecord reads past
-        /// the record and crashes the target on out-of-bounds heap garbage
-        /// when handed a tight 0xf8 allocation.
-        static let bufferSize = 0x100
-        static let lengthOffset = 0x04
-        static let recordLength: UInt8 = 0xf8
-        static let eventTypeOffset = 0x08
-        static let leftMouseDown: UInt8 = 0x01
-        static let leftMouseUp: UInt8 = 0x02
-        /// Window-relative click point just outside the frame: the pair
-        /// still makes the window key, but the point hit-tests to no view,
-        /// so nothing in the window is actually clicked (fullscreen
-        /// top-left corner included). Kept small — wild values risk the app
-        /// clamping the point back onto real content.
-        static let windowLocationOffset = 0x20
-        static let offContentPoint = CGPoint(x: -1, y: -1)
-        /// The event is delivered to this window by id, not by the point.
-        static let windowIdOffset = 0x3c
-        /// Purpose undocumented; yabai and Hammerspoon set 0x10.
-        static let unknownFlagOffset = 0x3a
-        static let unknownFlagValue: UInt8 = 0x10
-    }
-
-    /// Make a specific window the key window by posting a synthetic
-    /// left-click (down then up) to the WindowServer. No public API moves
-    /// key focus across apps. Static so the live `WindowCycleClient` seam
-    /// can wrap it; production code reaches it only through that seam.
-    static func postMakeKeyWindowEvent(psn: ProcessSerialNumber, windowID: CGWindowID) {
-        var psn = psn
-        var bytes = [UInt8](repeating: 0, count: MakeKeyWindowEvent.bufferSize)
-        bytes[MakeKeyWindowEvent.lengthOffset] = MakeKeyWindowEvent.recordLength
-        bytes[MakeKeyWindowEvent.unknownFlagOffset] = MakeKeyWindowEvent.unknownFlagValue
-        withUnsafeBytes(of: windowID.littleEndian) { widBytes in
-            for (i, b) in widBytes.enumerated() {
-                bytes[MakeKeyWindowEvent.windowIdOffset + i] = b
-            }
-        }
-        withUnsafeBytes(of: MakeKeyWindowEvent.offContentPoint) { pointBytes in
-            for (i, b) in pointBytes.enumerated() {
-                bytes[MakeKeyWindowEvent.windowLocationOffset + i] = b
-            }
-        }
-
-        // The target app reads the down/up pair as "you are now key".
-        bytes[MakeKeyWindowEvent.eventTypeOffset] = MakeKeyWindowEvent.leftMouseDown
-        let downResult = SLPSPostEventRecordTo(&psn, &bytes)
-        bytes[MakeKeyWindowEvent.eventTypeOffset] = MakeKeyWindowEvent.leftMouseUp
-        let upResult = SLPSPostEventRecordTo(&psn, &bytes)
-        if downResult != .success || upResult != .success {
-            #if DEBUG
-            logger.debug("makeKeyWindow: SLPSPostEventRecordTo failed down=\(downResult.rawValue) up=\(upResult.rawValue)")
-            #endif
-        }
-    }
-
     /// Raise the first window via AX kAXRaiseAction using pre-fetched windows.
     private func raiseFirstWindow(from windows: [AXUIElement]?) {
         guard let firstWindow = windows?.first else { return }
@@ -2252,6 +2192,69 @@ extension AppSwitcher.HideRequestClient {
     }()
 }
 
+/// Byte layout of the CGSEventRecord posted to make another app's window
+/// key. Offsets follow CGSInternal's CGSEvent.h; values track current
+/// alt-tab-macos/yabai practice.
+private enum MakeKeyWindowEvent {
+    /// The record declares 0xf8 bytes but the buffer is 0x100: on
+    /// macOS 14.7.4+ the WindowServer's CGSEncodeEventRecord reads past
+    /// the record and crashes the target on out-of-bounds heap garbage
+    /// when handed a tight 0xf8 allocation.
+    static let bufferSize = 0x100
+    static let lengthOffset = 0x04
+    static let recordLength: UInt8 = 0xf8
+    static let eventTypeOffset = 0x08
+    static let leftMouseDown: UInt8 = 0x01
+    static let leftMouseUp: UInt8 = 0x02
+    /// Window-relative click point just outside the frame: the pair
+    /// still makes the window key, but the point hit-tests to no view,
+    /// so nothing in the window is actually clicked (fullscreen
+    /// top-left corner included). Kept small — wild values risk the app
+    /// clamping the point back onto real content.
+    static let windowLocationOffset = 0x20
+    static let offContentPoint = CGPoint(x: -1, y: -1)
+    /// The event is delivered to this window by id, not by the point.
+    static let windowIdOffset = 0x3c
+    /// Purpose undocumented; yabai and Hammerspoon set 0x10.
+    static let unknownFlagOffset = 0x3a
+    static let unknownFlagValue: UInt8 = 0x10
+}
+
+/// Make a specific window the key window by posting a synthetic left-click
+/// (down then up) to the WindowServer. No public API moves key focus across
+/// apps. File-scope (not an AppSwitcher member) so the live client closure
+/// below carries no reference back into the class — a member reference here
+/// crashes the Swift 6.1 SILGen CI toolchain while lowering the
+/// default-argument thunk. Production code reaches this only through the
+/// `WindowCycleClient` seam.
+private func postMakeKeyWindowEventRecord(psn: ProcessSerialNumber, windowID: CGWindowID) {
+    var psn = psn
+    var bytes = [UInt8](repeating: 0, count: MakeKeyWindowEvent.bufferSize)
+    bytes[MakeKeyWindowEvent.lengthOffset] = MakeKeyWindowEvent.recordLength
+    bytes[MakeKeyWindowEvent.unknownFlagOffset] = MakeKeyWindowEvent.unknownFlagValue
+    withUnsafeBytes(of: windowID.littleEndian) { widBytes in
+        for (i, b) in widBytes.enumerated() {
+            bytes[MakeKeyWindowEvent.windowIdOffset + i] = b
+        }
+    }
+    withUnsafeBytes(of: MakeKeyWindowEvent.offContentPoint) { pointBytes in
+        for (i, b) in pointBytes.enumerated() {
+            bytes[MakeKeyWindowEvent.windowLocationOffset + i] = b
+        }
+    }
+
+    // The target app reads the down/up pair as "you are now key".
+    bytes[MakeKeyWindowEvent.eventTypeOffset] = MakeKeyWindowEvent.leftMouseDown
+    let downResult = SLPSPostEventRecordTo(&psn, &bytes)
+    bytes[MakeKeyWindowEvent.eventTypeOffset] = MakeKeyWindowEvent.leftMouseUp
+    let upResult = SLPSPostEventRecordTo(&psn, &bytes)
+    if downResult != .success || upResult != .success {
+        #if DEBUG
+        logger.debug("makeKeyWindow: SLPSPostEventRecordTo failed down=\(downResult.rawValue) up=\(upResult.rawValue)")
+        #endif
+    }
+}
+
 extension AppSwitcher.WindowCycleClient {
     @MainActor
     static let live = AppSwitcher.WindowCycleClient(
@@ -2288,7 +2291,7 @@ extension AppSwitcher.WindowCycleClient {
             AXUIElementSetAttributeValue(element, kAXMinimizedAttribute as CFString, false as CFTypeRef)
         },
         makeKeyWindow: { psn, windowID in
-            AppSwitcher.postMakeKeyWindowEvent(psn: psn, windowID: windowID)
+            postMakeKeyWindowEventRecord(psn: psn, windowID: windowID)
         }
     )
 }
