@@ -52,7 +52,8 @@ const lightTheme = {
 
   // Misc
   heatmapBase: 'rgba(224,138,0,0.10)',
-  focusRing: 'rgba(224,138,0,0.40)',
+  heatmapTint: '#E08A00',       // occupied cells at 0.18–0.90 — marigold, not the deep AA accent
+  focusRing: 'rgba(224,138,0,0.35)',
 };
 
 const darkTheme = {
@@ -99,6 +100,7 @@ const darkTheme = {
   amberBgSoft: 'rgba(255,180,84,0.15)',
 
   heatmapBase: 'rgba(255,180,84,0.20)',
+  heatmapTint: '#FFB454',
   focusRing: 'rgba(255,180,84,0.45)',
 };
 

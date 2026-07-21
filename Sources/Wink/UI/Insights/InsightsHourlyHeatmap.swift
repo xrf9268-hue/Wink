@@ -102,7 +102,7 @@ struct InsightsHourlyHeatmap: View {
         }
 
         let normalized = Double(count) / Double(maxCount)
-        return palette.accent.opacity(0.18 + (normalized * 0.72))
+        return palette.heatmapTint.opacity(0.18 + (normalized * 0.72))
     }
 
     private func dayLabel(for dateString: String) -> String {
