@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Foundation
 import UserNotifications
 import os.log
@@ -38,6 +39,12 @@ final class ShortcutManager {
     private var hyperKeyEnabled = false
     private var shortcutsPaused = false
     private var autoPausedByException = false
+    private let secureInputProbe: () -> Bool
+    private var lastSecureInputState = false
+    /// Invoked from the 3s poll when observed capture-relevant state
+    /// changed (permissions, secure input) so observers can re-pull
+    /// `shortcutCaptureStatus()` without their own timers.
+    var onCaptureStatusChange: (@MainActor () -> Void)?
 
     private var effectivePaused: Bool {
         shortcutsPaused || autoPausedByException
@@ -54,6 +61,12 @@ final class ShortcutManager {
         usageTracker: UsageTracker? = nil,
         appBundleLocator: AppBundleLocator = AppBundleLocator(),
         automaticPermissionPromptingEnabled: Bool = shortcutManagerAutomaticPermissionPromptingEnabled(),
+        // Optional with a nil default instead of a closure-literal default:
+        // the CI toolchain (Xcode 16.4, Swift 6.1.2) SILGen crashes while
+        // lowering complex default-argument thunks for this initializer
+        // (same class as the WindowCycleClient `.live` default); a nil
+        // literal is trivially emitted and the closure moves into the body.
+        secureInputProbe: (() -> Bool)? = nil,
         diagnosticClient: DiagnosticClient
     ) {
         self.shortcutStore = shortcutStore
@@ -65,6 +78,7 @@ final class ShortcutManager {
         self.appBundleLocator = appBundleLocator
         self.diagnosticClient = diagnosticClient
         self.automaticPermissionPromptingEnabled = automaticPermissionPromptingEnabled
+        self.secureInputProbe = secureInputProbe ?? { IsSecureEventInputEnabled() }
     }
 
     func start() {
@@ -133,7 +147,8 @@ final class ShortcutManager {
     func shortcutCaptureStatus() -> ShortcutCaptureStatus {
         captureCoordinator.status(
             accessibilityGranted: permissionService.isAccessibilityTrusted(),
-            inputMonitoringGranted: permissionService.isInputMonitoringTrusted()
+            inputMonitoringGranted: permissionService.isInputMonitoringTrusted(),
+            secureInputActive: secureInputProbe()
         )
     }
 
@@ -233,6 +248,14 @@ final class ShortcutManager {
     func checkPermissionChange() {
         let axGranted = permissionService.isAccessibilityTrusted()
         var imGranted = permissionService.isInputMonitoringTrusted()
+        let secureInput = secureInputProbe()
+        if secureInput != lastSecureInputState {
+            lastSecureInputState = secureInput
+            diagnosticClient.log(secureInput
+                ? "Secure Input engaged — Hyper/event-tap shortcuts degraded until it ends"
+                : "Secure Input ended — shortcut capture back to normal")
+            onCaptureStatusChange?()
+        }
         let snapshot = captureCoordinator.snapshot()
         let accessibilityChanged = axGranted != lastAccessibilityState
         let inputMonitoringChanged = imGranted != lastInputMonitoringState

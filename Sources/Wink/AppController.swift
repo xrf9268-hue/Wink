@@ -146,6 +146,10 @@ final class AppController {
         // Configured BEFORE the startup sequence so launching while an
         // exception app is frontmost never lets capture (or permission
         // prompts) fire ahead of the auto-pause.
+        shortcutManager.onCaptureStatusChange = { [weak self] in
+            self?.appPreferences.refreshPermissions()
+        }
+
         Self.runStartupSequence(
             startUpdateService: { _ = updateService },
             loadShortcuts: { try persistenceService.load() },
