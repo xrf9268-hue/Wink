@@ -144,10 +144,11 @@ final class InsightsViewModel {
 
         let boundBundles = Set(shortcutStore.shortcuts.map(\.bundleIdentifier))
         let activationTotals = await usageTracker.appActivationTotals(days: days, relativeTo: now)
-        let suggestions: [SuggestedApp] = activationTotals
+        // Resolve BEFORE limiting: an uninstalled app in the top three must
+        // yield its slot to the next resolvable one, not shrink the card.
+        let suggestions: [SuggestedApp] = Array(activationTotals
             .filter { !boundBundles.contains($0.bundleIdentifier) }
-            .prefix(3)
-            .compactMap { entry in
+            .compactMap { entry -> SuggestedApp? in
                 guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: entry.bundleIdentifier) else {
                     // Uninstalled or un-resolvable apps make poor suggestions.
                     return nil
@@ -158,6 +159,7 @@ final class InsightsViewModel {
                     count: entry.count
                 )
             }
+            .prefix(3))
 
         let reportingTimeZone = snapshot.timeZone
         let dailyCounts = snapshot.dailyCounts

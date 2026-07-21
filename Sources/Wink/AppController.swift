@@ -114,9 +114,26 @@ final class AppController {
         menuBarSceneServicesStorage
     }
 
+    /// FIFO chain over activation writes and the opt-out purge: unstructured
+    /// tasks have no mutual ordering, so a queued write could otherwise land
+    /// AFTER the purge (retaining data while disabled) or a queued purge
+    /// could erase rows recorded after a quick re-enable.
+    private var activationWriteChain: Task<Void, Never>?
+
     private func recordAppActivation(_ bundleIdentifier: String) {
         let tracker = usageTracker
-        Task { await tracker.recordAppActivation(bundleIdentifier: bundleIdentifier) }
+        activationWriteChain = Task { [previous = activationWriteChain] in
+            await previous?.value
+            await tracker.recordAppActivation(bundleIdentifier: bundleIdentifier)
+        }
+    }
+
+    private func purgeAppActivations() {
+        let tracker = usageTracker
+        activationWriteChain = Task { [previous = activationWriteChain] in
+            await previous?.value
+            await tracker.deleteAllAppActivations()
+        }
     }
 
     func start() {
@@ -154,10 +171,13 @@ final class AppController {
         frontmostExceptionMonitor.startObservingWorkspaceNotifications()
 
         appPreferences.onSuggestShortcutsConfigurationChange = { [weak self] enabled in
+            // Recorder disables synchronously before the purge enqueues, so
+            // the FIFO chain guarantees "stop AND clear": prior writes land
+            // first, no later writes exist, and post-re-enable writes queue
+            // after the purge.
             self?.appActivationRecorder.setEnabled(enabled)
-            if !enabled, let usageTracker = self?.usageTracker {
-                // The toggle is a privacy control: off means stop AND clear.
-                Task { await usageTracker.deleteAllAppActivations() }
+            if !enabled {
+                self?.purgeAppActivations()
             }
         }
         appActivationRecorder.setEnabled(appPreferences.suggestShortcutsFromUsage)
