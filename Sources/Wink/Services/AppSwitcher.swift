@@ -236,7 +236,12 @@ final class AppSwitcher: AppSwitching {
         confirmationClient: ConfirmationClient = .live,
         recoveryClient: RecoveryClient? = nil,
         sessionCoordinator: ToggleSessionCoordinator? = nil,
-        windowCycleClient: WindowCycleClient = .live,
+        // Optional with a nil default instead of `= .live`: the Swift 6.1.2
+        // (Xcode 16.4 CI) SILGen crashes with signal 11 while lowering this
+        // initializer's default-argument thunk when the default is the
+        // @MainActor static `.live` value; a nil literal generator is
+        // trivial and the `.live` access moves into the isolated init body.
+        windowCycleClient: WindowCycleClient? = nil,
         windowCycleCoordinator: WindowCycleCoordinator? = nil
     ) {
         self.frontmostTracker = frontmostTracker
@@ -248,7 +253,7 @@ final class AppSwitcher: AppSwitching {
         self.confirmationClient = confirmationClient
         self.recoveryClient = recoveryClient
         self.sessionCoordinator = sessionCoordinator ?? ToggleSessionCoordinator(now: confirmationClient.now)
-        self.windowCycleClient = windowCycleClient
+        self.windowCycleClient = windowCycleClient ?? .live
         self.windowCycleCoordinator = windowCycleCoordinator ?? WindowCycleCoordinator(now: confirmationClient.now)
         self.sessionCoordinator.startObservingWorkspaceNotifications()
         self.windowCycleCoordinator.startObservingWorkspaceNotifications()
