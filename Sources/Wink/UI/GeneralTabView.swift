@@ -218,7 +218,11 @@ struct GeneralTabView: View {
 
                 SettingsToggleRow(
                     title: "Hyper cheat sheet",
-                    subtitle: "Hold Caps Lock without a second key to see all shortcuts.",
+                    subtitle: preferences.hyperCheatSheetEnabled
+                        && preferences.hyperKeyEnabled
+                        && !preferences.shortcutCaptureStatus.eventTapActive
+                        ? "Hold Caps Lock without a second key to see all shortcuts. Needs at least one enabled Hyper shortcut."
+                        : "Hold Caps Lock without a second key to see all shortcuts.",
                     isOn: Binding(
                         get: { preferences.hyperCheatSheetEnabled },
                         set: { preferences.setHyperCheatSheetEnabled($0) }

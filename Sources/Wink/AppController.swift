@@ -86,8 +86,12 @@ final class AppController {
         },
         isEnabled: { [weak self] in
             guard let self else { return false }
+            // The sheet rides F19 events from the interception tap, which
+            // only runs when at least one Hyper shortcut is enabled — a
+            // display toggle must not become an Input Monitoring demand.
             return self.appPreferences.hyperCheatSheetEnabled
                 && self.appPreferences.hyperKeyEnabled
+                && self.appPreferences.shortcutCaptureStatus.eventTapActive
         }
     )
     private lazy var appActivationRecorder = AppActivationRecorder(
