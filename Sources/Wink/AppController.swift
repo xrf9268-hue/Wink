@@ -59,6 +59,14 @@ final class AppController {
             self?.appPreferences.refreshPermissions()
         }
     )
+    private lazy var frontmostExceptionMonitor = FrontmostExceptionMonitor(
+        onAutoPauseChange: { [weak self] paused, appName in
+            self?.shortcutManager.setAutoPausedByException(paused)
+            self?.appPreferences.setAutoPauseTrigger(appName: paused ? appName : nil)
+            // Keep the observable capture status truthful under auto-pause.
+            self?.appPreferences.refreshPermissions()
+        }
+    )
     private lazy var insightsViewModel = InsightsViewModel(
         usageTracker: usageTracker,
         shortcutStore: shortcutStore
@@ -120,6 +128,24 @@ final class AppController {
             self?.updatePanelPresenter.dismiss()
         }
 
+        // Exception rules: configure from persisted preferences, follow
+        // future edits, and start following frontmost changes.
+        appPreferences.onFrontmostExceptionConfigurationChange = { [weak self] in
+            guard let self else { return }
+            self.frontmostExceptionMonitor.configure(
+                enabled: self.appPreferences.frontmostExceptionsEnabled,
+                ruleBundleIdentifiers: self.appPreferences.frontmostExceptionRules
+            )
+        }
+        frontmostExceptionMonitor.configure(
+            enabled: appPreferences.frontmostExceptionsEnabled,
+            ruleBundleIdentifiers: appPreferences.frontmostExceptionRules
+        )
+        frontmostExceptionMonitor.startObservingWorkspaceNotifications()
+
+        // Configured BEFORE the startup sequence so launching while an
+        // exception app is frontmost never lets capture (or permission
+        // prompts) fire ahead of the auto-pause.
         Self.runStartupSequence(
             startUpdateService: { _ = updateService },
             loadShortcuts: { try persistenceService.load() },

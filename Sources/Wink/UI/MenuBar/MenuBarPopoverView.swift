@@ -88,6 +88,10 @@ final class MenuBarPopoverModel {
         preferences.shortcutsPaused
     }
 
+    var autoPauseTriggerAppName: String? {
+        preferences.autoPauseTriggerAppName
+    }
+
     var isCheckForUpdatesEnabled: Bool {
         preferences.updatePresentation.checkForUpdatesEnabled
     }
@@ -304,7 +308,10 @@ struct MenuBarPopoverView: View {
 
             Spacer(minLength: 8)
 
-            MenuBarStatusPill(paused: model.shortcutsPaused)
+            MenuBarStatusPill(
+                paused: model.shortcutsPaused || model.autoPauseTriggerAppName != nil,
+                autoPausedBy: model.autoPauseTriggerAppName
+            )
         }
     }
 
@@ -453,9 +460,16 @@ private struct MenuBarStatusPill: View {
     @Environment(\.winkPalette) private var palette
 
     let paused: Bool
+    var autoPausedBy: String?
 
     private var title: String {
-        paused ? "Paused" : "Ready"
+        guard paused else { return "Ready" }
+        // Exception auto-pause names its trigger so "my shortcuts are
+        // dead" never reads as a mystery.
+        if let autoPausedBy {
+            return "Paused · \(autoPausedBy)"
+        }
+        return "Paused"
     }
 
     private var background: Color {

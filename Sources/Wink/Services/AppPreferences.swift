@@ -40,6 +40,8 @@ final class AppPreferences {
     static let frontmostTargetBehaviorDefaultsKey = "frontmostTargetBehavior"
     static let menuBarIconVisibleDefaultsKey = "menuBarIconVisible"
     static let shortcutsPausedDefaultsKey = "shortcutsPaused"
+    static let frontmostExceptionsEnabledDefaultsKey = "frontmostExceptionsEnabled"
+    static let frontmostExceptionRulesDefaultsKey = "frontmostExceptionRules"
 
     private(set) var shortcutCaptureStatus: ShortcutCaptureStatus
     private(set) var launchAtLoginStatus: LaunchAtLoginStatus = .disabled
@@ -47,6 +49,16 @@ final class AppPreferences {
     private(set) var launchAtLoginMutationFailure: LaunchAtLoginMutationFailure?
     private(set) var hyperKeyEnabled: Bool = false
     private(set) var shortcutsPaused: Bool = false
+    /// Exception rules: shortcut capture auto-pauses while one of these
+    /// bundle ids is frontmost. Composes with (never overrides) the
+    /// manual pause above.
+    private(set) var frontmostExceptionsEnabled: Bool = false
+    private(set) var frontmostExceptionRules: [String] = []
+    /// Display name of the app currently triggering an auto-pause; nil
+    /// when no exception rule is active. Not persisted.
+    private(set) var autoPauseTriggerAppName: String?
+    /// Set by AppController wiring; called after rules/enabled change.
+    var onFrontmostExceptionConfigurationChange: (@MainActor () -> Void)?
     /// Apple's own DTS guidance: `SMAppService.Status.notFound` is the normal
     /// pre-registration baseline ("the system has never seen your service"),
     /// not inherently an error — `.notRegistered` is only reached after a
@@ -194,6 +206,9 @@ final class AppPreferences {
     ) {
         let initialHyperKeyEnabled = hyperKeyService?.isEnabled ?? false
         let initialShortcutsPaused = userDefaults.object(forKey: Self.shortcutsPausedDefaultsKey) as? Bool ?? false
+        let initialExceptionsEnabled = userDefaults.object(forKey: Self.frontmostExceptionsEnabledDefaultsKey) as? Bool ?? false
+        let initialExceptionRules = userDefaults.object(forKey: Self.frontmostExceptionRulesDefaultsKey) as? [String]
+            ?? FrontmostExceptionMonitor.defaultRuleBundleIdentifiers
         let initialFrontmostTargetBehavior: FrontmostTargetBehavior
         if let rawValue = userDefaults.string(forKey: Self.frontmostTargetBehaviorDefaultsKey),
            let storedBehavior = FrontmostTargetBehavior(rawValue: rawValue) {
@@ -212,6 +227,8 @@ final class AppPreferences {
         self.lastUpdateCheckDate = updateService?.lastUpdateCheckDate
         self.hyperKeyEnabled = initialHyperKeyEnabled
         self.shortcutsPaused = initialShortcutsPaused
+        self.frontmostExceptionsEnabled = initialExceptionsEnabled
+        self.frontmostExceptionRules = initialExceptionRules
         self.frontmostTargetBehavior = initialFrontmostTargetBehavior
 
         shortcutManager.setFrontmostTargetBehavior(initialFrontmostTargetBehavior)
@@ -258,6 +275,33 @@ final class AppPreferences {
         userDefaults.set(paused, forKey: Self.shortcutsPausedDefaultsKey)
         shortcutsPaused = paused
         refreshPermissions()
+    }
+
+    func setFrontmostExceptionsEnabled(_ enabled: Bool) {
+        guard enabled != frontmostExceptionsEnabled else { return }
+        frontmostExceptionsEnabled = enabled
+        userDefaults.set(enabled, forKey: Self.frontmostExceptionsEnabledDefaultsKey)
+        onFrontmostExceptionConfigurationChange?()
+    }
+
+    func addFrontmostExceptionRule(bundleIdentifier: String) {
+        guard !bundleIdentifier.isEmpty,
+              !frontmostExceptionRules.contains(bundleIdentifier) else { return }
+        frontmostExceptionRules.append(bundleIdentifier)
+        userDefaults.set(frontmostExceptionRules, forKey: Self.frontmostExceptionRulesDefaultsKey)
+        onFrontmostExceptionConfigurationChange?()
+    }
+
+    func removeFrontmostExceptionRule(bundleIdentifier: String) {
+        guard frontmostExceptionRules.contains(bundleIdentifier) else { return }
+        frontmostExceptionRules.removeAll { $0 == bundleIdentifier }
+        userDefaults.set(frontmostExceptionRules, forKey: Self.frontmostExceptionRulesDefaultsKey)
+        onFrontmostExceptionConfigurationChange?()
+    }
+
+    func setAutoPauseTrigger(appName: String?) {
+        guard autoPauseTriggerAppName != appName else { return }
+        autoPauseTriggerAppName = appName
     }
 
     func refreshLaunchAtLoginStatus() {

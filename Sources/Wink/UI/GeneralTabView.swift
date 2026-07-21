@@ -213,8 +213,60 @@ struct GeneralTabView: View {
                     )
                     .frame(width: 224)
                 }
+
+                Divider().overlay(palette.hairline)
+
+                SettingsToggleRow(
+                    title: "Pause in exception apps",
+                    subtitle: "Hand shortcuts back to the system while a listed app (VM, remote desktop) is frontmost.",
+                    isOn: Binding(
+                        get: { preferences.frontmostExceptionsEnabled },
+                        set: { preferences.setFrontmostExceptionsEnabled($0) }
+                    )
+                )
+
+                if preferences.frontmostExceptionsEnabled {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(preferences.frontmostExceptionRules, id: \.self) { bundleIdentifier in
+                            HStack(spacing: 8) {
+                                AppIconView(bundleIdentifier: bundleIdentifier, size: 18)
+                                Text(bundleIdentifier)
+                                    .font(WinkType.labelSmall.monospaced())
+                                    .foregroundStyle(palette.textSecondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer(minLength: 8)
+                                Button {
+                                    preferences.removeFrontmostExceptionRule(bundleIdentifier: bundleIdentifier)
+                                } label: {
+                                    WinkIcon.close.image(size: 9)
+                                        .foregroundStyle(palette.textTertiary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Remove \(bundleIdentifier)")
+                            }
+                        }
+
+                        WinkButton("Add App…") {
+                            addExceptionApp()
+                        }
+                        .padding(.top, 2)
+                    }
+                    .padding(.leading, 2)
+                }
             }
         }
+    }
+
+    private func addExceptionApp() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        guard panel.runModal() == .OK,
+              let url = panel.url,
+              let bundleIdentifier = Bundle(url: url)?.bundleIdentifier else { return }
+        preferences.addFrontmostExceptionRule(bundleIdentifier: bundleIdentifier)
     }
 
     private func inputMonitoringPresentationState(for status: ShortcutCaptureStatus) -> PermissionSummaryState {

@@ -37,6 +37,11 @@ final class ShortcutManager {
     private var lastAvailableShortcutBundleIdentifiers: Set<String> = []
     private var hyperKeyEnabled = false
     private var shortcutsPaused = false
+    private var autoPausedByException = false
+
+    private var effectivePaused: Bool {
+        shortcutsPaused || autoPausedByException
+    }
     private var lastCaptureBlockedMessages: Set<String> = []
     private var hasStarted = false
 
@@ -66,7 +71,7 @@ final class ShortcutManager {
         rebuildIndex()
         let inputMonitoringRequired = captureCoordinator.inputMonitoringRequired
         let ready: Bool
-        if shortcutsPaused {
+        if effectivePaused {
             ready = false
         } else {
             let shouldRequestInputMonitoring = inputMonitoringRequired
@@ -80,10 +85,10 @@ final class ShortcutManager {
             diagnosticClient.log("Automatic permission prompts suppressed for this launch")
         }
         logger.info(
-            "start(): ready=\(ready), ax=\(self.permissionService.isAccessibilityTrusted()), im=\(self.permissionService.isInputMonitoringTrusted()), inputMonitoringRequired=\(inputMonitoringRequired), paused=\(self.shortcutsPaused)"
+            "start(): ready=\(ready), ax=\(self.permissionService.isAccessibilityTrusted()), im=\(self.permissionService.isInputMonitoringTrusted()), inputMonitoringRequired=\(inputMonitoringRequired), paused=\(self.effectivePaused)"
         )
         diagnosticClient.log(
-            "start(): ready=\(ready), ax=\(permissionService.isAccessibilityTrusted()), im=\(permissionService.isInputMonitoringTrusted()), inputMonitoringRequired=\(inputMonitoringRequired), paused=\(shortcutsPaused)"
+            "start(): ready=\(ready), ax=\(permissionService.isAccessibilityTrusted()), im=\(permissionService.isInputMonitoringTrusted()), inputMonitoringRequired=\(inputMonitoringRequired), paused=\(effectivePaused)"
         )
         hasStarted = true
         startPermissionMonitoring()
@@ -150,7 +155,30 @@ final class ShortcutManager {
             return
         }
 
+        let wasEffectivelyPaused = effectivePaused
         shortcutsPaused = paused
+        // Manual and exception pauses compose: capture only transitions
+        // when the OR of both bits changes, so resuming one while the
+        // other still holds keeps capture paused.
+        guard effectivePaused != wasEffectivelyPaused else { return }
+        applyEffectivePauseTransition()
+    }
+
+    /// Exception-rule auto-pause (frontmost VM/remote-desktop app).
+    /// Never persists and never touches the user's manual pause bit.
+    func setAutoPausedByException(_ paused: Bool) {
+        guard autoPausedByException != paused else {
+            return
+        }
+
+        let wasEffectivelyPaused = effectivePaused
+        autoPausedByException = paused
+        guard effectivePaused != wasEffectivelyPaused else { return }
+        applyEffectivePauseTransition()
+    }
+
+    private func applyEffectivePauseTransition() {
+        let paused = effectivePaused
         if !paused {
             _ = refreshShortcutAvailabilityIfNeeded()
         }
@@ -251,7 +279,7 @@ final class ShortcutManager {
             return
         }
 
-        if shortcutsPaused {
+        if effectivePaused {
             _ = refreshShortcutAvailabilityIfNeeded()
             captureCoordinator.refreshInputMonitoring(granted: imGranted)
             return
@@ -311,7 +339,7 @@ final class ShortcutManager {
     }
 
     private func attemptStartIfPermitted(retryStandardProvider: Bool = true) {
-        if shortcutsPaused {
+        if effectivePaused {
             captureCoordinator.start(
                 inputMonitoringGranted: permissionService.isInputMonitoringTrusted(),
                 retryStandardProvider: retryStandardProvider
@@ -365,7 +393,7 @@ final class ShortcutManager {
         }
 
         let inputMonitoringRequired = captureCoordinator.inputMonitoringRequired
-        if !shortcutsPaused
+        if !effectivePaused
             && !inputMonitoringWasRequired
             && inputMonitoringRequired
             && permissionService.isAccessibilityTrusted()

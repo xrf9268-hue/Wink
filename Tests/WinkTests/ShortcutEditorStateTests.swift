@@ -1029,3 +1029,40 @@ func setFrontmostBehaviorOverridePersistsAndNotifiesOnce() {
     #expect(shortcutStore.shortcuts.first?.frontmostBehaviorOverride == nil)
     #expect(callbackCount == 2)
 }
+
+@Test @MainActor
+func manualAndExceptionPausesComposeWithManualWinning() {
+    let shortcutStore = ShortcutStore()
+    let manager = ShortcutManager(
+        shortcutStore: shortcutStore,
+        persistenceService: TestPersistenceHarness().makePersistenceService(),
+        appSwitcher: FakeAppSwitcher(),
+        captureCoordinator: ShortcutCaptureCoordinator(
+            standardProvider: FakeCaptureProvider(),
+            hyperProvider: FakeHyperCaptureProvider()
+        ),
+        permissionService: FakePermissionService(ax: true, input: false),
+        diagnosticClient: .init(log: { _ in })
+    )
+
+    manager.setAutoPausedByException(true)
+    #expect(manager.shortcutCaptureStatus().shortcutsPaused == true)
+
+    // Manual pause engages while auto is active; lifting the exception
+    // must NOT resume capture — the user's explicit pause wins.
+    manager.setShortcutsPaused(true)
+    manager.setAutoPausedByException(false)
+    #expect(manager.shortcutCaptureStatus().shortcutsPaused == true)
+
+    manager.setShortcutsPaused(false)
+    #expect(manager.shortcutCaptureStatus().shortcutsPaused == false)
+
+    // And the reverse: manual resume under an active exception keeps
+    // capture paused until the exception lifts too.
+    manager.setShortcutsPaused(true)
+    manager.setAutoPausedByException(true)
+    manager.setShortcutsPaused(false)
+    #expect(manager.shortcutCaptureStatus().shortcutsPaused == true)
+    manager.setAutoPausedByException(false)
+    #expect(manager.shortcutCaptureStatus().shortcutsPaused == false)
+}
