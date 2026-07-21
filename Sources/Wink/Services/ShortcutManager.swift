@@ -407,7 +407,12 @@ final class ShortcutManager {
         var availableBundleIdentifiers = Set<String>()
 
         for shortcut in shortcutStore.shortcuts where shortcut.isEnabled {
-            guard appBundleLocator.applicationURL(for: shortcut.bundleIdentifier) != nil else {
+            // Frontmost-app pseudo-targets have no app URL by design (their
+            // sentinel bundle names no installed app) and are always
+            // available: skipping the locator check here is what makes
+            // them register with Carbon and enter the trigger index.
+            guard shortcut.isFrontmostAppTarget
+                    || appBundleLocator.applicationURL(for: shortcut.bundleIdentifier) != nil else {
                 continue
             }
 

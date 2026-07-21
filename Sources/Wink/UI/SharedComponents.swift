@@ -71,8 +71,19 @@ struct AppIconView: View {
     }
 
     private func resolveIcon() {
+        if bundleIdentifier == AppShortcut.frontmostTargetSentinelBundleIdentifier {
+            icon = Self.frontmostTargetIcon
+            return
+        }
         icon = AppIconCache.icon(for: bundleIdentifier) ?? Self.fallbackIcon
     }
 
     private static let fallbackIcon = NSWorkspace.shared.icon(for: .application)
+    private static let frontmostTargetIcon: NSImage = {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 22, weight: .medium)
+        return NSImage(
+            systemSymbolName: "macwindow.on.rectangle",
+            accessibilityDescription: AppShortcut.frontmostTargetDisplayName
+        )?.withSymbolConfiguration(configuration) ?? fallbackIcon
+    }()
 }

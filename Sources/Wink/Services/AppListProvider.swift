@@ -10,6 +10,15 @@ struct AppEntry: Identifiable, Hashable {
     let url: URL
 
     var bundleIdentifier: String { id }
+
+    /// Pinned picker entry for frontmost-app shortcuts. The URL is a
+    /// placeholder — the sentinel bundle names no installed app; selection
+    /// is recognized by bundle identifier, never by path.
+    static let frontmostTarget = AppEntry(
+        id: AppShortcut.frontmostTargetSentinelBundleIdentifier,
+        name: AppShortcut.frontmostTargetDisplayName,
+        url: URL(fileURLWithPath: "/")
+    )
 }
 
 struct RunningApplicationSnapshot: Sendable {

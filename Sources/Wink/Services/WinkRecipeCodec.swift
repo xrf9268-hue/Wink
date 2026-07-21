@@ -26,7 +26,7 @@ struct WinkRecipeCodec {
 
     func decode(_ data: Data) throws -> WinkRecipe {
         let recipe = try decoder.decode(WinkRecipe.self, from: data)
-        guard recipe.schemaVersion == WinkRecipe.currentSchemaVersion else {
+        guard WinkRecipe.supportedSchemaVersions.contains(recipe.schemaVersion) else {
             throw Error.unsupportedSchemaVersion(recipe.schemaVersion)
         }
         return recipe

@@ -52,6 +52,7 @@ struct AppPickerPopover: View {
     /// SwiftUI reads these lists several times per body render; computed
     /// properties would re-filter on each access.
     private struct Sections {
+        let special: [AppEntry]
         let recent: [AppEntry]
         let nonRecent: [AppEntry]
         let all: [AppEntry]
@@ -61,12 +62,16 @@ struct AppPickerPopover: View {
     private func computeSections() -> Sections {
         let all = appListProvider.filteredApps(query: searchText)
         guard searchText.isEmpty else {
-            return Sections(recent: [], nonRecent: [], all: all, flat: all)
+            let special = AppEntry.frontmostTarget.name
+                .localizedCaseInsensitiveContains(searchText) ? [AppEntry.frontmostTarget] : []
+            let flat = special + all
+            return Sections(special: special, recent: [], nonRecent: [], all: all, flat: flat)
         }
+        let special = [AppEntry.frontmostTarget]
         let recent = appListProvider.recentApps
         let recentIDs = Set(recent.map(\.bundleIdentifier))
         let nonRecent = all.filter { !recentIDs.contains($0.bundleIdentifier) }
-        return Sections(recent: recent, nonRecent: nonRecent, all: all, flat: recent + nonRecent)
+        return Sections(special: special, recent: recent, nonRecent: nonRecent, all: all, flat: special + recent + nonRecent)
     }
 
     var body: some View {
@@ -96,13 +101,17 @@ struct AppPickerPopover: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         if searchText.isEmpty {
+                            ForEach(Array(sections.special.enumerated()), id: \.element.id) { index, entry in
+                                appRow(entry, index: index)
+                            }
+
                             if !sections.recent.isEmpty {
                                 WinkSectionLabel("Recently Used")
                                     .padding(.horizontal, 14)
                                     .padding(.top, 8)
                                     .padding(.bottom, 4)
-                                ForEach(Array(sections.recent.enumerated()), id: \.element.id) { index, entry in
-                                    appRow(entry, index: index)
+                                ForEach(Array(sections.recent.enumerated()), id: \.element.id) { i, entry in
+                                    appRow(entry, index: sections.special.count + i)
                                 }
                             }
 
@@ -112,12 +121,12 @@ struct AppPickerPopover: View {
                                     .padding(.top, 8)
                                     .padding(.bottom, 4)
                                 ForEach(Array(sections.nonRecent.enumerated()), id: \.element.id) { i, entry in
-                                    let index = sections.recent.count + i
+                                    let index = sections.special.count + sections.recent.count + i
                                     appRow(entry, index: index)
                                 }
                             }
                         } else {
-                            ForEach(Array(sections.all.enumerated()), id: \.element.id) { index, entry in
+                            ForEach(Array(sections.flat.enumerated()), id: \.element.id) { index, entry in
                                 appRow(entry, index: index)
                             }
                         }
@@ -201,7 +210,12 @@ struct AppPickerPopover: View {
     }
 
     private func select(_ entry: AppEntry) {
-        appListProvider.noteRecentApp(bundleIdentifier: entry.bundleIdentifier)
+        // The pinned Current App entry is not a real app: recording it as
+        // recent would evict a genuine recent (the recents list silently
+        // drops ids missing from the app catalog).
+        if entry.bundleIdentifier != AppShortcut.frontmostTargetSentinelBundleIdentifier {
+            appListProvider.noteRecentApp(bundleIdentifier: entry.bundleIdentifier)
+        }
         onSelect(entry)
         dismiss()
     }

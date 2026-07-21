@@ -68,6 +68,7 @@ private func makeCycleSwitcher(
     clock: CycleTestClock,
     scheduler: @escaping @MainActor (TimeInterval, @escaping @MainActor () -> Void) -> Void = { _, _ in },
     trackerBundle: String? = nil,
+    trackerApp: NSRunningApplication? = nil,
     windowsReadFails: @escaping @MainActor () -> Bool = { false },
     windowCycleCoordinator: WindowCycleCoordinator? = nil
 ) -> AppSwitcher {
@@ -77,7 +78,8 @@ private func makeCycleSwitcher(
     let minimizedElements = minimizedIDs.compactMap { windows.element(for: $0) }
     return AppSwitcher(
         frontmostTracker: FrontmostApplicationTracker(client: .init(
-            currentFrontmostBundleIdentifier: { trackerBundle }
+            currentFrontmostBundleIdentifier: { trackerBundle },
+            currentFrontmostApplication: { trackerApp }
         )),
         applicationObservation: ApplicationObservation(client: .init(
             currentFrontmostBundleIdentifier: { bundleIdentifier },
@@ -884,4 +886,120 @@ func standardCooldownStillAppliesWhenBehaviorIsNotCycle() {
     // Cycle, so the press stays blocked.
     clock.time = 100.2
     #expect(switcher.toggleApplication(for: shortcut) == false)
+}
+
+// MARK: - Frontmost-app pseudo-target
+
+@MainActor
+private func makeFrontmostTargetShortcut() -> AppShortcut {
+    AppShortcut(
+        appName: AppShortcut.frontmostTargetDisplayName,
+        bundleIdentifier: AppShortcut.frontmostTargetSentinelBundleIdentifier,
+        keyEquivalent: "`",
+        modifierFlags: ["command", "option"],
+        target: .frontmostApp
+    )
+}
+
+@Test @MainActor
+func frontmostPseudoTargetCyclesTheResolvedApp() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for pseudo-target test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: bundleIdentifier,
+        trackerApp: frontmostApp
+    )
+    // Global behavior is Toggle: the pseudo-target must still cycle
+    // (resolution defaults its behavior to Cycle).
+    switcher.setFrontmostTargetBehavior(.toggle)
+
+    #expect(switcher.toggleApplication(for: makeFrontmostTargetShortcut()) == true)
+    #expect(recorder.raisedWindowIDs == [102])
+    #expect(recorder.hideCalls == 0)
+    #expect(switcher.pendingDeactivationState == nil)
+
+    // Established cycling gets the relaxed cooldown keyed on the RESOLVED
+    // bundle, so a rapid second press rotates onward.
+    clock.time = 100.2
+    #expect(switcher.toggleApplication(for: makeFrontmostTargetShortcut()) == true)
+    #expect(recorder.raisedWindowIDs == [102, 101])
+}
+
+@Test @MainActor
+func frontmostPseudoTargetWithoutResolvableFrontmostIsRejected() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for pseudo-target rejection test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerApp: nil
+    )
+    switcher.setFrontmostTargetBehavior(.toggle)
+
+    #expect(switcher.toggleApplication(for: makeFrontmostTargetShortcut()) == false)
+    #expect(recorder.raisedWindowIDs.isEmpty)
+    #expect(recorder.hideCalls == 0)
+}
+
+@Test @MainActor
+func frontmostPseudoTargetSingleWindowIsANoOpNotAHide() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for pseudo-target no-op test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101])
+    var scheduled: [@MainActor () -> Void] = []
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        scheduler: { _, operation in
+            scheduled.append(operation)
+        },
+        trackerBundle: bundleIdentifier,
+        trackerApp: frontmostApp
+    )
+    switcher.setFrontmostTargetBehavior(.toggle)
+
+    // "Cycle the current app" must never hide the app the user is in.
+    // The press is fully handled but reports false so it never counts as
+    // an activation for usage recording.
+    #expect(switcher.toggleApplication(for: makeFrontmostTargetShortcut()) == false)
+    #expect(recorder.raisedWindowIDs.isEmpty)
+    #expect(switcher.pendingDeactivationState == nil)
+    for operation in scheduled {
+        operation()
+    }
+    #expect(recorder.hideCalls == 0)
 }

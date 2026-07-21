@@ -22,6 +22,7 @@ struct WinkRecipeImportPlanner {
         let modifierFlags: [String]
         let isEnabled: Bool
         let frontmostBehaviorOverride: FrontmostTargetBehavior?
+        let target: ShortcutTarget?
         let resolution: AppResolution
 
         var isUnresolved: Bool {
@@ -43,7 +44,8 @@ struct WinkRecipeImportPlanner {
                 keyEquivalent: keyEquivalent,
                 modifierFlags: modifierFlags,
                 isEnabled: isEnabled,
-                frontmostBehaviorOverride: frontmostBehaviorOverride
+                frontmostBehaviorOverride: frontmostBehaviorOverride,
+                target: target
             )
         }
     }
@@ -174,6 +176,24 @@ struct WinkRecipeImportPlanner {
     ) -> PlannedShortcut {
         let id = idProvider()
 
+        // Frontmost-app pseudo-targets name no installed app on purpose:
+        // they are always importable, keeping their sentinel identity.
+        if recipeShortcut.shortcutTarget == .frontmostApp {
+            return PlannedShortcut(
+                id: id,
+                sourceAppName: recipeShortcut.appName,
+                sourceBundleIdentifier: recipeShortcut.bundleIdentifier,
+                resolvedAppName: AppShortcut.frontmostTargetDisplayName,
+                resolvedBundleIdentifier: AppShortcut.frontmostTargetSentinelBundleIdentifier,
+                keyEquivalent: recipeShortcut.keyEquivalent,
+                modifierFlags: recipeShortcut.modifierFlags,
+                isEnabled: recipeShortcut.isEnabled,
+                frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
+                target: .frontmostApp,
+                resolution: .matchedByBundleIdentifier
+            )
+        }
+
         if let matchedByBundleIdentifier = installedApps.first(where: {
             $0.bundleIdentifier == recipeShortcut.bundleIdentifier
         }) {
@@ -187,6 +207,7 @@ struct WinkRecipeImportPlanner {
                 modifierFlags: recipeShortcut.modifierFlags,
                 isEnabled: recipeShortcut.isEnabled,
                 frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
+                target: recipeShortcut.shortcutTarget,
                 resolution: .matchedByBundleIdentifier
             )
         }
@@ -209,6 +230,7 @@ struct WinkRecipeImportPlanner {
                 modifierFlags: recipeShortcut.modifierFlags,
                 isEnabled: recipeShortcut.isEnabled,
                 frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
+                target: recipeShortcut.shortcutTarget,
                 resolution: .matchedByAppName
             )
         }
@@ -223,6 +245,7 @@ struct WinkRecipeImportPlanner {
             modifierFlags: recipeShortcut.modifierFlags,
             isEnabled: recipeShortcut.isEnabled,
             frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
+            target: recipeShortcut.shortcutTarget,
             resolution: .unresolved
         )
     }

@@ -126,7 +126,10 @@ final class ShortcutEditorState {
             appName: selectedAppName,
             bundleIdentifier: selectedBundleIdentifier,
             keyEquivalent: recordedShortcut.keyEquivalent,
-            modifierFlags: recordedShortcut.modifierFlags
+            modifierFlags: recordedShortcut.modifierFlags,
+            target: selectedBundleIdentifier == AppShortcut.frontmostTargetSentinelBundleIdentifier
+                ? .frontmostApp
+                : nil
         )
 
         if let conflict = shortcutValidator.conflict(for: candidate, in: shortcuts) {
