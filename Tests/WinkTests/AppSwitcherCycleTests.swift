@@ -601,6 +601,48 @@ func changingBehaviorAwayFromCycleInvalidatesLiveSession() {
 }
 
 @Test @MainActor
+func changingGlobalBehaviorToCycleAlsoInvalidatesOverrideCreatedSession() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for global-to-cycle invalidation test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    let coordinator = WindowCycleCoordinator(now: { clock.time })
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        windowCycleCoordinator: coordinator
+    )
+    switcher.setFrontmostTargetBehavior(.toggle)
+
+    // An override-Cycle shortcut creates a live session while the global
+    // behavior is Toggle.
+    let overrideShortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"],
+        frontmostBehaviorOverride: .cycleWindows
+    )
+    #expect(switcher.toggleApplication(for: overrideShortcut) == true)
+    #expect(coordinator.session != nil)
+
+    // Switching the global TO Cycle must also drop the cursor: a second
+    // shortcut on the same bundle following the new global would
+    // otherwise inherit the stale cursor and the relaxed cooldown.
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+    #expect(coordinator.session == nil)
+}
+
+@Test @MainActor
 func cycleRotationUnminimizesOnlyTheMinimizedStop() {
     guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
           let bundleIdentifier = frontmostApp.bundleIdentifier else {

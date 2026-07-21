@@ -278,9 +278,11 @@ final class AppSwitcher: AppSwitching {
     func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior) {
         frontmostTargetBehavior = behavior
         sessionCoordinator.setFrontmostTargetBehavior(behavior)
-        if behavior != .cycleWindows {
-            windowCycleCoordinator.invalidate(reason: "behavior_changed")
-        }
+        // Unconditional: overrides decouple live sessions from the global
+        // value, so even a change *to* .cycleWindows can hand a stale
+        // cursor (created by an override-Cycle shortcut) to a different
+        // shortcut that now follows the new global setting.
+        windowCycleCoordinator.invalidate(reason: "behavior_changed")
     }
 
     func invalidateWindowCycleSession(reason: String) {
