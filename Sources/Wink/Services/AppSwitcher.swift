@@ -893,7 +893,7 @@ final class AppSwitcher: AppSwitching {
             reconfirmingDegradedSession = processUpdatedSession ?? reconfirmingDegradedSession
         }
 
-        let preActionWindowObservation = applicationObservation.windowObservation(for: runningApp)
+        let preActionWindowObservation = applicationObservation.windowObservation(for: runningApp, phase: .preAction)
         let preActionSnapshot = applicationObservation.snapshot(
             for: runningApp,
             windowObservation: preActionWindowObservation
@@ -1243,7 +1243,7 @@ final class AppSwitcher: AppSwitching {
                         classificationReason: "app switcher released during confirmation"
                     )
                 }
-                let confirmationWindowObservation = self.applicationObservation.windowObservation(for: runningApp)
+                let confirmationWindowObservation = self.applicationObservation.windowObservation(for: runningApp, phase: .activationConfirmation)
                 return self.applicationObservation.snapshot(
                     for: runningApp,
                     windowObservation: confirmationWindowObservation
@@ -1345,7 +1345,7 @@ final class AppSwitcher: AppSwitching {
                         classificationReason: "app switcher released during hide confirmation"
                     )
                 }
-                let windowObservation = self.applicationObservation.windowObservation(for: runningApp)
+                let windowObservation = self.applicationObservation.windowObservation(for: runningApp, phase: .deactivationConfirmation)
                 return self.applicationObservation.snapshot(
                     for: runningApp,
                     windowObservation: windowObservation
@@ -1468,7 +1468,7 @@ final class AppSwitcher: AppSwitching {
             activationPath: .launch
         )
 
-        let preActionWindowObservation = applicationObservation.windowObservation(for: runningApp)
+        let preActionWindowObservation = applicationObservation.windowObservation(for: runningApp, phase: .launchContinuation)
         let preActionSnapshot = applicationObservation.snapshot(
             for: runningApp,
             windowObservation: preActionWindowObservation
@@ -1516,7 +1516,7 @@ final class AppSwitcher: AppSwitching {
                         classificationReason: "app switcher released during confirmation"
                     )
                 }
-                let confirmationWindowObservation = self.applicationObservation.windowObservation(for: runningApp)
+                let confirmationWindowObservation = self.applicationObservation.windowObservation(for: runningApp, phase: .launchConfirmation)
                 return self.applicationObservation.snapshot(
                     for: runningApp,
                     windowObservation: confirmationWindowObservation

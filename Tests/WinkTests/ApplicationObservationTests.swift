@@ -217,3 +217,140 @@ func nonRegularAppWithoutWindowEvidenceCanRemainStable() {
     #expect(snapshot.classification == .systemUtility)
     #expect(snapshot.allowsWindowlessStableActivation == true)
 }
+
+@Test @MainActor
+func measuredWindowObservationPassesThroughTheCaptureUnchanged() {
+    let currentApp = NSRunningApplication.current
+    let expected = ApplicationObservation.WindowObservation(
+        windows: nil,
+        visibleWindowCount: 3,
+        hasFocusedWindow: true,
+        hasMainWindow: true,
+        windowsReadSucceeded: true,
+        failureReason: nil
+    )
+    let reports = SlowObservationReportBox()
+    let observation = ApplicationObservation(client: .init(
+        currentFrontmostBundleIdentifier: { nil },
+        windowObservation: { _ in expected },
+        activationPolicy: { _ in .regular },
+        now: { 0 },
+        onSlowObservation: { reports.values.append($0) }
+    ))
+
+    let result = observation.windowObservation(for: currentApp, phase: .preAction)
+
+    #expect(result.visibleWindowCount == 3)
+    #expect(result.hasFocusedWindow)
+    #expect(result.hasMainWindow)
+    #expect(result.windowsReadSucceeded)
+    #expect(reports.values.isEmpty)
+}
+
+@Test @MainActor
+func observationOverLatencyBudgetEmitsSlowReportWithPhaseAndDuration() {
+    let currentApp = NSRunningApplication.current
+    let clock = TickingClockBox(times: [10.0, 10.2])
+    let reports = SlowObservationReportBox()
+    let observation = ApplicationObservation(client: .init(
+        currentFrontmostBundleIdentifier: { nil },
+        windowObservation: { _ in
+            ApplicationObservation.WindowObservation(
+                windows: nil,
+                visibleWindowCount: 24,
+                hasFocusedWindow: false,
+                hasMainWindow: false,
+                windowsReadSucceeded: true,
+                failureReason: nil
+            )
+        },
+        activationPolicy: { _ in .regular },
+        now: { clock.next() },
+        onSlowObservation: { reports.values.append($0) }
+    ))
+
+    _ = observation.windowObservation(for: currentApp, phase: .deactivationConfirmation)
+
+    #expect(reports.values.count == 1)
+    let report = reports.values.first
+    #expect(report?.phase == .deactivationConfirmation)
+    #expect(report?.visibleWindowCount == 24)
+    #expect(report?.processIdentifier == currentApp.processIdentifier)
+    #expect(report.map { abs($0.duration - 0.2) < 0.0001 } == true)
+    #expect(report?.logLine.contains("AX_OBSERVATION_SLOW phase=deactivationConfirmation") == true)
+    #expect(report?.logLine.contains("durationMs=200.0") == true)
+    #expect(report?.logLine.contains("budgetMs=50") == true)
+}
+
+@Test @MainActor
+func observationWithinLatencyBudgetEmitsNoSlowReport() {
+    let currentApp = NSRunningApplication.current
+    let clock = TickingClockBox(times: [10.0, 10.01])
+    let reports = SlowObservationReportBox()
+    let observation = ApplicationObservation(client: .init(
+        currentFrontmostBundleIdentifier: { nil },
+        windowObservation: { _ in
+            ApplicationObservation.WindowObservation(
+                windows: nil,
+                visibleWindowCount: 1,
+                hasFocusedWindow: true,
+                hasMainWindow: true,
+                windowsReadSucceeded: true,
+                failureReason: nil
+            )
+        },
+        activationPolicy: { _ in .regular },
+        now: { clock.next() },
+        onSlowObservation: { reports.values.append($0) }
+    ))
+
+    _ = observation.windowObservation(for: currentApp, phase: .preAction)
+
+    #expect(reports.values.isEmpty)
+}
+
+@Test @MainActor
+func snapshotFallbackCaptureIsMeasuredUnderTheFallbackPhase() {
+    let currentApp = NSRunningApplication.current
+    let clock = TickingClockBox(times: [5.0, 5.3])
+    let reports = SlowObservationReportBox()
+    let observation = ApplicationObservation(client: .init(
+        currentFrontmostBundleIdentifier: { nil },
+        windowObservation: { _ in
+            ApplicationObservation.WindowObservation(
+                windows: nil,
+                visibleWindowCount: 0,
+                hasFocusedWindow: false,
+                hasMainWindow: false,
+                windowsReadSucceeded: false,
+                failureReason: "axWindowsReadFailed=-25204"
+            )
+        },
+        activationPolicy: { _ in .regular },
+        now: { clock.next() },
+        onSlowObservation: { reports.values.append($0) }
+    ))
+
+    _ = observation.snapshot(for: currentApp)
+
+    #expect(reports.values.count == 1)
+    #expect(reports.values.first?.phase == .snapshotFallback)
+    #expect(reports.values.first?.windowsReadSucceeded == false)
+}
+
+@MainActor
+private final class SlowObservationReportBox {
+    var values: [SlowObservationReport] = []
+}
+
+private final class TickingClockBox: @unchecked Sendable {
+    private var times: [CFAbsoluteTime]
+
+    init(times: [CFAbsoluteTime]) {
+        self.times = times
+    }
+
+    func next() -> CFAbsoluteTime {
+        times.isEmpty ? 0 : times.removeFirst()
+    }
+}

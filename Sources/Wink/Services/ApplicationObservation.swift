@@ -1,5 +1,41 @@
 import AppKit
 import ApplicationServices
+import os.signpost
+
+/// Where in the toggle pipeline a synchronous AX window observation runs.
+/// Labels the signpost intervals and slow-observation diagnostics so
+/// pre-action cost can be separated from confirmation/recovery cost
+/// (issue #321).
+enum WindowObservationPhase: String, Sendable {
+    case preAction
+    case activationConfirmation
+    case deactivationConfirmation
+    case launchContinuation
+    case launchConfirmation
+    case snapshotFallback
+}
+
+/// Emitted when one AX window observation exceeds the main-actor latency
+/// budget. The default sink writes an `AX_OBSERVATION_SLOW` line to the
+/// diagnostic log.
+struct SlowObservationReport: Sendable, Equatable {
+    let phase: WindowObservationPhase
+    let bundleIdentifier: String?
+    let processIdentifier: pid_t
+    let visibleWindowCount: Int
+    let windowsReadSucceeded: Bool
+    let duration: TimeInterval
+
+    var logLine: String {
+        let durationMs = String(format: "%.1f", duration * 1_000)
+        let budgetMs = String(format: "%.0f", ApplicationObservation.observationLatencyBudget * 1_000)
+        return "AX_OBSERVATION_SLOW phase=\(phase.rawValue) " +
+            ActivationObservationSnapshot.quotedField("target", bundleIdentifier) +
+            " pid=\(processIdentifier) visibleWindowCount=\(visibleWindowCount)" +
+            " windowObservationSucceeded=\(windowsReadSucceeded)" +
+            " durationMs=\(durationMs) budgetMs=\(budgetMs)"
+    }
+}
 
 enum ApplicationClassification: String, Sendable {
     case regularWindowed
@@ -142,7 +178,53 @@ struct ApplicationObservation {
         let currentFrontmostBundleIdentifier: @MainActor () -> String?
         let windowObservation: @MainActor (NSRunningApplication) -> WindowObservation
         let activationPolicy: @MainActor (NSRunningApplication) -> NSApplication.ActivationPolicy
+        let now: @Sendable () -> CFAbsoluteTime
+        let onSlowObservation: @MainActor (SlowObservationReport) -> Void
+
+        init(
+            currentFrontmostBundleIdentifier: @escaping @MainActor () -> String?,
+            windowObservation: @escaping @MainActor (NSRunningApplication) -> WindowObservation,
+            activationPolicy: @escaping @MainActor (NSRunningApplication) -> NSApplication.ActivationPolicy,
+            now: @escaping @Sendable () -> CFAbsoluteTime = CFAbsoluteTimeGetCurrent,
+            onSlowObservation: @escaping @MainActor (SlowObservationReport) -> Void = { report in
+                DiagnosticLog.log(report.logLine)
+            }
+        ) {
+            self.currentFrontmostBundleIdentifier = currentFrontmostBundleIdentifier
+            self.windowObservation = windowObservation
+            self.activationPolicy = activationPolicy
+            self.now = now
+            self.onSlowObservation = onSlowObservation
+        }
     }
+
+    /// Latency budget for one synchronous window observation on the main
+    /// actor. Chosen well under the 75ms activation-confirmation delay and
+    /// the 50ms deactivation poll interval so a within-budget observation
+    /// can never dominate the shortcut path; observations above it emit a
+    /// signposted `AX_OBSERVATION_SLOW` diagnostic. Measured baselines are
+    /// recorded in docs/architecture.md (issue #321).
+    static let observationLatencyBudget: TimeInterval = 0.050
+
+    /// Bounded observation adapter (issue #321): caps the app-element AX
+    /// roundtrips (kAXWindows/kAXFocusedWindow/kAXMainWindow) in the live
+    /// capture so a hung target cannot stall the main actor for the ~6s
+    /// global AX messaging timeout per call (~18s per observation; measured
+    /// 3.0s with this bound against a SIGSTOP'd target). A timed-out windows
+    /// read surfaces as a failed read, which the #335 fail-closed handling
+    /// already treats correctly. Deliberately NOT applied to window
+    /// elements: a timed-out per-window kAXMinimized read would count the
+    /// window as visible and drop it from minimizedWindows (fabricated
+    /// evidence + lost unminimize), and the stamp is sticky on the stored
+    /// refs that unminimize later writes through — so per-window reads keep
+    /// their pre-existing global-timeout semantics. Healthy targets measured
+    /// at 1–100 windows stay far below this bound.
+    static let axMessagingTimeoutSeconds: Float = 1.0
+
+    private static let signposter = OSSignposter(
+        subsystem: DiagnosticLog.subsystem,
+        category: "AXObservation"
+    )
 
     private let client: Client
 
@@ -151,8 +233,39 @@ struct ApplicationObservation {
     }
 
     @MainActor
-    func windowObservation(for app: NSRunningApplication) -> WindowObservation {
-        client.windowObservation(app)
+    func windowObservation(
+        for app: NSRunningApplication,
+        phase: WindowObservationPhase
+    ) -> WindowObservation {
+        let signpostID = Self.signposter.makeSignpostID()
+        let interval = Self.signposter.beginInterval(
+            "windowObservation",
+            id: signpostID,
+            "phase=\(phase.rawValue, privacy: .public) pid=\(app.processIdentifier)"
+        )
+        let start = client.now()
+        let observation = client.windowObservation(app)
+        let duration = client.now() - start
+        Self.signposter.endInterval(
+            "windowObservation",
+            interval,
+            "visibleWindowCount=\(observation.visibleWindowCount) succeeded=\(observation.windowsReadSucceeded)"
+        )
+
+        if duration > Self.observationLatencyBudget {
+            client.onSlowObservation(
+                SlowObservationReport(
+                    phase: phase,
+                    bundleIdentifier: app.bundleIdentifier,
+                    processIdentifier: app.processIdentifier,
+                    visibleWindowCount: observation.visibleWindowCount,
+                    windowsReadSucceeded: observation.windowsReadSucceeded,
+                    duration: duration
+                )
+            )
+        }
+
+        return observation
     }
 
     @MainActor
@@ -160,7 +273,8 @@ struct ApplicationObservation {
         for app: NSRunningApplication,
         windowObservation: WindowObservation? = nil
     ) -> ActivationObservationSnapshot {
-        let windowObservation = windowObservation ?? client.windowObservation(app)
+        let windowObservation = windowObservation
+            ?? self.windowObservation(for: app, phase: .snapshotFallback)
         let classification = classify(
             bundleIdentifier: app.bundleIdentifier,
             activationPolicy: client.activationPolicy(app),
@@ -239,6 +353,7 @@ extension ApplicationObservation.Client {
     @MainActor
     private static func captureWindowObservation(for app: NSRunningApplication) -> ApplicationObservation.WindowObservation {
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(axApp, ApplicationObservation.axMessagingTimeoutSeconds)
         var windowsRef: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef)
         let windows = result == .success ? windowsRef as? [AXUIElement] : nil
