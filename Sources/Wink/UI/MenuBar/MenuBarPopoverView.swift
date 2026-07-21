@@ -497,7 +497,7 @@ private struct MenuBarStatusPill: View {
     var body: some View {
         Text(title)
             .help(secureInputActive && !paused
-                ? "A password field or secure prompt is capturing keyboard input. Hyper shortcuts may not fire until it ends; standard shortcuts keep working."
+                ? "A password field or secure prompt is capturing keyboard input. Hyper and Fn-based shortcuts may not fire until it ends; other standard shortcuts keep working."
                 : "")
             .font(WinkType.labelSmall.weight(.semibold))
             .foregroundStyle(foreground)

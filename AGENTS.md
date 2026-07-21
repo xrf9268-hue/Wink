@@ -71,7 +71,7 @@ Before making large structural changes, read `docs/architecture.md`.
 
 - Exception rules (`FrontmostExceptionMonitor`) auto-pause capture while a listed bundle is frontmost (VM/remote-desktop factory defaults). Manual pause and exception auto-pause are independent bits composed by OR in `ShortcutManager` — resuming one while the other holds must keep capture paused, auto-pause never persists and never mutates the manual bit, and the menu bar pill names the triggering app ("Paused · Parallels Desktop").
 
-- Secure Input detection: `IsSecureEventInputEnabled()` is probed lazily in `shortcutCaptureStatus()` and on the existing 3s permission poll (no new timers). It degrades the Hyper/event-tap route only; the pill shows "Limited · Secure Input" instead of a false Ready. Detection is transparency-only — no auto-remediation, no culprit-process lookup.
+- Secure Input detection: `IsSecureEventInputEnabled()` is probed lazily in `shortcutCaptureStatus()` and on the existing 3s permission poll (no new timers). It degrades every tap-dependent route — Hyper AND standard Fn+F-row bindings (their observer fails closed); the pill shows "Limited · Secure Input" instead of a false Ready. Detection is transparency-only — no auto-remediation, no culprit-process lookup.
 
 ## Concurrency and actor boundaries
 
