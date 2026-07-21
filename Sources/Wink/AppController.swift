@@ -222,6 +222,13 @@ final class AppController {
         shortcutManager.onCaptureStatusChange = { [weak self] in
             self?.appPreferences.refreshPermissions()
         }
+        // Pause (manual or exception-rule) stops the Hyper provider without
+        // an `ended` event; a presented sheet must not outlive capture.
+        shortcutManager.onCapturePauseStateChange = { [weak self] paused in
+            if paused {
+                self?.cheatSheetHUD.reset()
+            }
+        }
 
         // Hold events arrive on the tap thread; hop once to the main actor
         // via the main QUEUE, whose FIFO ordering keeps began/ended in

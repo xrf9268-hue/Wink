@@ -45,6 +45,9 @@ final class ShortcutManager {
     /// changed (permissions, secure input) so observers can re-pull
     /// `shortcutCaptureStatus()` without their own timers.
     var onCaptureStatusChange: (@MainActor () -> Void)?
+    /// Fires whenever the composed pause state transitions (manual pause,
+    /// exception auto-pause, either direction).
+    var onCapturePauseStateChange: (@MainActor (_ paused: Bool) -> Void)?
 
     private var effectivePaused: Bool {
         shortcutsPaused || autoPausedByException
@@ -198,6 +201,7 @@ final class ShortcutManager {
 
     private func applyEffectivePauseTransition() {
         let paused = effectivePaused
+        onCapturePauseStateChange?(paused)
         if !paused {
             _ = refreshShortcutAvailabilityIfNeeded()
         }
