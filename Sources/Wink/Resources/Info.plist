@@ -26,6 +26,17 @@
 	<string>9</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Wink Automation</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>wink</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHighResolutionCapable</key>

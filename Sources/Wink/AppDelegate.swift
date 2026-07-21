@@ -42,6 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appController.openPrimarySettingsWindow()
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        appController.handleURLs(urls)
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         appController.stop()
     }

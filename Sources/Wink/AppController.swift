@@ -239,6 +239,42 @@ final class AppController {
         shortcutManager.stop()
     }
 
+    /// wink:// URL scheme entry. Toggle reuses the full activation
+    /// pipeline via a synthetic shortcut but goes straight to the switcher
+    /// — automation presses never record usage (Insights stays a picture
+    /// of the user's own keystrokes). Pause/resume mirror the menu bar
+    /// toggle, capsule state included.
+    func handleURLs(_ urls: [URL]) {
+        for url in urls {
+            guard let command = WinkURLCommand.parse(url) else {
+                DiagnosticLog.log("URL: ignored unrecognized \(url.absoluteString)")
+                continue
+            }
+            switch command {
+            case .toggle(let bundleIdentifier):
+                guard appBundleLocator.applicationURL(for: bundleIdentifier) != nil else {
+                    DiagnosticLog.log("URL: toggle ignored, no installed app for \(bundleIdentifier)")
+                    continue
+                }
+                let name = appBundleLocator.applicationURL(for: bundleIdentifier)?
+                    .deletingPathExtension().lastPathComponent ?? bundleIdentifier
+                DiagnosticLog.log("URL: toggle \(bundleIdentifier)")
+                _ = appSwitcher.toggleApplication(for: AppShortcut(
+                    appName: name,
+                    bundleIdentifier: bundleIdentifier,
+                    keyEquivalent: "",
+                    modifierFlags: []
+                ))
+            case .pause:
+                DiagnosticLog.log("URL: pause")
+                appPreferences.setShortcutsPaused(true)
+            case .resume:
+                DiagnosticLog.log("URL: resume")
+                appPreferences.setShortcutsPaused(false)
+            }
+        }
+    }
+
     func openPrimarySettingsWindow() {
         openSettings()
     }
