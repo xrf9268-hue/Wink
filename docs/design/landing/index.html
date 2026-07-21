@@ -1,6 +1,4 @@
-// Wink landing page — generated from docs/design/landing/index.html
-// Regenerate by re-escaping that file (\ ` ${) into this template literal.
-const html = `<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -750,7 +748,7 @@ const html = `<!doctype html>
         <div class="show-copy">
           <p class="eyebrow">01 · cycle</p>
           <h3>Press again.<br>Walk the windows.</h3>
-          <p>Repeat the chord and Wink steps through that app's windows — <strong>minimized ones included</strong>, which <kbd>⌘\`</kbd> never manages. A HUD keeps count so you're never lost. And one chord can cycle whatever app you're in, wherever you are.</p>
+          <p>Repeat the chord and Wink steps through that app's windows — <strong>minimized ones included</strong>, which <kbd>⌘`</kbd> never manages. A HUD keeps count so you're never lost. And one chord can cycle whatever app you're in, wherever you are.</p>
         </div>
         <div class="show-mock">
           <div class="cyc" aria-hidden="true">
@@ -1224,15 +1222,3 @@ const html = `<!doctype html>
 </script>
 </body>
 </html>
-`;
-
-export default {
-  async fetch(): Promise<Response> {
-    return new Response(html, {
-      headers: {
-        "content-type": "text/html;charset=UTF-8",
-        "cache-control": "public, max-age=3600",
-      },
-    });
-  },
-};
