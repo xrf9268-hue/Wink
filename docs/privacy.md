@@ -37,3 +37,7 @@ In those cases, network requests go to the configured update feed, release host,
 - it does not upload your usage-insights database as part of normal app behavior
 
 If the product gains new data collection or remote services later, update this document and the in-app link in `GeneralTabView.swift` in the same change.
+
+## App activation counts (Insights suggestions)
+
+When "Suggest shortcuts from app usage" is enabled (Settings > General), Wink counts foreground app activations — bundle identifier and per-day count only, in the same local `usage.db` — to suggest shortcuts for frequently used apps. Nothing leaves the device. Disabling the toggle stops collection and deletes the collected counts.

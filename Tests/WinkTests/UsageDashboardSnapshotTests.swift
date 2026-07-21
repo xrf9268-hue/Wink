@@ -216,6 +216,10 @@ struct UsageDashboardSnapshotTests {
 }
 
 private actor RecordingUsageTracker: UsageTracking {
+
+    func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
+        []
+    }
     func deleteUsage(shortcutId: UUID) {}
     let shortcutId: UUID
     private var counts: [String: Int] = [:]

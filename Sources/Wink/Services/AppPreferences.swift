@@ -42,6 +42,7 @@ final class AppPreferences {
     static let shortcutsPausedDefaultsKey = "shortcutsPaused"
     static let frontmostExceptionsEnabledDefaultsKey = "frontmostExceptionsEnabled"
     static let frontmostExceptionRulesDefaultsKey = "frontmostExceptionRules"
+    static let suggestShortcutsFromUsageDefaultsKey = "suggestShortcutsFromUsage"
 
     private(set) var shortcutCaptureStatus: ShortcutCaptureStatus
     private(set) var launchAtLoginStatus: LaunchAtLoginStatus = .disabled
@@ -59,6 +60,10 @@ final class AppPreferences {
     private(set) var autoPauseTriggerAppName: String?
     /// Set by AppController wiring; called after rules/enabled change.
     var onFrontmostExceptionConfigurationChange: (@MainActor () -> Void)?
+    /// Local-only foreground-activation counting that powers the Insights
+    /// "Suggested" card. Disabling stops collection AND clears the data.
+    private(set) var suggestShortcutsFromUsage: Bool = true
+    var onSuggestShortcutsConfigurationChange: (@MainActor (_ enabled: Bool) -> Void)?
     /// Apple's own DTS guidance: `SMAppService.Status.notFound` is the normal
     /// pre-registration baseline ("the system has never seen your service"),
     /// not inherently an error — `.notRegistered` is only reached after a
@@ -209,6 +214,7 @@ final class AppPreferences {
         let initialExceptionsEnabled = userDefaults.object(forKey: Self.frontmostExceptionsEnabledDefaultsKey) as? Bool ?? false
         let initialExceptionRules = userDefaults.object(forKey: Self.frontmostExceptionRulesDefaultsKey) as? [String]
             ?? FrontmostExceptionMonitor.defaultRuleBundleIdentifiers
+        let initialSuggestFromUsage = userDefaults.object(forKey: Self.suggestShortcutsFromUsageDefaultsKey) as? Bool ?? true
         let initialFrontmostTargetBehavior: FrontmostTargetBehavior
         if let rawValue = userDefaults.string(forKey: Self.frontmostTargetBehaviorDefaultsKey),
            let storedBehavior = FrontmostTargetBehavior(rawValue: rawValue) {
@@ -229,6 +235,7 @@ final class AppPreferences {
         self.shortcutsPaused = initialShortcutsPaused
         self.frontmostExceptionsEnabled = initialExceptionsEnabled
         self.frontmostExceptionRules = initialExceptionRules
+        self.suggestShortcutsFromUsage = initialSuggestFromUsage
         self.frontmostTargetBehavior = initialFrontmostTargetBehavior
 
         shortcutManager.setFrontmostTargetBehavior(initialFrontmostTargetBehavior)
@@ -297,6 +304,13 @@ final class AppPreferences {
         frontmostExceptionRules.removeAll { $0 == bundleIdentifier }
         userDefaults.set(frontmostExceptionRules, forKey: Self.frontmostExceptionRulesDefaultsKey)
         onFrontmostExceptionConfigurationChange?()
+    }
+
+    func setSuggestShortcutsFromUsage(_ enabled: Bool) {
+        guard enabled != suggestShortcutsFromUsage else { return }
+        suggestShortcutsFromUsage = enabled
+        userDefaults.set(enabled, forKey: Self.suggestShortcutsFromUsageDefaultsKey)
+        onSuggestShortcutsConfigurationChange?(enabled)
     }
 
     func setAutoPauseTrigger(appName: String?) {

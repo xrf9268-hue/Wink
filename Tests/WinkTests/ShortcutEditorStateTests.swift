@@ -929,6 +929,10 @@ private func waitForPendingUsageCounts(on tracker: GatedUsageTracker, count: Int
 }
 
 private actor GatedUsageTracker: UsageTracking {
+
+    func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
+        []
+    }
     func deleteUsage(shortcutId: UUID) {}
     private var pendingUsageCounts: [CheckedContinuation<[UUID: Int], Never>] = []
     private var lastUsedValue: [UUID: Date] = [:]

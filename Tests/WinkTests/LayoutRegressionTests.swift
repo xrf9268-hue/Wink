@@ -799,6 +799,10 @@ private extension NSPoint {
 }
 
 private actor StaticUsageTracker: UsageTracking {
+
+    func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
+        []
+    }
     func deleteUsage(shortcutId: UUID) {}
     let shortcutId: UUID
 
@@ -844,6 +848,10 @@ private actor StaticUsageTracker: UsageTracking {
 }
 
 private actor MultiShortcutUsageTracker: UsageTracking {
+
+    func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
+        []
+    }
     func deleteUsage(shortcutId: UUID) {}
     private let counts: [UUID: Int]
     private let dailyCountsByShortcut: [String: [(date: String, count: Int)]]

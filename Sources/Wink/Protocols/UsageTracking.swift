@@ -79,6 +79,9 @@ protocol UsageTracking: Sendable {
     func streakDays(relativeTo now: Date) async -> Int
     func usageTimeZone() async -> TimeZone
     func lastUsedPerShortcut() async -> [UUID: Date]
+    // Async requirement satisfied by UsageTracker's sync actor method; NO
+    // extension default (see deleteUsage note below on the shadowing trap).
+    func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)]
     func deleteUsage(shortcutId: UUID) async
     /// Returns nil when the surrounding task was cancelled; a cancelled
     /// refresh stops issuing further queries instead of completing the

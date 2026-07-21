@@ -67,6 +67,11 @@ final class AppController {
             self?.appPreferences.refreshPermissions()
         }
     )
+    private lazy var appActivationRecorder = AppActivationRecorder(
+        onActivation: { [weak self] bundleIdentifier in
+            self?.recordAppActivation(bundleIdentifier)
+        }
+    )
     private lazy var insightsViewModel = InsightsViewModel(
         usageTracker: usageTracker,
         shortcutStore: shortcutStore
@@ -109,6 +114,28 @@ final class AppController {
         menuBarSceneServicesStorage
     }
 
+    /// FIFO chain over activation writes and the opt-out purge: unstructured
+    /// tasks have no mutual ordering, so a queued write could otherwise land
+    /// AFTER the purge (retaining data while disabled) or a queued purge
+    /// could erase rows recorded after a quick re-enable.
+    private var activationWriteChain: Task<Void, Never>?
+
+    private func recordAppActivation(_ bundleIdentifier: String) {
+        let tracker = usageTracker
+        activationWriteChain = Task { [previous = activationWriteChain] in
+            await previous?.value
+            await tracker.recordAppActivation(bundleIdentifier: bundleIdentifier)
+        }
+    }
+
+    private func purgeAppActivations() {
+        let tracker = usageTracker
+        activationWriteChain = Task { [previous = activationWriteChain] in
+            await previous?.value
+            await tracker.deleteAllAppActivations()
+        }
+    }
+
     func start() {
         DiagnosticLog.rotateIfNeeded()
         DiagnosticLog.log("Wink starting, version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
@@ -142,6 +169,25 @@ final class AppController {
             ruleBundleIdentifiers: appPreferences.frontmostExceptionRules
         )
         frontmostExceptionMonitor.startObservingWorkspaceNotifications()
+
+        appPreferences.onSuggestShortcutsConfigurationChange = { [weak self] enabled in
+            // Recorder disables synchronously before the purge enqueues, so
+            // the FIFO chain guarantees "stop AND clear": prior writes land
+            // first, no later writes exist, and post-re-enable writes queue
+            // after the purge.
+            self?.appActivationRecorder.setEnabled(enabled)
+            if !enabled {
+                self?.purgeAppActivations()
+            }
+        }
+        appActivationRecorder.setEnabled(appPreferences.suggestShortcutsFromUsage)
+        appActivationRecorder.startObservingWorkspaceNotifications()
+        if !appPreferences.suggestShortcutsFromUsage {
+            // Quitting before the async opt-out purge ran leaves rows on
+            // disk with the preference off; sweep them on every disabled
+            // startup so re-enabling never resurfaces pre-opt-out counts.
+            purgeAppActivations()
+        }
 
         // Configured BEFORE the startup sequence so launching while an
         // exception app is frontmost never lets capture (or permission

@@ -23,6 +23,9 @@ actor UsageTracker: UsageTracking {
     private var dashboardPhaseHook: (@Sendable (String) -> Void)?
 
     private nonisolated(unsafe) var recordDailyUsageStmt: OpaquePointer?
+    private nonisolated(unsafe) var recordAppActivationStmt: OpaquePointer?
+    private nonisolated(unsafe) var appActivationTotalsStmt: OpaquePointer?
+    private nonisolated(unsafe) var deleteAppActivationsStmt: OpaquePointer?
     private nonisolated(unsafe) var recordHourlyUsageStmt: OpaquePointer?
     private nonisolated(unsafe) var deleteDailyUsageStmt: OpaquePointer?
     private nonisolated(unsafe) var deleteHourlyUsageStmt: OpaquePointer?
@@ -56,6 +59,9 @@ actor UsageTracker: UsageTracking {
     deinit {
         for stmt in [
             recordDailyUsageStmt,
+            recordAppActivationStmt,
+            appActivationTotalsStmt,
+            deleteAppActivationsStmt,
             recordHourlyUsageStmt,
             deleteDailyUsageStmt,
             deleteHourlyUsageStmt,
@@ -129,6 +135,73 @@ actor UsageTracker: UsageTracking {
             }
 
             return true
+        }
+    }
+
+    /// Foreground-activation counter feeding shortcut suggestions.
+    /// Additive `IF NOT EXISTS` table — deliberately outside the
+    /// user_version scheme so existing v3 files gain it without a reset.
+    /// One indexed UPSERT per activation; app switches are far too
+    /// infrequent to justify batching.
+    func recordAppActivation(bundleIdentifier: String) {
+        recordAppActivation(bundleIdentifier: bundleIdentifier, on: Date())
+    }
+
+    func recordAppActivation(bundleIdentifier: String, on date: Date) {
+        guard let db else { return }
+        let bucket = bucketComponents(for: date, in: timeZoneProvider())
+        let sql = """
+            INSERT INTO app_activations (bundle_id, date, count)
+            VALUES (?, ?, 1)
+            ON CONFLICT(bundle_id, date) DO UPDATE SET count = count + 1
+            """
+        guard let stmt = cachedStatement(&recordAppActivationStmt, sql: sql) else { return }
+        sqlite3_bind_text(stmt, 1, (bundleIdentifier as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, (bucket.date as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
+        if sqlite3_step(stmt) != SQLITE_DONE {
+            let message = "Failed to record app activation: \(String(cString: sqlite3_errmsg(db)))"
+            logger.error("\(message, privacy: .public)")
+            DiagnosticLog.log(message)
+        }
+    }
+
+    /// Per-bundle activation totals inside the window, descending. The
+    /// caller filters bound/excluded bundles — binding state changes over
+    /// time, so raw rows stay unfiltered.
+    func appActivationTotals(days: Int) -> [(bundleIdentifier: String, count: Int)] {
+        appActivationTotals(days: days, relativeTo: Date())
+    }
+
+    func appActivationTotals(days: Int, relativeTo now: Date) -> [(bundleIdentifier: String, count: Int)] {
+        recordQueryExecution("appActivationTotals")
+        let sql = """
+            SELECT bundle_id, SUM(count) AS total
+            FROM app_activations
+            WHERE date >= ? AND date <= ?
+            GROUP BY bundle_id
+            ORDER BY total DESC
+            """
+        guard let stmt = cachedStatement(&appActivationTotalsStmt, sql: sql) else { return [] }
+        let range = windowDateRange(days: days, relativeTo: now, in: timeZoneProvider())
+        sqlite3_bind_text(stmt, 1, (range.start as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, (range.end as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
+        var results: [(bundleIdentifier: String, count: Int)] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let bundleC = sqlite3_column_text(stmt, 0) else { continue }
+            results.append((String(cString: bundleC), Int(sqlite3_column_int64(stmt, 1))))
+        }
+        return results
+    }
+
+    /// Disabling the suggestions preference clears collected data — the
+    /// toggle stops collection AND retention, not just display.
+    func deleteAllAppActivations() {
+        guard let db else { return }
+        guard let stmt = cachedStatement(&deleteAppActivationsStmt, sql: "DELETE FROM app_activations") else { return }
+        if sqlite3_step(stmt) != SQLITE_DONE {
+            let message = "Failed to delete app activations: \(String(cString: sqlite3_errmsg(db)))"
+            logger.error("\(message, privacy: .public)")
+            DiagnosticLog.log(message)
         }
     }
 
@@ -620,6 +693,14 @@ actor UsageTracker: UsageTracking {
                 ON usage_hourly(date, hour);
             CREATE INDEX IF NOT EXISTS idx_daily_usage_date
                 ON daily_usage(date);
+            CREATE TABLE IF NOT EXISTS app_activations (
+                bundle_id TEXT NOT NULL,
+                date      TEXT NOT NULL,
+                count     INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (bundle_id, date)
+            );
+            CREATE INDEX IF NOT EXISTS idx_app_activations_date
+                ON app_activations(date);
             """
 
         var errorMessage: UnsafeMutablePointer<CChar>?

@@ -3,6 +3,10 @@ import Testing
 @testable import Wink
 
 actor DelayedUsageTracker: UsageTracking {
+
+    func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
+        []
+    }
     func deleteUsage(shortcutId: UUID) {}
     let shortcutId: UUID
 
@@ -43,6 +47,10 @@ actor DelayedUsageTracker: UsageTracking {
 }
 
 actor BoundaryCrossingUsageTracker: UsageTracking {
+
+    func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
+        []
+    }
     func deleteUsage(shortcutId: UUID) {}
     let shortcutId: UUID
 
@@ -80,6 +88,10 @@ actor BoundaryCrossingUsageTracker: UsageTracking {
 }
 
 actor TimeZoneAlignedUsageTracker: UsageTracking {
+
+    func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
+        []
+    }
     func deleteUsage(shortcutId: UUID) {}
     let shortcutId: UUID
     let timeZone: TimeZone

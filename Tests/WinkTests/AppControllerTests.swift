@@ -290,6 +290,10 @@ private func ensureAppKitApplication() {
 }
 
 private actor EmptyUsageTracker: UsageTracking {
+
+    func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
+        []
+    }
     func deleteUsage(shortcutId: UUID) {}
     func usageCounts(days: Int, relativeTo now: Date) async -> [UUID: Int] { [:] }
     func dailyCounts(days: Int, relativeTo now: Date) async -> [String: [(date: String, count: Int)]] { [:] }

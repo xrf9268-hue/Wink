@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -60,6 +61,16 @@ final class InsightsViewModel {
     var heatmapBuckets: [HourlyUsageBucket] = []
     var unusedShortcutNames: [String] = []
     var ranking: [RankedShortcut] = []
+    struct SuggestedApp: Equatable, Identifiable {
+        let bundleIdentifier: String
+        let name: String
+        let count: Int
+        var id: String { bundleIdentifier }
+    }
+    /// Top unbound apps by foreground activations in the period. Empty when
+    /// collection is disabled (the toggle also clears the data), so the
+    /// card simply disappears — no preference plumbing needed here.
+    var suggestedApps: [SuggestedApp] = []
     var appRows: [InsightsAppRowModel] = []
 
     private let usageTracker: (any UsageTracking)?
@@ -113,6 +124,7 @@ final class InsightsViewModel {
             unusedShortcutNames = []
             ranking = []
             appRows = []
+            suggestedApps = []
             return
         }
 
@@ -130,6 +142,25 @@ final class InsightsViewModel {
             return
         }
 
+        let boundBundles = Set(shortcutStore.shortcuts.map(\.bundleIdentifier))
+        let activationTotals = await usageTracker.appActivationTotals(days: days, relativeTo: now)
+        // Resolve BEFORE limiting: an uninstalled app in the top three must
+        // yield its slot to the next resolvable one, not shrink the card.
+        let suggestions: [SuggestedApp] = Array(activationTotals
+            .filter { !boundBundles.contains($0.bundleIdentifier) }
+            .compactMap { entry -> SuggestedApp? in
+                guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: entry.bundleIdentifier) else {
+                    // Uninstalled or un-resolvable apps make poor suggestions.
+                    return nil
+                }
+                return SuggestedApp(
+                    bundleIdentifier: entry.bundleIdentifier,
+                    name: url.deletingPathExtension().lastPathComponent,
+                    count: entry.count
+                )
+            }
+            .prefix(3))
+
         let reportingTimeZone = snapshot.timeZone
         let dailyCounts = snapshot.dailyCounts
         let previousCounts = snapshot.previousCounts
@@ -139,6 +170,7 @@ final class InsightsViewModel {
         guard !Task.isCancelled else { return }
         guard generation == refreshGeneration else { return }
 
+        self.suggestedApps = suggestions
         self.totalCount = snapshot.totalCount
         self.previousPeriodTotal = snapshot.previousPeriodTotal
         self.currentStreakDays = snapshot.streakDays

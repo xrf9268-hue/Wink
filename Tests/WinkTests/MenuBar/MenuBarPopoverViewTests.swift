@@ -334,6 +334,10 @@ private final class PopoverRuntimeState {
 }
 
 private actor StaticUsageTracker: UsageTracking {
+
+    func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
+        []
+    }
     func deleteUsage(shortcutId: UUID) {}
     let total: Int
 
