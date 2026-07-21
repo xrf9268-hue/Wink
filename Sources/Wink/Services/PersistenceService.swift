@@ -332,7 +332,16 @@ enum UsageDatabaseBootstrap {
         ]
 
         for table in tables {
-            let dateKeys = stringColumnValues("SELECT DISTINCT date FROM \(table.name)", in: db)
+            // A failed key scan must abort the migration: treating it as an
+            // empty table would commit and stamp v3 with localized rows still
+            // unread, which this migration exists to prevent.
+            guard let dateKeys = stringColumnValues("SELECT DISTINCT date FROM \(table.name)", in: db) else {
+                let reason = "reading \(table.name) date keys failed: \(errorMessage(in: db))"
+                _ = executeSQL("ROLLBACK", in: db)
+                logMigrationFailure(path: path, reason: reason, diagnosticClient: diagnosticClient)
+                return
+            }
+
             for key in dateKeys {
                 guard let normalized = normalizedASCIIDateKey(key), normalized != key else {
                     continue
@@ -342,12 +351,11 @@ enum UsageDatabaseBootstrap {
                     executeUpdate(table.mergeSQL, bindings: [normalized, key], in: db),
                     executeUpdate("DELETE FROM \(table.name) WHERE date = ?1", bindings: [key], in: db)
                 else {
+                    // Capture the failure before ROLLBACK: a successful
+                    // rollback resets sqlite3_errmsg to "not an error".
+                    let reason = "normalizing \(table.name) key failed: \(errorMessage(in: db))"
                     _ = executeSQL("ROLLBACK", in: db)
-                    logMigrationFailure(
-                        path: path,
-                        reason: "normalizing \(table.name) key failed: \(errorMessage(in: db))",
-                        diagnosticClient: diagnosticClient
-                    )
+                    logMigrationFailure(path: path, reason: reason, diagnosticClient: diagnosticClient)
                     return
                 }
 
@@ -359,8 +367,9 @@ enum UsageDatabaseBootstrap {
             executeSQL("PRAGMA user_version = \(requiredSchemaVersion)", in: db),
             executeSQL("COMMIT", in: db)
         else {
+            let reason = "commit failed: \(errorMessage(in: db))"
             _ = executeSQL("ROLLBACK", in: db)
-            logMigrationFailure(path: path, reason: "commit failed: \(errorMessage(in: db))", diagnosticClient: diagnosticClient)
+            logMigrationFailure(path: path, reason: reason, diagnosticClient: diagnosticClient)
             return
         }
 
@@ -419,27 +428,33 @@ enum UsageDatabaseBootstrap {
         return sqlite3_step(stmt) == SQLITE_DONE
     }
 
-    private static func stringColumnValues(_ sql: String, in db: OpaquePointer?) -> [String] {
+    /// Returns nil on any prepare or step error so callers can distinguish
+    /// "no rows" from a scan that ended early (corruption, I/O error).
+    private static func stringColumnValues(_ sql: String, in db: OpaquePointer?) -> [String]? {
         guard let db else {
-            return []
+            return nil
         }
 
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             sqlite3_finalize(stmt)
-            return []
+            return nil
         }
         defer { sqlite3_finalize(stmt) }
 
         var values: [String] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            guard let text = sqlite3_column_text(stmt, 0) else {
-                continue
+        while true {
+            switch sqlite3_step(stmt) {
+            case SQLITE_ROW:
+                if let text = sqlite3_column_text(stmt, 0) {
+                    values.append(String(cString: text))
+                }
+            case SQLITE_DONE:
+                return values
+            default:
+                return nil
             }
-            values.append(String(cString: text))
         }
-
-        return values
     }
 
     private static func integerPragma(_ sql: String, in db: OpaquePointer?) -> Int? {

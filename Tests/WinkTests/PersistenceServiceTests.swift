@@ -584,7 +584,12 @@ struct UsageDateKeyLocaleMigrationTests {
         #expect(try rowCount("SELECT count FROM daily_usage WHERE shortcut_id = 'S1' AND date = '2025-01-01'", at: databaseURL) == 3)
         #expect(try rowCount("SELECT count FROM daily_usage WHERE shortcut_id = 'S1' AND date = '\(Self.arabicKey)'", at: databaseURL) == 2)
         #expect(try rowCount("SELECT COUNT(*) FROM usage_hourly", at: databaseURL) == 4)
-        #expect(diagnostics.messages.contains { $0.contains("Failed to migrate usage date keys") })
+        // The reason must carry the actual SQLite failure, captured before
+        // ROLLBACK resets sqlite3_errmsg to "not an error".
+        #expect(diagnostics.messages.contains {
+            $0.contains("Failed to migrate usage date keys")
+                && $0.contains("forced hourly normalization failure")
+        })
         #expect(FileManager.default.fileExists(atPath: databaseURL.path))
 
         // A fresh UsageTracker boot over the failed migration must not stamp
