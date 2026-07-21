@@ -41,6 +41,18 @@ Useful packaging commands:
 
 Always launch the packaged app with `open build/Wink.app` when testing permissions. macOS ties Accessibility and Input Monitoring grants to the app identity, signature, and bundle path; launching the raw binary is not equivalent.
 
+## Automation
+
+Wink exposes its toggle semantics on a `wink://` URL scheme, so Raycast, Karabiner, BetterTouchTool, Stream Deck, or plain shell scripts can drive it — including the SkyLight forced activation that scripts cannot perform themselves:
+
+```bash
+open "wink://toggle?bundle=com.google.Chrome"   # toggle an installed app
+open "wink://pause"                             # pause all shortcuts
+open "wink://resume"                            # resume
+```
+
+Unknown commands and uninstalled bundles are logged and ignored. Automation presses respect the per-bundle cooldown but never count toward Insights usage.
+
 ## Technical Notes
 - Standard shortcuts use Carbon hotkeys.
 - Hyper-routed shortcuts use an active event tap.
