@@ -679,6 +679,92 @@ func cycleBehaviorWithTargetNotFrontmostKeepsStandardCooldown() {
 }
 
 @Test @MainActor
+func perShortcutOverrideCyclesWhenGlobalBehaviorIsToggle() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for override-cycle test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: bundleIdentifier
+    )
+    switcher.setFrontmostTargetBehavior(.toggle)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"],
+        frontmostBehaviorOverride: .cycleWindows
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102])
+    #expect(recorder.hideCalls == 0)
+    #expect(switcher.pendingDeactivationState == nil)
+
+    // The override also earns the established-cycle cooldown: a second
+    // press 0.2s later goes through even though the global behavior would
+    // have used the 0.4s gate.
+    clock.time = 100.2
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102, 101])
+}
+
+@Test @MainActor
+func perShortcutOverrideHidesWhenGlobalBehaviorIsCycle() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for override-hide test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    var scheduled: [@MainActor () -> Void] = []
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        scheduler: { _, operation in
+            scheduled.append(operation)
+        }
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "h",
+        modifierFlags: ["command", "option"],
+        frontmostBehaviorOverride: .hide
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs.isEmpty)
+    #expect(switcher.pendingDeactivationState?.activationPath == .hideUntracked)
+
+    for operation in scheduled {
+        operation()
+    }
+    #expect(recorder.hideCalls == 1)
+}
+
+@Test @MainActor
 func standardCooldownStillAppliesWhenBehaviorIsNotCycle() {
     guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
           let bundleIdentifier = frontmostApp.bundleIdentifier else {

@@ -983,3 +983,49 @@ private actor GatedUsageTracker: UsageTracking {
         lastUsedValue
     }
 }
+
+// MARK: - Editor state
+
+@Test @MainActor
+func setFrontmostBehaviorOverridePersistsAndNotifiesOnce() {
+    let shortcutStore = ShortcutStore()
+    let shortcut = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "s",
+        modifierFlags: ["command", "option", "control", "shift"]
+    )
+    shortcutStore.replaceAll(with: [shortcut])
+
+    let manager = ShortcutManager(
+        shortcutStore: shortcutStore,
+        persistenceService: TestPersistenceHarness().makePersistenceService(),
+        appSwitcher: FakeAppSwitcher(),
+        captureCoordinator: ShortcutCaptureCoordinator(
+            standardProvider: FakeCaptureProvider(),
+            hyperProvider: FakeHyperCaptureProvider()
+        ),
+        permissionService: FakePermissionService(ax: true, input: false),
+        diagnosticClient: .live
+    )
+    var callbackCount = 0
+    let editor = ShortcutEditorState(
+        shortcutStore: shortcutStore,
+        shortcutManager: manager,
+        onShortcutConfigurationChange: {
+            callbackCount += 1
+        }
+    )
+
+    editor.setFrontmostBehaviorOverride(id: shortcut.id, behavior: .cycleWindows)
+    #expect(shortcutStore.shortcuts.first?.frontmostBehaviorOverride == .cycleWindows)
+    #expect(callbackCount == 1)
+
+    // Same value again is a no-op: no persist, no notification.
+    editor.setFrontmostBehaviorOverride(id: shortcut.id, behavior: .cycleWindows)
+    #expect(callbackCount == 1)
+
+    editor.setFrontmostBehaviorOverride(id: shortcut.id, behavior: nil)
+    #expect(shortcutStore.shortcuts.first?.frontmostBehaviorOverride == nil)
+    #expect(callbackCount == 2)
+}

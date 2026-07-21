@@ -21,6 +21,7 @@ struct WinkRecipeImportPlanner {
         let keyEquivalent: String
         let modifierFlags: [String]
         let isEnabled: Bool
+        let frontmostBehaviorOverride: FrontmostTargetBehavior?
         let resolution: AppResolution
 
         var isUnresolved: Bool {
@@ -41,7 +42,8 @@ struct WinkRecipeImportPlanner {
                 bundleIdentifier: resolvedBundleIdentifier,
                 keyEquivalent: keyEquivalent,
                 modifierFlags: modifierFlags,
-                isEnabled: isEnabled
+                isEnabled: isEnabled,
+                frontmostBehaviorOverride: frontmostBehaviorOverride
             )
         }
     }
@@ -184,6 +186,7 @@ struct WinkRecipeImportPlanner {
                 keyEquivalent: recipeShortcut.keyEquivalent,
                 modifierFlags: recipeShortcut.modifierFlags,
                 isEnabled: recipeShortcut.isEnabled,
+                frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
                 resolution: .matchedByBundleIdentifier
             )
         }
@@ -205,6 +208,7 @@ struct WinkRecipeImportPlanner {
                 keyEquivalent: recipeShortcut.keyEquivalent,
                 modifierFlags: recipeShortcut.modifierFlags,
                 isEnabled: recipeShortcut.isEnabled,
+                frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
                 resolution: .matchedByAppName
             )
         }
@@ -218,6 +222,7 @@ struct WinkRecipeImportPlanner {
             keyEquivalent: recipeShortcut.keyEquivalent,
             modifierFlags: recipeShortcut.modifierFlags,
             isEnabled: recipeShortcut.isEnabled,
+            frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
             resolution: .unresolved
         )
     }

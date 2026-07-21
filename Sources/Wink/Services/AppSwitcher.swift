@@ -983,7 +983,7 @@ final class AppSwitcher: AppSwitching {
         }
 
         if isTargetCurrentlyFrontmost(snapshot: preActionSnapshot) {
-            switch frontmostTargetBehavior {
+            switch effectiveFrontmostBehavior(for: shortcut) {
             case .focus:
                 return performFrontmostFocus(
                     shortcut: shortcut,
@@ -1488,12 +1488,18 @@ final class AppSwitcher: AppSwitching {
     /// window targets, first repeat press — behind the standard 0.4s safety
     /// net, so non-cycle actions never run at the relaxed cadence.
     private func effectiveToggleCooldown(for shortcut: AppShortcut) -> TimeInterval {
-        guard frontmostTargetBehavior == .cycleWindows,
+        guard effectiveFrontmostBehavior(for: shortcut) == .cycleWindows,
               windowCycleCoordinator.liveSession(for: shortcut.bundleIdentifier) != nil,
               frontmostTracker.currentFrontmostBundleIdentifier() == shortcut.bundleIdentifier else {
             return toggleCooldown
         }
         return cycleToggleCooldown
+    }
+
+    /// The frontmost-target behavior this shortcut actually runs: its own
+    /// override when set, the global preference otherwise.
+    private func effectiveFrontmostBehavior(for shortcut: AppShortcut) -> FrontmostTargetBehavior {
+        shortcut.frontmostBehaviorOverride ?? frontmostTargetBehavior
     }
 
     // MARK: - Toggle-off lanes
