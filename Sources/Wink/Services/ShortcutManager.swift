@@ -61,7 +61,12 @@ final class ShortcutManager {
         usageTracker: UsageTracker? = nil,
         appBundleLocator: AppBundleLocator = AppBundleLocator(),
         automaticPermissionPromptingEnabled: Bool = shortcutManagerAutomaticPermissionPromptingEnabled(),
-        secureInputProbe: @escaping () -> Bool = { IsSecureEventInputEnabled() },
+        // Optional with a nil default instead of a closure-literal default:
+        // the CI toolchain (Xcode 16.4, Swift 6.1.2) SILGen crashes while
+        // lowering complex default-argument thunks for this initializer
+        // (same class as the WindowCycleClient `.live` default); a nil
+        // literal is trivially emitted and the closure moves into the body.
+        secureInputProbe: (() -> Bool)? = nil,
         diagnosticClient: DiagnosticClient
     ) {
         self.shortcutStore = shortcutStore
@@ -73,7 +78,7 @@ final class ShortcutManager {
         self.appBundleLocator = appBundleLocator
         self.diagnosticClient = diagnosticClient
         self.automaticPermissionPromptingEnabled = automaticPermissionPromptingEnabled
-        self.secureInputProbe = secureInputProbe
+        self.secureInputProbe = secureInputProbe ?? { IsSecureEventInputEnabled() }
     }
 
     func start() {
