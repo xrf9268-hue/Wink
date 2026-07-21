@@ -217,6 +217,17 @@ struct GeneralTabView: View {
                 Divider().overlay(palette.hairline)
 
                 SettingsToggleRow(
+                    title: "Hyper cheat sheet",
+                    subtitle: hyperCheatSheetSubtitle,
+                    isOn: Binding(
+                        get: { preferences.hyperCheatSheetEnabled },
+                        set: { preferences.setHyperCheatSheetEnabled($0) }
+                    )
+                )
+
+                Divider().overlay(palette.hairline)
+
+                SettingsToggleRow(
                     title: "Suggest shortcuts from app usage",
                     subtitle: "Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.",
                     isOn: Binding(
@@ -267,6 +278,18 @@ struct GeneralTabView: View {
                 }
             }
         }
+    }
+
+    private var hyperCheatSheetSubtitle: String {
+        let base = "Hold Caps Lock without a second key to see all shortcuts."
+        guard preferences.hyperCheatSheetEnabled else { return base }
+        if !preferences.hyperKeyEnabled {
+            return base + " Needs Hyper Key enabled."
+        }
+        if !preferences.shortcutCaptureStatus.eventTapActive {
+            return base + " Needs at least one enabled Hyper shortcut."
+        }
+        return base
     }
 
     private func addExceptionApp() {

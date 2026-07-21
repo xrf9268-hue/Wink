@@ -16,4 +16,11 @@ protocol EventTapManaging {
     func stop()
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>)
     func setHyperKeyEnabled(_ enabled: Bool)
+    func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?)
+}
+
+extension EventTapManaging {
+    // Sync no-op default (sync requirement + sync default: no async
+    // overload-shadowing hazard); display-only consumers are optional.
+    func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {}
 }

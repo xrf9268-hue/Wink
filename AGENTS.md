@@ -73,6 +73,8 @@ Before making large structural changes, read `docs/architecture.md`.
 
 - Secure Input detection: `IsSecureEventInputEnabled()` is probed lazily in `shortcutCaptureStatus()` and on the existing 3s permission poll (no new timers). It degrades every tap-dependent route — Hyper AND standard Fn+F-row bindings (their observer fails closed); the pill shows "Limited · Secure Input" instead of a false Ready. Detection is transparency-only — no auto-remediation, no culprit-process lookup.
 
+- The Hyper cheat sheet observes hold phases via `EventTapBox.onHyperHoldEvent` (began on F19 keyDown swallow — repeated under autorepeat, consumers dedupe; chordConsumed only on hyper-injected swallows; ended on every F19 keyUp swallow including the 80ms toggle-quirk tap). The callback fires on the tap thread outside the lock and must stay display-only — never feed it back into capture or toggle decisions.
+
 ## Concurrency and actor boundaries
 
 - Do not use `@MainActor` as the default for non-UI code

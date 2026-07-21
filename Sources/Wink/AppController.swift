@@ -67,6 +67,33 @@ final class AppController {
             self?.appPreferences.refreshPermissions()
         }
     )
+    private lazy var cheatSheetHUD = CheatSheetHUDController(
+        rowsProvider: { [weak self] in
+            guard let self else { return [] }
+            return self.shortcutStore.shortcuts
+                .filter(\.isEnabled)
+                .map { shortcut in
+                    CheatSheetRow(
+                        id: shortcut.id,
+                        appName: shortcut.appName,
+                        bundleIdentifier: shortcut.bundleIdentifier,
+                        keyDisplay: ModifierFormatting.displayText(
+                            modifierFlags: shortcut.modifierFlags,
+                            keyEquivalent: shortcut.keyEquivalent
+                        )
+                    )
+                }
+        },
+        isEnabled: { [weak self] in
+            guard let self else { return false }
+            // The sheet rides F19 events from the interception tap, which
+            // only runs when at least one Hyper shortcut is enabled — a
+            // display toggle must not become an Input Monitoring demand.
+            return self.appPreferences.hyperCheatSheetEnabled
+                && self.appPreferences.hyperKeyEnabled
+                && self.appPreferences.shortcutCaptureStatus.eventTapActive
+        }
+    )
     private lazy var appActivationRecorder = AppActivationRecorder(
         onActivation: { [weak self] bundleIdentifier in
             self?.recordAppActivation(bundleIdentifier)
@@ -194,6 +221,34 @@ final class AppController {
         // prompts) fire ahead of the auto-pause.
         shortcutManager.onCaptureStatusChange = { [weak self] in
             self?.appPreferences.refreshPermissions()
+        }
+        // Pause (manual or exception-rule) stops the Hyper provider without
+        // an `ended` event; a presented sheet must not outlive capture.
+        shortcutManager.onCapturePauseStateChange = { [weak self] paused in
+            if paused {
+                self?.cheatSheetHUD.reset()
+            }
+        }
+
+        // Hold events arrive on the tap thread; hop once to the main actor
+        // via the main QUEUE, whose FIFO ordering keeps began/ended in
+        // emission order (sibling Tasks carry no such guarantee, and a
+        // reordered quick tap would arm a timer after its release).
+        let cheatSheet = cheatSheetHUD
+        shortcutManager.setHyperHoldObserver { event in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    cheatSheet.handle(event)
+                }
+            }
+        }
+        appPreferences.onHyperKeyEnabledChange = { [weak self] enabled in
+            if !enabled {
+                // Disabling Hyper mid-hold clears tap state without an
+                // `ended`; reset so no timer stays armed and no presented
+                // sheet sticks.
+                self?.cheatSheetHUD.reset()
+            }
         }
 
         Self.runStartupSequence(

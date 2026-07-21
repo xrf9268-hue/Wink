@@ -110,6 +110,10 @@ final class ShortcutCaptureCoordinator {
         syncProviders(retryStandardProvider: standardProvider.inputMonitoringRequired)
     }
 
+    func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {
+        hyperProvider.setHyperHoldObserver(observer)
+    }
+
     func setCapturePaused(_ paused: Bool) {
         guard capturePaused != paused else { return }
         capturePaused = paused

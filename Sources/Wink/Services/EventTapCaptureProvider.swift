@@ -47,4 +47,8 @@ final class EventTapCaptureProvider: HyperShortcutCaptureProvider {
         pendingHyperKeyEnabled = enabled
         manager.setHyperKeyEnabled(enabled)
     }
+
+    func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {
+        manager.setHyperHoldObserver(observer)
+    }
 }

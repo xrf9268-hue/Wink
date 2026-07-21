@@ -43,6 +43,7 @@ final class AppPreferences {
     static let frontmostExceptionsEnabledDefaultsKey = "frontmostExceptionsEnabled"
     static let frontmostExceptionRulesDefaultsKey = "frontmostExceptionRules"
     static let suggestShortcutsFromUsageDefaultsKey = "suggestShortcutsFromUsage"
+    static let hyperCheatSheetEnabledDefaultsKey = "hyperCheatSheetEnabled"
 
     private(set) var shortcutCaptureStatus: ShortcutCaptureStatus
     private(set) var launchAtLoginStatus: LaunchAtLoginStatus = .disabled
@@ -63,7 +64,11 @@ final class AppPreferences {
     /// Local-only foreground-activation counting that powers the Insights
     /// "Suggested" card. Disabling stops collection AND clears the data.
     private(set) var suggestShortcutsFromUsage: Bool = true
+    /// Idle-hold Hyper cheat sheet (display-only overlay).
+    private(set) var hyperCheatSheetEnabled: Bool = true
     var onSuggestShortcutsConfigurationChange: (@MainActor (_ enabled: Bool) -> Void)?
+    /// Set by AppController wiring; called after the Hyper key toggles.
+    var onHyperKeyEnabledChange: (@MainActor (_ enabled: Bool) -> Void)?
     /// Apple's own DTS guidance: `SMAppService.Status.notFound` is the normal
     /// pre-registration baseline ("the system has never seen your service"),
     /// not inherently an error — `.notRegistered` is only reached after a
@@ -215,6 +220,7 @@ final class AppPreferences {
         let initialExceptionRules = userDefaults.object(forKey: Self.frontmostExceptionRulesDefaultsKey) as? [String]
             ?? FrontmostExceptionMonitor.defaultRuleBundleIdentifiers
         let initialSuggestFromUsage = userDefaults.object(forKey: Self.suggestShortcutsFromUsageDefaultsKey) as? Bool ?? true
+        let initialCheatSheetEnabled = userDefaults.object(forKey: Self.hyperCheatSheetEnabledDefaultsKey) as? Bool ?? true
         let initialFrontmostTargetBehavior: FrontmostTargetBehavior
         if let rawValue = userDefaults.string(forKey: Self.frontmostTargetBehaviorDefaultsKey),
            let storedBehavior = FrontmostTargetBehavior(rawValue: rawValue) {
@@ -236,6 +242,7 @@ final class AppPreferences {
         self.frontmostExceptionsEnabled = initialExceptionsEnabled
         self.frontmostExceptionRules = initialExceptionRules
         self.suggestShortcutsFromUsage = initialSuggestFromUsage
+        self.hyperCheatSheetEnabled = initialCheatSheetEnabled
         self.frontmostTargetBehavior = initialFrontmostTargetBehavior
 
         shortcutManager.setFrontmostTargetBehavior(initialFrontmostTargetBehavior)
@@ -304,6 +311,12 @@ final class AppPreferences {
         frontmostExceptionRules.removeAll { $0 == bundleIdentifier }
         userDefaults.set(frontmostExceptionRules, forKey: Self.frontmostExceptionRulesDefaultsKey)
         onFrontmostExceptionConfigurationChange?()
+    }
+
+    func setHyperCheatSheetEnabled(_ enabled: Bool) {
+        guard enabled != hyperCheatSheetEnabled else { return }
+        hyperCheatSheetEnabled = enabled
+        userDefaults.set(enabled, forKey: Self.hyperCheatSheetEnabledDefaultsKey)
     }
 
     func setSuggestShortcutsFromUsage(_ enabled: Bool) {
@@ -432,6 +445,7 @@ final class AppPreferences {
         }
         hyperKeyEnabled = hyperKeyService.isEnabled
         shortcutManager.setHyperKeyEnabled(hyperKeyEnabled)
+        onHyperKeyEnabledChange?(hyperKeyEnabled)
         refreshPermissions()
     }
 
