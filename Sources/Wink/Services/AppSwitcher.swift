@@ -161,6 +161,13 @@ final class AppSwitcher: AppSwitching {
         /// Seam over the WindowServer event post so tests never send real
         /// CGSEventRecords with forged PSNs.
         let makeKeyWindow: (ProcessSerialNumber, CGWindowID) -> Void
+        /// AX kAXTitle read for HUD feedback (Accessibility-covered; never
+        /// CGWindowList titles, which would require Screen Recording).
+        let windowTitle: (AXUIElement) -> String?
+    }
+
+    struct CycleHUDClient {
+        let show: (CycleHUDPresentation) -> Void
     }
 
     struct AppLookupClient {
@@ -191,6 +198,7 @@ final class AppSwitcher: AppSwitching {
     private let sessionCoordinator: ToggleSessionCoordinator
     private let windowCycleClient: WindowCycleClient
     private let windowCycleCoordinator: WindowCycleCoordinator
+    private let cycleHUDClient: CycleHUDClient
     private var frontmostTargetBehavior: FrontmostTargetBehavior = .toggle
 
     /// Re-entry guard: prevents nested calls to toggleApplication on the same run loop turn.
@@ -242,7 +250,8 @@ final class AppSwitcher: AppSwitching {
         // @MainActor static `.live` value; a nil literal generator is
         // trivial and the `.live` access moves into the isolated init body.
         windowCycleClient: WindowCycleClient? = nil,
-        windowCycleCoordinator: WindowCycleCoordinator? = nil
+        windowCycleCoordinator: WindowCycleCoordinator? = nil,
+        cycleHUDClient: CycleHUDClient? = nil
     ) {
         self.frontmostTracker = frontmostTracker
         self.applicationObservation = applicationObservation
@@ -255,6 +264,7 @@ final class AppSwitcher: AppSwitching {
         self.sessionCoordinator = sessionCoordinator ?? ToggleSessionCoordinator(now: confirmationClient.now)
         self.windowCycleClient = windowCycleClient ?? .live
         self.windowCycleCoordinator = windowCycleCoordinator ?? WindowCycleCoordinator(now: confirmationClient.now)
+        self.cycleHUDClient = cycleHUDClient ?? .live
         self.sessionCoordinator.startObservingWorkspaceNotifications()
         self.windowCycleCoordinator.startObservingWorkspaceNotifications()
         self.sessionCoordinator.setFrontmostTargetBehavior(frontmostTargetBehavior)
@@ -1495,6 +1505,15 @@ final class AppSwitcher: AppSwitching {
         }
         windowCycleClient.raiseWindow(targetElement)
 
+        if let session = windowCycleCoordinator.session, session.pressCount >= 2 {
+            cycleHUDClient.show(CycleHUDPresentation(
+                bundleIdentifier: shortcut.bundleIdentifier,
+                stepIndex: session.stepIndex,
+                windowCount: session.windowCount,
+                windowTitle: windowCycleClient.windowTitle(targetElement)
+            ))
+        }
+
         let stepIndex = windowCycleCoordinator.session?.stepIndex ?? 0
         let windowCount = windowCycleCoordinator.session?.windowCount ?? orderedWindowIDs.count
         DiagnosticLog.log(
@@ -2367,6 +2386,21 @@ extension AppSwitcher.WindowCycleClient {
         },
         makeKeyWindow: { psn, windowID in
             postMakeKeyWindowEventRecord(psn: psn, windowID: windowID)
+        },
+        windowTitle: { element in
+            var titleRef: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleRef)
+            guard result == .success, let title = titleRef as? String, !title.isEmpty else { return nil }
+            return title
+        }
+    )
+}
+
+extension AppSwitcher.CycleHUDClient {
+    @MainActor
+    static let live = AppSwitcher.CycleHUDClient(
+        show: { presentation in
+            CycleFeedbackHUDController.shared.show(presentation)
         }
     )
 }

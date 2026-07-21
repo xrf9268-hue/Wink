@@ -28,6 +28,7 @@ private final class CycleActionRecorder {
     var raisedWindowIDs: [CGWindowID] = []
     var unminimizedWindowIDs: [CGWindowID] = []
     var madeKeyWindowIDs: [CGWindowID] = []
+    var hudPresentations: [CycleHUDPresentation] = []
     var hideCalls = 0
 }
 
@@ -146,9 +147,15 @@ private func makeCycleSwitcher(
             },
             makeKeyWindow: { _, windowID in
                 recorder.madeKeyWindowIDs.append(windowID)
+            },
+            windowTitle: { element in
+                windows.windowID(for: element).map { "Window \($0)" }
             }
         ),
-        windowCycleCoordinator: windowCycleCoordinator
+        windowCycleCoordinator: windowCycleCoordinator,
+        cycleHUDClient: .init(show: { presentation in
+            recorder.hudPresentations.append(presentation)
+        })
     )
 }
 
@@ -1002,4 +1009,53 @@ func frontmostPseudoTargetSingleWindowIsANoOpNotAHide() {
         operation()
     }
     #expect(recorder.hideCalls == 0)
+}
+
+// MARK: - Cycle feedback HUD
+
+@Test @MainActor
+func hudAppearsFromSecondConsecutivePressWithPositionAndTitle() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for HUD test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102, 103])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: bundleIdentifier
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    // First press: plain window switch, no HUD noise.
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.hudPresentations.isEmpty)
+
+    // Second and third presses: HUD tracks position, count, and title.
+    clock.time += 0.2
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    clock.time += 0.2
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+
+    #expect(recorder.hudPresentations.count == 2)
+    #expect(recorder.hudPresentations.first?.stepIndex == 3)
+    #expect(recorder.hudPresentations.first?.windowCount == 3)
+    #expect(recorder.hudPresentations.first?.windowTitle == "Window 103")
+    #expect(recorder.hudPresentations.last?.stepIndex == 1)
+    #expect(recorder.hudPresentations.last?.windowTitle == "Window 101")
 }
