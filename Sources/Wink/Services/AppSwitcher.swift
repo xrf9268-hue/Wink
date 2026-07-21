@@ -779,8 +779,12 @@ final class AppSwitcher: AppSwitching {
     @discardableResult
     func toggleApplication(for requestedShortcut: AppShortcut) -> Bool {
         let shortcut: AppShortcut
+        // Keeps the exact frontmost process across the later
+        // running-applications lookup: with multiple instances sharing a
+        // bundle id, `.first` could pick a non-frontmost instance.
+        var resolvedFrontmostApp: NSRunningApplication?
         if requestedShortcut.isFrontmostAppTarget {
-            guard let resolved = resolveFrontmostAppTarget(requestedShortcut) else {
+            guard let resolution = resolveFrontmostAppTarget(requestedShortcut) else {
                 logToggleTrace(
                     family: .decision,
                     bundleIdentifier: requestedShortcut.bundleIdentifier,
@@ -790,7 +794,8 @@ final class AppSwitcher: AppSwitching {
                 )
                 return false
             }
-            shortcut = resolved
+            shortcut = resolution.shortcut
+            resolvedFrontmostApp = resolution.app
         } else {
             shortcut = requestedShortcut
         }
@@ -838,7 +843,8 @@ final class AppSwitcher: AppSwitching {
             }
         }
 
-        guard let runningApp = appLookupClient.runningApplications(shortcut.bundleIdentifier).first else {
+        guard let runningApp = resolvedFrontmostApp
+                ?? appLookupClient.runningApplications(shortcut.bundleIdentifier).first else {
             // App not running — launch it
             if let appURL = appLookupClient.applicationURL(shortcut.bundleIdentifier) {
                 let launchState = acceptPendingLaunch(
@@ -1088,7 +1094,10 @@ final class AppSwitcher: AppSwitching {
                     activationPath: nil
                 )
                 if shortcut.isFrontmostAppTarget {
-                    return true
+                    // false = "nothing happened": the press is fully
+                    // handled (no fall-through), but it must not count as
+                    // an activation for usage recording.
+                    return false
                 }
             case .toggle:
                 break
@@ -1536,13 +1545,15 @@ final class AppSwitcher: AppSwitching {
     /// keeps `target` so downstream lanes can tell it came from a
     /// pseudo-target, and defaults the behavior to Cycle — the whole point
     /// of the key — unless the user explicitly overrode it.
-    private func resolveFrontmostAppTarget(_ shortcut: AppShortcut) -> AppShortcut? {
+    private func resolveFrontmostAppTarget(
+        _ shortcut: AppShortcut
+    ) -> (shortcut: AppShortcut, app: NSRunningApplication)? {
         guard let frontmostApp = frontmostTracker.currentFrontmostApplication(),
               let bundleIdentifier = frontmostApp.bundleIdentifier,
               bundleIdentifier != Bundle.main.bundleIdentifier else {
             return nil
         }
-        return AppShortcut(
+        let resolved = AppShortcut(
             id: shortcut.id,
             appName: frontmostApp.localizedName ?? bundleIdentifier,
             bundleIdentifier: bundleIdentifier,
@@ -1552,6 +1563,7 @@ final class AppSwitcher: AppSwitching {
             frontmostBehaviorOverride: shortcut.frontmostBehaviorOverride ?? .cycleWindows,
             target: shortcut.target
         )
+        return (resolved, frontmostApp)
     }
 
     // MARK: - Toggle-off lanes

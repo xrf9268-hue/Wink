@@ -210,7 +210,12 @@ struct AppPickerPopover: View {
     }
 
     private func select(_ entry: AppEntry) {
-        appListProvider.noteRecentApp(bundleIdentifier: entry.bundleIdentifier)
+        // The pinned Current App entry is not a real app: recording it as
+        // recent would evict a genuine recent (the recents list silently
+        // drops ids missing from the app catalog).
+        if entry.bundleIdentifier != AppShortcut.frontmostTargetSentinelBundleIdentifier {
+            appListProvider.noteRecentApp(bundleIdentifier: entry.bundleIdentifier)
+        }
         onSelect(entry)
         dismiss()
     }

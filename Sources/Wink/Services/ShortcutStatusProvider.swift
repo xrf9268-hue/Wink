@@ -108,7 +108,10 @@ final class ShortcutStatusProvider {
             uniqueKeysWithValues: uniqueBundleIdentifiers.map { bundleIdentifier in
                 // A currently running app is still actionable even if LaunchServices
                 // cannot resolve it back to a bundle URL from its install location.
-                let isAvailable = runningBundleIdentifiers.contains(bundleIdentifier)
+                // The frontmost-target sentinel names no installed app by design
+                // and is always actionable.
+                let isAvailable = bundleIdentifier == AppShortcut.frontmostTargetSentinelBundleIdentifier
+                    || runningBundleIdentifiers.contains(bundleIdentifier)
                     || client.applicationURL(bundleIdentifier) != nil
                 return (bundleIdentifier, isAvailable)
             }

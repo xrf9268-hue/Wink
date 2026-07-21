@@ -993,7 +993,9 @@ func frontmostPseudoTargetSingleWindowIsANoOpNotAHide() {
     switcher.setFrontmostTargetBehavior(.toggle)
 
     // "Cycle the current app" must never hide the app the user is in.
-    #expect(switcher.toggleApplication(for: makeFrontmostTargetShortcut()) == true)
+    // The press is fully handled but reports false so it never counts as
+    // an activation for usage recording.
+    #expect(switcher.toggleApplication(for: makeFrontmostTargetShortcut()) == false)
     #expect(recorder.raisedWindowIDs.isEmpty)
     #expect(switcher.pendingDeactivationState == nil)
     for operation in scheduled {
