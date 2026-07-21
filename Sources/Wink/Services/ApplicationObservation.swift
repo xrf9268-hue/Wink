@@ -206,12 +206,19 @@ struct ApplicationObservation {
     /// recorded in docs/architecture.md (issue #321).
     static let observationLatencyBudget: TimeInterval = 0.050
 
-    /// Bounded observation adapter (issue #321): caps each AX roundtrip in
-    /// the live capture so an unresponsive target cannot stall the main
-    /// actor for the ~6s global AX messaging timeout per call (~18s per
-    /// observation). A timeout surfaces as a failed read, which the #335
-    /// fail-closed handling already treats correctly; healthy targets
-    /// measured at 1–100 windows stay far below this bound.
+    /// Bounded observation adapter (issue #321): caps the app-element AX
+    /// roundtrips (kAXWindows/kAXFocusedWindow/kAXMainWindow) in the live
+    /// capture so a hung target cannot stall the main actor for the ~6s
+    /// global AX messaging timeout per call (~18s per observation; measured
+    /// 3.0s with this bound against a SIGSTOP'd target). A timed-out windows
+    /// read surfaces as a failed read, which the #335 fail-closed handling
+    /// already treats correctly. Deliberately NOT applied to window
+    /// elements: a timed-out per-window kAXMinimized read would count the
+    /// window as visible and drop it from minimizedWindows (fabricated
+    /// evidence + lost unminimize), and the stamp is sticky on the stored
+    /// refs that unminimize later writes through — so per-window reads keep
+    /// their pre-existing global-timeout semantics. Healthy targets measured
+    /// at 1–100 windows stay far below this bound.
     static let axMessagingTimeoutSeconds: Float = 1.0
 
     private static let signposter = OSSignposter(
@@ -353,8 +360,6 @@ extension ApplicationObservation.Client {
         var visibleWindowCount = 0
         var minimizedWindows: [AXUIElement] = []
         for window in windows ?? [] {
-            // Per-element timeouts do not inherit from the app element.
-            AXUIElementSetMessagingTimeout(window, ApplicationObservation.axMessagingTimeoutSeconds)
             var minimizedRef: CFTypeRef?
             let minimizedResult = AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimizedRef)
             let isMinimized = minimizedResult == .success && (minimizedRef as? Bool ?? false)
