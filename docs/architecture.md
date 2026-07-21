@@ -185,6 +185,7 @@ Responsibilities:
 - `AppSwitcher`
 - `ApplicationObservation`
 - `ToggleSessionCoordinator`
+- `WindowCycleCoordinator`
 - `FrontmostApplicationTracker`
 - `AppBundleLocator`
 
@@ -206,6 +207,9 @@ Responsibilities:
 - keep the hot activation path to front-process activation only, then escalate to `makeKeyWindow`, `AXRaise`, and window recovery only when observation shows activation is not yet settled
 - toggle off by requesting `NSRunningApplication.hide()`, then confirm deactivation asynchronously from `NSWorkspace.didHideApplicationNotification` plus a short observation window before clearing session state; a zero-window result is affirmative only when that AX windows read succeeded, while `isHidden` remains an independent confirmation signal
 - when an app is externally frontmost and unowned, still create a coordinator-owned `deactivating` session before dispatching `hide()` so `hide_untracked` remains an explicit, traceable toggle lane instead of an ad-hoc branch
+- the Cycle frontmost behavior reuses the pre-action window observation (no extra hot-path AX enumeration), resolves each window to a `CGWindowID` via `_AXUIElementGetWindow`, rotates over the sorted-wid order, and focuses the chosen window with the standard trio (`_SLPSSetFrontProcessWithOptions` with the target wid → `makeKeyWindow` down/up event pair → `kAXRaiseAction`), unminimizing the single target window first when needed
+- `WindowCycleCoordinator` keeps the cycle cursor (`bundle`, `pid`, last target wid, step diagnostics) on the main actor, prefers a live session cursor over the lagging AX focused-window report, and invalidates on frontmost change, target termination, pid rollover, and a 3s idle expiry; cycle attempts never create `ToggleSessionCoordinator` sessions because the target stays frontmost throughout
+- the per-bundle cooldown gate is behavior-aware: a cheap workspace-snapshot pre-check (no AX) applies the shorter 150ms cycle cooldown only when the behavior is Cycle and the shortcut's target is already frontmost; every other press keeps the standard 400ms value
 - emit `TOGGLE_TRACE_*` lifecycle diagnostics from accepted-toggle transitions and `SHORTCUT_TRACE_*` diagnostics only from matched or explicitly blocked shortcut boundaries
 - reveal selected application in Finder when needed
 

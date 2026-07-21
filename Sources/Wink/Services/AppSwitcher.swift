@@ -153,6 +153,13 @@ final class AppSwitcher: AppSwitching {
         let hideApplication: (NSRunningApplication) -> Bool
     }
 
+    struct WindowCycleClient {
+        let windowID: (AXUIElement) -> CGWindowID?
+        let focusedWindowID: (pid_t) -> CGWindowID?
+        let raiseWindow: (AXUIElement) -> Void
+        let unminimizeWindow: (AXUIElement) -> Void
+    }
+
     struct AppLookupClient {
         let runningApplications: (String) -> [NSRunningApplication]
         let applicationURL: (String) -> URL?
@@ -179,6 +186,8 @@ final class AppSwitcher: AppSwitching {
     private let confirmationClient: ConfirmationClient
     private let recoveryClient: RecoveryClient?
     private let sessionCoordinator: ToggleSessionCoordinator
+    private let windowCycleClient: WindowCycleClient
+    private let windowCycleCoordinator: WindowCycleCoordinator
     private var frontmostTargetBehavior: FrontmostTargetBehavior = .toggle
 
     /// Re-entry guard: prevents nested calls to toggleApplication on the same run loop turn.
@@ -187,6 +196,11 @@ final class AppSwitcher: AppSwitching {
     private var lastToggleTimeByBundle: [String: CFAbsoluteTime] = [:]
     /// Minimum interval (seconds) between toggles of the same bundle.
     private let toggleCooldown: TimeInterval = 0.4
+    /// Shorter per-bundle cooldown applied only when the Cycle behavior will
+    /// handle this press (target already frontmost): repeat presses are the
+    /// deliberate gesture there, so 0.4s would fight the interaction. The
+    /// Hyper route's separate 200ms EventTap debounce still applies upstream.
+    private let cycleToggleCooldown: TimeInterval = 0.15
     private let cooldownCacheLimit = 20
     private let cooldownEvictionWindow: CFAbsoluteTime = 60
     private let hiddenStateSettleRetryDelay: TimeInterval = 0.05
@@ -206,6 +220,7 @@ final class AppSwitcher: AppSwitching {
         // sessionCoordinator to install, so stop them even if the coordinator
         // is kept alive by another owner.
         sessionCoordinator.stopObservingWorkspaceNotifications()
+        windowCycleCoordinator.stopObservingWorkspaceNotifications()
     }
 
     init(
@@ -217,7 +232,9 @@ final class AppSwitcher: AppSwitching {
         appLookupClient: AppLookupClient = .live,
         confirmationClient: ConfirmationClient = .live,
         recoveryClient: RecoveryClient? = nil,
-        sessionCoordinator: ToggleSessionCoordinator? = nil
+        sessionCoordinator: ToggleSessionCoordinator? = nil,
+        windowCycleClient: WindowCycleClient = .live,
+        windowCycleCoordinator: WindowCycleCoordinator? = nil
     ) {
         self.frontmostTracker = frontmostTracker
         self.applicationObservation = applicationObservation
@@ -228,7 +245,10 @@ final class AppSwitcher: AppSwitching {
         self.confirmationClient = confirmationClient
         self.recoveryClient = recoveryClient
         self.sessionCoordinator = sessionCoordinator ?? ToggleSessionCoordinator(now: confirmationClient.now)
+        self.windowCycleClient = windowCycleClient
+        self.windowCycleCoordinator = windowCycleCoordinator ?? WindowCycleCoordinator(now: confirmationClient.now)
         self.sessionCoordinator.startObservingWorkspaceNotifications()
+        self.windowCycleCoordinator.startObservingWorkspaceNotifications()
         self.sessionCoordinator.setFrontmostTargetBehavior(frontmostTargetBehavior)
         workspaceHideObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didHideApplicationNotification,
@@ -250,6 +270,9 @@ final class AppSwitcher: AppSwitching {
     func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior) {
         frontmostTargetBehavior = behavior
         sessionCoordinator.setFrontmostTargetBehavior(behavior)
+        if behavior != .cycleWindows {
+            windowCycleCoordinator.invalidate(reason: "behavior_changed")
+        }
     }
 
     var pendingActivationState: PendingActivationState? {
@@ -756,11 +779,14 @@ final class AppSwitcher: AppSwitching {
             return false
         }
 
-        // Per-bundle cooldown
+        // Per-bundle cooldown. The gate runs before the frontmost lane is
+        // chosen, so the Cycle relaxation needs its own cheap frontmost
+        // pre-check here (workspace snapshot only — no AX on this path).
+        let effectiveCooldown = effectiveToggleCooldown(for: shortcut)
         if let lastTime = lastToggleTimeByBundle[shortcut.bundleIdentifier],
-           attemptStartedAt - lastTime < toggleCooldown {
+           attemptStartedAt - lastTime < effectiveCooldown {
             let elapsed = Int((attemptStartedAt - lastTime) * 1000)
-            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: BLOCKED cooldown elapsedMs=\(elapsed) limit=\(Int(toggleCooldown * 1000))ms")
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: BLOCKED cooldown elapsedMs=\(elapsed) limit=\(Int(effectiveCooldown * 1000))ms")
             logToggleTrace(
                 family: .decision,
                 bundleIdentifier: shortcut.bundleIdentifier,
@@ -990,6 +1016,26 @@ final class AppSwitcher: AppSwitching {
                     state: deactivationState,
                     activationPath: activationPath,
                     attemptStartedAt: attemptStartedAt
+                )
+            case .cycleWindows:
+                if performFrontmostWindowCycle(
+                    shortcut: shortcut,
+                    runningApp: runningApp,
+                    windowObservation: preActionWindowObservation,
+                    snapshot: preActionSnapshot,
+                    attemptStartedAt: attemptStartedAt
+                ) {
+                    return true
+                }
+                // Fewer than two cyclable windows (or the windows read
+                // failed): fall through to standard toggle semantics so the
+                // shortcut keeps its "step aside" ability.
+                logToggleTrace(
+                    family: .decision,
+                    bundleIdentifier: shortcut.bundleIdentifier,
+                    event: "cycle_fallback",
+                    reason: "insufficient_cyclable_windows",
+                    activationPath: nil
                 )
             case .toggle:
                 break
@@ -1303,6 +1349,108 @@ final class AppSwitcher: AppSwitching {
         return activated || runningApp.isActive
     }
 
+    /// Cycle to the target app's next window (Cycle frontmost behavior).
+    /// Returns false when fewer than two windows are cyclable so the caller
+    /// can fall back to standard toggle semantics.
+    private func performFrontmostWindowCycle(
+        shortcut: AppShortcut,
+        runningApp: NSRunningApplication,
+        windowObservation: ApplicationObservation.WindowObservation,
+        snapshot: ActivationObservationSnapshot,
+        attemptStartedAt: CFAbsoluteTime
+    ) -> Bool {
+        guard windowObservation.windowsReadSucceeded,
+              let windows = windowObservation.windows else {
+            return false
+        }
+
+        var elementsByWindowID: [CGWindowID: AXUIElement] = [:]
+        for window in windows {
+            guard let windowID = windowCycleClient.windowID(window),
+                  elementsByWindowID[windowID] == nil else {
+                continue
+            }
+            elementsByWindowID[windowID] = window
+        }
+        // Rotation order is the sorted CGWindowID list: stable across
+        // presses, unlike kAXWindows order, which reshuffles after a raise.
+        // Identity stays the window id, never an index.
+        let orderedWindowIDs = elementsByWindowID.keys.sorted()
+        guard orderedWindowIDs.count >= 2 else {
+            windowCycleCoordinator.invalidate(reason: "insufficient_windows")
+            return false
+        }
+
+        let focusedWindowID = windowCycleClient.focusedWindowID(runningApp.processIdentifier)
+        guard let targetWindowID = windowCycleCoordinator.advance(
+            bundleIdentifier: shortcut.bundleIdentifier,
+            pid: runningApp.processIdentifier,
+            orderedWindowIDs: orderedWindowIDs,
+            focusedWindowID: focusedWindowID
+        ), let targetElement = elementsByWindowID[targetWindowID] else {
+            return false
+        }
+
+        if windowObservation.minimizedWindows.contains(where: { CFEqual($0, targetElement) }) {
+            windowCycleClient.unminimizeWindow(targetElement)
+        }
+
+        // Same trio as full activation, aimed at one window: front the
+        // process for this window id, make it key via the WindowServer
+        // event record, then AX-raise it.
+        switch activateProcess(
+            pid: runningApp.processIdentifier,
+            windowID: targetWindowID,
+            fallbackActivate: {
+                self.requestFallbackActivation(
+                    bundleURL: runningApp.bundleURL,
+                    bundleIdentifier: runningApp.bundleIdentifier ?? "\(runningApp.processIdentifier)",
+                    plainActivate: {
+                        runningApp.activate()
+                    }
+                )
+            }
+        ) {
+        case .skyLight(var psn):
+            makeKeyWindow(psn: &psn, windowID: targetWindowID)
+        case .fallback:
+            break
+        }
+        windowCycleClient.raiseWindow(targetElement)
+
+        let stepIndex = windowCycleCoordinator.session?.stepIndex ?? 0
+        let windowCount = windowCycleCoordinator.session?.windowCount ?? orderedWindowIDs.count
+        DiagnosticLog.log(
+            "TOGGLE[\(shortcut.appName)]: CYCLE step=\(stepIndex)/\(windowCount) wid=\(targetWindowID) elapsedMs=\(elapsedMilliseconds(since: attemptStartedAt))"
+        )
+        logToggleTrace(
+            family: .decision,
+            bundleIdentifier: shortcut.bundleIdentifier,
+            event: "cycle_window",
+            reason: "frontmost_behavior_cycle step=\(stepIndex)/\(windowCount) wid=\(targetWindowID)",
+            activationPath: .activate
+        )
+        logToggleLifecycle(
+            for: shortcut,
+            lifecycle: .attempt,
+            activationPath: .activate,
+            snapshot: snapshot,
+            elapsedMilliseconds: elapsedMilliseconds(since: attemptStartedAt)
+        )
+        return true
+    }
+
+    /// Cycle presses are a deliberate rapid gesture, so the standard 0.4s
+    /// per-bundle cooldown only applies when this press won't cycle (target
+    /// not frontmost, or behavior isn't Cycle).
+    private func effectiveToggleCooldown(for shortcut: AppShortcut) -> TimeInterval {
+        guard frontmostTargetBehavior == .cycleWindows,
+              frontmostTracker.currentFrontmostBundleIdentifier() == shortcut.bundleIdentifier else {
+            return toggleCooldown
+        }
+        return cycleToggleCooldown
+    }
+
     // MARK: - Toggle-off lanes
 
     private func performHideToggle(
@@ -1607,25 +1755,60 @@ final class AppSwitcher: AppSwitching {
         return true
     }
 
-    /// Send a WindowServer event to make a specific window the key window.
-    /// Uses the 0xf8 byte pattern from alt-tab-macos.
-    private func makeKeyWindow(psn: inout ProcessSerialNumber, windowID: CGWindowID) {
-        // 176-byte event record (alt-tab pattern: bytes[0x3a] = 0x10, wid at offset 0x3c)
-        var bytes = [UInt8](repeating: 0, count: 0xf8)
-        bytes[0x04] = 0xF8  // record length
-        bytes[0x08] = 0x01  // event type
-        bytes[0x3a] = 0x10  // sub-type: makeKeyWindow
+    /// Byte layout of the CGSEventRecord posted to make another app's window
+    /// key. Offsets follow CGSInternal's CGSEvent.h; values track current
+    /// alt-tab-macos/yabai practice.
+    private enum MakeKeyWindowEvent {
+        /// The record declares 0xf8 bytes but the buffer is 0x100: on
+        /// macOS 14.7.4+ the WindowServer's CGSEncodeEventRecord reads past
+        /// the record and crashes the target on out-of-bounds heap garbage
+        /// when handed a tight 0xf8 allocation.
+        static let bufferSize = 0x100
+        static let lengthOffset = 0x04
+        static let recordLength: UInt8 = 0xf8
+        static let eventTypeOffset = 0x08
+        static let leftMouseDown: UInt8 = 0x01
+        static let leftMouseUp: UInt8 = 0x02
+        /// Window-relative click point just outside the frame: the pair
+        /// still makes the window key, but the point hit-tests to no view,
+        /// so nothing in the window is actually clicked (fullscreen
+        /// top-left corner included). Kept small — wild values risk the app
+        /// clamping the point back onto real content.
+        static let windowLocationOffset = 0x20
+        static let offContentPoint = CGPoint(x: -1, y: -1)
+        /// The event is delivered to this window by id, not by the point.
+        static let windowIdOffset = 0x3c
+        /// Purpose undocumented; yabai and Hammerspoon set 0x10.
+        static let unknownFlagOffset = 0x3a
+        static let unknownFlagValue: UInt8 = 0x10
+    }
 
-        // Write windowID at offset 0x3c (little-endian UInt32)
-        let widBytes = withUnsafeBytes(of: windowID.littleEndian) { Array($0) }
-        for (i, b) in widBytes.enumerated() {
-            bytes[0x3c + i] = b
+    /// Make a specific window the key window by posting a synthetic
+    /// left-click (down then up) to the WindowServer. No public API moves
+    /// key focus across apps.
+    private func makeKeyWindow(psn: inout ProcessSerialNumber, windowID: CGWindowID) {
+        var bytes = [UInt8](repeating: 0, count: MakeKeyWindowEvent.bufferSize)
+        bytes[MakeKeyWindowEvent.lengthOffset] = MakeKeyWindowEvent.recordLength
+        bytes[MakeKeyWindowEvent.unknownFlagOffset] = MakeKeyWindowEvent.unknownFlagValue
+        withUnsafeBytes(of: windowID.littleEndian) { widBytes in
+            for (i, b) in widBytes.enumerated() {
+                bytes[MakeKeyWindowEvent.windowIdOffset + i] = b
+            }
+        }
+        withUnsafeBytes(of: MakeKeyWindowEvent.offContentPoint) { pointBytes in
+            for (i, b) in pointBytes.enumerated() {
+                bytes[MakeKeyWindowEvent.windowLocationOffset + i] = b
+            }
         }
 
-        let postResult = SLPSPostEventRecordTo(&psn, &bytes)
-        if postResult != .success {
+        // The target app reads the down/up pair as "you are now key".
+        bytes[MakeKeyWindowEvent.eventTypeOffset] = MakeKeyWindowEvent.leftMouseDown
+        let downResult = SLPSPostEventRecordTo(&psn, &bytes)
+        bytes[MakeKeyWindowEvent.eventTypeOffset] = MakeKeyWindowEvent.leftMouseUp
+        let upResult = SLPSPostEventRecordTo(&psn, &bytes)
+        if downResult != .success || upResult != .success {
             #if DEBUG
-            logger.debug("makeKeyWindow: SLPSPostEventRecordTo failed: \(postResult.rawValue)")
+            logger.debug("makeKeyWindow: SLPSPostEventRecordTo failed down=\(downResult.rawValue) up=\(upResult.rawValue)")
             #endif
         }
     }
@@ -2025,6 +2208,44 @@ extension AppSwitcher.HideRequestClient {
 
         return client
     }()
+}
+
+extension AppSwitcher.WindowCycleClient {
+    @MainActor
+    static let live = AppSwitcher.WindowCycleClient(
+        windowID: { element in
+            var windowID: CGWindowID = 0
+            let result = _AXUIElementGetWindow(element, &windowID)
+            guard result == .success, windowID != 0 else { return nil }
+            return windowID
+        },
+        focusedWindowID: { pid in
+            let appElement = AXUIElementCreateApplication(pid)
+            // Same bound as ApplicationObservation's app-element reads: a
+            // hung target must not stall the main actor for the global AX
+            // timeout on the cycle path.
+            AXUIElementSetMessagingTimeout(appElement, ApplicationObservation.axMessagingTimeoutSeconds)
+            var focusedRef: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedRef)
+            guard result == .success,
+                  let focusedRef,
+                  CFGetTypeID(focusedRef) == AXUIElementGetTypeID() else {
+                return nil
+            }
+            let focusedWindow = focusedRef as! AXUIElement
+            var windowID: CGWindowID = 0
+            guard _AXUIElementGetWindow(focusedWindow, &windowID) == .success, windowID != 0 else {
+                return nil
+            }
+            return windowID
+        },
+        raiseWindow: { element in
+            AXUIElementPerformAction(element, kAXRaiseAction as CFString)
+        },
+        unminimizeWindow: { element in
+            AXUIElementSetAttributeValue(element, kAXMinimizedAttribute as CFString, false as CFTypeRef)
+        }
+    )
 }
 
 extension AppSwitcher.AppLookupClient {
