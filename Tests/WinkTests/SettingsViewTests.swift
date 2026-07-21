@@ -123,6 +123,35 @@ func reactivationBurstCoalescesToOneUsageRefreshPerWindow() {
 }
 
 @Test @MainActor
+func backwardClockJumpDoesNotSuppressReactivationRefreshes() {
+    let counters = UsageRefreshCounters()
+    let clock = MutableDateBox(date: Date(timeIntervalSinceReferenceDate: 600))
+    let handler = makeLifecycleHandler(
+        selectedTab: .insights,
+        counters: counters,
+        coalescer: SettingsUsageRefreshCoalescer(now: { clock.date })
+    )
+
+    handler.handleAppDidBecomeActive()
+    #expect(counters.insights == 1)
+
+    // The wall clock steps back 10 minutes; the stale stamp must not
+    // suppress refreshes until the clock re-passes it.
+    clock.date = Date(timeIntervalSinceReferenceDate: 0)
+    handler.handleAppDidBecomeActive()
+
+    #expect(counters.insights == 2)
+
+    // The window restarts from the new (earlier) stamp.
+    clock.date = Date(timeIntervalSinceReferenceDate: 0.5)
+    handler.handleAppDidBecomeActive()
+    #expect(counters.insights == 2)
+    clock.date = Date(timeIntervalSinceReferenceDate: 1.5)
+    handler.handleAppDidBecomeActive()
+    #expect(counters.insights == 3)
+}
+
+@Test @MainActor
 func generalTabActivationDoesNotConsumeTheCoalescingWindow() {
     let counters = UsageRefreshCounters()
     let clock = MutableDateBox(date: Date(timeIntervalSinceReferenceDate: 0))

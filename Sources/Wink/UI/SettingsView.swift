@@ -18,8 +18,15 @@ final class SettingsUsageRefreshCoalescer {
 
     func shouldRefresh() -> Bool {
         let timestamp = now()
-        if let lastRefreshAt, timestamp.timeIntervalSince(lastRefreshAt) < Self.minimumInterval {
-            return false
+        if let lastRefreshAt {
+            let interval = timestamp.timeIntervalSince(lastRefreshAt)
+            // A negative interval means the wall clock stepped backwards;
+            // treating it as "inside the window" would suppress every
+            // refresh until the clock re-passes the old stamp, so it counts
+            // as outside the window instead.
+            if interval >= 0 && interval < Self.minimumInterval {
+                return false
+            }
         }
 
         lastRefreshAt = timestamp
