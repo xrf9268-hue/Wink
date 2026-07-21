@@ -23,6 +23,14 @@ final class WindowCycleCoordinator {
         /// an index into `kAXWindows` (its order changes after a raise).
         var lastTargetWindowID: CGWindowID
         var lastAdvanceAt: CFAbsoluteTime
+        /// Seed plus every target this gesture has focused. A focused-window
+        /// report NOT in this set can only come from a manual intra-app
+        /// switch (click, ⌘\`), so it re-seeds the cursor; a lagging AX
+        /// report is always a previously visited window. Once a lap
+        /// completes the set saturates and manual switches within the same
+        /// session read as lag — an accepted residual, bounded by the idle
+        /// expiry.
+        var visitedWindowIDs: Set<CGWindowID>
         /// 1-based position of `lastTargetWindowID` in the ordered window
         /// list at the time of the advance, for diagnostics/HUD ("2/5").
         var stepIndex: Int
@@ -62,20 +70,36 @@ final class WindowCycleCoordinator {
 
         let currentTime = now()
         var cursor: CGWindowID?
+        var visited: Set<CGWindowID> = []
         if let session,
            session.bundleIdentifier == bundleIdentifier,
            session.pid == pid,
            currentTime - session.lastAdvanceAt <= configuration.sessionIdleExpiry,
            orderedWindowIDs.contains(session.lastTargetWindowID) {
-            cursor = session.lastTargetWindowID
+            if let focusedWindowID,
+               orderedWindowIDs.contains(focusedWindowID),
+               !session.visitedWindowIDs.contains(focusedWindowID) {
+                // Manual intra-app switch mid-gesture: the user focused a
+                // window this gesture never targeted. Re-seed from it so
+                // the next press advances from what they actually see.
+                cursor = focusedWindowID
+                visited = [focusedWindowID]
+            } else {
+                cursor = session.lastTargetWindowID
+                visited = session.visitedWindowIDs
+            }
         } else if let focusedWindowID, orderedWindowIDs.contains(focusedWindowID) {
             cursor = focusedWindowID
+            visited = [focusedWindowID]
         }
 
         let nextIndex: Int
         if let cursor, let cursorIndex = orderedWindowIDs.firstIndex(of: cursor) {
             nextIndex = (cursorIndex + 1) % orderedWindowIDs.count
         } else {
+            DiagnosticLog.log(
+                "CYCLE: degraded seed focused=\(focusedWindowID.map(String.init) ?? "nil") count=\(orderedWindowIDs.count); starting at first wid"
+            )
             nextIndex = 0
         }
 
@@ -85,6 +109,7 @@ final class WindowCycleCoordinator {
             pid: pid,
             lastTargetWindowID: target,
             lastAdvanceAt: currentTime,
+            visitedWindowIDs: visited.union([target]),
             stepIndex: nextIndex + 1,
             windowCount: orderedWindowIDs.count
         )
@@ -99,9 +124,11 @@ final class WindowCycleCoordinator {
 
     // MARK: - Live notification wiring
 
-    // nonisolated(unsafe): tokens are written only while @MainActor-isolated
-    // (from start/stop) but also read from the nonisolated deinit below, where
-    // NotificationCenter.removeObserver is thread-safe.
+    // nonisolated(unsafe): written from MainActor start and from the
+    // nonisolated stop (called from deinits, where exclusivity comes from
+    // unique ownership); NotificationCenter.removeObserver itself is
+    // thread-safe. Safe only while the coordinator is uniquely owned by a
+    // single MainActor owner.
     private nonisolated(unsafe) var activationObserver: Any?
     private nonisolated(unsafe) var terminationObserver: Any?
 
@@ -110,14 +137,21 @@ final class WindowCycleCoordinator {
     }
 
     func startObservingWorkspaceNotifications() {
+        // Idempotent: drop prior tokens so a repeat start cannot leak
+        // observers that would double-handle every notification.
+        stopObservingWorkspaceNotifications()
         let center = NSWorkspace.shared.notificationCenter
+        // MainActor.assumeIsolated (not a Task hop): the observers use
+        // queue .main, so delivery is already on the main actor, and the
+        // inline call keeps invalidation ordered ahead of any key event
+        // processed later on the same run loop.
         activationObserver = center.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main
         ) { [weak self] notification in
             let bundle = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated { [weak self] in
                 self?.handleFrontmostChange(newFrontmostBundle: bundle)
             }
         }
@@ -128,7 +162,7 @@ final class WindowCycleCoordinator {
         ) { [weak self] notification in
             let bundle = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
             if let bundle {
-                Task { @MainActor [weak self] in
+                MainActor.assumeIsolated { [weak self] in
                     self?.handleTermination(bundleIdentifier: bundle)
                 }
             }

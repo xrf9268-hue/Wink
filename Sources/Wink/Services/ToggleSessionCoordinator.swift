@@ -381,9 +381,11 @@ final class ToggleSessionCoordinator {
 
     // MARK: - Live notification wiring
 
-    // nonisolated(unsafe): tokens are written only while @MainActor-isolated
-    // (from start/stop) but also read from the nonisolated deinit below, where
-    // NotificationCenter.removeObserver is thread-safe.
+    // nonisolated(unsafe): written from MainActor start and from the
+    // nonisolated stop (called from deinits, where exclusivity comes from
+    // unique ownership); NotificationCenter.removeObserver itself is
+    // thread-safe. Safe only while the coordinator is uniquely owned by a
+    // single MainActor owner.
     private nonisolated(unsafe) var activationObserver: Any?
     private nonisolated(unsafe) var terminationObserver: Any?
 
@@ -392,6 +394,9 @@ final class ToggleSessionCoordinator {
     }
 
     func startObservingWorkspaceNotifications() {
+        // Idempotent: drop prior tokens so a repeat start cannot leak
+        // observers that would double-handle every notification.
+        stopObservingWorkspaceNotifications()
         let center = NSWorkspace.shared.notificationCenter
         activationObserver = center.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,

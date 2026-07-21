@@ -1,5 +1,5 @@
+import AppKit
 import CoreGraphics
-import Foundation
 import Testing
 @testable import Wink
 
@@ -121,13 +121,40 @@ func staleCursorMissingFromWindowListFallsBackToFocus() {
         focusedWindowID: 101
     ) == 102)
 
-    // Window 102 closed before the next press: cursor is gone, focus (103)
-    // seeds the next advance.
+    // Window 102 closed before the next press and focus reverted to 101:
+    // the gone cursor must fall back to the focus seed (yielding 103), not
+    // to the first window (which would also yield 101 and mask a lost
+    // focus-fallback).
     clock.time = 100.2
     #expect(coordinator.advance(
         bundleIdentifier: "com.test.App",
         pid: 5,
         orderedWindowIDs: [101, 103],
+        focusedWindowID: 101
+    ) == 103)
+}
+
+@Test @MainActor
+func manualWindowSwitchMidGestureReseedsRotation() {
+    let clock = CycleClock(time: 100)
+    let coordinator = WindowCycleCoordinator(now: { clock.time })
+
+    #expect(coordinator.advance(
+        bundleIdentifier: "com.test.App",
+        pid: 5,
+        orderedWindowIDs: [101, 102, 103],
+        focusedWindowID: 101
+    ) == 102)
+
+    // The user clicked window 103 manually — a window this gesture never
+    // visited. The rotation must re-seed from it (103 → 101) instead of
+    // advancing from the stale cursor (102 → 103), which would visibly
+    // no-op on the already-focused window.
+    clock.time = 100.5
+    #expect(coordinator.advance(
+        bundleIdentifier: "com.test.App",
+        pid: 5,
+        orderedWindowIDs: [101, 102, 103],
         focusedWindowID: 103
     ) == 101)
 }
@@ -167,13 +194,87 @@ func bundleChangeDiscardsSessionCursor() {
         focusedWindowID: nil
     ) == 101)
 
+    // Same pid and an id list that still contains A's cursor (101): only
+    // the bundle-identity guard separates "fresh rotation from first
+    // window" (101) from "advance the stale cursor" (202).
     clock.time = 100.2
     #expect(coordinator.advance(
         bundleIdentifier: "com.test.B",
-        pid: 7,
-        orderedWindowIDs: [201, 202],
+        pid: 5,
+        orderedWindowIDs: [101, 202],
         focusedWindowID: nil
-    ) == 201)
+    ) == 101)
+}
+
+@Test @MainActor
+func workspaceNotificationWiringDrivesInvalidation() {
+    let coordinator = WindowCycleCoordinator(now: { 100 })
+    coordinator.startObservingWorkspaceNotifications()
+    defer { coordinator.stopObservingWorkspaceNotifications() }
+
+    _ = coordinator.advance(
+        bundleIdentifier: "com.test.App",
+        pid: 5,
+        orderedWindowIDs: [101, 102],
+        focusedWindowID: nil
+    )
+    #expect(coordinator.session != nil)
+
+    // didActivate without userInfo means "frontmost changed to unknown":
+    // delivered synchronously (queue .main + MainActor.assumeIsolated), it
+    // must invalidate the session before this line returns.
+    NSWorkspace.shared.notificationCenter.post(
+        name: NSWorkspace.didActivateApplicationNotification,
+        object: nil
+    )
+    #expect(coordinator.session == nil)
+
+    _ = coordinator.advance(
+        bundleIdentifier: "com.test.App",
+        pid: 5,
+        orderedWindowIDs: [101, 102],
+        focusedWindowID: nil
+    )
+
+    // Termination without a bundle identifier is ignored.
+    NSWorkspace.shared.notificationCenter.post(
+        name: NSWorkspace.didTerminateApplicationNotification,
+        object: nil
+    )
+    #expect(coordinator.session != nil)
+
+    // After stop, notifications no longer reach the coordinator.
+    coordinator.stopObservingWorkspaceNotifications()
+    NSWorkspace.shared.notificationCenter.post(
+        name: NSWorkspace.didActivateApplicationNotification,
+        object: nil
+    )
+    #expect(coordinator.session != nil)
+}
+
+@Test @MainActor
+func repeatStartObservingDoesNotDoubleHandleNotifications() {
+    let coordinator = WindowCycleCoordinator(now: { 100 })
+    coordinator.startObservingWorkspaceNotifications()
+    coordinator.startObservingWorkspaceNotifications()
+    defer { coordinator.stopObservingWorkspaceNotifications() }
+
+    _ = coordinator.advance(
+        bundleIdentifier: "com.test.App",
+        pid: 5,
+        orderedWindowIDs: [101, 102],
+        focusedWindowID: nil
+    )
+
+    // A single stop after a double start must fully disconnect: if the
+    // first start's tokens leaked, this notification would still
+    // invalidate the session through the orphaned observer.
+    coordinator.stopObservingWorkspaceNotifications()
+    NSWorkspace.shared.notificationCenter.post(
+        name: NSWorkspace.didActivateApplicationNotification,
+        object: nil
+    )
+    #expect(coordinator.session != nil)
 }
 
 @Test @MainActor

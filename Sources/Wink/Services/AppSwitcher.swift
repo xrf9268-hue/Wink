@@ -158,6 +158,9 @@ final class AppSwitcher: AppSwitching {
         let focusedWindowID: (pid_t) -> CGWindowID?
         let raiseWindow: (AXUIElement) -> Void
         let unminimizeWindow: (AXUIElement) -> Void
+        /// Seam over the WindowServer event post so tests never send real
+        /// CGSEventRecords with forged PSNs.
+        let makeKeyWindow: (ProcessSerialNumber, CGWindowID) -> Void
     }
 
     struct AppLookupClient {
@@ -1025,16 +1028,33 @@ final class AppSwitcher: AppSwitching {
                     snapshot: preActionSnapshot,
                     attemptStartedAt: attemptStartedAt
                 ) {
+                    // A cycle keeps the target frontmost, so a still-pending
+                    // activation session for it is settled evidence: promote
+                    // it before its confirmation ladder can re-raise the
+                    // first window over the user's cycled choice.
+                    if pendingActivationState(for: shortcut.bundleIdentifier) != nil,
+                       sessionCoordinator.markStable(for: shortcut.bundleIdentifier) != nil {
+                        logToggleTrace(
+                            family: .decision,
+                            bundleIdentifier: shortcut.bundleIdentifier,
+                            event: "pending_promoted",
+                            reason: "cycle_settled_frontmost",
+                            activationPath: sessionCoordinator.session(for: shortcut.bundleIdentifier)?.activationPath
+                        )
+                    }
                     return true
                 }
-                // Fewer than two cyclable windows (or the windows read
-                // failed): fall through to standard toggle semantics so the
-                // shortcut keeps its "step aside" ability.
+                // Fewer than two cyclable windows (or a windows read failure
+                // with no gesture in flight): fall through to standard
+                // toggle semantics so the shortcut keeps its "step aside"
+                // ability.
                 logToggleTrace(
                     family: .decision,
                     bundleIdentifier: shortcut.bundleIdentifier,
                     event: "cycle_fallback",
-                    reason: "insufficient_cyclable_windows",
+                    reason: preActionWindowObservation.windowsReadSucceeded
+                        ? "insufficient_cyclable_windows"
+                        : "windows_read_failed",
                     activationPath: nil
                 )
             case .toggle:
@@ -1361,6 +1381,21 @@ final class AppSwitcher: AppSwitching {
     ) -> Bool {
         guard windowObservation.windowsReadSucceeded,
               let windows = windowObservation.windows else {
+            if windowCycleCoordinator.session?.bundleIdentifier == shortcut.bundleIdentifier {
+                // Transient AX windows-read failure mid-gesture: swallow the
+                // press instead of declining. Declining would fall through
+                // to the hide lanes and hide the app the user is actively
+                // cycling through.
+                DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: CYCLE windows read failed mid-gesture — press swallowed")
+                logToggleTrace(
+                    family: .decision,
+                    bundleIdentifier: shortcut.bundleIdentifier,
+                    event: "cycle_read_failed",
+                    reason: "windows_read_failed_mid_gesture",
+                    activationPath: nil
+                )
+                return true
+            }
             return false
         }
 
@@ -1411,8 +1446,8 @@ final class AppSwitcher: AppSwitching {
                 )
             }
         ) {
-        case .skyLight(var psn):
-            makeKeyWindow(psn: &psn, windowID: targetWindowID)
+        case .skyLight(let psn):
+            windowCycleClient.makeKeyWindow(psn, targetWindowID)
         case .fallback:
             break
         }
@@ -1440,11 +1475,16 @@ final class AppSwitcher: AppSwitching {
         return true
     }
 
-    /// Cycle presses are a deliberate rapid gesture, so the standard 0.4s
-    /// per-bundle cooldown only applies when this press won't cycle (target
-    /// not frontmost, or behavior isn't Cycle).
+    /// Cycle presses are a deliberate rapid gesture, so the shorter cooldown
+    /// applies only to *established* cycling: behavior is Cycle, the target
+    /// is frontmost per the workspace snapshot, AND the previous press
+    /// actually cycled (live coordinator session). Requiring the session
+    /// keeps every press that could fall through to the hide lanes — single
+    /// window targets, first repeat press — behind the standard 0.4s safety
+    /// net, so non-cycle actions never run at the relaxed cadence.
     private func effectiveToggleCooldown(for shortcut: AppShortcut) -> TimeInterval {
         guard frontmostTargetBehavior == .cycleWindows,
+              windowCycleCoordinator.session?.bundleIdentifier == shortcut.bundleIdentifier,
               frontmostTracker.currentFrontmostBundleIdentifier() == shortcut.bundleIdentifier else {
             return toggleCooldown
         }
@@ -1785,8 +1825,10 @@ final class AppSwitcher: AppSwitching {
 
     /// Make a specific window the key window by posting a synthetic
     /// left-click (down then up) to the WindowServer. No public API moves
-    /// key focus across apps.
-    private func makeKeyWindow(psn: inout ProcessSerialNumber, windowID: CGWindowID) {
+    /// key focus across apps. Static so the live `WindowCycleClient` seam
+    /// can wrap it; production code reaches it only through that seam.
+    static func postMakeKeyWindowEvent(psn: ProcessSerialNumber, windowID: CGWindowID) {
+        var psn = psn
         var bytes = [UInt8](repeating: 0, count: MakeKeyWindowEvent.bufferSize)
         bytes[MakeKeyWindowEvent.lengthOffset] = MakeKeyWindowEvent.recordLength
         bytes[MakeKeyWindowEvent.unknownFlagOffset] = MakeKeyWindowEvent.unknownFlagValue
@@ -1861,8 +1903,8 @@ final class AppSwitcher: AppSwitching {
                 windowID: windowID,
                 fallbackActivate: fallbackActivate
             ) {
-            case .skyLight(var psn):
-                makeKeyWindow(psn: &psn, windowID: windowID)
+            case .skyLight(let psn):
+                windowCycleClient.makeKeyWindow(psn, windowID)
             case .fallback:
                 break
             }
@@ -2244,6 +2286,9 @@ extension AppSwitcher.WindowCycleClient {
         },
         unminimizeWindow: { element in
             AXUIElementSetAttributeValue(element, kAXMinimizedAttribute as CFString, false as CFTypeRef)
+        },
+        makeKeyWindow: { psn, windowID in
+            AppSwitcher.postMakeKeyWindowEvent(psn: psn, windowID: windowID)
         }
     )
 }

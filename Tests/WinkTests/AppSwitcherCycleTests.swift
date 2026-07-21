@@ -19,6 +19,7 @@ private final class CycleActionRecorder {
     var activatedWindowIDs: [CGWindowID?] = []
     var raisedWindowIDs: [CGWindowID] = []
     var unminimizedWindowIDs: [CGWindowID] = []
+    var madeKeyWindowIDs: [CGWindowID] = []
     var hideCalls = 0
 }
 
@@ -58,7 +59,9 @@ private func makeCycleSwitcher(
     recorder: CycleActionRecorder,
     clock: CycleTestClock,
     scheduler: @escaping @MainActor (TimeInterval, @escaping @MainActor () -> Void) -> Void = { _, _ in },
-    trackerBundle: String? = nil
+    trackerBundle: String? = nil,
+    windowsReadFails: @escaping @MainActor () -> Bool = { false },
+    windowCycleCoordinator: WindowCycleCoordinator? = nil
 ) -> AppSwitcher {
     var psn = ProcessSerialNumber()
     psn.highLongOfPSN = 1
@@ -71,7 +74,20 @@ private func makeCycleSwitcher(
         applicationObservation: ApplicationObservation(client: .init(
             currentFrontmostBundleIdentifier: { bundleIdentifier },
             windowObservation: { _ in
-                .init(
+                if windowsReadFails() {
+                    // Failed windows read with surviving focused/main
+                    // evidence keeps the snapshot stable-classified — the
+                    // partial-AX-failure shape from the review.
+                    return .init(
+                        windows: nil,
+                        visibleWindowCount: 0,
+                        hasFocusedWindow: true,
+                        hasMainWindow: true,
+                        windowsReadSucceeded: false,
+                        failureReason: "test_injected_failure"
+                    )
+                }
+                return .init(
                     windows: windows.elements,
                     minimizedWindows: minimizedElements,
                     visibleWindowCount: windows.elements.count - minimizedElements.count,
@@ -117,8 +133,12 @@ private func makeCycleSwitcher(
                 if let id = windows.windowID(for: element) {
                     recorder.unminimizedWindowIDs.append(id)
                 }
+            },
+            makeKeyWindow: { _, windowID in
+                recorder.madeKeyWindowIDs.append(windowID)
             }
-        )
+        ),
+        windowCycleCoordinator: windowCycleCoordinator
     )
 }
 
@@ -154,6 +174,7 @@ func cycleBehaviorFocusesNextWindowInsteadOfHiding() {
 
     #expect(switcher.toggleApplication(for: shortcut) == true)
     #expect(recorder.activatedWindowIDs == [102])
+    #expect(recorder.madeKeyWindowIDs == [102])
     #expect(recorder.raisedWindowIDs == [102])
     #expect(recorder.hideCalls == 0)
     #expect(switcher.pendingDeactivationState == nil)
@@ -319,6 +340,286 @@ func cyclePressesUseShorterCooldownThanStandardToggle() {
     clock.time = 100.3
     #expect(switcher.toggleApplication(for: shortcut) == false)
     #expect(recorder.raisedWindowIDs == [102, 101])
+}
+
+@Test @MainActor
+func cycleSingleWindowRepeatPressStaysBehindStandardCooldown() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for single-window cooldown test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101])
+    var scheduled: [@MainActor () -> Void] = []
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        scheduler: { _, operation in
+            scheduled.append(operation)
+        },
+        trackerBundle: bundleIdentifier
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    // Single window: no cycle session is ever created, so the relaxed
+    // 150ms cooldown must not apply — a quick second press stays blocked
+    // exactly as it would under .toggle/.hide (issue #347 AC: "no behavior
+    // change" for single-window targets).
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    clock.time = 100.2
+    #expect(switcher.toggleApplication(for: shortcut) == false)
+}
+
+@Test @MainActor
+func cycleWindowsReadFailureMidGestureSwallowsPressInsteadOfHiding() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for read-failure swallow test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    var readFails = false
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: bundleIdentifier,
+        windowsReadFails: { readFails }
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102])
+
+    // Mid-gesture the AX windows read starts failing transiently: the
+    // press must be swallowed, never fall through to the hide lanes.
+    readFails = true
+    clock.time = 100.2
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102])
+    #expect(recorder.hideCalls == 0)
+    #expect(switcher.pendingDeactivationState == nil)
+}
+
+@Test @MainActor
+func cycleWindowsReadFailureWithoutGestureFallsBackToToggle() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for read-failure fallback test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    var scheduled: [@MainActor () -> Void] = []
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        scheduler: { _, operation in
+            scheduled.append(operation)
+        },
+        windowsReadFails: { true }
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    // No gesture in flight: a failed windows read declines the cycle and
+    // the press falls through to the untracked hide lane as before.
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs.isEmpty)
+    #expect(switcher.pendingDeactivationState?.activationPath == .hideUntracked)
+}
+
+@Test @MainActor
+func changingBehaviorAwayFromCycleInvalidatesLiveSession() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for behavior-change test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    let coordinator = WindowCycleCoordinator(now: { clock.time })
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        windowCycleCoordinator: coordinator
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(coordinator.session != nil)
+
+    switcher.setFrontmostTargetBehavior(.toggle)
+    #expect(coordinator.session == nil)
+}
+
+@Test @MainActor
+func cycleRotationUnminimizesOnlyTheMinimizedStop() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for minimized rotation test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102, 103])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        minimizedIDs: [102],
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: bundleIdentifier
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    clock.time += 0.2
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    clock.time += 0.2
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+
+    // Full rotation including the minimized stop; only that stop is
+    // unminimized.
+    #expect(recorder.raisedWindowIDs == [102, 103, 101])
+    #expect(recorder.unminimizedWindowIDs == [102])
+    #expect(recorder.hideCalls == 0)
+}
+
+@Test @MainActor
+func cycleWorksWhenAllWindowsAreMinimized() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for all-minimized test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        minimizedIDs: [101, 102],
+        focusedWindowID: { nil },
+        recorder: recorder,
+        clock: clock
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [101])
+    #expect(recorder.unminimizedWindowIDs == [101])
+}
+
+@Test @MainActor
+func cycleBehaviorWithTargetNotFrontmostKeepsStandardCooldown() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for not-frontmost cooldown test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    // AX-driven lane sees the target frontmost (cycles, creates a session),
+    // but the workspace tracker disagrees — the cooldown's third arm must
+    // then keep the standard 400ms.
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: nil
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102])
+
+    clock.time = 100.2
+    #expect(switcher.toggleApplication(for: shortcut) == false)
+    #expect(recorder.raisedWindowIDs == [102])
 }
 
 @Test @MainActor
