@@ -35,6 +35,10 @@ final class WindowCycleCoordinator {
         /// list at the time of the advance, for diagnostics/HUD ("2/5").
         var stepIndex: Int
         var windowCount: Int
+        /// Consecutive presses in this gesture (1 on the press that opened
+        /// it). The HUD appears from the second press: a single press is a
+        /// plain window switch and feedback would be noise.
+        var pressCount: Int
     }
 
     let configuration: Configuration
@@ -71,6 +75,7 @@ final class WindowCycleCoordinator {
         let currentTime = now()
         var cursor: CGWindowID?
         var visited: Set<CGWindowID> = []
+        var pressCount = 1
         if let session,
            session.bundleIdentifier == bundleIdentifier,
            session.pid == pid,
@@ -88,6 +93,7 @@ final class WindowCycleCoordinator {
                 cursor = session.lastTargetWindowID
                 visited = session.visitedWindowIDs
             }
+            pressCount = session.pressCount + 1
         } else if let focusedWindowID, orderedWindowIDs.contains(focusedWindowID) {
             cursor = focusedWindowID
             visited = [focusedWindowID]
@@ -111,7 +117,8 @@ final class WindowCycleCoordinator {
             lastAdvanceAt: currentTime,
             visitedWindowIDs: visited.union([target]),
             stepIndex: nextIndex + 1,
-            windowCount: orderedWindowIDs.count
+            windowCount: orderedWindowIDs.count,
+            pressCount: pressCount
         )
         return target
     }
