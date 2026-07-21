@@ -14,6 +14,14 @@ private final class CycleTestClock {
     }
 }
 
+/// Mutable flag box: capturing a local `var` in the sendable observation
+/// closure trips "mutated after capture by sendable closure"; a
+/// main-actor box keeps the mutation warning-free.
+@MainActor
+private final class CycleTestFlag {
+    var value = false
+}
+
 @MainActor
 private final class CycleActionRecorder {
     var activatedWindowIDs: [CGWindowID?] = []
@@ -395,7 +403,7 @@ func cycleWindowsReadFailureMidGestureSwallowsPressInsteadOfHiding() {
     let clock = CycleTestClock(time: 100)
     let recorder = CycleActionRecorder()
     let windows = CycleTestWindows(ids: [101, 102])
-    var readFails = false
+    let readFails = CycleTestFlag()
     let switcher = makeCycleSwitcher(
         frontmostApp: frontmostApp,
         bundleIdentifier: bundleIdentifier,
@@ -404,7 +412,7 @@ func cycleWindowsReadFailureMidGestureSwallowsPressInsteadOfHiding() {
         recorder: recorder,
         clock: clock,
         trackerBundle: bundleIdentifier,
-        windowsReadFails: { readFails }
+        windowsReadFails: { readFails.value }
     )
     switcher.setFrontmostTargetBehavior(.cycleWindows)
 
@@ -420,7 +428,7 @@ func cycleWindowsReadFailureMidGestureSwallowsPressInsteadOfHiding() {
 
     // Mid-gesture the AX windows read starts failing transiently: the
     // press must be swallowed, never fall through to the hide lanes.
-    readFails = true
+    readFails.value = true
     clock.time = 100.2
     #expect(switcher.toggleApplication(for: shortcut) == true)
     #expect(recorder.raisedWindowIDs == [102])
@@ -439,7 +447,7 @@ func cycleWindowsReadFailureWithStaleSessionFallsBackToToggle() {
     let clock = CycleTestClock(time: 100)
     let recorder = CycleActionRecorder()
     let windows = CycleTestWindows(ids: [101, 102])
-    var readFails = false
+    let readFails = CycleTestFlag()
     var scheduled: [@MainActor () -> Void] = []
     let switcher = makeCycleSwitcher(
         frontmostApp: frontmostApp,
@@ -452,7 +460,7 @@ func cycleWindowsReadFailureWithStaleSessionFallsBackToToggle() {
             scheduled.append(operation)
         },
         trackerBundle: bundleIdentifier,
-        windowsReadFails: { readFails }
+        windowsReadFails: { readFails.value }
     )
     switcher.setFrontmostTargetBehavior(.cycleWindows)
 
@@ -469,7 +477,7 @@ func cycleWindowsReadFailureWithStaleSessionFallsBackToToggle() {
     // The gesture went idle past the session expiry; a later press that
     // hits a transient read failure is NOT mid-gesture and must fall
     // through to standard toggle semantics rather than being swallowed.
-    readFails = true
+    readFails.value = true
     clock.time = 104
     #expect(switcher.toggleApplication(for: shortcut) == true)
     #expect(recorder.raisedWindowIDs == [102])
