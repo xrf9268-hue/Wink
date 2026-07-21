@@ -310,7 +310,7 @@ struct MenuBarPopoverView: View {
 
             MenuBarStatusPill(
                 paused: model.shortcutsPaused || model.autoPauseTriggerAppName != nil,
-                autoPausedBy: model.shortcutsPaused ? nil : model.autoPauseTriggerAppName
+                autoPausedBy: model.autoPauseTriggerAppName
             )
         }
     }

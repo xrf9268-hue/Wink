@@ -63,6 +63,8 @@ final class AppController {
         onAutoPauseChange: { [weak self] paused, appName in
             self?.shortcutManager.setAutoPausedByException(paused)
             self?.appPreferences.setAutoPauseTrigger(appName: paused ? appName : nil)
+            // Keep the observable capture status truthful under auto-pause.
+            self?.appPreferences.refreshPermissions()
         }
     )
     private lazy var insightsViewModel = InsightsViewModel(
@@ -126,17 +128,6 @@ final class AppController {
             self?.updatePanelPresenter.dismiss()
         }
 
-        Self.runStartupSequence(
-            startUpdateService: { _ = updateService },
-            loadShortcuts: { try persistenceService.load() },
-            replaceShortcuts: { shortcutStore.replaceAll(with: $0) },
-            reapplyHyperIfNeeded: { hyperKeyService.reapplyIfNeeded() },
-            isHyperEnabled: { hyperKeyService.isEnabled },
-            setHyperKeyEnabled: { shortcutManager.setHyperKeyEnabled($0) },
-            preparePreferences: { _ = appPreferences },
-            startShortcutManager: { shortcutManager.start() }
-        )
-
         // Exception rules: configure from persisted preferences, follow
         // future edits, and start following frontmost changes.
         appPreferences.onFrontmostExceptionConfigurationChange = { [weak self] in
@@ -151,6 +142,20 @@ final class AppController {
             ruleBundleIdentifiers: appPreferences.frontmostExceptionRules
         )
         frontmostExceptionMonitor.startObservingWorkspaceNotifications()
+
+        // Configured BEFORE the startup sequence so launching while an
+        // exception app is frontmost never lets capture (or permission
+        // prompts) fire ahead of the auto-pause.
+        Self.runStartupSequence(
+            startUpdateService: { _ = updateService },
+            loadShortcuts: { try persistenceService.load() },
+            replaceShortcuts: { shortcutStore.replaceAll(with: $0) },
+            reapplyHyperIfNeeded: { hyperKeyService.reapplyIfNeeded() },
+            isHyperEnabled: { hyperKeyService.isEnabled },
+            setHyperKeyEnabled: { shortcutManager.setHyperKeyEnabled($0) },
+            preparePreferences: { _ = appPreferences },
+            startShortcutManager: { shortcutManager.start() }
+        )
 
         // Read the onboarded state before consumeFirstLaunchFlag marks it, so
         // the What's New gate can tell a fresh install from an upgrade.

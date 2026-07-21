@@ -85,10 +85,10 @@ final class ShortcutManager {
             diagnosticClient.log("Automatic permission prompts suppressed for this launch")
         }
         logger.info(
-            "start(): ready=\(ready), ax=\(self.permissionService.isAccessibilityTrusted()), im=\(self.permissionService.isInputMonitoringTrusted()), inputMonitoringRequired=\(inputMonitoringRequired), paused=\(self.shortcutsPaused)"
+            "start(): ready=\(ready), ax=\(self.permissionService.isAccessibilityTrusted()), im=\(self.permissionService.isInputMonitoringTrusted()), inputMonitoringRequired=\(inputMonitoringRequired), paused=\(self.effectivePaused)"
         )
         diagnosticClient.log(
-            "start(): ready=\(ready), ax=\(permissionService.isAccessibilityTrusted()), im=\(permissionService.isInputMonitoringTrusted()), inputMonitoringRequired=\(inputMonitoringRequired), paused=\(shortcutsPaused)"
+            "start(): ready=\(ready), ax=\(permissionService.isAccessibilityTrusted()), im=\(permissionService.isInputMonitoringTrusted()), inputMonitoringRequired=\(inputMonitoringRequired), paused=\(effectivePaused)"
         )
         hasStarted = true
         startPermissionMonitoring()
@@ -279,7 +279,7 @@ final class ShortcutManager {
             return
         }
 
-        if shortcutsPaused {
+        if effectivePaused {
             _ = refreshShortcutAvailabilityIfNeeded()
             captureCoordinator.refreshInputMonitoring(granted: imGranted)
             return
@@ -339,7 +339,7 @@ final class ShortcutManager {
     }
 
     private func attemptStartIfPermitted(retryStandardProvider: Bool = true) {
-        if shortcutsPaused {
+        if effectivePaused {
             captureCoordinator.start(
                 inputMonitoringGranted: permissionService.isInputMonitoringTrusted(),
                 retryStandardProvider: retryStandardProvider
@@ -393,7 +393,7 @@ final class ShortcutManager {
         }
 
         let inputMonitoringRequired = captureCoordinator.inputMonitoringRequired
-        if !shortcutsPaused
+        if !effectivePaused
             && !inputMonitoringWasRequired
             && inputMonitoringRequired
             && permissionService.isAccessibilityTrusted()
