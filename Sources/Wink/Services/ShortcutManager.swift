@@ -108,6 +108,12 @@ final class ShortcutManager {
         handleCaptureConfigurationChange(
             inputMonitoringWasRequired: inputMonitoringWasRequired
         )
+        // Any configuration change may alter a shortcut's effective
+        // frontmost behavior (per-shortcut override included); an
+        // in-flight cycle cursor must not survive it, or a stale session
+        // could steer the next gesture and qualify for the relaxed
+        // cycle cooldown.
+        appSwitcher.invalidateWindowCycleSession(reason: "shortcut_configuration_changed")
     }
 
     @discardableResult

@@ -283,6 +283,10 @@ final class AppSwitcher: AppSwitching {
         }
     }
 
+    func invalidateWindowCycleSession(reason: String) {
+        windowCycleCoordinator.invalidate(reason: reason)
+    }
+
     var pendingActivationState: PendingActivationState? {
         pendingActivationState(for: nil)
     }

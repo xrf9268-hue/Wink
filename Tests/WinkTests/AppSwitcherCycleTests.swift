@@ -525,6 +525,45 @@ func cycleWindowsReadFailureWithoutGestureFallsBackToToggle() {
 }
 
 @Test @MainActor
+func invalidateWindowCycleSessionDropsLiveCursor() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for invalidation test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    let coordinator = WindowCycleCoordinator(now: { clock.time })
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        windowCycleCoordinator: coordinator
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(coordinator.session != nil)
+
+    // Shortcut configuration changed (e.g. an override edited): the
+    // in-flight cursor must not survive to steer the next gesture.
+    switcher.invalidateWindowCycleSession(reason: "shortcut_configuration_changed")
+    #expect(coordinator.session == nil)
+}
+
+@Test @MainActor
 func changingBehaviorAwayFromCycleInvalidatesLiveSession() {
     guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
           let bundleIdentifier = frontmostApp.bundleIdentifier else {
