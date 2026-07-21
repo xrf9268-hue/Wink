@@ -59,6 +59,12 @@ final class AppController {
             self?.appPreferences.refreshPermissions()
         }
     )
+    private lazy var frontmostExceptionMonitor = FrontmostExceptionMonitor(
+        onAutoPauseChange: { [weak self] paused, appName in
+            self?.shortcutManager.setAutoPausedByException(paused)
+            self?.appPreferences.setAutoPauseTrigger(appName: paused ? appName : nil)
+        }
+    )
     private lazy var insightsViewModel = InsightsViewModel(
         usageTracker: usageTracker,
         shortcutStore: shortcutStore
@@ -130,6 +136,21 @@ final class AppController {
             preparePreferences: { _ = appPreferences },
             startShortcutManager: { shortcutManager.start() }
         )
+
+        // Exception rules: configure from persisted preferences, follow
+        // future edits, and start following frontmost changes.
+        appPreferences.onFrontmostExceptionConfigurationChange = { [weak self] in
+            guard let self else { return }
+            self.frontmostExceptionMonitor.configure(
+                enabled: self.appPreferences.frontmostExceptionsEnabled,
+                ruleBundleIdentifiers: self.appPreferences.frontmostExceptionRules
+            )
+        }
+        frontmostExceptionMonitor.configure(
+            enabled: appPreferences.frontmostExceptionsEnabled,
+            ruleBundleIdentifiers: appPreferences.frontmostExceptionRules
+        )
+        frontmostExceptionMonitor.startObservingWorkspaceNotifications()
 
         // Read the onboarded state before consumeFirstLaunchFlag marks it, so
         // the What's New gate can tell a fresh install from an upgrade.

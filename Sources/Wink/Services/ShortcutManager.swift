@@ -37,6 +37,11 @@ final class ShortcutManager {
     private var lastAvailableShortcutBundleIdentifiers: Set<String> = []
     private var hyperKeyEnabled = false
     private var shortcutsPaused = false
+    private var autoPausedByException = false
+
+    private var effectivePaused: Bool {
+        shortcutsPaused || autoPausedByException
+    }
     private var lastCaptureBlockedMessages: Set<String> = []
     private var hasStarted = false
 
@@ -66,7 +71,7 @@ final class ShortcutManager {
         rebuildIndex()
         let inputMonitoringRequired = captureCoordinator.inputMonitoringRequired
         let ready: Bool
-        if shortcutsPaused {
+        if effectivePaused {
             ready = false
         } else {
             let shouldRequestInputMonitoring = inputMonitoringRequired
@@ -150,7 +155,30 @@ final class ShortcutManager {
             return
         }
 
+        let wasEffectivelyPaused = effectivePaused
         shortcutsPaused = paused
+        // Manual and exception pauses compose: capture only transitions
+        // when the OR of both bits changes, so resuming one while the
+        // other still holds keeps capture paused.
+        guard effectivePaused != wasEffectivelyPaused else { return }
+        applyEffectivePauseTransition()
+    }
+
+    /// Exception-rule auto-pause (frontmost VM/remote-desktop app).
+    /// Never persists and never touches the user's manual pause bit.
+    func setAutoPausedByException(_ paused: Bool) {
+        guard autoPausedByException != paused else {
+            return
+        }
+
+        let wasEffectivelyPaused = effectivePaused
+        autoPausedByException = paused
+        guard effectivePaused != wasEffectivelyPaused else { return }
+        applyEffectivePauseTransition()
+    }
+
+    private func applyEffectivePauseTransition() {
+        let paused = effectivePaused
         if !paused {
             _ = refreshShortcutAvailabilityIfNeeded()
         }

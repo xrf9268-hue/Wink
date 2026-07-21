@@ -181,6 +181,14 @@ Responsibilities:
 - recreate the tap on the same background thread using a reusable readiness mechanism instead of a one-shot startup handshake; a failed first replacement executes its retry, while the retry limit tears down the complete session before reporting degraded readiness
 - reject queued key/recovery callbacks whose generation no longer matches the current session, and join the old RunLoop thread before releasing its callback box or publishing a replacement owner
 
+### Exception rules
+- `FrontmostExceptionMonitor`
+
+Responsibilities:
+- auto-pause shortcut capture while an enabled exception bundle is frontmost, via `NSWorkspace.didActivateApplicationNotification` plus call-time snapshots (no TCC, no taps)
+- re-evaluate the live frontmost app when rules/enabled change so edits take effect without an app switch
+- report the triggering app's display name for the menu bar pill; `ShortcutManager` composes the auto bit with the manual pause by OR, and only the OR's transitions touch the capture runtime
+
 ### Activation and toggle logic
 - `AppSwitcher`
 - `ApplicationObservation`
