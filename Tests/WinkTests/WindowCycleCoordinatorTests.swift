@@ -278,6 +278,29 @@ func repeatStartObservingDoesNotDoubleHandleNotifications() {
 }
 
 @Test @MainActor
+func liveSessionAppliesIdleExpiryAndBundleIdentity() {
+    let clock = CycleClock(time: 100)
+    let coordinator = WindowCycleCoordinator(now: { clock.time })
+
+    _ = coordinator.advance(
+        bundleIdentifier: "com.test.App",
+        pid: 5,
+        orderedWindowIDs: [101, 102],
+        focusedWindowID: nil
+    )
+
+    clock.time = 102
+    #expect(coordinator.liveSession(for: "com.test.App") != nil)
+    #expect(coordinator.liveSession(for: "com.other.App") == nil)
+
+    // Past the idle expiry the raw session record may still exist (lazy
+    // discard), but liveSession must report no gesture in flight.
+    clock.time = 104
+    #expect(coordinator.session != nil)
+    #expect(coordinator.liveSession(for: "com.test.App") == nil)
+}
+
+@Test @MainActor
 func frontmostChangeToOtherAppInvalidatesSession() {
     let coordinator = WindowCycleCoordinator(now: { 100 })
     _ = coordinator.advance(

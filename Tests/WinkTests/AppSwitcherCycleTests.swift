@@ -429,6 +429,54 @@ func cycleWindowsReadFailureMidGestureSwallowsPressInsteadOfHiding() {
 }
 
 @Test @MainActor
+func cycleWindowsReadFailureWithStaleSessionFallsBackToToggle() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for stale-session read-failure test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    var readFails = false
+    var scheduled: [@MainActor () -> Void] = []
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        scheduler: { _, operation in
+            scheduled.append(operation)
+        },
+        trackerBundle: bundleIdentifier,
+        windowsReadFails: { readFails }
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102])
+
+    // The gesture went idle past the session expiry; a later press that
+    // hits a transient read failure is NOT mid-gesture and must fall
+    // through to standard toggle semantics rather than being swallowed.
+    readFails = true
+    clock.time = 104
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102])
+    #expect(switcher.pendingDeactivationState?.activationPath == .hideUntracked)
+}
+
+@Test @MainActor
 func cycleWindowsReadFailureWithoutGestureFallsBackToToggle() {
     guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
           let bundleIdentifier = frontmostApp.bundleIdentifier else {

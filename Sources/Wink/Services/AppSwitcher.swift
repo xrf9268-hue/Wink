@@ -1386,7 +1386,7 @@ final class AppSwitcher: AppSwitching {
     ) -> Bool {
         guard windowObservation.windowsReadSucceeded,
               let windows = windowObservation.windows else {
-            if windowCycleCoordinator.session?.bundleIdentifier == shortcut.bundleIdentifier {
+            if windowCycleCoordinator.liveSession(for: shortcut.bundleIdentifier) != nil {
                 // Transient AX windows-read failure mid-gesture: swallow the
                 // press instead of declining. Declining would fall through
                 // to the hide lanes and hide the app the user is actively
@@ -1489,7 +1489,7 @@ final class AppSwitcher: AppSwitching {
     /// net, so non-cycle actions never run at the relaxed cadence.
     private func effectiveToggleCooldown(for shortcut: AppShortcut) -> TimeInterval {
         guard frontmostTargetBehavior == .cycleWindows,
-              windowCycleCoordinator.session?.bundleIdentifier == shortcut.bundleIdentifier,
+              windowCycleCoordinator.liveSession(for: shortcut.bundleIdentifier) != nil,
               frontmostTracker.currentFrontmostBundleIdentifier() == shortcut.bundleIdentifier else {
             return toggleCooldown
         }

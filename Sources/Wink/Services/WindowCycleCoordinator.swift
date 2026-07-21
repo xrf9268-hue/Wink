@@ -116,6 +116,20 @@ final class WindowCycleCoordinator {
         return target
     }
 
+    /// The session for `bundleIdentifier` only while it is still fresh
+    /// (within the idle expiry). Consumers asking "is a cycle gesture in
+    /// flight?" must use this, not `session`: the raw property can hold a
+    /// stale record whose lazy discard has not run because no advance
+    /// happened since.
+    func liveSession(for bundleIdentifier: String) -> CycleSession? {
+        guard let session,
+              session.bundleIdentifier == bundleIdentifier,
+              now() - session.lastAdvanceAt <= configuration.sessionIdleExpiry else {
+            return nil
+        }
+        return session
+    }
+
     func invalidate(reason: String) {
         guard session != nil else { return }
         DiagnosticLog.log("CYCLE: session invalidated reason=\(reason)")
