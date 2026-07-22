@@ -16,7 +16,7 @@ In a Claude Code interactive session, run:
 /loop 30m /babysit-prs
 ```
 
-This schedules a recurring task that fires every 30 minutes. Each iteration follows the pipeline defined in the `babysit-prs` skill (`.claude/skills/babysit-prs/SKILL.md` in this repo).
+This schedules a recurring task that fires every 30 minutes. Each iteration follows the pipeline defined in the `babysit-prs` skill (`.claude/skills/babysit-prs/SKILL.md` in this repo); its review and merge steps apply the layered protocol in `.claude/skills/pr-review-loop/SKILL.md` (local pre-push review for runtime-sensitive diffs, bot semantics, merge checklist).
 
 ## How /loop Works
 
