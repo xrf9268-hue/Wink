@@ -1157,7 +1157,7 @@ private final class SettingsViewLayoutContext {
 @MainActor
 private struct LayoutFakeAppSwitcher: AppSwitching {
     @discardableResult
-    func toggleApplication(for shortcut: AppShortcut) -> Bool {
+    func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool {
         true
     }
 }

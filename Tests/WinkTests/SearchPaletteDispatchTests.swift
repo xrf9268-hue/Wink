@@ -75,10 +75,12 @@ private struct FakePermissionService: PermissionServicing {
 @MainActor
 private final class RecordingAppSwitcher: AppSwitching {
     private(set) var toggledBundleIdentifiers: [String] = []
+    private(set) var bypassCooldownFlags: [Bool] = []
 
     @discardableResult
-    func toggleApplication(for shortcut: AppShortcut) -> Bool {
+    func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool {
         toggledBundleIdentifiers.append(shortcut.bundleIdentifier)
+        bypassCooldownFlags.append(bypassCooldown)
         return true
     }
 }

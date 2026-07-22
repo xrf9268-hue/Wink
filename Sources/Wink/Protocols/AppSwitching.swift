@@ -3,8 +3,12 @@ import Foundation
 
 @MainActor
 protocol AppSwitching {
+    /// - Parameter bypassCooldown: see `AppSwitcher.toggleApplication` — the
+    ///   re-entry guard and confirmation/recovery pipeline stay fully
+    ///   active either way; only the early per-bundle cooldown check is
+    ///   skipped, and the cooldown is still stamped afterward.
     @discardableResult
-    func toggleApplication(for shortcut: AppShortcut) -> Bool
+    func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool
 
     func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior)
 
@@ -29,6 +33,13 @@ protocol AppSwitching {
 }
 
 extension AppSwitching {
+    /// Convenience for the overwhelmingly common case — a real shortcut
+    /// press always keeps the cooldown active.
+    @discardableResult
+    func toggleApplication(for shortcut: AppShortcut) -> Bool {
+        toggleApplication(for: shortcut, bypassCooldown: false)
+    }
+
     func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior) {}
 
     func invalidateWindowCycleSession(reason: String) {}
