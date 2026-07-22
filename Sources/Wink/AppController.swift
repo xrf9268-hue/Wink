@@ -36,15 +36,42 @@ final class AppController {
     private lazy var appSwitcher = AppSwitcher()
     private lazy var settingsLauncher = SettingsLauncher(userDefaults: userDefaults)
     private lazy var settingsShortcutStatusProvider = ShortcutStatusProvider()
-    private lazy var shortcutManager = ShortcutManager(
-        shortcutStore: shortcutStore,
-        persistenceService: persistenceService,
-        appSwitcher: appSwitcher,
-        usageTracker: usageTracker,
-        appBundleLocator: appBundleLocator,
-        automaticPermissionPromptingEnabled: ShortcutManager.defaultAutomaticPermissionPromptingEnabled(),
-        diagnosticClient: .live
-    )
+    private lazy var shortcutManager: ShortcutManager = {
+        let manager = ShortcutManager(
+            shortcutStore: shortcutStore,
+            persistenceService: persistenceService,
+            appSwitcher: appSwitcher,
+            usageTracker: usageTracker,
+            appBundleLocator: appBundleLocator,
+            automaticPermissionPromptingEnabled: ShortcutManager.defaultAutomaticPermissionPromptingEnabled(),
+            diagnosticClient: .live
+        )
+        // Installed HERE, not in start(): AppPreferences' initializer replays
+        // a persisted manual pause, and SwiftUI evaluates the scene services
+        // (which construct AppPreferences) before applicationDidFinishLaunching
+        // ever calls start(). Since AppPreferences takes this manager as an
+        // init argument, any path that constructs it forces this lazy block
+        // first — the handler is provably installed before the first pause
+        // transition can fire, whichever access path wins. Without that
+        // ordering, a launch into a paused state never suspends the hidutil
+        // mapping and the startup reapply re-arms Caps Lock → F19 with
+        // capture stopped (#375 at launch).
+        //
+        // Pause (manual or exception-rule) stops the Hyper provider without
+        // an `ended` event; a presented sheet must not outlive capture, and
+        // the mapping follows the same composed bit: a paused Wink consumes
+        // no F19, so Caps Lock reverts to native behavior for the paused
+        // interval and comes back on resume.
+        manager.onCapturePauseStateChange = { [weak self] paused in
+            if paused {
+                self?.cheatSheetHUD.reset()
+                self?.hyperKeyService.suspendMappingForPause()
+            } else {
+                self?.hyperKeyService.resumeMappingAfterPause()
+            }
+        }
+        return manager
+    }()
     private lazy var appPreferences = AppPreferences(
         shortcutManager: shortcutManager,
         hyperKeyService: hyperKeyService,
@@ -182,27 +209,10 @@ final class AppController {
             self?.updatePanelPresenter.dismiss()
         }
 
-        // Pause (manual or exception-rule) stops the Hyper provider without
-        // an `ended` event; a presented sheet must not outlive capture.
-        // The hidutil mapping follows the same composed bit (#375): a paused
-        // Wink consumes no F19, so Caps Lock must revert to native behavior
-        // for the paused interval and come back on resume.
-        //
-        // Installed BEFORE the first `appPreferences` access below: that
-        // lazy init replays a persisted manual pause, and the exception
-        // monitor configuration can auto-pause immediately. Those initial
-        // transitions must reach this handler — otherwise a launch into a
-        // paused state never suspends, the startup reapply re-arms the
-        // mapping, and Caps Lock stays a dead F19 key until the user
-        // toggles pause (the #375 failure, at launch).
-        shortcutManager.onCapturePauseStateChange = { [weak self] paused in
-            if paused {
-                self?.cheatSheetHUD.reset()
-                self?.hyperKeyService.suspendMappingForPause()
-            } else {
-                self?.hyperKeyService.resumeMappingAfterPause()
-            }
-        }
+        // The onCapturePauseStateChange handler is installed inside the
+        // shortcutManager lazy initializer, not here — SwiftUI's scene
+        // services construct AppPreferences before start() runs, and the
+        // initial pause replay must already see the handler.
 
         // Exception rules: configure from persisted preferences, follow
         // future edits, and start following frontmost changes.
