@@ -51,6 +51,14 @@ final class AppListProvider {
     private var lastScanTime: Date?
     private var allAppsByID: [String: AppEntry] = [:]
 
+    /// Fires whenever a scan (forced or `refreshIfNeeded`-triggered)
+    /// completes and `allApps` is updated. The #356 search palette uses this
+    /// to stay resilient to a trigger fired before the first scan lands:
+    /// if it's presented when this fires, it rebuilds its candidates and
+    /// re-renders instead of staying on a stale/empty snapshot until
+    /// dismiss/reopen.
+    var onRefreshCompleted: (@MainActor () -> Void)?
+
     var recentApps: [AppEntry] {
         recentBundleIDs.compactMap { allAppsByID[$0] }
     }
@@ -187,6 +195,7 @@ final class AppListProvider {
         loadRecents(from: runningApplications)
         isScanning = false
         refreshTask = nil
+        onRefreshCompleted?()
     }
 
     nonisolated private static func scanDirectory(_ dir: URL, into entries: inout [AppEntry], seen: inout Set<String>, depth: Int) {
@@ -199,9 +208,7 @@ final class AppListProvider {
                 if let bundle = Bundle(url: url),
                    let bid = bundle.bundleIdentifier,
                    !seen.contains(bid) {
-                    let name = (bundle.infoDictionary?["CFBundleName"] as? String)
-                        ?? (bundle.infoDictionary?["CFBundleDisplayName"] as? String)
-                        ?? url.deletingPathExtension().lastPathComponent
+                    let name = localizedAppName(for: bundle) ?? url.deletingPathExtension().lastPathComponent
                     entries.append(AppEntry(id: bid, name: name, url: url))
                     seen.insert(bid)
                 }
@@ -213,6 +220,24 @@ final class AppListProvider {
                 }
             }
         }
+    }
+
+    /// Prefers the bundle's LOCALIZED display name/name (reads the
+    /// `.lproj` `InfoPlist.strings` the app itself ships) over the base
+    /// `infoDictionary`'s development-language values — matters for the
+    /// #356 search palette's CJK containment claim: `bundle.infoDictionary`
+    /// alone would return an app's English name even under a zh-Hans system
+    /// language, so "微信" would never match WeChat by name for a zh-Hans
+    /// user. Also improves `AppPickerPopover`'s search, which reads the same
+    /// `AppListProvider.allApps` snapshot. Reads from the already-loaded
+    /// `Bundle` object (no extra filesystem walk beyond what `Bundle(url:)`
+    /// already performs), so this doesn't add a distinguishable scan-perf
+    /// cost.
+    nonisolated private static func localizedAppName(for bundle: Bundle) -> String? {
+        (bundle.localizedInfoDictionary?["CFBundleDisplayName"] as? String)
+            ?? (bundle.localizedInfoDictionary?["CFBundleName"] as? String)
+            ?? (bundle.infoDictionary?["CFBundleName"] as? String)
+            ?? (bundle.infoDictionary?["CFBundleDisplayName"] as? String)
     }
 
     // MARK: - Recents persistence

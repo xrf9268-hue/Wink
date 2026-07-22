@@ -75,12 +75,36 @@ private func candidate(
 }
 
 @Test func tighterSubsequenceMatchScoresHigherThanASpreadOutOne() throws {
-    // Both are non-prefix, non-word-prefix subsequence matches of "ff", but
-    // "office" has the two f's adjacent while "far far away" spreads them
-    // across the whole string.
-    let tight = try #require(SearchPaletteMatch.score(query: "ff", normalizedName: "office"))
-    let spread = try #require(SearchPaletteMatch.score(query: "ff", normalizedName: "far far away"))
+    // Both are non-prefix, non-word-prefix, non-contiguous-substring
+    // matches of "acd" — "abcd" has the matched characters close together
+    // (one letter between them) while "a b c d" spreads them across the
+    // whole string. Neither candidate contains "acd" as a literal
+    // substring, so both land in the subsequence tier and this isolates its
+    // tightness-based sub-ordering from the contains tier.
+    let tight = try #require(SearchPaletteMatch.score(query: "acd", normalizedName: "abcd"))
+    let spread = try #require(SearchPaletteMatch.score(query: "acd", normalizedName: "a b c d"))
     #expect(tight > spread)
+}
+
+/// #356 regression: a greedy leftmost subsequence scan can anchor an early,
+/// spread-out match instead of recognizing a genuine contiguous substring
+/// elsewhere in the name — query "ab" against "a fab" would otherwise
+/// anchor the standalone "a" (position 0) and miss the tighter "ab" at the
+/// end, scoring below a candidate where "ab" is merely a spread-out
+/// subsequence. The explicit contains tier must outrank that regardless.
+@Test func containsTierAlwaysOutranksANonContiguousSubsequenceMatch() throws {
+    let containsMatch = try #require(SearchPaletteMatch.score(query: "ab", normalizedName: "a fab"))
+    let subsequenceOnlyMatch = try #require(SearchPaletteMatch.score(query: "ab", normalizedName: "axb"))
+    #expect(containsMatch > subsequenceOnlyMatch)
+}
+
+@Test func containsTierOutranksSubsequenceButNotWordPrefix() throws {
+    let wordPrefix = try #require(SearchPaletteMatch.score(query: "code", normalizedName: "visual studio code"))
+    // "tudio" is a substring of "studio" but not a prefix of any word (the
+    // word itself starts with "s"), so it isolates the contains tier from
+    // the word-prefix tier above it.
+    let contains = try #require(SearchPaletteMatch.score(query: "tudio", normalizedName: "visual studio code"))
+    #expect(wordPrefix > contains)
 }
 
 // MARK: - Ranking
@@ -185,6 +209,80 @@ private func candidate(
 
     #expect(candidates.first { $0.entry.bundleIdentifier == "com.apple.Safari" }?.isRunning == true)
     #expect(candidates.first { $0.entry.bundleIdentifier == "com.apple.Terminal" }?.isRunning == false)
+}
+
+// MARK: - Empty-query recency ordering (#356 P3-11)
+
+@Test func recentRunningOrdersByRecencyMostRecentFirst() {
+    let candidates = [
+        candidate("Safari", bundleIdentifier: "com.apple.Safari", isRunning: true),
+        candidate("Terminal", bundleIdentifier: "com.apple.Terminal", isRunning: true),
+        candidate("Xcode", bundleIdentifier: "com.apple.Xcode", isRunning: true),
+    ]
+
+    let results = SearchPaletteRanking.recentRunning(
+        candidates: candidates,
+        recentBundleIdentifiers: ["com.apple.Xcode", "com.apple.Safari", "com.apple.Terminal"]
+    )
+
+    #expect(results.map(\.entry.bundleIdentifier) == ["com.apple.Xcode", "com.apple.Safari", "com.apple.Terminal"])
+}
+
+@Test func recentRunningFallsBackToAlphabeticalForRunningAppsWithNoRecencySignal() {
+    let candidates = [
+        candidate("Zephyr", bundleIdentifier: "com.example.Zephyr", isRunning: true),
+        candidate("Anchor", bundleIdentifier: "com.example.Anchor", isRunning: true),
+        candidate("Safari", bundleIdentifier: "com.apple.Safari", isRunning: true),
+    ]
+
+    // Only Safari has a recency signal; the other two running apps (never
+    // activated through Wink) fall back to alphabetical order at the tail.
+    let results = SearchPaletteRanking.recentRunning(
+        candidates: candidates,
+        recentBundleIdentifiers: ["com.apple.Safari"]
+    )
+
+    #expect(results.map(\.entry.name) == ["Safari", "Anchor", "Zephyr"])
+}
+
+@Test func recentRunningExcludesNonRunningApps() {
+    let candidates = [
+        candidate("Safari", bundleIdentifier: "com.apple.Safari", isRunning: true),
+        candidate("Terminal", bundleIdentifier: "com.apple.Terminal", isRunning: false),
+    ]
+
+    let results = SearchPaletteRanking.recentRunning(
+        candidates: candidates,
+        recentBundleIdentifiers: ["com.apple.Terminal", "com.apple.Safari"]
+    )
+
+    #expect(results.map(\.entry.bundleIdentifier) == ["com.apple.Safari"])
+}
+
+@Test func recentRunningIgnoresStaleRecentEntriesNotCurrentlyRunning() {
+    // A bundle can be "recent" (previously activated) without being running
+    // right now — a stale recent id that isn't in the running set must not
+    // produce a missing/duplicate row.
+    let candidates = [
+        candidate("Safari", bundleIdentifier: "com.apple.Safari", isRunning: true),
+    ]
+
+    let results = SearchPaletteRanking.recentRunning(
+        candidates: candidates,
+        recentBundleIdentifiers: ["com.apple.QuitApp", "com.apple.Safari"]
+    )
+
+    #expect(results.map(\.entry.bundleIdentifier) == ["com.apple.Safari"])
+}
+
+@Test func recentRunningRespectsTheLimit() {
+    let candidates = (0..<20).map { candidate("App\($0)", bundleIdentifier: "com.example.app\($0)", isRunning: true) }
+    let results = SearchPaletteRanking.recentRunning(
+        candidates: candidates,
+        recentBundleIdentifiers: [],
+        limit: 5
+    )
+    #expect(results.count == 5)
 }
 
 // MARK: - Structural latency guard

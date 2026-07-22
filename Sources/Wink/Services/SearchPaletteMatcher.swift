@@ -57,18 +57,27 @@ enum SearchPaletteCandidateBuilder {
 
 /// Tiered prefix/subsequence scoring — deliberately NOT a multi-layer
 /// edit-distance waterfall (#356 hard constraint: app names are a much
-/// cleaner corpus than the window titles AltTab's scorer handles). Four
+/// cleaner corpus than the window titles AltTab's scorer handles). Five
 /// tiers, highest first: exact name match, prefix match, a later word's
-/// prefix match (e.g. "code" hitting "Visual Studio Code"), and general
-/// in-order subsequence match. A contiguous substring is a special case of
-/// "in order" — so `localizedName` containment (the IME note in the issue:
-/// v1 matches a fully-composed CJK app name via containment) falls out of
-/// the subsequence tier for free, with no separate containment check
-/// needed.
+/// prefix match (e.g. "code" hitting "Visual Studio Code"), any contiguous
+/// substring match anywhere in the name (the IME note in the issue: v1
+/// matches a fully-composed CJK app name via `localizedName` containment),
+/// and general in-order subsequence match as the fallback tier. The
+/// contiguous-substring tier is explicit and separate from the subsequence
+/// one on purpose: the subsequence scan below is a cheap greedy
+/// leftmost-anchor match (not a tightest-window search — that would start
+/// creeping toward the edit-distance waterfall the issue rules out), so it
+/// can anchor an early, spread-out match instead of recognizing a genuine
+/// contiguous substring elsewhere in the name (e.g. query "ab" against "a
+/// fab" — greedily anchoring the standalone "a" produces a wider spread
+/// than the actual contiguous "ab" at the end). Checking `contains` first
+/// guarantees a real substring always outranks a non-contiguous subsequence
+/// match, regardless of what the greedy scan below would have produced.
 enum SearchPaletteMatch {
     private static let exactScore = 1_000
     private static let prefixBaseScore = 900
     private static let wordPrefixScore = 700
+    private static let containsScore = 600
     private static let subsequenceBaseScore = 500
 
     /// - Parameters:
@@ -93,21 +102,22 @@ enum SearchPaletteMatch {
         if normalizedName.split(separator: " ").contains(where: { $0.hasPrefix(normalizedQuery) }) {
             return wordPrefixScore
         }
+        if normalizedName.contains(normalizedQuery) {
+            return containsScore
+        }
         if let spread = subsequenceSpread(query: normalizedQuery, candidate: normalizedName) {
-            // Tighter, earlier matches score higher within the tier — a
-            // contiguous substring match (spread == matchedLength - 1) sits
-            // at the top of this tier.
+            // Tighter, earlier matches score higher within the tier.
             return subsequenceBaseScore - min(spread, 400)
         }
         return nil
     }
 
     /// Whether every character of `query` appears in `candidate` in order
-    /// (not necessarily contiguous). Returns the index distance between the
-    /// first and last matched character — 0 means every matched character
-    /// was adjacent (a contiguous substring, the exact "localizedName
-    /// containment" case the issue's IME note calls out) — or `nil` when
-    /// `query` isn't a subsequence of `candidate` at all.
+    /// (not necessarily contiguous) — the fallback tier once a contiguous
+    /// substring match (checked above, and always preferred) doesn't apply.
+    /// Returns the index distance between the first and last matched
+    /// character, or `nil` when `query` isn't a subsequence of `candidate`
+    /// at all.
     private static func subsequenceSpread(query: String, candidate: String) -> Int? {
         guard !query.isEmpty else { return 0 }
         var queryIndex = query.startIndex
@@ -167,5 +177,42 @@ enum SearchPaletteRanking {
             }
             .prefix(limit)
             .map(\.candidate)
+    }
+
+    /// Empty-query default (Spotlight/Alfred convention: "what can I switch
+    /// to right now"). Most recently activated running apps first, using
+    /// `AppListProvider.recentBundleIDs`; running apps with no recency
+    /// signal at all (never activated through Wink) fall back to
+    /// alphabetical order at the tail. Never includes non-running apps —
+    /// an empty query with nothing typed yet shouldn't suggest launching
+    /// something.
+    static func recentRunning(
+        candidates: [SearchPaletteCandidate],
+        recentBundleIdentifiers: [String],
+        limit: Int = defaultLimit
+    ) -> [SearchPaletteCandidate] {
+        let running = candidates.filter(\.isRunning)
+        guard !running.isEmpty else { return [] }
+
+        let runningByBundleIdentifier = Dictionary(
+            running.map { ($0.entry.bundleIdentifier, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        var ordered: [SearchPaletteCandidate] = []
+        var seenBundleIdentifiers = Set<String>()
+        for bundleIdentifier in recentBundleIdentifiers {
+            guard let candidate = runningByBundleIdentifier[bundleIdentifier],
+                  !seenBundleIdentifiers.contains(bundleIdentifier) else { continue }
+            ordered.append(candidate)
+            seenBundleIdentifiers.insert(bundleIdentifier)
+        }
+
+        let remaining = running
+            .filter { !seenBundleIdentifiers.contains($0.entry.bundleIdentifier) }
+            .sorted { $0.entry.name.localizedCaseInsensitiveCompare($1.entry.name) == .orderedAscending }
+        ordered.append(contentsOf: remaining)
+
+        return Array(ordered.prefix(limit))
     }
 }

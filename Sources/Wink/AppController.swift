@@ -108,6 +108,9 @@ final class AppController {
                 runningBundleIdentifiers: runningBundleIdentifiers
             )
         },
+        recentBundleIdentifiersProvider: { [weak self] in
+            self?.appListProvider.recentBundleIDs ?? []
+        },
         activate: { [weak self] entry in
             guard let self else { return false }
             // NOT toggleApplication's default semantics: a plain call would
@@ -121,13 +124,27 @@ final class AppController {
             // matches the wink:// URL scheme's .toggle handling below: this
             // ad hoc shortcut has no persisted id, so recording "usage"
             // against it would just orphan a UUID no UI ever shows.
-            return self.appSwitcher.toggleApplication(for: AppShortcut(
-                appName: entry.name,
-                bundleIdentifier: entry.bundleIdentifier,
-                keyEquivalent: "",
-                modifierFlags: [],
-                frontmostBehaviorOverride: .focus
-            ))
+            //
+            // bypassCooldown: true — a palette commit is a direct, one-shot
+            // user choice ("activate this app right now"), not a repeated
+            // key-chord press. Without this, hiding an app via its real
+            // shortcut and then committing the SAME app from the palette
+            // within the 400ms cooldown window would silently drop the
+            // commit after the palette already dismissed, leaving the app
+            // hidden with no feedback. The re-entry guard and cooldown STAMP
+            // stay intact (see AppSwitcher.toggleApplication) — only the
+            // early cooldown *check* is skipped, and the stamp this call
+            // writes still protects the very next real shortcut press.
+            return self.appSwitcher.toggleApplication(
+                for: AppShortcut(
+                    appName: entry.name,
+                    bundleIdentifier: entry.bundleIdentifier,
+                    keyEquivalent: "",
+                    modifierFlags: [],
+                    frontmostBehaviorOverride: .focus
+                ),
+                bypassCooldown: true
+            )
         }
     )
     private lazy var appPreferences = AppPreferences(
@@ -348,7 +365,13 @@ final class AppController {
         // list now (not on first open) so a trigger pressed any time after
         // launch sees an already-scanned, cached `AppListProvider.allApps`
         // — the open-to-first-keystroke latency budget has no room for a
-        // synchronous filesystem scan.
+        // synchronous filesystem scan. The scan is still async, though: a
+        // trigger pressed before it lands must not leave the palette stuck
+        // empty until dismiss/reopen, so the palette also self-heals once
+        // the scan (this one or any later one) actually completes.
+        appListProvider.onRefreshCompleted = { [weak self] in
+            self?.searchPaletteHUD.refreshCandidatesIfPresented()
+        }
         appListProvider.refreshIfNeeded()
         shortcutManager.onSearchPaletteTriggered = { [weak self] in
             self?.searchPaletteHUD.present()

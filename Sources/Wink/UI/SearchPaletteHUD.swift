@@ -14,26 +14,58 @@ final class SearchPalettePanel: KeyCapableHUDPanel {}
 /// `HUDPanelPlacement`) and the exact "activate, never hide" seam
 /// `AppController` wires through `activate` — see that closure's call site
 /// for why a plain `toggleApplication` call would be wrong here.
+///
+/// State (query, highlight) lives HERE, on the controller — not as `@State`
+/// inside `SearchPaletteView` — mirroring `WindowPickerHUDController`
+/// exactly: every mutation goes through `renderContent()`, which rebuilds
+/// the view, reassigns `hosting.rootView`, and re-measures/resizes the
+/// panel via `layoutSubtreeIfNeeded()` + `fittingSize`. That's what keeps
+/// the panel's height in sync as the result count changes per keystroke —
+/// sizing once at `present()` and never again would clip a query that grows
+/// from one row to eight. View-driven mutations (typing, arrow keys) are
+/// funneled back through this controller via closures and dispatched with
+/// `DispatchQueue.main.async` before touching `hosting.rootView`, since
+/// reassigning it synchronously from inside a SwiftUI-owned callback (a
+/// `Binding` setter, `.onKeyPress`) would mutate the same hosting view
+/// while SwiftUI is still mid-update for that same view.
 @MainActor
 final class SearchPaletteHUDController {
     private let onSessionStateChange: @MainActor (Bool) -> Void
     /// Snapshot-at-open candidate builder — never called per keystroke. See
     /// `SearchPaletteMatcher.swift` for the latency rationale.
     private let candidatesProvider: @MainActor () -> [SearchPaletteCandidate]
+    /// Most-recently-activated bundle identifiers, most recent first —
+    /// orders the empty-query list; recency only, never re-scored. `nil`
+    /// resolves to `[]` in the body (not a closure-literal default
+    /// argument): the CI toolchain (Xcode 16.4, Swift 6.1.2) has twice
+    /// crashed SILGen on non-trivial init default-argument expressions —
+    /// same mitigation as `WindowCycleClient.live`/`ShortcutManager`'s
+    /// `secureInputProbe`.
+    private let recentBundleIdentifiersProvider: (@MainActor () -> [String])?
     private let activate: @MainActor (AppEntry) -> Bool
 
-    private var panel: SearchPalettePanel?
+    /// Internal (not private) read access only — `private(set)` — so tests
+    /// can assert on the panel's structural size (e.g. "grew as results
+    /// grew") without opening up write access from outside the controller.
+    private(set) var panel: SearchPalettePanel?
     private var hosting: NSHostingView<SearchPaletteView>?
     private var resignKeyObserver: NSObjectProtocol?
     private var isActive = false
 
+    private var candidates: [SearchPaletteCandidate] = []
+    private var recentBundleIdentifiers: [String] = []
+    private var query = ""
+    private var highlight = AppPickerHighlightState()
+
     init(
         onSessionStateChange: @escaping @MainActor (Bool) -> Void,
         candidatesProvider: @escaping @MainActor () -> [SearchPaletteCandidate],
+        recentBundleIdentifiersProvider: (@MainActor () -> [String])? = nil,
         activate: @escaping @MainActor (AppEntry) -> Bool
     ) {
         self.onSessionStateChange = onSessionStateChange
         self.candidatesProvider = candidatesProvider
+        self.recentBundleIdentifiersProvider = recentBundleIdentifiersProvider
         self.activate = activate
     }
 
@@ -44,9 +76,13 @@ final class SearchPaletteHUDController {
         isActive = true
         onSessionStateChange(true)
 
-        let candidates = candidatesProvider()
+        candidates = candidatesProvider()
+        recentBundleIdentifiers = resolveRecentBundleIdentifiers()
+        query = ""
+        highlight.reset()
+
         let panel = ensurePanel()
-        render(candidates: candidates)
+        renderContent()
         HUDPanelPlacement.centerOnPointerScreen(panel)
         panel.makeKeyAndOrderFront(nil)
 
@@ -61,6 +97,21 @@ final class SearchPaletteHUDController {
         }
     }
 
+    /// A trigger fired before `AppListProvider`'s first scan lands would
+    /// otherwise open onto an empty (or installed-apps-only) snapshot that
+    /// stays empty until dismiss/reopen. `AppController` calls this once the
+    /// scan completes; a no-op while the palette isn't presented.
+    func refreshCandidatesIfPresented() {
+        guard isActive else { return }
+        candidates = candidatesProvider()
+        recentBundleIdentifiers = resolveRecentBundleIdentifiers()
+        renderContent()
+    }
+
+    private func resolveRecentBundleIdentifiers() -> [String] {
+        recentBundleIdentifiersProvider?() ?? []
+    }
+
     func dismiss() {
         guard isActive else { return }
         if let resignKeyObserver {
@@ -70,6 +121,36 @@ final class SearchPaletteHUDController {
         isActive = false
         panel?.orderOut(nil)
         onSessionStateChange(false)
+    }
+
+    /// Empty query shows the most recently activated running apps first
+    /// (Spotlight/Alfred convention), alphabetical as the tail/fallback for
+    /// running apps with no recency signal; a non-empty query runs the
+    /// tiered scorer. Either way this recomputes against the already-built
+    /// `candidates` array, never re-scanning the app list itself (see
+    /// `SearchPaletteMatcher.swift`, which owns both ranking functions).
+    private var results: [SearchPaletteCandidate] {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return SearchPaletteRanking.recentRunning(candidates: candidates, recentBundleIdentifiers: recentBundleIdentifiers)
+        }
+        return SearchPaletteRanking.rank(query: query, candidates: candidates)
+    }
+
+    private func handleQueryChange(_ newQuery: String) {
+        guard query != newQuery else { return }
+        query = newQuery
+        highlight.searchTextChanged()
+        scheduleRender()
+    }
+
+    private func moveHighlight(_ delta: Int) {
+        _ = highlight.move(delta, count: results.count)
+        scheduleRender()
+    }
+
+    private func commitHighlighted() {
+        guard let entry = highlight.selection(in: results)?.entry else { return }
+        commit(entry)
     }
 
     private func commit(_ entry: AppEntry) {
@@ -90,11 +171,36 @@ final class SearchPaletteHUDController {
         return panel
     }
 
-    private func render(candidates: [SearchPaletteCandidate]) {
-        guard let panel else { return }
+    /// Defers the actual re-render/resize to the next run-loop turn: this
+    /// is called from closures SwiftUI itself invokes (a `TextField`
+    /// binding's setter, `.onKeyPress`), and reassigning `hosting.rootView`
+    /// synchronously from inside one of those would mutate the same hosting
+    /// view while SwiftUI is still mid-update for it. One tick is
+    /// imperceptible; `present()`/`refreshCandidatesIfPresented()` call
+    /// `renderContent()` directly since they run from plain AppKit call
+    /// sites, outside any SwiftUI update.
+    private func scheduleRender() {
+        DispatchQueue.main.async { [weak self] in
+            self?.renderContent()
+        }
+    }
+
+    private func renderContent() {
+        guard isActive, let panel else { return }
         let view = SearchPaletteView(
-            candidates: candidates,
-            onCommit: { [weak self] entry in
+            query: query,
+            results: results,
+            highlightedIndex: highlight.highlightedIndex,
+            onQueryChange: { [weak self] newQuery in
+                self?.handleQueryChange(newQuery)
+            },
+            onMoveHighlight: { [weak self] delta in
+                self?.moveHighlight(delta)
+            },
+            onCommitHighlighted: { [weak self] in
+                self?.commitHighlighted()
+            },
+            onCommitEntry: { [weak self] entry in
                 self?.commit(entry)
             },
             onCancel: { [weak self] in
@@ -121,24 +227,19 @@ private enum SearchPaletteMetrics {
 }
 
 private struct SearchPaletteView: View {
-    let candidates: [SearchPaletteCandidate]
-    let onCommit: (AppEntry) -> Void
+    let query: String
+    let results: [SearchPaletteCandidate]
+    let highlightedIndex: Int?
+    let onQueryChange: (String) -> Void
+    let onMoveHighlight: (Int) -> Void
+    let onCommitHighlighted: () -> Void
+    let onCommitEntry: (AppEntry) -> Void
     let onCancel: () -> Void
 
-    @State private var query = ""
-    @State private var highlight = AppPickerHighlightState()
     @FocusState private var isFieldFocused: Bool
 
-    /// Empty query shows the most recent apps up front (Spotlight/Alfred
-    /// convention) — cheap since `AppListProvider` already tracks recency;
-    /// a non-empty query runs the tiered scorer. Either way this recomputes
-    /// per keystroke against the already-built `candidates` array, never
-    /// re-scanning the app list itself (see `SearchPaletteMatcher.swift`).
-    private var results: [SearchPaletteCandidate] {
-        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return Array(candidates.filter(\.isRunning).prefix(SearchPaletteRanking.defaultLimit))
-        }
-        return SearchPaletteRanking.rank(query: query, candidates: candidates)
+    private var queryBinding: Binding<String> {
+        Binding(get: { query }, set: { newQuery in onQueryChange(newQuery) })
     }
 
     var body: some View {
@@ -146,14 +247,11 @@ private struct SearchPaletteView: View {
             HStack(spacing: 8) {
                 WinkIcon.search.image(size: 13)
                     .foregroundStyle(.secondary)
-                TextField(Self.placeholder, text: $query)
+                TextField(Self.placeholder, text: queryBinding)
                     .textFieldStyle(.plain)
                     .font(.system(size: 16))
                     .focused($isFieldFocused)
-                    .onSubmit { commitHighlighted() }
-                    .onChange(of: query) { _, _ in
-                        highlight.searchTextChanged()
-                    }
+                    .onSubmit { onCommitHighlighted() }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -166,17 +264,17 @@ private struct SearchPaletteView: View {
                             ForEach(Array(results.enumerated()), id: \.element.id) { index, candidate in
                                 SearchPaletteRow(
                                     candidate: candidate,
-                                    isHighlighted: highlight.highlightedIndex == index
+                                    isHighlighted: highlightedIndex == index
                                 )
                                 .contentShape(Rectangle())
-                                .onTapGesture { onCommit(candidate.entry) }
+                                .onTapGesture { onCommitEntry(candidate.entry) }
                                 .id(index)
                             }
                         }
                         .padding(8)
                     }
                     .frame(maxHeight: SearchPaletteMetrics.maxResultsHeight)
-                    .onChange(of: highlight.highlightedIndex) { _, newIndex in
+                    .onChange(of: highlightedIndex) { _, newIndex in
                         guard let newIndex else { return }
                         proxy.scrollTo(newIndex)
                     }
@@ -192,21 +290,11 @@ private struct SearchPaletteView: View {
         .frame(width: SearchPaletteMetrics.width)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .onAppear {
-            highlight.reset()
             isFieldFocused = true
         }
-        .onKeyPress(.upArrow) { move(-1); return .handled }
-        .onKeyPress(.downArrow) { move(1); return .handled }
+        .onKeyPress(.upArrow) { onMoveHighlight(-1); return .handled }
+        .onKeyPress(.downArrow) { onMoveHighlight(1); return .handled }
         .onKeyPress(.escape) { onCancel(); return .handled }
-    }
-
-    private func move(_ delta: Int) {
-        _ = highlight.move(delta, count: results.count)
-    }
-
-    private func commitHighlighted() {
-        guard let entry = highlight.selection(in: results)?.entry else { return }
-        onCommit(entry)
     }
 
     private static var placeholder: String {
