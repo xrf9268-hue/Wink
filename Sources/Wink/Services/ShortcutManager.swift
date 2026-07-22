@@ -76,6 +76,15 @@ final class ShortcutManager {
     /// the manager only resolves the gesture and the matched shortcut.
     var onHoldActionTriggered: (@MainActor (AppShortcut) -> Void)?
     private var holdGestureArbiter: HoldGestureArbiter?
+    /// True while an interactive Wink panel (the hold-to-show window picker)
+    /// is key. Matched shortcut dispatch is gated on it instead of the full
+    /// capture-pause machinery: providers keep running (registered chords
+    /// stay swallowed and can't leak into the panel or the app underneath),
+    /// nothing user-visible flips to "Paused", and the #375 mapping
+    /// suspension isn't churned by every picker open. The original goal —
+    /// no toggleApplication re-entry while the panel is up — holds because
+    /// dispatch, not capture, is what's gated.
+    private var interactivePanelSessionActive = false
 
     private var effectivePaused: Bool {
         shortcutsPaused || autoPausedByException
@@ -171,7 +180,20 @@ final class ShortcutManager {
         }
     }
 
+    func setInteractivePanelSessionActive(_ active: Bool) {
+        interactivePanelSessionActive = active
+        if active {
+            // A gesture straddling the panel-open transition must not
+            // resolve into a toggle or a second panel underneath it.
+            holdGestureArbiter?.reset()
+        }
+    }
+
     private func handleHoldGesture(_ keyPress: KeyPress) {
+        guard !interactivePanelSessionActive else {
+            diagnosticClient.log("HOLD_GESTURE_IGNORED: interactive panel session active")
+            return
+        }
         let key = keyMatcher.trigger(for: keyPress)
         guard let match = triggerIndex[key], match.holdAction != nil else {
             // The phased set and the trigger index are rebuilt from the same
@@ -576,6 +598,13 @@ final class ShortcutManager {
 
     /// Returns `true` if the key press matched a shortcut (so the event should be consumed).
     private func handleKeyPress(_ keyPress: KeyPress) -> Bool {
+        guard !interactivePanelSessionActive else {
+            // The chord stays swallowed by the providers; only dispatch is
+            // gated, so a press can never re-enter toggleApplication under
+            // an open picker.
+            diagnosticClient.log("KEYPRESS_IGNORED: interactive panel session active")
+            return true
+        }
         let key = keyMatcher.trigger(for: keyPress)
         #if DEBUG
         if !triggerIndex.isEmpty {

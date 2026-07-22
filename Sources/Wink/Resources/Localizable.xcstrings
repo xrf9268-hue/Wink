@@ -3393,6 +3393,23 @@
         }
       }
     },
+    "Untitled Window": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Untitled Window"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未命名窗口"
+          }
+        }
+      }
+    },
     "Unused shortcuts this week": {
       "extractionState": "manual",
       "localizations": {

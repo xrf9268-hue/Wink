@@ -1269,3 +1269,98 @@ func firstPressRoleReadFailureBelowTwoWindowsSwallowsInsteadOfHiding() {
     #expect(recorder.raisedWindowIDs == [102])
     #expect(recorder.hideCalls == 0)
 }
+
+// MARK: - Window picker session (#352)
+
+@Test @MainActor
+func windowPickerSessionListsEligibleWindowsSortedAndExcludesAuxiliary() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for picker session test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    // Deliberately unsorted ids + one auxiliary (divider-class) element +
+    // one minimized window.
+    let windows = CycleTestWindows(ids: [203, 201, 202], ineligibleIDs: [202])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        minimizedIDs: [203],
+        focusedWindowID: { 201 },
+        recorder: recorder,
+        clock: clock
+    )
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"],
+        holdAction: .windowPicker
+    )
+
+    guard let session = switcher.windowPickerSession(for: shortcut) else {
+        Issue.record("Expected a picker session")
+        return
+    }
+
+    #expect(session.bundleIdentifier == bundleIdentifier)
+    #expect(session.items.map(\.windowID) == [201, 203], "sorted window ids, auxiliary excluded")
+    #expect(session.items.map(\.isMinimized) == [false, true])
+    #expect(session.items.map(\.title) == ["Window 201", "Window 203"])
+}
+
+@Test @MainActor
+func focusPickedWindowRunsTheActivationTrioAndInvalidatesTheCycleCursor() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for picker focus test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [201, 202])
+    let coordinator = WindowCycleCoordinator()
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        minimizedIDs: [202],
+        focusedWindowID: { 201 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: bundleIdentifier,
+        windowCycleCoordinator: coordinator
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"],
+        holdAction: .windowPicker
+    )
+
+    // Establish a live cycle session first — the manual pick must kill it.
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(coordinator.session != nil)
+
+    guard let session = switcher.windowPickerSession(for: shortcut) else {
+        Issue.record("Expected a picker session")
+        return
+    }
+    let focused = switcher.focusPickedWindow(windowID: 202, session: session)
+
+    #expect(focused == true)
+    #expect(recorder.unminimizedWindowIDs.contains(202), "a minimized pick is unminimized first")
+    #expect(recorder.activatedWindowIDs.last == 202)
+    #expect(recorder.madeKeyWindowIDs.last == 202)
+    #expect(recorder.raisedWindowIDs.last == 202)
+    #expect(coordinator.session == nil, "a manual pick invalidates the cycle cursor")
+}

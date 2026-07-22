@@ -2492,3 +2492,125 @@ extension AppSwitcher.ConfirmationClient {
         }
     )
 }
+
+// MARK: - Hold-to-show window picker (#352)
+
+extension AppSwitcher {
+    func windowPickerSession(for requestedShortcut: AppShortcut) -> WindowPickerSession? {
+        let shortcut: AppShortcut
+        var resolvedFrontmostApp: NSRunningApplication?
+        if requestedShortcut.isFrontmostAppTarget {
+            guard let resolution = resolveFrontmostAppTarget(requestedShortcut) else {
+                return nil
+            }
+            shortcut = resolution.shortcut
+            resolvedFrontmostApp = resolution.app
+        } else {
+            shortcut = requestedShortcut
+        }
+        guard let runningApp = resolvedFrontmostApp
+                ?? appLookupClient.runningApplications(shortcut.bundleIdentifier).first else {
+            return nil
+        }
+        let observation = applicationObservation.windowObservation(for: runningApp, phase: .preAction)
+        guard observation.windowsReadSucceeded, let windows = observation.windows else {
+            // Transient AX failure: the hold degrades to a silent no-op —
+            // never a hide, and never a picker over unverifiable windows.
+            return nil
+        }
+
+        var elementsByWindowID: [CGWindowID: AXUIElement] = [:]
+        var items: [WindowPickerItem] = []
+        for window in windows {
+            // Strict eligibility (== true): unlike the cycle path, a listing
+            // has no press to swallow — a nil role read just excludes the
+            // element from this presentation.
+            guard windowCycleClient.isContentWindow(window) == true,
+                  let windowID = windowCycleClient.windowID(window),
+                  elementsByWindowID[windowID] == nil else {
+                continue
+            }
+            elementsByWindowID[windowID] = window
+            items.append(WindowPickerItem(
+                windowID: windowID,
+                title: windowCycleClient.windowTitle(window),
+                isMinimized: observation.minimizedWindows.contains { CFEqual($0, window) }
+            ))
+        }
+        guard !items.isEmpty else { return nil }
+
+        return WindowPickerSession(
+            bundleIdentifier: shortcut.bundleIdentifier,
+            displayName: shortcut.displayAppName,
+            pid: runningApp.processIdentifier,
+            // Same stable ordering rule as cycle rotation: sorted window id,
+            // never kAXWindows order.
+            items: items.sorted { $0.windowID < $1.windowID },
+            elementsByWindowID: elementsByWindowID
+        )
+    }
+
+    @discardableResult
+    func focusPickedWindow(windowID: CGWindowID, session: WindowPickerSession) -> Bool {
+        guard let element = session.elementsByWindowID[windowID] else { return false }
+        guard let runningApp = appLookupClient.runningApplications(session.bundleIdentifier)
+                .first(where: { $0.processIdentifier == session.pid })
+                ?? appLookupClient.runningApplications(session.bundleIdentifier).first else {
+            return false
+        }
+
+        if session.items.first(where: { $0.windowID == windowID })?.isMinimized == true {
+            windowCycleClient.unminimizeWindow(element)
+        }
+
+        // Same trio as the cycle path: front the process for this window id,
+        // make it key via the WindowServer event record, then AX-raise it.
+        switch activateProcess(
+            pid: runningApp.processIdentifier,
+            windowID: windowID,
+            fallbackActivate: {
+                self.requestFallbackActivation(
+                    bundleURL: runningApp.bundleURL,
+                    bundleIdentifier: runningApp.bundleIdentifier ?? "\(runningApp.processIdentifier)",
+                    plainActivate: {
+                        runningApp.activate()
+                    }
+                )
+            }
+        ) {
+        case .skyLight(let psn):
+            windowCycleClient.makeKeyWindow(psn, windowID)
+        case .fallback:
+            break
+        }
+        windowCycleClient.raiseWindow(element)
+
+        // A picked window keeps the target frontmost: promote a still-pending
+        // activation session before its confirmation ladder can re-raise the
+        // first window over the user's explicit choice (same rule as #347's
+        // cycle promotion).
+        if pendingActivationState(for: session.bundleIdentifier) != nil,
+           sessionCoordinator.markStable(for: session.bundleIdentifier) != nil {
+            logToggleTrace(
+                family: .decision,
+                bundleIdentifier: session.bundleIdentifier,
+                event: "pending_promoted",
+                reason: "picker_selection_settled_frontmost",
+                activationPath: .activate
+            )
+        }
+        // The user manually chose a window; a live cycle cursor for this app
+        // no longer describes their intent.
+        windowCycleCoordinator.invalidate(reason: "picker_selection")
+
+        DiagnosticLog.log("PICKER[\(session.displayName)]: FOCUS wid=\(windowID)")
+        logToggleTrace(
+            family: .decision,
+            bundleIdentifier: session.bundleIdentifier,
+            event: "picker_focus",
+            reason: "hold_picker_selection wid=\(windowID)",
+            activationPath: .activate
+        )
+        return true
+    }
+}

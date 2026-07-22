@@ -398,6 +398,8 @@
 	<string>没有冲突的未解析应用仍会使用配方中的应用名称和 Bundle ID 导入。</string>
 	<key>Unsupported key — try a letter, number, or F-key</key>
 	<string>不支持的按键 — 请尝试字母、数字或 F 键</string>
+	<key>Untitled Window</key>
+	<string>未命名窗口</string>
 	<key>Unused shortcuts this week</key>
 	<string>本周未使用的快捷键</string>
 	<key>Update Available</key>

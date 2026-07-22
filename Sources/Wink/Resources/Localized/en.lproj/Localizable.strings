@@ -394,6 +394,8 @@
 	<string>Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.</string>
 	<key>Unsupported key — try a letter, number, or F-key</key>
 	<string>Unsupported key — try a letter, number, or F-key</string>
+	<key>Untitled Window</key>
+	<string>Untitled Window</string>
 	<key>Unused shortcuts this week</key>
 	<string>Unused shortcuts this week</string>
 	<key>Update Available</key>
