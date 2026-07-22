@@ -496,7 +496,8 @@ final class CGEventTapFunctionModifierStateTracker: FunctionModifierStateTrackin
 
 typealias CarbonHotKeyDelivery = @MainActor @Sendable (
     _ identifier: UInt32,
-    _ eventTimestamp: CGEventTimestamp
+    _ eventTimestamp: CGEventTimestamp,
+    _ phase: KeyEventPhase
 ) -> Void
 
 private final class CarbonHotKeyCallbackBox: @unchecked Sendable {
@@ -531,12 +532,16 @@ private func carbonHotKeyCallbackImpl(
     let eventTimestamp = cgEventTimestamp(
         fromCarbonEventTime: GetEventTime(eventRef)
     )
+    // Both hotkey kinds land in this one handler (two EventTypeSpecs, same
+    // callback); the kind is the only phase discriminator Carbon offers.
+    let phase: KeyEventPhase =
+        GetEventKind(eventRef) == OSType(kEventHotKeyReleased) ? .up : .down
 
     let box = Unmanaged<CarbonHotKeyCallbackBox>.fromOpaque(userData).takeUnretainedValue()
     // Carbon hotkey events installed on GetApplicationEventTarget() are delivered
     // on the main thread, so isolation can be asserted without an async hop.
     MainActor.assumeIsolated {
-        box.delivery(hotKeyID.id, eventTimestamp)
+        box.delivery(hotKeyID.id, eventTimestamp, phase)
     }
     return noErr
 }
@@ -562,16 +567,27 @@ struct CarbonHotKeyHandlerFactory {
 
     static let live = CarbonHotKeyHandlerFactory { delivery in
         let box = Unmanaged.passRetained(CarbonHotKeyCallbackBox(delivery: delivery))
-        var spec = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: OSType(kEventHotKeyPressed)
-        )
+        // Registering both kinds costs nothing on the press path; releases
+        // for shortcuts without a hold action are dropped in
+        // handleHotKeyEvent rather than by conditional spec installation,
+        // which would force a handler reinstall whenever a hold action is
+        // toggled.
+        var specs = [
+            EventTypeSpec(
+                eventClass: OSType(kEventClassKeyboard),
+                eventKind: OSType(kEventHotKeyPressed)
+            ),
+            EventTypeSpec(
+                eventClass: OSType(kEventClassKeyboard),
+                eventKind: OSType(kEventHotKeyReleased)
+            ),
+        ]
         var eventHandlerRef: EventHandlerRef?
         let status = InstallEventHandler(
             GetApplicationEventTarget(),
             carbonHotKeyCallback,
-            1,
-            &spec,
+            specs.count,
+            &specs,
             UnsafeMutableRawPointer(box.toOpaque()),
             &eventHandlerRef
         )
@@ -646,6 +662,8 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
     private var nextIdentifier: UInt32 = 1
     private var synchronizationCount: UInt64 = 0
     private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
+    private var phasedChords: Set<KeyPress> = []
+    private var phasedKeyObserver: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?
 
     init(
         registrationClient: CarbonHotKeyRegistrationClient? = nil,
@@ -806,11 +824,12 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
         handlerSession = nil
         handlerGeneration &+= 1
         let generation = handlerGeneration
-        let result = handlerFactory.install { [weak self] identifier, eventTimestamp in
+        let result = handlerFactory.install { [weak self] identifier, eventTimestamp, phase in
             guard let self, self.handlerGeneration == generation else { return }
             self.handleHotKeyEvent(
                 identifier: identifier,
-                eventTimestamp: eventTimestamp
+                eventTimestamp: eventTimestamp,
+                phase: phase
             )
         }
 
@@ -959,11 +978,23 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
 
     func handleHotKeyEvent(
         identifier: UInt32,
-        eventTimestamp: CGEventTimestamp = .max
+        eventTimestamp: CGEventTimestamp = .max,
+        phase: KeyEventPhase = .down
     ) {
         guard handlerSession?.isLive == true,
               let registration = registrations[identifier],
               let onKeyPress else {
+            return
+        }
+
+        if phase == .up {
+            // The released spec fires for every registered hotkey; releases
+            // are only meaningful for phased chords. The Fn-row gate is
+            // deliberately not consulted here — it validates chord identity
+            // at the down edge, and the up edge pairs to that gesture.
+            if phasedChords.contains(registration.keyPress) {
+                phasedKeyObserver?(registration.keyPress, .up)
+            }
             return
         }
 
@@ -987,6 +1018,18 @@ final class CarbonHotKeyProvider: ShortcutCaptureProvider {
                 "CARBON_HOTKEY_ACCEPTED keyCode=\(registration.keyPress.keyCode) eventTimestamp=\(eventTimestamp)"
             )
         }
-        onKeyPress(registration.keyPress)
+        if phasedChords.contains(registration.keyPress) {
+            phasedKeyObserver?(registration.keyPress, .down)
+        } else {
+            onKeyPress(registration.keyPress)
+        }
+    }
+
+    func updatePhasedChords(_ keyPresses: Set<KeyPress>) {
+        phasedChords = keyPresses
+    }
+
+    func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?) {
+        phasedKeyObserver = observer
     }
 }

@@ -66,10 +66,29 @@ protocol ShortcutCaptureProvider {
     func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void)
     func stop()
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>)
+    /// Chords whose down AND up edges must be swallowed and delivered through
+    /// the phased observer instead of `onKeyPress`. Always a subset of the
+    /// registered set. Phased delivery is best-effort on the up edge (a chord
+    /// released modifiers-first changes identity and the up passes through) —
+    /// consumers must pair it with a deadline fallback, never block on it.
+    func updatePhasedChords(_ keyPresses: Set<KeyPress>)
+    /// Observer for phased-chord events. Invoked on the main actor in
+    /// delivery order (down before its up) — providers must hop through a
+    /// FIFO channel (the main dispatch queue), not per-event `Task`s, which
+    /// do not preserve ordering.
+    func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?)
 }
 
 extension ShortcutCaptureProvider {
     var inputMonitoringRequired: Bool { false }
+
+    // Declared in the protocol body above so these dispatch dynamically
+    // (witness table), then defaulted here: providers and test doubles that
+    // predate phased delivery keep compiling and behave as "no phased
+    // chords". (Extension-only members would statically shadow overrides —
+    // see the project memory on Swift 6 protocol-extension shadowing.)
+    func updatePhasedChords(_ keyPresses: Set<KeyPress>) {}
+    func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?) {}
 }
 
 @MainActor

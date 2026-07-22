@@ -30,10 +30,15 @@ final class ShortcutCaptureCoordinator {
     private var shortcuts: [AppShortcut] = []
     private var standardShortcuts: Set<KeyPress> = []
     private var hyperShortcuts: Set<KeyPress> = []
+    /// Per-route subsets of chords with a hold action; always subsets of the
+    /// corresponding registered sets above.
+    private var standardPhasedChords: Set<KeyPress> = []
+    private var hyperPhasedChords: Set<KeyPress> = []
     private var hyperKeyEnabled = false
     private var inputMonitoringGranted = false
     private var capturePaused = false
     private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
+    private var phasedKeyObserver: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?
     private var standardProviderStarted = false
 
     convenience init() {
@@ -79,14 +84,24 @@ final class ShortcutCaptureCoordinator {
     func updateShortcuts(_ shortcuts: [AppShortcut]) -> Bool {
         let previousStandardShortcuts = standardShortcuts
         let previousHyperShortcuts = hyperShortcuts
+        let previousStandardPhased = standardPhasedChords
+        let previousHyperPhased = hyperPhasedChords
         self.shortcuts = shortcuts
         rebuildRoutes()
         let standardShortcutsChanged = standardShortcuts != previousStandardShortcuts
         let hyperShortcutsChanged = hyperShortcuts != previousHyperShortcuts
-        guard standardShortcutsChanged || hyperShortcutsChanged else { return false }
+        // Toggling a hold action on an existing shortcut leaves the chord
+        // sets identical — the phased comparison must gate propagation on
+        // its own or the change never reaches the providers.
+        let phasedChanged = standardPhasedChords != previousStandardPhased
+            || hyperPhasedChords != previousHyperPhased
+        guard standardShortcutsChanged || hyperShortcutsChanged || phasedChanged else {
+            return false
+        }
         syncProviders(
             standardShortcutsChanged: standardShortcutsChanged,
-            hyperShortcutsChanged: hyperShortcutsChanged
+            hyperShortcutsChanged: hyperShortcutsChanged,
+            phasedChordsChanged: phasedChanged
         )
         return standardShortcutsChanged
     }
@@ -112,6 +127,15 @@ final class ShortcutCaptureCoordinator {
 
     func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {
         hyperProvider.setHyperHoldObserver(observer)
+    }
+
+    /// Single consumer for both routes' phased (down/up) deliveries.
+    /// Providers store the observer independently of their running state, so
+    /// setting it once at wiring time survives provider stop/start cycles.
+    func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?) {
+        phasedKeyObserver = observer
+        standardProvider.setPhasedKeyObserver(observer)
+        hyperProvider.setPhasedKeyObserver(observer)
     }
 
     func setCapturePaused(_ paused: Bool) {
@@ -189,6 +213,8 @@ final class ShortcutCaptureCoordinator {
     private func rebuildRoutes() {
         var standard = Set<KeyPress>()
         var hyper = Set<KeyPress>()
+        var standardPhased = Set<KeyPress>()
+        var hyperPhased = Set<KeyPress>()
 
         for shortcut in shortcuts where shortcut.isEnabled {
             let keyPress = KeyPress(
@@ -198,18 +224,27 @@ final class ShortcutCaptureCoordinator {
             switch ShortcutCaptureRoute.route(for: shortcut, hyperKeyEnabled: hyperKeyEnabled) {
             case .standard:
                 standard.insert(keyPress)
+                if shortcut.holdAction != nil {
+                    standardPhased.insert(keyPress)
+                }
             case .hyper:
                 hyper.insert(keyPress)
+                if shortcut.holdAction != nil {
+                    hyperPhased.insert(keyPress)
+                }
             }
         }
 
         standardShortcuts = standard
         hyperShortcuts = hyper
+        standardPhasedChords = standardPhased
+        hyperPhasedChords = hyperPhased
     }
 
     private func syncProviders(
         standardShortcutsChanged: Bool = false,
         hyperShortcutsChanged: Bool = false,
+        phasedChordsChanged: Bool = false,
         hyperConfigurationChanged: Bool = false,
         retryStandardProvider: Bool = false
     ) {
@@ -218,6 +253,12 @@ final class ShortcutCaptureCoordinator {
         }
         if hyperShortcutsChanged {
             hyperProvider.updateRegisteredShortcuts(hyperShortcuts)
+        }
+        if standardShortcutsChanged || phasedChordsChanged {
+            standardProvider.updatePhasedChords(standardPhasedChords)
+        }
+        if hyperShortcutsChanged || phasedChordsChanged {
+            hyperProvider.updatePhasedChords(hyperPhasedChords)
         }
         if hyperConfigurationChanged || hyperShortcutsChanged {
             hyperProvider.setHyperKeyEnabled(hyperKeyEnabled && !hyperShortcuts.isEmpty)
