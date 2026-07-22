@@ -135,6 +135,13 @@ final class AppController {
             // stay intact (see AppSwitcher.toggleApplication) — only the
             // early cooldown *check* is skipped, and the stamp this call
             // writes still protects the very next real shortcut press.
+            //
+            // Recency at request time (same semantics as AppPickerPopover's
+            // selection path): the palette's own empty-query list is ordered
+            // by recentBundleIDs, so a committed pick must feed it — noted
+            // even if activation later fails, matching the picker's
+            // request-time convention.
+            self.appListProvider.noteRecentApp(bundleIdentifier: entry.bundleIdentifier)
             return self.appSwitcher.toggleApplication(
                 for: AppShortcut(
                     appName: entry.name,
