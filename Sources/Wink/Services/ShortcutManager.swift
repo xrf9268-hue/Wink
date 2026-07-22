@@ -176,23 +176,28 @@ final class ShortcutManager {
         )
         holdGestureArbiter = arbiter
         captureCoordinator.setPhasedKeyObserver { [weak self, weak arbiter] keyPress, phase in
-            // Delivery-time pause guard: a phased event queued on the main
-            // queue from the tap thread can land after a pause transition
-            // already reset the arbiter — starting a fresh gesture then
-            // would let its deadline open the picker (or dispatch a tap)
-            // into a paused session.
-            guard let self, !self.effectivePaused else { return }
+            // Delivery-time guards: a phased event queued on the main queue
+            // from the tap thread can land after a pause transition already
+            // reset the arbiter — starting a fresh gesture then would let
+            // its deadline open the picker (or dispatch a tap) into a
+            // paused session. Same for chords pressed while the picker is
+            // already key: a gesture started mid-session would survive the
+            // session's dismissal and its deadline would resurrect the
+            // picker the user just closed.
+            guard let self, !self.effectivePaused, !self.interactivePanelSessionActive else {
+                return
+            }
             arbiter?.handle(keyPress, phase)
         }
     }
 
     func setInteractivePanelSessionActive(_ active: Bool) {
         interactivePanelSessionActive = active
-        if active {
-            // A gesture straddling the panel-open transition must not
-            // resolve into a toggle or a second panel underneath it.
-            holdGestureArbiter?.reset()
-        }
+        // Reset on BOTH transitions: opening drops a gesture straddling the
+        // open (no toggle or second panel underneath), and closing drops any
+        // gesture that slipped in around the session boundary so a stale
+        // deadline cannot resurrect the picker the user just dismissed.
+        holdGestureArbiter?.reset()
     }
 
     private func handleHoldGesture(_ keyPress: KeyPress) {
