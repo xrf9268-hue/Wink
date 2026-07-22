@@ -46,6 +46,9 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
     /// additionally bumps the recipe's schema version so pre-target builds
     /// reject the file cleanly.
     var target: String?
+    /// Raw string, same leniency pattern: absent/unknown means no hold
+    /// action, and older builds ignore the extra optional key (schema v1).
+    var holdAction: String?
 
     init(
         appName: String,
@@ -54,7 +57,8 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
         modifierFlags: [String],
         isEnabled: Bool,
         frontmostBehaviorOverride: String? = nil,
-        target: String? = nil
+        target: String? = nil,
+        holdAction: String? = nil
     ) {
         self.appName = appName
         self.bundleIdentifier = bundleIdentifier
@@ -63,6 +67,7 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
         self.isEnabled = isEnabled
         self.frontmostBehaviorOverride = frontmostBehaviorOverride
         self.target = target
+        self.holdAction = holdAction
     }
 
     init(_ shortcut: AppShortcut) {
@@ -73,7 +78,8 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
             modifierFlags: shortcut.modifierFlags,
             isEnabled: shortcut.isEnabled,
             frontmostBehaviorOverride: shortcut.frontmostBehaviorOverride?.rawValue,
-            target: shortcut.target?.rawValue
+            target: shortcut.target?.rawValue,
+            holdAction: shortcut.holdAction?.rawValue
         )
     }
 
@@ -86,5 +92,10 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
     /// Lenient enum mapping: absent or unknown raw values mean `.app`.
     var shortcutTarget: ShortcutTarget? {
         target.flatMap(ShortcutTarget.init(rawValue:))
+    }
+
+    /// Lenient enum mapping: absent or unknown raw values mean no hold action.
+    var holdActionValue: HoldAction? {
+        holdAction.flatMap(HoldAction.init(rawValue:))
     }
 }
