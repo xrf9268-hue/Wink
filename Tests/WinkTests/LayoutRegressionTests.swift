@@ -161,7 +161,7 @@ struct LayoutRegressionTests {
                     bundleIdentifier: "com.apple.Safari",
                     count: 70,
                     progress: 0.62,
-                    delta: InsightsChange(text: "+18%", tone: .positive),
+                    delta: InsightsChange(text: "+18%", tone: .positive, kind: .percentage),
                     sparklinePoints: [4, 6, 8, 7, 12, 14, 11, 8]
                 ),
                 showsDivider: false
