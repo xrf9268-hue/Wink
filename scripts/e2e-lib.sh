@@ -239,11 +239,20 @@ shortcut_inventory_json() {
           "down" => 125, "up" => 126, "return" => 36, "enter" => 36
         }
 
+        # Pseudo-target sentinels (#323 frontmost-app, #356 search-palette):
+        # neither names an installed app, so treating one as the toggle-test
+        # target would launch/poll a bundle id that can never exist and fail
+        # the gate on an otherwise-valid config. Exclude both by their known
+        # sentinel bundle identifiers rather than trying to infer "target"
+        # semantics from the raw JSON.
+        sentinel_bundle_ids = %w[wink.target.frontmost-app wink.target.search-palette]
+
         shortcuts = JSON.parse(File.read(ARGV[0])) rescue []
         hyper_enabled = ARGV[1] == "1"
 
         inventory = shortcuts.each_with_object([]) do |shortcut, entries|
           next if shortcut["isEnabled"] == false
+          next if sentinel_bundle_ids.include?(shortcut["bundleIdentifier"])
 
           key_equivalent = shortcut["keyEquivalent"].to_s.downcase
           key_code = key_codes[key_equivalent]

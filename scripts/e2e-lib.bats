@@ -507,6 +507,77 @@ JSON
   [[ "$output" == *'"keyCode":122'* ]]
 }
 
+@test "shortcut_inventory_json excludes frontmost-app and search-palette pseudo-target sentinels" {
+  local shortcuts="$BATS_TEST_TMPDIR/shortcuts.json"
+  cat >"$shortcuts" <<'JSON'
+[
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "id": "11111111-1111-1111-1111-111111111111",
+    "isEnabled": true,
+    "keyEquivalent": "s",
+    "modifierFlags": ["command", "shift"]
+  },
+  {
+    "appName": "Current App",
+    "bundleIdentifier": "wink.target.frontmost-app",
+    "id": "22222222-2222-2222-2222-222222222222",
+    "isEnabled": true,
+    "keyEquivalent": "j",
+    "modifierFlags": ["command"],
+    "target": "frontmostApp"
+  },
+  {
+    "appName": "Search Palette",
+    "bundleIdentifier": "wink.target.search-palette",
+    "id": "33333333-3333-3333-3333-333333333333",
+    "isEnabled": true,
+    "keyEquivalent": "space",
+    "modifierFlags": ["command", "option"],
+    "target": "searchPalette"
+  }
+]
+JSON
+
+  run bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; shortcut_inventory_json '$shortcuts' 1"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"bundleIdentifier":"com.apple.Safari"'* ]]
+  [[ "$output" != *"wink.target.frontmost-app"* ]]
+  [[ "$output" != *"wink.target.search-palette"* ]]
+}
+
+@test "resolve_primary_test_shortcut never selects a pseudo-target sentinel" {
+  local shortcuts="$BATS_TEST_TMPDIR/shortcuts.json"
+  cat >"$shortcuts" <<'JSON'
+[
+  {
+    "appName": "Search Palette",
+    "bundleIdentifier": "wink.target.search-palette",
+    "id": "11111111-1111-1111-1111-111111111111",
+    "isEnabled": true,
+    "keyEquivalent": "space",
+    "modifierFlags": ["command", "option"],
+    "target": "searchPalette"
+  },
+  {
+    "appName": "IINA",
+    "bundleIdentifier": "com.colliderli.iina",
+    "id": "22222222-2222-2222-2222-222222222222",
+    "isEnabled": true,
+    "keyEquivalent": "m",
+    "modifierFlags": ["command", "option", "control", "shift"]
+  }
+]
+JSON
+
+  run bash -lc "source '$BATS_TEST_DIRNAME/e2e-lib.sh'; resolve_primary_test_shortcut '$shortcuts' 1"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"bundleIdentifier":"com.colliderli.iina"'* ]]
+}
+
 @test "resolve_isolation_shortcuts returns two distinct shortcuts for a hyper-only fixture" {
   local shortcuts="$BATS_TEST_TMPDIR/shortcuts.json"
   cat >"$shortcuts" <<'JSON'
