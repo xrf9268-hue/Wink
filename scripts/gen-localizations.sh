@@ -57,10 +57,10 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 compile_into "$TMP_DIR/Localized"
 
-if ! diff -rq "$TMP_DIR/Localized" "$OUTPUT_DIR" >/tmp/gen-localizations-diff.txt 2>&1; then
+if ! diff -rq "$TMP_DIR/Localized" "$OUTPUT_DIR" >"$TMP_DIR/diff.txt" 2>&1; then
   echo "error: $OUTPUT_DIR is out of date with $CATALOG" >&2
   echo "" >&2
-  cat /tmp/gen-localizations-diff.txt >&2
+  cat "$TMP_DIR/diff.txt" >&2
   echo "" >&2
   echo "Run: bash scripts/gen-localizations.sh" >&2
   echo "then commit the regenerated files under Sources/Wink/Resources/Localized." >&2
