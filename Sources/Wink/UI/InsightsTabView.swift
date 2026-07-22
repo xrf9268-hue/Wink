@@ -94,7 +94,7 @@ struct InsightsTabView: View {
             Spacer(minLength: 8)
 
             WinkSegmented(
-                options: InsightsPeriod.allCases.map { (label: $0.rawValue, value: $0) },
+                options: InsightsPeriod.allCases.map { (label: $0.segmentLabel, value: $0) },
                 selection: $viewModel.period,
                 accessibilityLabel: String(localized: "Insights period", bundle: WinkResourceBundle.bundle)
             )

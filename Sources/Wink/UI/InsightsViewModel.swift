@@ -15,6 +15,19 @@ enum InsightsPeriod: String, CaseIterable {
         }
     }
 
+    /// Display-only label for the period segmented control. `rawValue`
+    /// ("D"/"W"/"M") stays the plain Latin option identifier used
+    /// internally by `WinkSegmented`'s selection binding — this is what
+    /// actually renders on screen, localized (matching Apple's own Screen
+    /// Time-style compact period abbreviations).
+    var segmentLabel: String {
+        switch self {
+        case .day: String(localized: "D", bundle: WinkResourceBundle.bundle)
+        case .week: String(localized: "W", bundle: WinkResourceBundle.bundle)
+        case .month: String(localized: "M", bundle: WinkResourceBundle.bundle)
+        }
+    }
+
     var label: String {
         switch self {
         case .day: "Today"

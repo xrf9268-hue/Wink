@@ -108,6 +108,8 @@
 	<string>当前应用</string>
 	<key>Cycle</key>
 	<string>轮换</string>
+	<key>D</key>
+	<string>日</string>
 	<key>Default</key>
 	<string>默认</string>
 	<key>Delete Shortcut</key>
@@ -224,6 +226,8 @@
 	<string>从按键到应用切换所需的处理更少，尤其是最小化窗口时。</string>
 	<key>Limited · Secure Input</key>
 	<string>受限 · 安全输入</string>
+	<key>M</key>
+	<string>月</string>
 	<key>Manage…</key>
 	<string>管理…</string>
 	<key>Master switch for global shortcut routing.</key>
@@ -420,6 +424,8 @@
 	<string>版本 %@ 已下载完成，将在 Wink 退出时安装。使用“检查更新…”立即安装。</string>
 	<key>View release notes</key>
 	<string>查看发行说明</string>
+	<key>W</key>
+	<string>周</string>
 	<key>What's New in Wink</key>
 	<string>Wink 更新内容</string>
 	<key>When Frontmost</key>

@@ -147,4 +147,16 @@ struct LocalizationTests {
         )
         #expect(regular.displayAppName == "Safari")
     }
+
+    @Test
+    func zhHansResolvesTheInsightsPeriodSegmentLabels() throws {
+        // The segmented control's rawValue ("D"/"W"/"M") stays a plain
+        // Latin option identifier; InsightsPeriod.segmentLabel is the
+        // localized on-screen label and must resolve to the Screen
+        // Time-style abbreviations in zh-Hans.
+        let sub = try subBundle(forLocalization: "zh-Hans")
+        #expect(sub.localizedString(forKey: "D", value: "«miss»", table: nil) == "日")
+        #expect(sub.localizedString(forKey: "W", value: "«miss»", table: nil) == "周")
+        #expect(sub.localizedString(forKey: "M", value: "«miss»", table: nil) == "月")
+    }
 }

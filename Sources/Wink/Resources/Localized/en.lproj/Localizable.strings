@@ -104,6 +104,8 @@
 	<string>Current App</string>
 	<key>Cycle</key>
 	<string>Cycle</string>
+	<key>D</key>
+	<string>D</string>
 	<key>Default</key>
 	<string>Default</string>
 	<key>Delete Shortcut</key>
@@ -220,6 +222,8 @@
 	<string>Less work between keypress and app switch, especially with minimized windows.</string>
 	<key>Limited · Secure Input</key>
 	<string>Limited · Secure Input</string>
+	<key>M</key>
+	<string>M</string>
 	<key>Manage…</key>
 	<string>Manage…</string>
 	<key>Master switch for global shortcut routing.</key>
@@ -416,6 +420,8 @@
 	<string>Version %@ is downloaded and installs when Wink quits. Use Check for Updates… to install now.</string>
 	<key>View release notes</key>
 	<string>View release notes</string>
+	<key>W</key>
+	<string>W</string>
 	<key>What's New in Wink</key>
 	<string>What's New in Wink</string>
 	<key>When Frontmost</key>

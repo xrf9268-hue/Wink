@@ -926,6 +926,24 @@
         }
       }
     },
+    "D": {
+      "comment": "Insights period segmented control: Day",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "D"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "日"
+          }
+        }
+      }
+    },
     "Default": {
       "extractionState": "manual",
       "localizations": {
@@ -1908,6 +1926,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "受限 · 安全输入"
+          }
+        }
+      }
+    },
+    "M": {
+      "comment": "Insights period segmented control: Month",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "M"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "月"
           }
         }
       }
@@ -3574,6 +3610,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "查看发行说明"
+          }
+        }
+      }
+    },
+    "W": {
+      "comment": "Insights period segmented control: Week",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "W"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "周"
           }
         }
       }
