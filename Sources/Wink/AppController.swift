@@ -279,7 +279,15 @@ final class AppController {
             startUpdateService: { _ = updateService },
             loadShortcuts: { try persistenceService.load() },
             replaceShortcuts: { shortcutStore.replaceAll(with: $0) },
-            reapplyHyperIfNeeded: { hyperKeyService.reapplyIfNeeded() },
+            // "Deferred by an active pause" counts as armed: the routing
+            // decision below must reflect user intent, not the pause. With
+            // capture paused the tap isn't running anyway, and resume
+            // restores the mapping — disabling Hyper routing here instead
+            // would leave F19 mapped-but-unintercepted after resume until a
+            // manual Hyper off/on cycle.
+            reapplyHyperIfNeeded: {
+                hyperKeyService.reapplyIfNeeded() || hyperKeyService.isSuspended
+            },
             isHyperEnabled: { hyperKeyService.isEnabled },
             setHyperKeyEnabled: { shortcutManager.setHyperKeyEnabled($0) },
             preparePreferences: { _ = appPreferences },

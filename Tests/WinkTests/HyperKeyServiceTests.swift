@@ -131,7 +131,7 @@ func suspendClearsMappingAndResumeRestoresItWithoutTouchingPersistence() {
 }
 
 @Test @MainActor
-func suspendIsANoOpWhenHyperIsDisabled() {
+func suspendWithHyperDisabledRecordsThePauseWithoutTouchingHidutil() {
     let suiteName = "HyperKeyServiceTests.suspend.disabled"
     let defaults = UserDefaults(suiteName: suiteName)!
     defaults.removePersistentDomain(forName: suiteName)
@@ -139,10 +139,36 @@ func suspendIsANoOpWhenHyperIsDisabled() {
     let recorder = HidutilRunnerRecorder(returns: true)
     let service = HyperKeyService(runner: recorder.run, defaults: defaults)
 
+    // The pause fact must be recorded even with no mapping to lift —
+    // enabling Hyper mid-pause has to see it (see the dedicated test).
     service.suspendMappingForPause()
-    service.resumeMappingAfterPause()
+    #expect(service.isSuspended == true)
+    #expect(recorder.invocations.isEmpty, "no mapping exists to lift")
 
-    #expect(recorder.invocations.isEmpty, "no mapping exists to lift or restore")
+    service.resumeMappingAfterPause()
+    #expect(service.isSuspended == false)
+    #expect(recorder.invocations.isEmpty, "nothing to restore either")
+}
+
+@Test @MainActor
+func enablingHyperDuringAPauseThatStartedDisabledDefersToResume() {
+    let suiteName = "HyperKeyServiceTests.suspend.enableWhileDisabledPause"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+
+    let recorder = HidutilRunnerRecorder(returns: true)
+    let service = HyperKeyService(runner: recorder.run, defaults: defaults)
+
+    // Pause begins with Hyper off; the user enables Hyper mid-pause.
+    service.suspendMappingForPause()
+    service.enable()
+
+    #expect(service.isEnabled == true)
+    #expect(recorder.invocations.isEmpty, "the mapping must not arm a dead F19 under the paused app")
+
+    service.resumeMappingAfterPause()
+    #expect(recorder.invocations.count == 1)
+    #expect(recorder.invocations.last?.last?.contains("HIDKeyboardModifierMappingSrc") == true)
 }
 
 @Test @MainActor
@@ -188,7 +214,7 @@ func enableDuringSuspensionDefersTheMappingToResume() {
 }
 
 @Test @MainActor
-func disableDuringSuspensionClearsTheSuspendedFlag() {
+func disableDuringPauseKeepsThePauseAndBlocksAMidPauseReenableMapping() {
     let suiteName = "HyperKeyServiceTests.suspend.disable"
     let defaults = UserDefaults(suiteName: suiteName)!
     defaults.removePersistentDomain(forName: suiteName)
@@ -201,9 +227,33 @@ func disableDuringSuspensionClearsTheSuspendedFlag() {
     service.disable()
 
     #expect(service.isEnabled == false)
-    #expect(service.isSuspended == false)
+    #expect(service.isSuspended == true, "the pause interval outlives an intent toggle")
 
-    // A later resume must not resurrect the mapping the user disabled.
+    // Off→on inside the same pause must keep deferring the mapping.
+    service.enable()
+    #expect(recorder.invocations.count == 2, "suspend clear + disable clear; enable defers")
+
+    // Resume ends the pause; the (re-enabled) mapping applies now.
     service.resumeMappingAfterPause()
-    #expect(recorder.invocations.count == 2, "suspend clear + disable clear only")
+    #expect(recorder.invocations.count == 3)
+    #expect(recorder.invocations.last?.last?.contains("HIDKeyboardModifierMappingSrc") == true)
+    #expect(service.isSuspended == false)
+}
+
+@Test @MainActor
+func disableDuringPauseThenResumeDoesNotResurrectTheMapping() {
+    let suiteName = "HyperKeyServiceTests.suspend.disableStaysOff"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+    defaults.set(true, forKey: "hyperKeyEnabled")
+
+    let recorder = HidutilRunnerRecorder(returns: true)
+    let service = HyperKeyService(runner: recorder.run, defaults: defaults)
+
+    service.suspendMappingForPause()
+    service.disable()
+    service.resumeMappingAfterPause()
+
+    #expect(service.isSuspended == false)
+    #expect(recorder.invocations.count == 2, "suspend clear + disable clear only — no re-apply of a disabled mapping")
 }

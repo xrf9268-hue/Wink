@@ -52,9 +52,12 @@ final class HyperKeyService {
         set { defaults.set(newValue, forKey: enabledKey) }
     }
 
-    /// True while the mapping is temporarily lifted for a capture pause.
-    /// Orthogonal to `isEnabled` (the persisted user intent): pause never
-    /// persists, so suspension must never touch the defaults-backed bit.
+    /// True while a capture pause is in effect. This records the PAUSE
+    /// INTERVAL itself, deliberately independent of `isEnabled`: the pause
+    /// can begin while Hyper is disabled, and Hyper can be toggled either
+    /// way mid-pause — in every combination, no mapping may be applied
+    /// until the pause ends. Orthogonal to the persisted `isEnabled` bit
+    /// (pause never persists).
     private(set) var isSuspended = false
 
     func enable() {
@@ -80,7 +83,9 @@ final class HyperKeyService {
             return
         }
         isEnabled = false
-        isSuspended = false
+        // isSuspended stays: it records the pause interval, which outlives
+        // an intent toggle. Re-enabling during the same pause must keep
+        // deferring the mapping; the resume transition alone ends it.
         logger.info("Hyper Key disabled")
         DiagnosticLog.log("Hyper Key disabled")
     }
@@ -109,13 +114,19 @@ final class HyperKeyService {
     /// desktop) the pause exists to protect. Mapping-only: `isEnabled`
     /// stays untouched, matching the never-persist rule for auto-pause.
     func suspendMappingForPause() {
-        guard isEnabled, !isSuspended else { return }
+        guard !isSuspended else { return }
+        // The pause fact is recorded unconditionally — even with Hyper
+        // disabled — so enabling Hyper mid-pause defers its mapping to
+        // resume instead of arming a dead F19 under the paused app.
+        isSuspended = true
+        guard isEnabled else { return }
         guard clearMapping() else {
+            // Mapping may still be armed during this pause; rare hidutil
+            // failure, logged. Resume re-applies over it harmlessly.
             logger.error("Failed to suspend Hyper Key mapping for pause")
             DiagnosticLog.log("Failed to suspend Hyper Key mapping for pause")
             return
         }
-        isSuspended = true
         logger.info("Hyper Key mapping suspended for pause")
         DiagnosticLog.log("Hyper Key mapping suspended for pause")
     }
