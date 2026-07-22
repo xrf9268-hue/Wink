@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import SwiftUI
 
 /// Keyboard-navigation highlight state for `AppPickerPopover`, kept as a pure
@@ -59,10 +60,19 @@ struct AppPickerPopover: View {
         let flat: [AppEntry]
     }
 
+    /// `entry.name` is locale-stable (see `AppListProvider.AppEntry.frontmostTarget`);
+    /// this resolves what should actually render for a given entry, without
+    /// touching the stable value selection persists.
+    private func displayName(for entry: AppEntry) -> String {
+        entry.bundleIdentifier == AppShortcut.frontmostTargetSentinelBundleIdentifier
+            ? AppShortcut.frontmostTargetDisplayName
+            : entry.name
+    }
+
     private func computeSections() -> Sections {
         let all = appListProvider.filteredApps(query: searchText)
         guard searchText.isEmpty else {
-            let special = AppEntry.frontmostTarget.name
+            let special = displayName(for: AppEntry.frontmostTarget)
                 .localizedCaseInsensitiveContains(searchText) ? [AppEntry.frontmostTarget] : []
             let flat = special + all
             return Sections(special: special, recent: [], nonRecent: [], all: all, flat: flat)
@@ -87,7 +97,7 @@ struct AppPickerPopover: View {
                 HStack(spacing: 6) {
                     WinkIcon.search.image(size: 12)
                         .foregroundStyle(palette.textTertiary)
-                    TextField("Search apps...", text: $searchText)
+                    TextField(String(localized: "Search apps...", bundle: WinkResourceBundle.bundle), text: $searchText)
                         .textFieldStyle(.plain)
                         .font(WinkType.bodyText)
                         .foregroundStyle(palette.textPrimary)
@@ -106,7 +116,7 @@ struct AppPickerPopover: View {
                             }
 
                             if !sections.recent.isEmpty {
-                                WinkSectionLabel("Recently Used")
+                                WinkSectionLabel(String(localized: "Recently Used", bundle: WinkResourceBundle.bundle))
                                     .padding(.horizontal, 14)
                                     .padding(.top, 8)
                                     .padding(.bottom, 4)
@@ -116,7 +126,7 @@ struct AppPickerPopover: View {
                             }
 
                             if !sections.nonRecent.isEmpty {
-                                WinkSectionLabel("All Apps")
+                                WinkSectionLabel(String(localized: "All Apps", bundle: WinkResourceBundle.bundle))
                                     .padding(.horizontal, 14)
                                     .padding(.top, 8)
                                     .padding(.bottom, 4)
@@ -145,7 +155,7 @@ struct AppPickerPopover: View {
                 } label: {
                     HStack {
                         Image(systemName: "folder")
-                        Text("Browse...")
+                        Text("Browse...", bundle: WinkResourceBundle.bundle)
                     }
                     .font(WinkType.labelSmall)
                     .foregroundStyle(palette.textSecondary)
@@ -177,7 +187,7 @@ struct AppPickerPopover: View {
             HStack(spacing: 10) {
                 AppIconView(bundleIdentifier: entry.bundleIdentifier, size: 28)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(entry.name)
+                    Text(displayName(for: entry))
                         .font(highlightedIndex == index ? WinkType.bodyMedium : WinkType.bodyText)
                         .foregroundStyle(palette.textPrimary)
                     Text(entry.bundleIdentifier)

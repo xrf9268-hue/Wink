@@ -12,10 +12,10 @@ enum FrontmostTargetBehavior: String, Codable, CaseIterable, Equatable, Sendable
 
     var title: String {
         switch self {
-        case .hide: return "Hide"
-        case .toggle: return "Toggle"
-        case .focus: return "Focus"
-        case .cycleWindows: return "Cycle"
+        case .hide: return String(localized: "Hide", bundle: WinkResourceBundle.bundle)
+        case .toggle: return String(localized: "Toggle", bundle: WinkResourceBundle.bundle)
+        case .focus: return String(localized: "Focus", bundle: WinkResourceBundle.bundle)
+        case .cycleWindows: return String(localized: "Cycle", bundle: WinkResourceBundle.bundle)
         }
     }
 }
@@ -161,7 +161,10 @@ final class AppPreferences {
             LaunchAtLoginPresentation(
                 toggleIsOn: true,
                 toggleIsEnabled: true,
-                message: "Wink is registered to launch at login, but macOS still needs your approval in Login Items.",
+                message: String(
+                    localized: "Wink is registered to launch at login, but macOS still needs your approval in Login Items.",
+                    bundle: WinkResourceBundle.bundle
+                ),
                 messageStyle: .informational,
                 showsOpenSettingsButton: true
             )
@@ -171,7 +174,10 @@ final class AppPreferences {
                 LaunchAtLoginPresentation(
                     toggleIsOn: false,
                     toggleIsEnabled: false,
-                    message: "Launch at Login is only available after installing Wink.app in the Applications folder and reopening it.",
+                    message: String(
+                        localized: "Launch at Login is only available after installing Wink.app in the Applications folder and reopening it.",
+                        bundle: WinkResourceBundle.bundle
+                    ),
                     messageStyle: .informational,
                     showsOpenSettingsButton: false
                 )
@@ -180,7 +186,10 @@ final class AppPreferences {
                     LaunchAtLoginPresentation(
                         toggleIsOn: false,
                         toggleIsEnabled: false,
-                        message: "Wink couldn't find its login item configuration. This usually points to an installation or packaging problem.",
+                        message: String(
+                            localized: "Wink couldn't find its login item configuration. This usually points to an installation or packaging problem.",
+                            bundle: WinkResourceBundle.bundle
+                        ),
                         messageStyle: .error,
                         showsOpenSettingsButton: false
                     )
@@ -452,9 +461,15 @@ final class AppPreferences {
     private static func mutationFailureMessage(_ failure: LaunchAtLoginMutationFailure) -> String {
         switch failure.mutation {
         case .register:
-            "Wink couldn't enable Launch at Login: \(failure.reason). Try again, or manage it in System Settings › Login Items."
+            String(
+                localized: "Wink couldn't enable Launch at Login: \(failure.reason). Try again, or manage it in System Settings › Login Items.",
+                bundle: WinkResourceBundle.bundle
+            )
         case .unregister:
-            "Wink couldn't disable Launch at Login: \(failure.reason). Try again, or manage it in System Settings › Login Items."
+            String(
+                localized: "Wink couldn't disable Launch at Login: \(failure.reason). Try again, or manage it in System Settings › Login Items.",
+                bundle: WinkResourceBundle.bundle
+            )
         }
     }
 

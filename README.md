@@ -16,6 +16,7 @@ Wink suggests a quick, subtle signal: something that happens almost instantly an
 - Review shortcuts, readiness, and recent usage from the menu bar and Settings.
 - Import and export `.winkrecipe` shortcut sets.
 - Launch at login and automatic updates are surfaced through native macOS controls.
+- Available in English and Simplified Chinese (zh-Hans); see [`docs/localization.md`](docs/localization.md) for how to add a locale.
 
 ## Requirements
 - macOS 15 or later.
@@ -66,4 +67,5 @@ Unknown commands and uninstalled bundles are logged and ignored. Automation pres
 - [`docs/architecture.md`](./docs/architecture.md)
 - [`docs/github-automation.md`](./docs/github-automation.md)
 - [`docs/privacy.md`](./docs/privacy.md)
+- [`docs/localization.md`](./docs/localization.md)
 - [`docs/signing-and-release.md`](./docs/signing-and-release.md)

@@ -29,6 +29,14 @@ struct WinkRecipeImportPlanner {
             resolution == .unresolved
         }
 
+        /// `resolvedAppName` resolved for display: the frontmost-app
+        /// pseudo-target's stable persisted value renders as its localized
+        /// label, matching `AppShortcut.displayAppName`. Every other entry's
+        /// `resolvedAppName` is already display-ready.
+        var displayAppName: String {
+            target == .frontmostApp ? AppShortcut.frontmostTargetDisplayName : resolvedAppName
+        }
+
         var displayText: String {
             ModifierFormatting.displayText(
                 modifierFlags: modifierFlags,
@@ -183,7 +191,10 @@ struct WinkRecipeImportPlanner {
                 id: id,
                 sourceAppName: recipeShortcut.appName,
                 sourceBundleIdentifier: recipeShortcut.bundleIdentifier,
-                resolvedAppName: AppShortcut.frontmostTargetDisplayName,
+                // Stable, not localized: this flows into makeAppShortcut()'s
+                // persisted appName. Use `displayAppName` above for anything
+                // rendered on screen.
+                resolvedAppName: AppShortcut.frontmostTargetStableName,
                 resolvedBundleIdentifier: AppShortcut.frontmostTargetSentinelBundleIdentifier,
                 keyEquivalent: recipeShortcut.keyEquivalent,
                 modifierFlags: recipeShortcut.modifierFlags,

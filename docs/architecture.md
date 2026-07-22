@@ -262,6 +262,19 @@ Responsibilities:
 - embed and re-sign `Sparkle.framework` for packaged builds, removing unused XPC services because Wink is not sandboxed
 - automate `.app`, Sparkle update zip, and signed appcast packaging via scripts
 
+### Localization
+- `Sources/Wink/Resources/Localizable.xcstrings` (source of truth, hand-authored)
+- `Sources/Wink/Resources/Localized/{en,zh-Hans}.lproj` (generated, checked in)
+- `scripts/gen-localizations.sh`
+- `WinkResourceBundle`
+
+Responsibilities:
+- ship a String Catalog with English as the default localization and zh-Hans as the first translated locale, English-as-key throughout
+- compile `.xcstrings` → per-locale `.lproj` via `xcrun xcstringstool compile` ahead of time, because plain `swift build` (unlike an Xcode build) never compiles `.xcstrings` itself
+- route every localized lookup through `WinkResourceBundle.bundle`
+
+See `docs/localization.md` for the full architecture, the SPM lowercased-lproj quirk, and how to add a string or a locale.
+
 ## Runtime event flow
 
 ### 1. Startup flow

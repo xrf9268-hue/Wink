@@ -900,7 +900,7 @@ func standardCooldownStillAppliesWhenBehaviorIsNotCycle() {
 @MainActor
 private func makeFrontmostTargetShortcut() -> AppShortcut {
     AppShortcut(
-        appName: AppShortcut.frontmostTargetDisplayName,
+        appName: AppShortcut.frontmostTargetStableName,
         bundleIdentifier: AppShortcut.frontmostTargetSentinelBundleIdentifier,
         keyEquivalent: "`",
         modifierFlags: ["command", "option"],

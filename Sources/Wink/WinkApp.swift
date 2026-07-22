@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import SwiftUI
 
 enum SettingsWindowMetrics {
@@ -545,7 +546,7 @@ final class SettingsWindowChromeCoordinator: NSObject {
             button.isBordered = false
             button.bezelStyle = .regularSquare
             button.setButtonType(.momentaryChange)
-            button.toolTip = "Toggle Sidebar"
+            button.toolTip = String(localized: "Toggle Sidebar", bundle: WinkResourceBundle.bundle)
             button.target = self
             button.action = #selector(toggleSidebar(_:))
             titlebarView.addSubview(button)
@@ -625,12 +626,13 @@ final class SettingsWindowChromeCoordinator: NSObject {
     }
 
     private static func sidebarToggleImage() -> NSImage? {
+        let toggleSidebarDescription = String(localized: "Toggle Sidebar", bundle: WinkResourceBundle.bundle)
         let image = NSImage(
             systemSymbolName: SettingsTitlebarLayout.sidebarToggleSymbolName,
-            accessibilityDescription: "Toggle Sidebar"
+            accessibilityDescription: toggleSidebarDescription
         ) ?? NSImage(
             systemSymbolName: SettingsTitlebarLayout.sidebarToggleFallbackSymbolName,
-            accessibilityDescription: "Toggle Sidebar"
+            accessibilityDescription: toggleSidebarDescription
         )
         return image?.withSymbolConfiguration(
             NSImage.SymbolConfiguration(pointSize: SettingsTitlebarLayout.toggleIconPointSize, weight: .regular)
@@ -737,7 +739,7 @@ private struct SettingsCommands: Commands {
         let _ = installOpenSettingsHandler()
 
         CommandGroup(replacing: .appSettings) {
-            Button("Settings…") {
+            Button(String(localized: "Settings…", bundle: WinkResourceBundle.bundle)) {
                 settingsLauncher.open()
             }
             .keyboardShortcut(",", modifiers: .command)

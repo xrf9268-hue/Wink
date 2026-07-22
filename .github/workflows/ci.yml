@@ -43,6 +43,9 @@ jobs:
           brew install bats-core
           bats scripts/verify-release-feed.bats scripts/release-notes.bats scripts/bump-version.bats
 
+      - name: Verify localization catalog is compiled
+        run: bash scripts/gen-localizations.sh --check
+
       - name: Build (debug)
         run: swift build
 

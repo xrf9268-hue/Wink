@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Wink",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v15)
     ],
@@ -24,11 +25,13 @@ let package = Package(
                 "Resources/AppIcon.svg",
                 "Resources/AppIcon.icns",
                 "Resources/MenuBarTemplate.svg",
+                "Resources/Localizable.xcstrings",
             ],
             resources: [
                 .process("Resources/MenuBarAssets.xcassets"),
                 .process("Resources/MenuBarTemplate.png"),
                 .process("Resources/MenuBarTemplate@2x.png"),
+                .process("Resources/Localized"),
             ],
             swiftSettings: [
                 .define("DEBUG", .when(configuration: .debug)),

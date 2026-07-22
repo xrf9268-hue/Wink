@@ -133,7 +133,10 @@ final class ShortcutEditorState {
         )
 
         if let conflict = shortcutValidator.conflict(for: candidate, in: shortcuts) {
-            conflictMessage = "Conflict: \(conflict.existingShortcut.appName) already uses \(conflict.existingShortcut.modifierFlags.joined(separator: "+"))+\(conflict.existingShortcut.keyEquivalent.uppercased())"
+            conflictMessage = String(
+                localized: "Conflict: \(conflict.existingShortcut.displayAppName) already uses \(conflict.existingShortcut.modifierFlags.joined(separator: "+"))+\(conflict.existingShortcut.keyEquivalent.uppercased())",
+                bundle: WinkResourceBundle.bundle
+            )
             return
         }
 
@@ -265,11 +268,14 @@ final class ShortcutEditorState {
             }
 
             recipeFeedback = .success(
-                "Exported \(shortcuts.count) shortcuts to \(url.lastPathComponent)"
+                String(
+                    localized: "Exported \(shortcuts.count) shortcuts to \(url.lastPathComponent)",
+                    bundle: WinkResourceBundle.bundle
+                )
             )
         } catch {
             recipeFeedback = .error(
-                "Failed to export recipe: \(error.localizedDescription)"
+                String(localized: "Failed to export recipe: \(error.localizedDescription)", bundle: WinkResourceBundle.bundle)
             )
         }
     }
@@ -284,7 +290,7 @@ final class ShortcutEditorState {
         } catch {
             pendingRecipeImport = nil
             recipeFeedback = .error(
-                "Failed to import recipe: \(error.localizedDescription)"
+                String(localized: "Failed to import recipe: \(error.localizedDescription)", bundle: WinkResourceBundle.bundle)
             )
         }
     }
@@ -300,7 +306,10 @@ final class ShortcutEditorState {
         conflictMessage = nil
         pendingRecipeImport = plan
         recipeFeedback = .success(
-            "Import preview ready: \(plan.readyEntries.count) ready, \(plan.conflictEntries.count) conflicts, \(plan.unresolvedEntries.count) unresolved"
+            String(
+                localized: "Import preview ready: \(plan.readyEntries.count) ready, \(plan.conflictEntries.count) conflicts, \(plan.unresolvedEntries.count) unresolved",
+                bundle: WinkResourceBundle.bundle
+            )
         )
     }
 
@@ -327,7 +336,7 @@ final class ShortcutEditorState {
             actualImportedCount.contains(entry.imported.id)
         }
         recipeFeedback = .success(
-            "Imported \(importedEntryCount) shortcuts"
+            String(localized: "Imported \(importedEntryCount) shortcuts", bundle: WinkResourceBundle.bundle)
         )
         Task { await refreshUsageCounts() }
     }

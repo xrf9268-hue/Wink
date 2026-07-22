@@ -1,0 +1,474 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>%@ Last checked %@.</key>
+	<string>%@ 上次检查时间：%@。</string>
+	<key>%@ has not been activated in the past 7 days.</key>
+	<string>%@ 在过去 7 天内未被触发。</string>
+	<key>%@ have not been activated in the past 7 days.</key>
+	<string>%@ 在过去 7 天内均未被触发。</string>
+	<key>%@ permission was revoked. Wink needs this permission to work. Please re-enable it in System Settings &gt; Privacy &amp; Security &gt; %@.</key>
+	<string>%@ 权限已被撤销。Wink 需要此权限才能正常工作。请在系统设置 &gt; 隐私与安全性 &gt; %@ 中重新启用。</string>
+	<key>%@ versus the previous period.</key>
+	<string>相较上一时段 %@。</string>
+	<key>%@, and %lld more have not been activated in the past 7 days.</key>
+	<string>%@，以及另外 %lld 个应用在过去 7 天内均未被触发。</string>
+	<key>%lld activations</key>
+	<string>%lld 次触发</string>
+	<key>%lld standard shortcut bindings failed to register. Check logs for the blocked key combinations.</key>
+	<string>有 %lld 个标准快捷键绑定注册失败。请查看日志以了解被阻止的组合键。</string>
+	<key>%lld× past 7 days</key>
+	<string>过去 7 天内 %lld 次</string>
+	<key>%lld× this period</key>
+	<string>本时段 %lld 次</string>
+	<key>. Tap alone to keep its original behavior.</key>
+	<string>。单独轻按则保留原有功能。</string>
+	<key>30 days</key>
+	<string>30 天</string>
+	<key>7 days</key>
+	<string>7 天</string>
+	<key>A password field or secure prompt is capturing keyboard input. Hyper and Fn-based shortcuts may not fire until it ends; other standard shortcuts keep working.</key>
+	<string>密码框或安全输入提示正在捕获键盘输入。在其结束前，Hyper 和基于 Fn 的快捷键可能无法触发；其他标准快捷键仍可正常使用。</string>
+	<key>Accessibility</key>
+	<string>辅助功能</string>
+	<key>Accessibility permission is required for app switching.</key>
+	<string>应用切换需要辅助功能权限。</string>
+	<key>Accessibility permission needed</key>
+	<string>需要辅助功能权限</string>
+	<key>Activations</key>
+	<string>触发次数</string>
+	<key>Add App…</key>
+	<string>添加应用…</string>
+	<key>Add Shortcut</key>
+	<string>添加快捷键</string>
+	<key>All Apps</key>
+	<string>所有应用</string>
+	<key>All shortcuts are paused.</key>
+	<string>所有快捷键均已暂停。</string>
+	<key>App is currently running</key>
+	<string>该应用正在运行</string>
+	<key>App unavailable</key>
+	<string>应用不可用</string>
+	<key>Apps you switch to often that have no shortcut yet. Add one in Shortcuts.</key>
+	<string>你经常切换但尚未设置快捷键的应用。可以在“快捷键”中添加。</string>
+	<key>Assumes ~3 seconds per activation.</key>
+	<string>按每次触发约 3 秒估算。</string>
+	<key>Automatic Updates</key>
+	<string>自动更新</string>
+	<key>Automatic update checks and downloads are enabled.</key>
+	<string>已启用自动检查和下载更新。</string>
+	<key>Automatic update checks are off. Use Check for Updates… to check manually.</key>
+	<string>自动检查更新已关闭。使用“检查更新…”手动检查。</string>
+	<key>Automatic updates become available after this build is configured with a signed Sparkle appcast feed.</key>
+	<string>配置签名的 Sparkle 更新源后，此构建即可使用自动更新。</string>
+	<key>Automatic updates, your call</key>
+	<string>自动更新，由你决定</string>
+	<key>Bind a keystroke to launch, toggle, or hide an app.</key>
+	<string>绑定按键组合来启动、切换或隐藏应用。</string>
+	<key>Browse...</key>
+	<string>浏览...</string>
+	<key>Cancel</key>
+	<string>取消</string>
+	<key>Check for Updates…</key>
+	<string>检查更新…</string>
+	<key>Checking for Updates</key>
+	<string>正在检查更新</string>
+	<key>Checking for updates…</key>
+	<string>正在检查更新…</string>
+	<key>Checking, download progress, and installs now happen right here — no more separate update dialogs.</key>
+	<string>检查、下载进度和安装现在都在这里完成 — 不再需要单独的更新对话框。</string>
+	<key>Choose an app…</key>
+	<string>选择一个应用…</string>
+	<key>Clear</key>
+	<string>清除</string>
+	<key>Click to record</key>
+	<string>点击录制</string>
+	<key>Click to review and install.</key>
+	<string>点击查看并安装。</string>
+	<key>Click to view progress.</key>
+	<string>点击查看进度。</string>
+	<key>Conflict: %@ already uses %@+%@</key>
+	<string>冲突：%@ 已使用 %@+%@</string>
+	<key>Conflicts</key>
+	<string>冲突</string>
+	<key>Conflicts with %@ · %@</key>
+	<string>与 %@ · %@ 冲突</string>
+	<key>Consecutive active days</key>
+	<string>连续活跃天数</string>
+	<key>Consecutive days with at least one activation.</key>
+	<string>连续每天至少触发一次的天数。</string>
+	<key>Contacting the update feed…</key>
+	<string>正在联系更新服务器…</string>
+	<key>Couldn't find this app. Rebind it to restore the shortcut.</key>
+	<string>找不到此应用。请重新绑定以恢复快捷键。</string>
+	<key>Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.</key>
+	<string>在本地统计应用切换次数，用于在洞察中推荐快捷键。关闭此选项也会删除已收集的统计数据。</string>
+	<key>Current App</key>
+	<string>当前应用</string>
+	<key>Cycle</key>
+	<string>轮换</string>
+	<key>D</key>
+	<string>日</string>
+	<key>Default</key>
+	<string>默认</string>
+	<key>Delete Shortcut</key>
+	<string>删除快捷键</string>
+	<key>Disabled</key>
+	<string>已禁用</string>
+	<key>Download and install new versions in the background.</key>
+	<string>在后台下载并安装新版本。</string>
+	<key>Downloading Update</key>
+	<string>正在下载更新</string>
+	<key>Downloading update — v%@</key>
+	<string>正在下载更新 — v%@</string>
+	<key>Downloading version %@…%@</key>
+	<string>正在下载版本 %@…%@</string>
+	<key>Downloading… %@</key>
+	<string>正在下载… %@</string>
+	<key>Downloading… %@ of %@</key>
+	<string>正在下载… %@ / %@</string>
+	<key>Drag to reorder</key>
+	<string>拖动以重新排序</string>
+	<key>Enable All Shortcuts</key>
+	<string>启用所有快捷键</string>
+	<key>Exported %lld shortcuts to %@</key>
+	<string>已将 %lld 个快捷键导出到 %@</string>
+	<key>Export…</key>
+	<string>导出…</string>
+	<key>Failed to export recipe: %@</key>
+	<string>导出配方失败：%@</string>
+	<key>Failed to import recipe: %@</key>
+	<string>导入配方失败：%@</string>
+	<key>Filter…</key>
+	<string>筛选…</string>
+	<key>Focus</key>
+	<string>聚焦</string>
+	<key>Full release notes</key>
+	<string>完整发行说明</string>
+	<key>General</key>
+	<string>通用</string>
+	<key>Granted</key>
+	<string>已授权</string>
+	<key>Hand shortcuts back to the system while a listed app (VM, remote desktop) is frontmost.</key>
+	<string>当列表中的应用（虚拟机、远程桌面）位于前台时，将快捷键控制权交还给系统。</string>
+	<key>Hide</key>
+	<string>隐藏</string>
+	<key>Hide the icon if you prefer a minimal menu bar.</key>
+	<string>如果偏好简洁的菜单栏，可以隐藏图标。</string>
+	<key>Hold</key>
+	<string>按住</string>
+	<key>Hold Caps Lock as a Hyper modifier alongside normal shortcut combos.</key>
+	<string>按住 Caps Lock 作为 Hyper 修饰键，与常规组合键搭配使用。</string>
+	<key>Hold Caps Lock without a second key to see all shortcuts.</key>
+	<string>按住 Caps Lock 且不按其他键即可查看所有快捷键。</string>
+	<key>Hold Caps Lock without a second key to see all shortcuts. Needs Hyper Key enabled.</key>
+	<string>按住 Caps Lock 且不按其他键即可查看所有快捷键。需要先启用 Hyper 键。</string>
+	<key>Hold Caps Lock without a second key to see all shortcuts. Needs at least one enabled Hyper shortcut.</key>
+	<string>按住 Caps Lock 且不按其他键即可查看所有快捷键。需要至少启用一个 Hyper 快捷键。</string>
+	<key>Hourly heatmap</key>
+	<string>每小时热力图</string>
+	<key>How Wink reacts when the target app is already active.</key>
+	<string>当目标应用已处于活跃状态时 Wink 的响应方式。</string>
+	<key>Hyper Key</key>
+	<string>Hyper 键</string>
+	<key>Hyper cheat sheet</key>
+	<string>Hyper 速查表</string>
+	<key>Hyper key path</key>
+	<string>Hyper 键路径</string>
+	<key>Hyper shortcuts are configured, but shortcut capture is not active.</key>
+	<string>已配置 Hyper 快捷键，但快捷键捕获尚未启用。</string>
+	<key>Import Preview</key>
+	<string>导入预览</string>
+	<key>Import and export .winkrecipe files, with usage insights in Settings.</key>
+	<string>导入和导出 .winkrecipe 文件，并在设置中查看使用洞察。</string>
+	<key>Import or export shortcuts</key>
+	<string>导入或导出快捷键</string>
+	<key>Import preview ready: %lld ready, %lld conflicts, %lld unresolved</key>
+	<string>导入预览就绪：%lld 个可导入，%lld 个冲突，%lld 个未解析</string>
+	<key>Imported %lld shortcuts</key>
+	<string>已导入 %lld 个快捷键</string>
+	<key>Import…</key>
+	<string>导入…</string>
+	<key>Input Monitoring</key>
+	<string>输入监控</string>
+	<key>Input Monitoring is not required for the current shortcuts.</key>
+	<string>当前快捷键不需要输入监控权限。</string>
+	<key>Input Monitoring needed</key>
+	<string>需要输入监控权限</string>
+	<key>Insights</key>
+	<string>洞察</string>
+	<key>Insights period</key>
+	<string>洞察时段</string>
+	<key>Install Update</key>
+	<string>立即安装更新</string>
+	<key>Install and Relaunch</key>
+	<string>安装并重新启动</string>
+	<key>Installing Update</key>
+	<string>正在安装更新</string>
+	<key>Installing the update — Wink will relaunch shortly.</key>
+	<string>正在安装更新 — Wink 即将重新启动。</string>
+	<key>Installing… Wink will relaunch shortly.</key>
+	<string>正在安装… Wink 即将重新启动。</string>
+	<key>Installs when Wink quits. Click to install now.</key>
+	<string>将在 Wink 退出时安装。点击立即安装。</string>
+	<key>Last used %@</key>
+	<string>上次使用 %@</string>
+	<key>Last used —</key>
+	<string>上次使用 —</string>
+	<key>Later</key>
+	<string>稍后</string>
+	<key>Launch at Login</key>
+	<string>登录时启动</string>
+	<key>Launch at Login is only available after installing Wink.app in the Applications folder and reopening it.</key>
+	<string>只有将 Wink.app 安装到“应用程序”文件夹并重新打开后，才能使用登录时启动。</string>
+	<key>Less work between keypress and app switch, especially with minimized windows.</key>
+	<string>从按键到应用切换所需的处理更少，尤其是最小化窗口时。</string>
+	<key>Limited · Secure Input</key>
+	<string>受限 · 安全输入</string>
+	<key>M</key>
+	<string>月</string>
+	<key>Manage…</key>
+	<string>管理…</string>
+	<key>Master switch for global shortcut routing.</key>
+	<string>全局快捷键路由的总开关。</string>
+	<key>Most used</key>
+	<string>使用最多</string>
+	<key>Needed</key>
+	<string>待授权</string>
+	<key>Needed for the current shortcut configuration.</key>
+	<string>当前快捷键配置需要此权限。</string>
+	<key>New Shortcut</key>
+	<string>新建快捷键</string>
+	<key>New activity</key>
+	<string>新活动</string>
+	<key>New activity versus the previous period.</key>
+	<string>相较上一时段有新的活动。</string>
+	<key>No change</key>
+	<string>无变化</string>
+	<key>No change versus the previous period.</key>
+	<string>相较上一时段无变化。</string>
+	<key>No shortcuts configured</key>
+	<string>尚未配置快捷键</string>
+	<key>No shortcuts match your filter</key>
+	<string>没有符合筛选条件的快捷键</string>
+	<key>No shortcuts match your search</key>
+	<string>没有符合搜索条件的快捷键</string>
+	<key>No shortcuts used in this period</key>
+	<string>此时段内没有已使用的快捷键</string>
+	<key>Not required for the current shortcut configuration.</key>
+	<string>当前快捷键配置不需要此权限。</string>
+	<key>Not used yet</key>
+	<string>尚未使用</string>
+	<key>OK</key>
+	<string>好</string>
+	<key>Open Login Items Settings</key>
+	<string>打开登录项设置</string>
+	<key>Opens Wink in the menu bar when you sign in.</key>
+	<string>登录时在菜单栏中打开 Wink。</string>
+	<key>Optional</key>
+	<string>可选</string>
+	<key>Past 7 days</key>
+	<string>过去 7 天</string>
+	<key>Pause all shortcuts</key>
+	<string>暂停所有快捷键</string>
+	<key>Pause in exception apps</key>
+	<string>在例外应用中暂停</string>
+	<key>Paused</key>
+	<string>已暂停</string>
+	<key>Paused · %@</key>
+	<string>已暂停 · %@</string>
+	<key>Permissions</key>
+	<string>权限</string>
+	<key>Preparing the downloaded update…</key>
+	<string>正在准备已下载的更新…</string>
+	<key>Preparing update…</key>
+	<string>正在准备更新…</string>
+	<key>Press a key combination…</key>
+	<string>按下一个组合键…</string>
+	<key>Press once to open or focus the target app, press again to hide it.</key>
+	<string>按一次打开或聚焦目标应用，再按一次将其隐藏。</string>
+	<key>Privacy</key>
+	<string>隐私</string>
+	<key>Quit Wink</key>
+	<string>退出 Wink</string>
+	<key>Ready</key>
+	<string>就绪</string>
+	<key>Recently Used</key>
+	<string>最近使用</string>
+	<key>Recording…</key>
+	<string>录制中…</string>
+	<key>Refresh</key>
+	<string>刷新</string>
+	<key>Release Notes</key>
+	<string>更新日志</string>
+	<key>Remove %@</key>
+	<string>移除 %@</string>
+	<key>Replace Existing</key>
+	<string>替换现有项</string>
+	<key>Request Access</key>
+	<string>请求权限</string>
+	<key>Request Accessibility</key>
+	<string>请求辅助功能权限</string>
+	<key>Request Input Monitoring</key>
+	<string>请求输入监控权限</string>
+	<key>Required for global shortcuts</key>
+	<string>全局快捷键所需权限</string>
+	<key>Requires at least one modifier (⌘⌥⌃⇧)</key>
+	<string>至少需要一个修饰键（⌘⌥⌃⇧）</string>
+	<key>Review</key>
+	<string>查看</string>
+	<key>Routes global shortcuts.</key>
+	<string>用于路由全局快捷键。</string>
+	<key>Running</key>
+	<string>运行中</string>
+	<key>Search apps...</key>
+	<string>搜索应用...</string>
+	<key>Search shortcuts</key>
+	<string>搜索快捷键</string>
+	<key>Settings…</key>
+	<string>设置…</string>
+	<key>Shareable shortcut sets</key>
+	<string>可分享的快捷键集合</string>
+	<key>Shortcut</key>
+	<string>快捷键</string>
+	<key>Shortcut capture needs attention</key>
+	<string>快捷键捕获需要注意</string>
+	<key>Shortcut capture ready</key>
+	<string>快捷键捕获就绪</string>
+	<key>Shortcuts</key>
+	<string>快捷键</string>
+	<key>Shortcuts paused</key>
+	<string>快捷键已暂停</string>
+	<key>Show Menu Bar Icon</key>
+	<string>显示菜单栏图标</string>
+	<key>Skip Conflicts</key>
+	<string>跳过冲突项</string>
+	<key>Skip This Version</key>
+	<string>跳过此版本</string>
+	<key>Snappier shortcuts</key>
+	<string>更迅捷的快捷键</string>
+	<key>Some shortcuts need Input Monitoring before Wink can capture them.</key>
+	<string>部分快捷键需要输入监控权限，Wink 才能捕获它们。</string>
+	<key>Some shortcuts need Input Monitoring.</key>
+	<string>部分快捷键需要输入监控权限。</string>
+	<key>Standard and Hyper shortcuts are active.</key>
+	<string>标准和 Hyper 快捷键均已启用。</string>
+	<key>Standard shortcut capture failed to start. Check logs for the Carbon handler status.</key>
+	<string>标准快捷键捕获启动失败。请查看日志以了解 Carbon 处理程序状态。</string>
+	<key>Standard shortcuts are active.</key>
+	<string>标准快捷键已启用。</string>
+	<key>Standard shortcuts failed to register. Check logs for the blocked key combinations.</key>
+	<string>标准快捷键注册失败。请查看日志以了解被阻止的组合键。</string>
+	<key>Standard shortcuts ready</key>
+	<string>标准快捷键就绪</string>
+	<key>Startup, keyboard behavior, and updates.</key>
+	<string>启动、键盘行为与更新。</string>
+	<key>Streak</key>
+	<string>连续天数</string>
+	<key>Suggest shortcuts from app usage</key>
+	<string>根据应用使用情况推荐快捷键</string>
+	<key>Suggested shortcuts</key>
+	<string>建议的快捷键</string>
+	<key>Support</key>
+	<string>支持</string>
+	<key>System Settings &gt; Input Monitoring can lag behind live access. If the affected shortcuts work here, Wink already has the permission it needs.</key>
+	<string>系统设置中的输入监控状态可能滞后于实际授权情况。如果相关快捷键在这里可以正常工作，说明 Wink 已获得所需权限。</string>
+	<key>Target app</key>
+	<string>目标应用</string>
+	<key>The Settings toggle is live: background checks and downloads, on or off.</key>
+	<string>设置中的开关即刻生效：后台检查与下载，随你开启或关闭。</string>
+	<key>The last automatic update check failed: %@</key>
+	<string>上次自动检查更新失败：%@</string>
+	<key>Time saved</key>
+	<string>节省时间</string>
+	<key>Tip: hold</key>
+	<string>提示：按住</string>
+	<key>Today</key>
+	<string>今天</string>
+	<key>Toggle</key>
+	<string>切换</string>
+	<key>Toggle Sidebar</key>
+	<string>切换侧边栏</string>
+	<key>Toggle apps with global shortcuts</key>
+	<string>使用全局快捷键切换应用</string>
+	<key>Unresolved</key>
+	<string>未解析</string>
+	<key>Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.</key>
+	<string>没有冲突的未解析应用仍会使用配方中的应用名称和 Bundle ID 导入。</string>
+	<key>Unsupported key — try a letter, number, or F-key</key>
+	<string>不支持的按键 — 请尝试字母、数字或 F 键</string>
+	<key>Unused shortcuts this week</key>
+	<string>本周未使用的快捷键</string>
+	<key>Update Available</key>
+	<string>有可用更新</string>
+	<key>Update Check Failed</key>
+	<string>检查更新失败</string>
+	<key>Update Ready</key>
+	<string>更新已就绪</string>
+	<key>Update available — v%@</key>
+	<string>有可用更新 — v%@</string>
+	<key>Update ready — v%@</key>
+	<string>更新已就绪 — v%@</string>
+	<key>Updates are available in packaged builds with a signed update feed.</key>
+	<string>更新功能仅在配置了签名更新源的打包版本中可用。</string>
+	<key>Updates, the Wink way</key>
+	<string>Wink 风格的更新体验</string>
+	<key>Usage trends for your saved shortcuts.</key>
+	<string>已保存快捷键的使用趋势。</string>
+	<key>Version %@</key>
+	<string>版本 %@</string>
+	<key>Version %@ is available. Use Check for Updates… to review and install.</key>
+	<string>版本 %@ 现已可用。使用“检查更新…”查看并安装。</string>
+	<key>Version %@ is downloaded and installs when Wink quits. Use Check for Updates… to install now.</key>
+	<string>版本 %@ 已下载完成，将在 Wink 退出时安装。使用“检查更新…”立即安装。</string>
+	<key>View release notes</key>
+	<string>查看发行说明</string>
+	<key>W</key>
+	<string>周</string>
+	<key>What's New in Wink</key>
+	<string>Wink 更新内容</string>
+	<key>When Frontmost</key>
+	<string>当目标在前台时</string>
+	<key>When target is frontmost</key>
+	<string>当目标已在前台时</string>
+	<key>Wink %@ is available — you have %@. The update downloads in the background and installs on relaunch.</key>
+	<string>Wink %@ 现已可用 — 当前版本为 %@。更新将在后台下载，并在重新启动时安装。</string>
+	<key>Wink %@ is downloaded. Relaunch now to finish installing, or keep working — it installs when Wink quits.</key>
+	<string>Wink %@ 已下载完成。现在重新启动即可完成安装，或继续使用 — 它将在 Wink 退出时安装。</string>
+	<key>Wink %@ is the latest version.</key>
+	<string>Wink %@ 已是最新版本。</string>
+	<key>Wink Update</key>
+	<string>Wink 更新</string>
+	<key>Wink checks for updates automatically and asks before downloading.</key>
+	<string>Wink 会自动检查更新，并在下载前征求你的同意。</string>
+	<key>Wink couldn't disable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
+	<string>Wink 无法禁用登录时启动：%@。请重试，或在系统设置 › 登录项中手动管理。</string>
+	<key>Wink couldn't enable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
+	<string>Wink 无法启用登录时启动：%@。请重试，或在系统设置 › 登录项中手动管理。</string>
+	<key>Wink couldn't find its login item configuration. This usually points to an installation or packaging problem.</key>
+	<string>Wink 找不到其登录项配置。这通常表示安装或打包出现问题。</string>
+	<key>Wink is registered to launch at login, but macOS still needs your approval in Login Items.</key>
+	<string>Wink 已注册为登录启动项，但 macOS 仍需要你在“登录项”中批准。</string>
+	<key>Wink needs Accessibility access to route global shortcuts.</key>
+	<string>Wink 需要辅助功能权限才能路由全局快捷键。</string>
+	<key>Wink: Permission Lost</key>
+	<string>Wink：权限丢失</string>
+	<key>You're Up to Date</key>
+	<string>已是最新版本</string>
+	<key>Your Shortcuts · %lld</key>
+	<string>我的快捷键 · %lld</string>
+	<key>for a Hyper shortcut.</key>
+	<string>即可触发 Hyper 快捷键。</string>
+	<key>to act as</key>
+	<string>即可作为</string>
+	<key>today</key>
+	<string>今天</string>
+	<key>unused</key>
+	<string>未使用</string>
+	<key>vs previous period</key>
+	<string>相较上一时段</string>
+	<key>~3 seconds each</key>
+	<string>每次约 3 秒</string>
+</dict>
+</plist>

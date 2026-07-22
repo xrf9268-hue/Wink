@@ -7,6 +7,29 @@ import os.log
 private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "ShortcutManager")
 private let shortcutManagerSuppressAutomaticPermissionPromptsArgument = "--suppress-automatic-permission-prompts"
 
+/// The permission a revocation notification is about. `identifierToken` must
+/// stay locale-stable — it drives `UNNotificationRequest` identity
+/// (replacement/dedup), so it can never be built from the localized display
+/// name (same locale-stable-identity principle as #323's persistence keys).
+private enum PermissionKind {
+    case accessibility
+    case inputMonitoring
+
+    var identifierToken: String {
+        switch self {
+        case .accessibility: return "accessibility"
+        case .inputMonitoring: return "input-monitoring"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .accessibility: return String(localized: "Accessibility", bundle: WinkResourceBundle.bundle)
+        case .inputMonitoring: return String(localized: "Input Monitoring", bundle: WinkResourceBundle.bundle)
+        }
+    }
+}
+
 private func shortcutManagerAutomaticPermissionPromptingEnabled(
     processInfo: ProcessInfo = .processInfo
 ) -> Bool {
@@ -284,7 +307,7 @@ final class ShortcutManager {
             } else {
                 logger.error("Accessibility permission: REVOKED")
                 diagnosticClient.log("Accessibility permission: REVOKED")
-                sendPermissionNotification(permission: "Accessibility")
+                sendPermissionNotification(permission: .accessibility)
             }
             lastAccessibilityState = axGranted
         }
@@ -296,7 +319,7 @@ final class ShortcutManager {
             } else {
                 logger.error("Input Monitoring permission: REVOKED")
                 diagnosticClient.log("Input Monitoring permission: REVOKED")
-                sendPermissionNotification(permission: "Input Monitoring")
+                sendPermissionNotification(permission: .inputMonitoring)
             }
             lastInputMonitoringState = imGranted
         }
@@ -357,14 +380,25 @@ final class ShortcutManager {
     }
 
     /// Send a user notification when a specific permission is revoked.
-    private func sendPermissionNotification(permission: String) {
+    private func sendPermissionNotification(permission: PermissionKind) {
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert]) { granted, _ in
             guard granted else { return }
             let content = UNMutableNotificationContent()
-            content.title = "Wink: Permission Lost"
-            content.body = "\(permission) permission was revoked. Wink needs this permission to work. Please re-enable it in System Settings > Privacy & Security > \(permission)."
-            let request = UNNotificationRequest(identifier: "wink-permission-\(permission)", content: content, trigger: nil)
+            content.title = String(localized: "Wink: Permission Lost", bundle: WinkResourceBundle.bundle)
+            let displayName = permission.displayName
+            content.body = String(
+                localized: "\(displayName) permission was revoked. Wink needs this permission to work. Please re-enable it in System Settings > Privacy & Security > \(displayName).",
+                bundle: WinkResourceBundle.bundle
+            )
+            // Identifier is built from the locale-stable token, never the
+            // localized display name, so replacement/dedup keeps working
+            // regardless of the user's language.
+            let request = UNNotificationRequest(
+                identifier: "wink-permission-\(permission.identifierToken)",
+                content: content,
+                trigger: nil
+            )
             UNUserNotificationCenter.current().add(request)
         }
     }

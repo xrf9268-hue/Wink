@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import SwiftUI
 
 /// Hosts the Wink-owned update panel (Issue #298): a floating window that
@@ -41,7 +42,10 @@ final class UpdatePanelPresenter: NSObject {
             backing: .buffered,
             defer: false
         )
-        panel.title = "Wink Update"
+        // titlebar chrome is hidden, but this string still surfaces in the
+        // Window menu / Mission Control, so it is localized like any other
+        // window title.
+        panel.title = String(localized: "Wink Update", bundle: WinkResourceBundle.bundle)
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
@@ -108,22 +112,24 @@ private struct UpdatePanelContent: View {
     private var headerTitle: String {
         switch preferences.updatePhase {
         case .idle, .checking:
-            return "Checking for Updates"
+            return String(localized: "Checking for Updates", bundle: WinkResourceBundle.bundle)
         case .available:
-            return "Update Available"
+            return String(localized: "Update Available", bundle: WinkResourceBundle.bundle)
         case .downloading, .extracting:
-            return "Downloading Update"
+            return String(localized: "Downloading Update", bundle: WinkResourceBundle.bundle)
         case .ready:
-            return "Update Ready"
+            return String(localized: "Update Ready", bundle: WinkResourceBundle.bundle)
         case .installing:
-            return "Installing Update"
+            return String(localized: "Installing Update", bundle: WinkResourceBundle.bundle)
         case .upToDate:
-            return "You're Up to Date"
+            return String(localized: "You're Up to Date", bundle: WinkResourceBundle.bundle)
         case .error:
-            return "Update Check Failed"
+            return String(localized: "Update Check Failed", bundle: WinkResourceBundle.bundle)
         }
     }
 
+    // "Wink %@" is a brand name plus a bare version tag — no linguistic
+    // content to translate.
     private var headerSubtitle: String {
         switch preferences.updatePhase {
         case .available(let version), .ready(let version):
@@ -139,22 +145,27 @@ private struct UpdatePanelContent: View {
     private func body(for phase: UpdatePhase) -> some View {
         switch phase {
         case .idle, .checking:
-            progressSection(label: "Contacting the update feed…", fraction: nil)
-            buttonRow(primary: nil, secondary: ("Cancel", { preferences.cancelUpdateOperation() }))
+            progressSection(label: String(localized: "Contacting the update feed…", bundle: WinkResourceBundle.bundle), fraction: nil)
+            buttonRow(primary: nil, secondary: (String(localized: "Cancel", bundle: WinkResourceBundle.bundle), { preferences.cancelUpdateOperation() }))
 
         case .available(let version):
-            Text("Wink \(version) is available — you have \(preferences.updatePresentation.currentVersion). The update downloads in the background and installs on relaunch.")
+            Text(
+                "Wink \(version) is available — you have \(preferences.updatePresentation.currentVersion). The update downloads in the background and installs on relaunch.",
+                bundle: WinkResourceBundle.bundle
+            )
                 .font(WinkType.bodyText)
                 .foregroundStyle(palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Link("View release notes", destination: Self.releasesURL)
+            Link(destination: Self.releasesURL) {
+                Text("View release notes", bundle: WinkResourceBundle.bundle)
+            }
                 .font(WinkType.labelSmall)
                 .foregroundStyle(palette.textTertiary)
             HStack {
-                Button("Skip This Version") { preferences.skipUpdateVersion() }
+                Button(String(localized: "Skip This Version", bundle: WinkResourceBundle.bundle)) { preferences.skipUpdateVersion() }
                 Spacer()
-                Button("Later") { preferences.remindUpdateLater() }
-                Button("Install Update") { preferences.installUpdateNow() }
+                Button(String(localized: "Later", bundle: WinkResourceBundle.bundle)) { preferences.remindUpdateLater() }
+                Button(String(localized: "Install Update", bundle: WinkResourceBundle.bundle)) { preferences.installUpdateNow() }
                     .keyboardShortcut(.defaultAction)
             }
 
@@ -163,38 +174,43 @@ private struct UpdatePanelContent: View {
                 label: downloadLabel(received: received, expected: expected),
                 fraction: expected > 0 ? Double(received) / Double(expected) : nil
             )
-            buttonRow(primary: nil, secondary: ("Cancel", { preferences.cancelUpdateOperation() }))
+            buttonRow(primary: nil, secondary: (String(localized: "Cancel", bundle: WinkResourceBundle.bundle), { preferences.cancelUpdateOperation() }))
 
         case .extracting(let progress):
-            progressSection(label: "Preparing update…", fraction: progress)
+            progressSection(label: String(localized: "Preparing update…", bundle: WinkResourceBundle.bundle), fraction: progress)
             buttonRow(primary: nil, secondary: nil)
 
         case .ready(let version):
-            Text("Wink \(version) is downloaded. Relaunch now to finish installing, or keep working — it installs when Wink quits.")
+            Text(
+                "Wink \(version) is downloaded. Relaunch now to finish installing, or keep working — it installs when Wink quits.",
+                bundle: WinkResourceBundle.bundle
+            )
                 .font(WinkType.bodyText)
                 .foregroundStyle(palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             buttonRow(
-                primary: ("Install and Relaunch", { preferences.installUpdateNow() }),
-                secondary: ("Later", { preferences.remindUpdateLater() })
+                primary: (String(localized: "Install and Relaunch", bundle: WinkResourceBundle.bundle), { preferences.installUpdateNow() }),
+                secondary: (String(localized: "Later", bundle: WinkResourceBundle.bundle), { preferences.remindUpdateLater() })
             )
 
         case .installing:
-            progressSection(label: "Installing… Wink will relaunch shortly.", fraction: nil)
+            progressSection(label: String(localized: "Installing… Wink will relaunch shortly.", bundle: WinkResourceBundle.bundle), fraction: nil)
             buttonRow(primary: nil, secondary: nil)
 
         case .upToDate:
-            Text("Wink \(preferences.updatePresentation.currentVersion) is the latest version.")
+            Text("Wink \(preferences.updatePresentation.currentVersion) is the latest version.", bundle: WinkResourceBundle.bundle)
                 .font(WinkType.bodyText)
                 .foregroundStyle(palette.textSecondary)
-            buttonRow(primary: ("OK", { preferences.acknowledgeUpdateResult() }), secondary: nil)
+            buttonRow(primary: (String(localized: "OK", bundle: WinkResourceBundle.bundle), { preferences.acknowledgeUpdateResult() }), secondary: nil)
 
         case .error(let message):
+            // `message` is the update service's own already-produced string
+            // (Sparkle/system error text); rendered verbatim, not re-localized.
             Text(message)
                 .font(WinkType.bodyText)
                 .foregroundStyle(palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            buttonRow(primary: ("OK", { preferences.acknowledgeUpdateResult() }), secondary: nil)
+            buttonRow(primary: (String(localized: "OK", bundle: WinkResourceBundle.bundle), { preferences.acknowledgeUpdateResult() }), secondary: nil)
         }
     }
 
@@ -236,8 +252,10 @@ private struct UpdatePanelContent: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         let got = formatter.string(fromByteCount: Int64(received))
-        guard expected > 0 else { return "Downloading… \(got)" }
+        guard expected > 0 else {
+            return String(localized: "Downloading… \(got)", bundle: WinkResourceBundle.bundle)
+        }
         let total = formatter.string(fromByteCount: Int64(expected))
-        return "Downloading… \(got) of \(total)"
+        return String(localized: "Downloading… \(got) of \(total)", bundle: WinkResourceBundle.bundle)
     }
 }

@@ -1,21 +1,30 @@
+import Foundation
 import SwiftUI
 
 enum InsightsTabCopy {
-    static let rankingSectionTitle = "Most used"
-    static let emptyRankingText = "No shortcuts used in this period"
+    static var rankingSectionTitle: String {
+        String(localized: "Most used", bundle: WinkResourceBundle.bundle)
+    }
+    static var emptyRankingText: String {
+        String(localized: "No shortcuts used in this period", bundle: WinkResourceBundle.bundle)
+    }
 
     static func rankingAccessoryText(totalCount: Int, period: InsightsPeriod) -> String {
-        "\(totalCount.formatted(.number.grouping(.automatic))) activations · \(compactRangeText(for: period))"
+        // The plural "%lld activations" phrase is resolved on its own so the
+        // catalog's plural `variations` can pick "one" vs "other"; grouping
+        // (thousands separator) is dropped for this compact composed form.
+        let activations = String(localized: "\(totalCount) activations", bundle: WinkResourceBundle.bundle)
+        return "\(activations) · \(compactRangeText(for: period))"
     }
 
     private static func compactRangeText(for period: InsightsPeriod) -> String {
         switch period {
         case .day:
-            return "today"
+            return String(localized: "today", bundle: WinkResourceBundle.bundle)
         case .week:
-            return "7 days"
+            return String(localized: "7 days", bundle: WinkResourceBundle.bundle)
         case .month:
-            return "30 days"
+            return String(localized: "30 days", bundle: WinkResourceBundle.bundle)
         }
     }
 }
@@ -43,9 +52,9 @@ struct InsightsTabView: View {
             InsightsUnusedNudge(appNames: viewModel.unusedShortcutNames)
 
             if !viewModel.suggestedApps.isEmpty {
-                WinkCard(title: { Text("Suggested shortcuts") }) {
+                WinkCard(title: { Text("Suggested shortcuts", bundle: WinkResourceBundle.bundle) }) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Apps you switch to often that have no shortcut yet. Add one in Shortcuts.")
+                        Text("Apps you switch to often that have no shortcut yet. Add one in Shortcuts.", bundle: WinkResourceBundle.bundle)
                             .font(WinkType.labelSmall)
                             .foregroundStyle(palette.textSecondary)
                         ForEach(viewModel.suggestedApps) { suggestion in
@@ -55,7 +64,7 @@ struct InsightsTabView: View {
                                     .font(WinkType.bodyText)
                                     .foregroundStyle(palette.textPrimary)
                                 Spacer(minLength: 8)
-                                Text("\(suggestion.count)× this period")
+                                Text("\(suggestion.count)× this period", bundle: WinkResourceBundle.bundle)
                                     .font(WinkType.labelSmall)
                                     .foregroundStyle(palette.textTertiary)
                             }
@@ -74,10 +83,10 @@ struct InsightsTabView: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Insights")
+                Text("Insights", bundle: WinkResourceBundle.bundle)
                     .font(WinkType.tabTitle)
                     .foregroundStyle(palette.textPrimary)
-                Text("Usage trends for your saved shortcuts.")
+                Text("Usage trends for your saved shortcuts.", bundle: WinkResourceBundle.bundle)
                     .font(WinkType.bodyText)
                     .foregroundStyle(palette.textSecondary)
             }
@@ -85,9 +94,9 @@ struct InsightsTabView: View {
             Spacer(minLength: 8)
 
             WinkSegmented(
-                options: InsightsPeriod.allCases.map { (label: $0.rawValue, value: $0) },
+                options: InsightsPeriod.allCases.map { (label: $0.segmentLabel, value: $0) },
                 selection: $viewModel.period,
-                accessibilityLabel: "Insights period"
+                accessibilityLabel: String(localized: "Insights period", bundle: WinkResourceBundle.bundle)
             )
         }
     }

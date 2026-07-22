@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 enum InsightsChangeTone: Equatable {
@@ -7,27 +8,46 @@ enum InsightsChangeTone: Equatable {
 }
 
 struct InsightsChange: Equatable {
+    // `kind` drives comparisons (e.g. `activationSubtitle` below); `text` is
+    // display-only and localized, so it must never be switched/compared on —
+    // that would silently break once it stops being English (issue #358).
+    enum Kind: Equatable {
+        case noChange
+        case newActivity
+        case percentage
+    }
+
     let text: String
     let tone: InsightsChangeTone
+    let kind: Kind
 
     static func make(current: Int, previous: Int) -> InsightsChange {
         if previous == 0 {
             if current == 0 {
-                return InsightsChange(text: "No change", tone: .neutral)
+                return InsightsChange(
+                    text: String(localized: "No change", bundle: WinkResourceBundle.bundle),
+                    tone: .neutral,
+                    kind: .noChange
+                )
             }
 
-            return InsightsChange(text: "New activity", tone: .positive)
+            return InsightsChange(
+                text: String(localized: "New activity", bundle: WinkResourceBundle.bundle),
+                tone: .positive,
+                kind: .newActivity
+            )
         }
 
         let delta = Double(current - previous) / Double(previous)
         let percentage = Int((delta * 100).rounded())
         if percentage == 0 {
-            return InsightsChange(text: "0%", tone: .neutral)
+            // "0%" is a bare numeric+symbol value, not linguistic content.
+            return InsightsChange(text: "0%", tone: .neutral, kind: .percentage)
         }
 
         let prefix = percentage > 0 ? "+" : ""
         let tone: InsightsChangeTone = percentage > 0 ? .positive : .negative
-        return InsightsChange(text: "\(prefix)\(percentage)%", tone: tone)
+        return InsightsChange(text: "\(prefix)\(percentage)%", tone: tone, kind: .percentage)
     }
 }
 
@@ -54,13 +74,13 @@ enum InsightsKpiFormatter {
     }
 
     static func activationSubtitle(change: InsightsChange) -> String {
-        switch change.text {
-        case "New activity":
-            return "New activity versus the previous period."
-        case "No change":
-            return "No change versus the previous period."
-        default:
-            return "\(change.text) versus the previous period."
+        switch change.kind {
+        case .newActivity:
+            return String(localized: "New activity versus the previous period.", bundle: WinkResourceBundle.bundle)
+        case .noChange:
+            return String(localized: "No change versus the previous period.", bundle: WinkResourceBundle.bundle)
+        case .percentage:
+            return String(localized: "\(change.text) versus the previous period.", bundle: WinkResourceBundle.bundle)
         }
     }
 }
@@ -88,9 +108,9 @@ struct InsightsKpiSection: View {
             spacing: 12
         ) {
             metricCard(
-                title: "Activations",
+                title: String(localized: "Activations", bundle: WinkResourceBundle.bundle),
                 value: totalCount.formatted(.number.grouping(.automatic)),
-                subtitle: "vs previous period",
+                subtitle: String(localized: "vs previous period", bundle: WinkResourceBundle.bundle),
                 help: InsightsKpiFormatter.activationSubtitle(change: activationDelta),
                 badge: {
                     InsightsKpiDelta(change: activationDelta)
@@ -105,10 +125,10 @@ struct InsightsKpiSection: View {
             )
 
             metricCard(
-                title: "Time saved",
+                title: String(localized: "Time saved", bundle: WinkResourceBundle.bundle),
                 value: InsightsKpiFormatter.timeSavedText(totalActivations: totalCount),
-                subtitle: "~3 seconds each",
-                help: "Assumes ~3 seconds per activation.",
+                subtitle: String(localized: "~3 seconds each", bundle: WinkResourceBundle.bundle),
+                help: String(localized: "Assumes ~3 seconds per activation.", bundle: WinkResourceBundle.bundle),
                 badge: {
                     EmptyView()
                 },
@@ -118,10 +138,10 @@ struct InsightsKpiSection: View {
             )
 
             metricCard(
-                title: "Streak",
+                title: String(localized: "Streak", bundle: WinkResourceBundle.bundle),
                 value: "\(currentStreakDays)d",
-                subtitle: "Consecutive active days",
-                help: "Consecutive days with at least one activation.",
+                subtitle: String(localized: "Consecutive active days", bundle: WinkResourceBundle.bundle),
+                help: String(localized: "Consecutive days with at least one activation.", bundle: WinkResourceBundle.bundle),
                 badge: {
                     EmptyView()
                 },

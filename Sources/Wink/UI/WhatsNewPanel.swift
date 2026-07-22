@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import SwiftUI
 
 /// Presents the one-time post-update "What's New" panel.
@@ -68,10 +69,10 @@ private struct WhatsNewContent: View {
             HStack(spacing: 10) {
                 WinkAppIcon(size: 36)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("What's New in Wink")
+                    Text("What's New in Wink", bundle: WinkResourceBundle.bundle)
                         .font(WinkType.tabTitle)
                         .foregroundStyle(palette.textPrimary)
-                    Text("Version \(version)")
+                    Text("Version \(version)", bundle: WinkResourceBundle.bundle)
                         .font(WinkType.labelSmall)
                         .foregroundStyle(palette.textSecondary)
                 }
@@ -99,13 +100,15 @@ private struct WhatsNewContent: View {
             }
 
             HStack {
-                Link("Full release notes", destination: Self.releasesURL)
+                Link(destination: Self.releasesURL) {
+                    Text("Full release notes", bundle: WinkResourceBundle.bundle)
+                }
                     .font(WinkType.labelSmall)
                     .foregroundStyle(palette.textTertiary)
 
                 Spacer()
 
-                Button("OK", action: dismiss)
+                Button(String(localized: "OK", bundle: WinkResourceBundle.bundle), action: dismiss)
                     .keyboardShortcut(.defaultAction)
             }
         }

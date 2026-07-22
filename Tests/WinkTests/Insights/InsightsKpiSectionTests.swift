@@ -7,11 +7,11 @@ import Testing
 struct InsightsKpiSectionTests {
     @Test
     func deltaToneMatchesPositiveNegativeAndNeutralChanges() {
-        #expect(InsightsChange.make(current: 12, previous: 10) == InsightsChange(text: "+20%", tone: .positive))
-        #expect(InsightsChange.make(current: 8, previous: 10) == InsightsChange(text: "-20%", tone: .negative))
-        #expect(InsightsChange.make(current: 10, previous: 10) == InsightsChange(text: "0%", tone: .neutral))
-        #expect(InsightsChange.make(current: 4, previous: 0) == InsightsChange(text: "New activity", tone: .positive))
-        #expect(InsightsChange.make(current: 0, previous: 0) == InsightsChange(text: "No change", tone: .neutral))
+        #expect(InsightsChange.make(current: 12, previous: 10) == InsightsChange(text: "+20%", tone: .positive, kind: .percentage))
+        #expect(InsightsChange.make(current: 8, previous: 10) == InsightsChange(text: "-20%", tone: .negative, kind: .percentage))
+        #expect(InsightsChange.make(current: 10, previous: 10) == InsightsChange(text: "0%", tone: .neutral, kind: .percentage))
+        #expect(InsightsChange.make(current: 4, previous: 0) == InsightsChange(text: "New activity", tone: .positive, kind: .newActivity))
+        #expect(InsightsChange.make(current: 0, previous: 0) == InsightsChange(text: "No change", tone: .neutral, kind: .noChange))
     }
 
     @Test
@@ -26,15 +26,15 @@ struct InsightsKpiSectionTests {
     @Test
     func activationSubtitleReadsNaturallyAcrossSpecialCases() {
         #expect(
-            InsightsKpiFormatter.activationSubtitle(change: InsightsChange(text: "+20%", tone: .positive))
+            InsightsKpiFormatter.activationSubtitle(change: InsightsChange(text: "+20%", tone: .positive, kind: .percentage))
                 == "+20% versus the previous period."
         )
         #expect(
-            InsightsKpiFormatter.activationSubtitle(change: InsightsChange(text: "New activity", tone: .positive))
+            InsightsKpiFormatter.activationSubtitle(change: InsightsChange(text: "New activity", tone: .positive, kind: .newActivity))
                 == "New activity versus the previous period."
         )
         #expect(
-            InsightsKpiFormatter.activationSubtitle(change: InsightsChange(text: "No change", tone: .neutral))
+            InsightsKpiFormatter.activationSubtitle(change: InsightsChange(text: "No change", tone: .neutral, kind: .noChange))
                 == "No change versus the previous period."
         )
     }

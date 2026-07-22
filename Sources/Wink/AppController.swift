@@ -75,7 +75,7 @@ final class AppController {
                 .map { shortcut in
                     CheatSheetRow(
                         id: shortcut.id,
-                        appName: shortcut.appName,
+                        appName: shortcut.displayAppName,
                         bundleIdentifier: shortcut.bundleIdentifier,
                         keyDisplay: ModifierFormatting.displayText(
                             modifierFlags: shortcut.modifierFlags,

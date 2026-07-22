@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import SwiftUI
 
 /// The active-recording composer field. Renders the dashed accent-blue
@@ -23,7 +24,7 @@ struct ShortcutRecorderView: View {
         HStack(spacing: 6) {
             WinkIcon.record.image(size: 11)
                 .foregroundStyle(tint)
-            Text(errorMessage ?? "Recording…")
+            Text(errorMessage ?? String(localized: "Recording…", bundle: WinkResourceBundle.bundle))
                 .font(WinkType.bodyText)
                 .fontWeight(.medium)
                 .foregroundStyle(tint)
@@ -141,12 +142,12 @@ final class RecorderField: NSView {
         let keyEquivalent = keySymbolMapper.keyEquivalent(for: CGKeyCode(event.keyCode))
 
         if modifiers.isEmpty {
-            onErrorChange?("Requires at least one modifier (⌘⌥⌃⇧)")
+            onErrorChange?(String(localized: "Requires at least one modifier (⌘⌥⌃⇧)", bundle: WinkResourceBundle.bundle))
             return
         }
 
         guard let keyEquivalent else {
-            onErrorChange?("Unsupported key — try a letter, number, or F-key")
+            onErrorChange?(String(localized: "Unsupported key — try a letter, number, or F-key", bundle: WinkResourceBundle.bundle))
             return
         }
 

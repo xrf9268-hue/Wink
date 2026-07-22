@@ -29,7 +29,7 @@ struct InsightsAppRow: View {
                             .lineLimit(1)
 
                         if item.count == 0 {
-                            Text("unused")
+                            Text("unused", bundle: WinkResourceBundle.bundle)
                                 .font(WinkType.labelSmall.weight(.semibold))
                                 .foregroundStyle(palette.textTertiary)
                         } else if item.delta.tone != .neutral {
