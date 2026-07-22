@@ -12,6 +12,7 @@ Use this file as a concise operating guide. Treat the detailed repository docs a
 - `docs/handoff-notes.md` for recent validation status and open follow-up work
 - `docs/lessons-learned.md` for operational and troubleshooting lessons
 - `docs/loop-prompt.md` and `docs/loop-job-guide.md` for review gates and automation workflow
+- `.claude/skills/pr-review-loop/SKILL.md` for the layered PR review protocol (local Codex pre-push gate, bot semantics, merge checklist)
 
 ## Environment and platform constraints
 
