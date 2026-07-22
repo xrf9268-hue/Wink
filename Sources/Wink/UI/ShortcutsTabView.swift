@@ -178,7 +178,7 @@ struct ShortcutsListRowPresentation {
         lastUsed: Date? = nil,
         now: Date = Date()
     ) {
-        title = shortcut.appName
+        title = shortcut.displayAppName
         let usageSummary = String(localized: "\(usageCount)× past 7 days", bundle: WinkResourceBundle.bundle)
         usageText = usageSummary
 
@@ -311,7 +311,7 @@ struct ShortcutsTabView: View {
         }
 
         return editor.shortcuts.filter { shortcut in
-            shortcut.appName.localizedCaseInsensitiveContains(query)
+            shortcut.displayAppName.localizedCaseInsensitiveContains(query)
                 || shortcut.displayText.localizedCaseInsensitiveContains(query)
         }
     }
@@ -358,7 +358,15 @@ struct ShortcutsTabView: View {
                                             .foregroundStyle(palette.textTertiary)
                                     } else {
                                         AppIconView(bundleIdentifier: editor.selectedBundleIdentifier, size: 20)
-                                        Text(editor.selectedAppName)
+                                        // `selectedAppName` holds the locale-stable name for a
+                                        // pseudo-target selection (it becomes the persisted
+                                        // appName on Add) — resolve the localized label here,
+                                        // display-only.
+                                        Text(
+                                            editor.selectedBundleIdentifier == AppShortcut.frontmostTargetSentinelBundleIdentifier
+                                                ? AppShortcut.frontmostTargetDisplayName
+                                                : editor.selectedAppName
+                                        )
                                             .font(WinkType.bodyText)
                                             .foregroundStyle(palette.textPrimary)
                                             .lineLimit(1)
@@ -782,11 +790,11 @@ struct ShortcutsTabView: View {
 
                             ForEach(plan.conflictEntries) { entry in
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("\(entry.imported.resolvedAppName) · \(entry.imported.displayText)")
+                                    Text("\(entry.imported.displayAppName) · \(entry.imported.displayText)")
                                         .font(WinkType.labelSmall)
                                         .foregroundStyle(palette.textPrimary)
                                     if let conflictingShortcut = entry.conflictingShortcut {
-                                        Text("Conflicts with \(conflictingShortcut.appName) · \(conflictingShortcut.displayText)", bundle: WinkResourceBundle.bundle)
+                                        Text("Conflicts with \(conflictingShortcut.displayAppName) · \(conflictingShortcut.displayText)", bundle: WinkResourceBundle.bundle)
                                             .font(WinkType.labelSmall)
                                             .foregroundStyle(palette.textSecondary)
                                     }

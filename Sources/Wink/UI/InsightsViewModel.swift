@@ -182,7 +182,7 @@ final class InsightsViewModel {
         self.unusedShortcutNames = shortcuts
             .filter(\.isEnabled)
             .filter { (snapshot.unusedCounts[$0.id] ?? 0) == 0 }
-            .map(\.appName)
+            .map(\.displayAppName)
 
         var ranked: [RankedShortcut] = []
         for (id, count) in snapshot.counts {
@@ -190,7 +190,7 @@ final class InsightsViewModel {
             ranked.append(
                 RankedShortcut(
                     id: id,
-                    appName: shortcut.appName,
+                    appName: shortcut.displayAppName,
                     bundleIdentifier: shortcut.bundleIdentifier,
                     count: count
                 )

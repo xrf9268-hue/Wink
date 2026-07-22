@@ -92,4 +92,59 @@ struct LocalizationTests {
         let sub = try subBundle(forLocalization: "zh-Hans")
         #expect(sub.localizedString(forKey: "Current App", value: "«miss»", table: nil) == "当前应用")
     }
+
+    /// AppEntry.frontmostTarget.name is exactly what `ShortcutsTabView`'s
+    /// picker `onSelect` copies into `ShortcutEditorState.selectedAppName`,
+    /// which `addShortcut()` then persists verbatim as the new shortcut's
+    /// `appName` — this is the actual "new pseudo-target shortcut" data
+    /// path, not just a constant comparison. It must resolve to the plain
+    /// English literal "Current App" (`frontmostTargetStableName`), never
+    /// the localized `frontmostTargetDisplayName`, regardless of what the
+    /// catalog's zh-Hans translation says — shortcuts.json / exported
+    /// .winkrecipe content must not depend on the active system language
+    /// (#323's locale-stable-persistence principle).
+    @Test
+    func newPseudoTargetShortcutPersistsTheStableNameNotTheLocalizedLabel() {
+        #expect(AppShortcut.frontmostTargetStableName == "Current App")
+        #expect(AppEntry.frontmostTarget.name == "Current App")
+
+        let persisted = AppShortcut(
+            appName: AppEntry.frontmostTarget.name,
+            bundleIdentifier: AppEntry.frontmostTarget.bundleIdentifier,
+            keyEquivalent: "j",
+            modifierFlags: ["command"],
+            target: .frontmostApp
+        )
+        #expect(persisted.appName == "Current App")
+
+        // WinkRecipeImportPlanner's resolvedAppName for an imported
+        // frontmost-app row must be the same stable value (see
+        // PerShortcutBehaviorOverrideTests.recipeWithFrontmostTargetExportsAsV2AndPlansAvailable
+        // for the full encode/decode/import round trip).
+        #expect(AppShortcut.frontmostTargetStableName == AppEntry.frontmostTarget.name)
+    }
+
+    /// Display sites must resolve a pseudo-target row's name through
+    /// `displayAppName`, independent of whatever stable string is actually
+    /// stored in `appName`.
+    @Test
+    func displayAppNameLocalizesSentinelRowsButPassesOtherAppsThrough() {
+        let pseudo = AppShortcut(
+            appName: AppShortcut.frontmostTargetStableName,
+            bundleIdentifier: AppShortcut.frontmostTargetSentinelBundleIdentifier,
+            keyEquivalent: "j",
+            modifierFlags: ["command"],
+            target: .frontmostApp
+        )
+        #expect(pseudo.appName == "Current App")
+        #expect(pseudo.displayAppName == AppShortcut.frontmostTargetDisplayName)
+
+        let regular = AppShortcut(
+            appName: "Safari",
+            bundleIdentifier: "com.apple.Safari",
+            keyEquivalent: "s",
+            modifierFlags: ["command"]
+        )
+        #expect(regular.displayAppName == "Safari")
+    }
 }

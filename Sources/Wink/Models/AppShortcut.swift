@@ -13,6 +13,18 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
     /// a normal shortcut and the availability filter silently disables it
     /// instead of misfiring.
     static let frontmostTargetSentinelBundleIdentifier = "wink.target.frontmost-app"
+
+    /// Locale-stable name persisted into `appName` for frontmost-app
+    /// pseudo-target shortcuts (new-shortcut creation, recipe import). Never
+    /// localize this constant — it is written into shortcuts.json and
+    /// exported .winkrecipe files, so it must stay identical across a system
+    /// language switch (same locale-stable-persistence principle as #323).
+    /// Use `frontmostTargetDisplayName` / `displayAppName` for anything
+    /// rendered on screen.
+    static let frontmostTargetStableName = "Current App"
+
+    /// Localized label for the frontmost-app pseudo-target. Display-only —
+    /// never persist this; see `frontmostTargetStableName`.
     static var frontmostTargetDisplayName: String {
         String(localized: "Current App", bundle: WinkResourceBundle.bundle)
     }
@@ -31,6 +43,18 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
 
     var isFrontmostAppTarget: Bool {
         target == .frontmostApp
+    }
+
+    /// `appName` resolved for display: the frontmost-app pseudo-target's
+    /// persisted stable name renders as its localized label; every other
+    /// shortcut's `appName` is already display-ready (an installed app's
+    /// real name) and passes through unchanged. Use this at every UI site
+    /// that renders a shortcut's app name — never render `appName` directly
+    /// where a pseudo-target might appear.
+    var displayAppName: String {
+        bundleIdentifier == Self.frontmostTargetSentinelBundleIdentifier
+            ? Self.frontmostTargetDisplayName
+            : appName
     }
 
     init(

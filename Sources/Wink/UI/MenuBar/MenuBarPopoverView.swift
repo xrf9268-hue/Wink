@@ -27,7 +27,7 @@ final class MenuBarPopoverModel {
         let isUnavailable: Bool
 
         var title: String {
-            shortcut.appName
+            shortcut.displayAppName
         }
 
         var statusText: String? {

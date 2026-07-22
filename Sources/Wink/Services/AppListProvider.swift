@@ -14,9 +14,16 @@ struct AppEntry: Identifiable, Hashable {
     /// Pinned picker entry for frontmost-app shortcuts. The URL is a
     /// placeholder — the sentinel bundle names no installed app; selection
     /// is recognized by bundle identifier, never by path.
+    ///
+    /// `name` is the locale-stable name (not the localized display label):
+    /// selecting this entry copies `name` straight into a new shortcut's
+    /// persisted `appName` (see `ShortcutsTabView`'s picker `onSelect`), so
+    /// it must stay `AppShortcut.frontmostTargetStableName`. Display sites
+    /// (the picker row itself, and any shortcut's `displayAppName`) resolve
+    /// the localized label separately.
     static let frontmostTarget = AppEntry(
         id: AppShortcut.frontmostTargetSentinelBundleIdentifier,
-        name: AppShortcut.frontmostTargetDisplayName,
+        name: AppShortcut.frontmostTargetStableName,
         url: URL(fileURLWithPath: "/")
     )
 }

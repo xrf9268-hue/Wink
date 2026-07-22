@@ -134,7 +134,7 @@ final class ShortcutEditorState {
 
         if let conflict = shortcutValidator.conflict(for: candidate, in: shortcuts) {
             conflictMessage = String(
-                localized: "Conflict: \(conflict.existingShortcut.appName) already uses \(conflict.existingShortcut.modifierFlags.joined(separator: "+"))+\(conflict.existingShortcut.keyEquivalent.uppercased())",
+                localized: "Conflict: \(conflict.existingShortcut.displayAppName) already uses \(conflict.existingShortcut.modifierFlags.joined(separator: "+"))+\(conflict.existingShortcut.keyEquivalent.uppercased())",
                 bundle: WinkResourceBundle.bundle
             )
             return

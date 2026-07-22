@@ -116,7 +116,7 @@ import Testing
 
 @Test func targetFieldRoundTripsAndDecodesLeniently() throws {
     let shortcut = AppShortcut(
-        appName: AppShortcut.frontmostTargetDisplayName,
+        appName: AppShortcut.frontmostTargetStableName,
         bundleIdentifier: AppShortcut.frontmostTargetSentinelBundleIdentifier,
         keyEquivalent: "`",
         modifierFlags: ["command"],
@@ -140,7 +140,7 @@ import Testing
 @Test func recipeWithFrontmostTargetExportsAsV2AndPlansAvailable() throws {
     let codec = WinkRecipeCodec()
     let pseudo = AppShortcut(
-        appName: AppShortcut.frontmostTargetDisplayName,
+        appName: AppShortcut.frontmostTargetStableName,
         bundleIdentifier: AppShortcut.frontmostTargetSentinelBundleIdentifier,
         keyEquivalent: "`",
         modifierFlags: ["command"],
@@ -156,6 +156,9 @@ import Testing
     let imported = try #require(plan.readyEntries.first?.imported.makeAppShortcut())
     #expect(imported.target == .frontmostApp)
     #expect(imported.bundleIdentifier == AppShortcut.frontmostTargetSentinelBundleIdentifier)
+    // The planner must persist the locale-stable name, not a localized
+    // label, regardless of what the source recipe's own appName said.
+    #expect(imported.appName == AppShortcut.frontmostTargetStableName)
 }
 
 @Test func plainRecipeStillExportsAsV1() throws {
