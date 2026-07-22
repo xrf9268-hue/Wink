@@ -215,7 +215,7 @@
 	<key>Last used —</key>
 	<string>上次使用 —</string>
 	<key>Later</key>
-	<string>以后再说</string>
+	<string>稍后</string>
 	<key>Launch at Login</key>
 	<string>登录时启动</string>
 	<key>Launch at Login is only available after installing Wink.app in the Applications folder and reopening it.</key>
@@ -231,7 +231,7 @@
 	<key>Most used</key>
 	<string>使用最多</string>
 	<key>Needed</key>
-	<string>需要</string>
+	<string>待授权</string>
 	<key>Needed for the current shortcut configuration.</key>
 	<string>当前快捷键配置需要此权限。</string>
 	<key>New Shortcut</key>
@@ -329,7 +329,7 @@
 	<key>Shortcut</key>
 	<string>快捷键</string>
 	<key>Shortcut capture needs attention</key>
-	<string>快捷键捕获需要留意</string>
+	<string>快捷键捕获需要注意</string>
 	<key>Shortcut capture ready</key>
 	<string>快捷键捕获就绪</string>
 	<key>Shortcuts</key>

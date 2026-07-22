@@ -1839,7 +1839,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "以后再说"
+            "value": "稍后"
           }
         }
       }
@@ -1975,7 +1975,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "需要"
+            "value": "待授权"
           }
         }
       }
@@ -2808,7 +2808,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "快捷键捕获需要留意"
+            "value": "快捷键捕获需要注意"
           }
         }
       }
