@@ -1,0 +1,464 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>%@ Last checked %@.</key>
+	<string>%@ Last checked %@.</string>
+	<key>%@ has not been activated in the past 7 days.</key>
+	<string>%@ has not been activated in the past 7 days.</string>
+	<key>%@ have not been activated in the past 7 days.</key>
+	<string>%@ have not been activated in the past 7 days.</string>
+	<key>%@ permission was revoked. Wink needs this permission to work. Please re-enable it in System Settings &gt; Privacy &amp; Security &gt; %@.</key>
+	<string>%@ permission was revoked. Wink needs this permission to work. Please re-enable it in System Settings &gt; Privacy &amp; Security &gt; %@.</string>
+	<key>%@ versus the previous period.</key>
+	<string>%@ versus the previous period.</string>
+	<key>%@, and %lld more have not been activated in the past 7 days.</key>
+	<string>%@, and %lld more have not been activated in the past 7 days.</string>
+	<key>%lld× past 7 days</key>
+	<string>%lld× past 7 days</string>
+	<key>%lld× this period</key>
+	<string>%lld× this period</string>
+	<key>. Tap alone to keep its original behavior.</key>
+	<string>. Tap alone to keep its original behavior.</string>
+	<key>30 days</key>
+	<string>30 days</string>
+	<key>7 days</key>
+	<string>7 days</string>
+	<key>A password field or secure prompt is capturing keyboard input. Hyper and Fn-based shortcuts may not fire until it ends; other standard shortcuts keep working.</key>
+	<string>A password field or secure prompt is capturing keyboard input. Hyper and Fn-based shortcuts may not fire until it ends; other standard shortcuts keep working.</string>
+	<key>Accessibility</key>
+	<string>Accessibility</string>
+	<key>Accessibility permission is required for app switching.</key>
+	<string>Accessibility permission is required for app switching.</string>
+	<key>Accessibility permission needed</key>
+	<string>Accessibility permission needed</string>
+	<key>Activations</key>
+	<string>Activations</string>
+	<key>Add App…</key>
+	<string>Add App…</string>
+	<key>Add Shortcut</key>
+	<string>Add Shortcut</string>
+	<key>All Apps</key>
+	<string>All Apps</string>
+	<key>All shortcuts are paused.</key>
+	<string>All shortcuts are paused.</string>
+	<key>App is currently running</key>
+	<string>App is currently running</string>
+	<key>App unavailable</key>
+	<string>App unavailable</string>
+	<key>Apps you switch to often that have no shortcut yet. Add one in Shortcuts.</key>
+	<string>Apps you switch to often that have no shortcut yet. Add one in Shortcuts.</string>
+	<key>Assumes ~3 seconds per activation.</key>
+	<string>Assumes ~3 seconds per activation.</string>
+	<key>Automatic Updates</key>
+	<string>Automatic Updates</string>
+	<key>Automatic update checks and downloads are enabled.</key>
+	<string>Automatic update checks and downloads are enabled.</string>
+	<key>Automatic update checks are off. Use Check for Updates… to check manually.</key>
+	<string>Automatic update checks are off. Use Check for Updates… to check manually.</string>
+	<key>Automatic updates become available after this build is configured with a signed Sparkle appcast feed.</key>
+	<string>Automatic updates become available after this build is configured with a signed Sparkle appcast feed.</string>
+	<key>Automatic updates, your call</key>
+	<string>Automatic updates, your call</string>
+	<key>Bind a keystroke to launch, toggle, or hide an app.</key>
+	<string>Bind a keystroke to launch, toggle, or hide an app.</string>
+	<key>Browse...</key>
+	<string>Browse...</string>
+	<key>Cancel</key>
+	<string>Cancel</string>
+	<key>Check for Updates…</key>
+	<string>Check for Updates…</string>
+	<key>Checking for Updates</key>
+	<string>Checking for Updates</string>
+	<key>Checking for updates…</key>
+	<string>Checking for updates…</string>
+	<key>Checking, download progress, and installs now happen right here — no more separate update dialogs.</key>
+	<string>Checking, download progress, and installs now happen right here — no more separate update dialogs.</string>
+	<key>Choose an app…</key>
+	<string>Choose an app…</string>
+	<key>Clear</key>
+	<string>Clear</string>
+	<key>Click to record</key>
+	<string>Click to record</string>
+	<key>Click to review and install.</key>
+	<string>Click to review and install.</string>
+	<key>Click to view progress.</key>
+	<string>Click to view progress.</string>
+	<key>Conflict: %@ already uses %@+%@</key>
+	<string>Conflict: %@ already uses %@+%@</string>
+	<key>Conflicts</key>
+	<string>Conflicts</string>
+	<key>Conflicts with %@ · %@</key>
+	<string>Conflicts with %@ · %@</string>
+	<key>Consecutive active days</key>
+	<string>Consecutive active days</string>
+	<key>Consecutive days with at least one activation.</key>
+	<string>Consecutive days with at least one activation.</string>
+	<key>Contacting the update feed…</key>
+	<string>Contacting the update feed…</string>
+	<key>Couldn't find this app. Rebind it to restore the shortcut.</key>
+	<string>Couldn't find this app. Rebind it to restore the shortcut.</string>
+	<key>Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.</key>
+	<string>Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.</string>
+	<key>Current App</key>
+	<string>Current App</string>
+	<key>Cycle</key>
+	<string>Cycle</string>
+	<key>Default</key>
+	<string>Default</string>
+	<key>Delete Shortcut</key>
+	<string>Delete Shortcut</string>
+	<key>Disabled</key>
+	<string>Disabled</string>
+	<key>Download and install new versions in the background.</key>
+	<string>Download and install new versions in the background.</string>
+	<key>Downloading Update</key>
+	<string>Downloading Update</string>
+	<key>Downloading update — v%@</key>
+	<string>Downloading update — v%@</string>
+	<key>Downloading version %@…%@</key>
+	<string>Downloading version %@…%@</string>
+	<key>Downloading… %@</key>
+	<string>Downloading… %@</string>
+	<key>Downloading… %@ of %@</key>
+	<string>Downloading… %@ of %@</string>
+	<key>Drag to reorder</key>
+	<string>Drag to reorder</string>
+	<key>Enable All Shortcuts</key>
+	<string>Enable All Shortcuts</string>
+	<key>Exported %lld shortcuts to %@</key>
+	<string>Exported %lld shortcuts to %@</string>
+	<key>Export…</key>
+	<string>Export…</string>
+	<key>Failed to export recipe: %@</key>
+	<string>Failed to export recipe: %@</string>
+	<key>Failed to import recipe: %@</key>
+	<string>Failed to import recipe: %@</string>
+	<key>Filter…</key>
+	<string>Filter…</string>
+	<key>Focus</key>
+	<string>Focus</string>
+	<key>Full release notes</key>
+	<string>Full release notes</string>
+	<key>General</key>
+	<string>General</string>
+	<key>Granted</key>
+	<string>Granted</string>
+	<key>Hand shortcuts back to the system while a listed app (VM, remote desktop) is frontmost.</key>
+	<string>Hand shortcuts back to the system while a listed app (VM, remote desktop) is frontmost.</string>
+	<key>Hide</key>
+	<string>Hide</string>
+	<key>Hide the icon if you prefer a minimal menu bar.</key>
+	<string>Hide the icon if you prefer a minimal menu bar.</string>
+	<key>Hold</key>
+	<string>Hold</string>
+	<key>Hold Caps Lock as a Hyper modifier alongside normal shortcut combos.</key>
+	<string>Hold Caps Lock as a Hyper modifier alongside normal shortcut combos.</string>
+	<key>Hold Caps Lock without a second key to see all shortcuts.</key>
+	<string>Hold Caps Lock without a second key to see all shortcuts.</string>
+	<key>Hold Caps Lock without a second key to see all shortcuts. Needs Hyper Key enabled.</key>
+	<string>Hold Caps Lock without a second key to see all shortcuts. Needs Hyper Key enabled.</string>
+	<key>Hold Caps Lock without a second key to see all shortcuts. Needs at least one enabled Hyper shortcut.</key>
+	<string>Hold Caps Lock without a second key to see all shortcuts. Needs at least one enabled Hyper shortcut.</string>
+	<key>Hourly heatmap</key>
+	<string>Hourly heatmap</string>
+	<key>How Wink reacts when the target app is already active.</key>
+	<string>How Wink reacts when the target app is already active.</string>
+	<key>Hyper Key</key>
+	<string>Hyper Key</string>
+	<key>Hyper cheat sheet</key>
+	<string>Hyper cheat sheet</string>
+	<key>Hyper key path</key>
+	<string>Hyper key path</string>
+	<key>Hyper shortcuts are configured, but shortcut capture is not active.</key>
+	<string>Hyper shortcuts are configured, but shortcut capture is not active.</string>
+	<key>Import Preview</key>
+	<string>Import Preview</string>
+	<key>Import and export .winkrecipe files, with usage insights in Settings.</key>
+	<string>Import and export .winkrecipe files, with usage insights in Settings.</string>
+	<key>Import or export shortcuts</key>
+	<string>Import or export shortcuts</string>
+	<key>Import preview ready: %lld ready, %lld conflicts, %lld unresolved</key>
+	<string>Import preview ready: %lld ready, %lld conflicts, %lld unresolved</string>
+	<key>Imported %lld shortcuts</key>
+	<string>Imported %lld shortcuts</string>
+	<key>Import…</key>
+	<string>Import…</string>
+	<key>Input Monitoring</key>
+	<string>Input Monitoring</string>
+	<key>Input Monitoring is not required for the current shortcuts.</key>
+	<string>Input Monitoring is not required for the current shortcuts.</string>
+	<key>Input Monitoring needed</key>
+	<string>Input Monitoring needed</string>
+	<key>Insights</key>
+	<string>Insights</string>
+	<key>Insights period</key>
+	<string>Insights period</string>
+	<key>Install Update</key>
+	<string>Install Update</string>
+	<key>Install and Relaunch</key>
+	<string>Install and Relaunch</string>
+	<key>Installing Update</key>
+	<string>Installing Update</string>
+	<key>Installing the update — Wink will relaunch shortly.</key>
+	<string>Installing the update — Wink will relaunch shortly.</string>
+	<key>Installing… Wink will relaunch shortly.</key>
+	<string>Installing… Wink will relaunch shortly.</string>
+	<key>Installs when Wink quits. Click to install now.</key>
+	<string>Installs when Wink quits. Click to install now.</string>
+	<key>Last used %@</key>
+	<string>Last used %@</string>
+	<key>Last used —</key>
+	<string>Last used —</string>
+	<key>Later</key>
+	<string>Later</string>
+	<key>Launch at Login</key>
+	<string>Launch at Login</string>
+	<key>Launch at Login is only available after installing Wink.app in the Applications folder and reopening it.</key>
+	<string>Launch at Login is only available after installing Wink.app in the Applications folder and reopening it.</string>
+	<key>Less work between keypress and app switch, especially with minimized windows.</key>
+	<string>Less work between keypress and app switch, especially with minimized windows.</string>
+	<key>Limited · Secure Input</key>
+	<string>Limited · Secure Input</string>
+	<key>Manage…</key>
+	<string>Manage…</string>
+	<key>Master switch for global shortcut routing.</key>
+	<string>Master switch for global shortcut routing.</string>
+	<key>Most used</key>
+	<string>Most used</string>
+	<key>Needed</key>
+	<string>Needed</string>
+	<key>Needed for the current shortcut configuration.</key>
+	<string>Needed for the current shortcut configuration.</string>
+	<key>New Shortcut</key>
+	<string>New Shortcut</string>
+	<key>New activity</key>
+	<string>New activity</string>
+	<key>New activity versus the previous period.</key>
+	<string>New activity versus the previous period.</string>
+	<key>No change</key>
+	<string>No change</string>
+	<key>No change versus the previous period.</key>
+	<string>No change versus the previous period.</string>
+	<key>No shortcuts configured</key>
+	<string>No shortcuts configured</string>
+	<key>No shortcuts match your filter</key>
+	<string>No shortcuts match your filter</string>
+	<key>No shortcuts match your search</key>
+	<string>No shortcuts match your search</string>
+	<key>No shortcuts used in this period</key>
+	<string>No shortcuts used in this period</string>
+	<key>Not required for the current shortcut configuration.</key>
+	<string>Not required for the current shortcut configuration.</string>
+	<key>Not used yet</key>
+	<string>Not used yet</string>
+	<key>OK</key>
+	<string>OK</string>
+	<key>Open Login Items Settings</key>
+	<string>Open Login Items Settings</string>
+	<key>Opens Wink in the menu bar when you sign in.</key>
+	<string>Opens Wink in the menu bar when you sign in.</string>
+	<key>Optional</key>
+	<string>Optional</string>
+	<key>Past 7 days</key>
+	<string>Past 7 days</string>
+	<key>Pause all shortcuts</key>
+	<string>Pause all shortcuts</string>
+	<key>Pause in exception apps</key>
+	<string>Pause in exception apps</string>
+	<key>Paused</key>
+	<string>Paused</string>
+	<key>Paused · %@</key>
+	<string>Paused · %@</string>
+	<key>Permissions</key>
+	<string>Permissions</string>
+	<key>Preparing the downloaded update…</key>
+	<string>Preparing the downloaded update…</string>
+	<key>Preparing update…</key>
+	<string>Preparing update…</string>
+	<key>Press a key combination…</key>
+	<string>Press a key combination…</string>
+	<key>Press once to open or focus the target app, press again to hide it.</key>
+	<string>Press once to open or focus the target app, press again to hide it.</string>
+	<key>Privacy</key>
+	<string>Privacy</string>
+	<key>Quit Wink</key>
+	<string>Quit Wink</string>
+	<key>Ready</key>
+	<string>Ready</string>
+	<key>Recently Used</key>
+	<string>Recently Used</string>
+	<key>Recording…</key>
+	<string>Recording…</string>
+	<key>Refresh</key>
+	<string>Refresh</string>
+	<key>Release Notes</key>
+	<string>Release Notes</string>
+	<key>Remove %@</key>
+	<string>Remove %@</string>
+	<key>Replace Existing</key>
+	<string>Replace Existing</string>
+	<key>Request Access</key>
+	<string>Request Access</string>
+	<key>Request Accessibility</key>
+	<string>Request Accessibility</string>
+	<key>Request Input Monitoring</key>
+	<string>Request Input Monitoring</string>
+	<key>Required for global shortcuts</key>
+	<string>Required for global shortcuts</string>
+	<key>Requires at least one modifier (⌘⌥⌃⇧)</key>
+	<string>Requires at least one modifier (⌘⌥⌃⇧)</string>
+	<key>Review</key>
+	<string>Review</string>
+	<key>Routes global shortcuts.</key>
+	<string>Routes global shortcuts.</string>
+	<key>Running</key>
+	<string>Running</string>
+	<key>Search apps...</key>
+	<string>Search apps...</string>
+	<key>Search shortcuts</key>
+	<string>Search shortcuts</string>
+	<key>Settings…</key>
+	<string>Settings…</string>
+	<key>Shareable shortcut sets</key>
+	<string>Shareable shortcut sets</string>
+	<key>Shortcut</key>
+	<string>Shortcut</string>
+	<key>Shortcut capture needs attention</key>
+	<string>Shortcut capture needs attention</string>
+	<key>Shortcut capture ready</key>
+	<string>Shortcut capture ready</string>
+	<key>Shortcuts</key>
+	<string>Shortcuts</string>
+	<key>Shortcuts paused</key>
+	<string>Shortcuts paused</string>
+	<key>Show Menu Bar Icon</key>
+	<string>Show Menu Bar Icon</string>
+	<key>Skip Conflicts</key>
+	<string>Skip Conflicts</string>
+	<key>Skip This Version</key>
+	<string>Skip This Version</string>
+	<key>Snappier shortcuts</key>
+	<string>Snappier shortcuts</string>
+	<key>Some shortcuts need Input Monitoring before Wink can capture them.</key>
+	<string>Some shortcuts need Input Monitoring before Wink can capture them.</string>
+	<key>Some shortcuts need Input Monitoring.</key>
+	<string>Some shortcuts need Input Monitoring.</string>
+	<key>Standard and Hyper shortcuts are active.</key>
+	<string>Standard and Hyper shortcuts are active.</string>
+	<key>Standard shortcut capture failed to start. Check logs for the Carbon handler status.</key>
+	<string>Standard shortcut capture failed to start. Check logs for the Carbon handler status.</string>
+	<key>Standard shortcuts are active.</key>
+	<string>Standard shortcuts are active.</string>
+	<key>Standard shortcuts failed to register. Check logs for the blocked key combinations.</key>
+	<string>Standard shortcuts failed to register. Check logs for the blocked key combinations.</string>
+	<key>Standard shortcuts ready</key>
+	<string>Standard shortcuts ready</string>
+	<key>Startup, keyboard behavior, and updates.</key>
+	<string>Startup, keyboard behavior, and updates.</string>
+	<key>Streak</key>
+	<string>Streak</string>
+	<key>Suggest shortcuts from app usage</key>
+	<string>Suggest shortcuts from app usage</string>
+	<key>Suggested shortcuts</key>
+	<string>Suggested shortcuts</string>
+	<key>Support</key>
+	<string>Support</string>
+	<key>System Settings &gt; Input Monitoring can lag behind live access. If the affected shortcuts work here, Wink already has the permission it needs.</key>
+	<string>System Settings &gt; Input Monitoring can lag behind live access. If the affected shortcuts work here, Wink already has the permission it needs.</string>
+	<key>Target app</key>
+	<string>Target app</string>
+	<key>The Settings toggle is live: background checks and downloads, on or off.</key>
+	<string>The Settings toggle is live: background checks and downloads, on or off.</string>
+	<key>The last automatic update check failed: %@</key>
+	<string>The last automatic update check failed: %@</string>
+	<key>Time saved</key>
+	<string>Time saved</string>
+	<key>Tip: hold</key>
+	<string>Tip: hold</string>
+	<key>Today</key>
+	<string>Today</string>
+	<key>Toggle</key>
+	<string>Toggle</string>
+	<key>Toggle Sidebar</key>
+	<string>Toggle Sidebar</string>
+	<key>Toggle apps with global shortcuts</key>
+	<string>Toggle apps with global shortcuts</string>
+	<key>Unresolved</key>
+	<string>Unresolved</string>
+	<key>Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.</key>
+	<string>Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.</string>
+	<key>Unsupported key — try a letter, number, or F-key</key>
+	<string>Unsupported key — try a letter, number, or F-key</string>
+	<key>Unused shortcuts this week</key>
+	<string>Unused shortcuts this week</string>
+	<key>Update Available</key>
+	<string>Update Available</string>
+	<key>Update Check Failed</key>
+	<string>Update Check Failed</string>
+	<key>Update Ready</key>
+	<string>Update Ready</string>
+	<key>Update available — v%@</key>
+	<string>Update available — v%@</string>
+	<key>Update ready — v%@</key>
+	<string>Update ready — v%@</string>
+	<key>Updates are available in packaged builds with a signed update feed.</key>
+	<string>Updates are available in packaged builds with a signed update feed.</string>
+	<key>Updates, the Wink way</key>
+	<string>Updates, the Wink way</string>
+	<key>Usage trends for your saved shortcuts.</key>
+	<string>Usage trends for your saved shortcuts.</string>
+	<key>Version %@</key>
+	<string>Version %@</string>
+	<key>Version %@ is available. Use Check for Updates… to review and install.</key>
+	<string>Version %@ is available. Use Check for Updates… to review and install.</string>
+	<key>Version %@ is downloaded and installs when Wink quits. Use Check for Updates… to install now.</key>
+	<string>Version %@ is downloaded and installs when Wink quits. Use Check for Updates… to install now.</string>
+	<key>View release notes</key>
+	<string>View release notes</string>
+	<key>What's New in Wink</key>
+	<string>What's New in Wink</string>
+	<key>When Frontmost</key>
+	<string>When Frontmost</string>
+	<key>When target is frontmost</key>
+	<string>When target is frontmost</string>
+	<key>Wink %@ is available — you have %@. The update downloads in the background and installs on relaunch.</key>
+	<string>Wink %@ is available — you have %@. The update downloads in the background and installs on relaunch.</string>
+	<key>Wink %@ is downloaded. Relaunch now to finish installing, or keep working — it installs when Wink quits.</key>
+	<string>Wink %@ is downloaded. Relaunch now to finish installing, or keep working — it installs when Wink quits.</string>
+	<key>Wink %@ is the latest version.</key>
+	<string>Wink %@ is the latest version.</string>
+	<key>Wink Update</key>
+	<string>Wink Update</string>
+	<key>Wink checks for updates automatically and asks before downloading.</key>
+	<string>Wink checks for updates automatically and asks before downloading.</string>
+	<key>Wink couldn't disable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
+	<string>Wink couldn't disable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</string>
+	<key>Wink couldn't enable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
+	<string>Wink couldn't enable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</string>
+	<key>Wink couldn't find its login item configuration. This usually points to an installation or packaging problem.</key>
+	<string>Wink couldn't find its login item configuration. This usually points to an installation or packaging problem.</string>
+	<key>Wink is registered to launch at login, but macOS still needs your approval in Login Items.</key>
+	<string>Wink is registered to launch at login, but macOS still needs your approval in Login Items.</string>
+	<key>Wink needs Accessibility access to route global shortcuts.</key>
+	<string>Wink needs Accessibility access to route global shortcuts.</string>
+	<key>Wink: Permission Lost</key>
+	<string>Wink: Permission Lost</string>
+	<key>You're Up to Date</key>
+	<string>You're Up to Date</string>
+	<key>Your Shortcuts · %lld</key>
+	<string>Your Shortcuts · %lld</string>
+	<key>for a Hyper shortcut.</key>
+	<string>for a Hyper shortcut.</string>
+	<key>to act as</key>
+	<string>to act as</string>
+	<key>today</key>
+	<string>today</string>
+	<key>unused</key>
+	<string>unused</string>
+	<key>vs previous period</key>
+	<string>vs previous period</string>
+	<key>~3 seconds each</key>
+	<string>~3 seconds each</string>
+</dict>
+</plist>
