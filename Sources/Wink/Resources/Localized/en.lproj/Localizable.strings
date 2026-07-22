@@ -246,6 +246,8 @@
 	<string>No change</string>
 	<key>No change versus the previous period.</key>
 	<string>No change versus the previous period.</string>
+	<key>No matching apps</key>
+	<string>No matching apps</string>
 	<key>No shortcuts configured</key>
 	<string>No shortcuts configured</string>
 	<key>No shortcuts match your filter</key>
@@ -322,8 +324,12 @@
 	<string>Routes global shortcuts.</string>
 	<key>Running</key>
 	<string>Running</string>
+	<key>Search Palette</key>
+	<string>Search Palette</string>
 	<key>Search apps...</key>
 	<string>Search apps...</string>
+	<key>Search apps…</key>
+	<string>Search apps…</string>
 	<key>Search shortcuts</key>
 	<string>Search shortcuts</string>
 	<key>Settings…</key>
@@ -392,6 +398,8 @@
 	<string>Toggle Sidebar</string>
 	<key>Toggle apps with global shortcuts</key>
 	<string>Toggle apps with global shortcuts</string>
+	<key>Type an app name and press Return to switch to it.</key>
+	<string>Type an app name and press Return to switch to it.</string>
 	<key>Unresolved</key>
 	<string>Unresolved</string>
 	<key>Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.</key>
