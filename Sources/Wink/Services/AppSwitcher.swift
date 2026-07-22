@@ -2553,9 +2553,14 @@ extension AppSwitcher {
     @discardableResult
     func focusPickedWindow(windowID: CGWindowID, session: WindowPickerSession) -> Bool {
         guard let element = session.elementsByWindowID[windowID] else { return false }
+        // Exact-pid match only: the session's AX elements and window IDs
+        // belong to the process that was listed. If it exited or relaunched
+        // while the picker was open, acting on a same-bundle successor would
+        // aim stale elements (and possibly reused window IDs) at a process
+        // that never owned them — fail the selection instead.
         guard let runningApp = appLookupClient.runningApplications(session.bundleIdentifier)
-                .first(where: { $0.processIdentifier == session.pid })
-                ?? appLookupClient.runningApplications(session.bundleIdentifier).first else {
+                .first(where: { $0.processIdentifier == session.pid }) else {
+            DiagnosticLog.log("PICKER[\(session.displayName)]: FOCUS_REJECTED pid=\(session.pid) reason=process_gone")
             return false
         }
 

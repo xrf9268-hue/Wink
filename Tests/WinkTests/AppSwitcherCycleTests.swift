@@ -1364,3 +1364,52 @@ func focusPickedWindowRunsTheActivationTrioAndInvalidatesTheCycleCursor() {
     #expect(recorder.raisedWindowIDs.last == 202)
     #expect(coordinator.session == nil, "a manual pick invalidates the cycle cursor")
 }
+
+@Test @MainActor
+func focusPickedWindowRejectsASessionWhoseProcessIsGone() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for stale-pid test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [201, 202])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 201 },
+        recorder: recorder,
+        clock: clock
+    )
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"],
+        holdAction: .windowPicker
+    )
+    guard var session = switcher.windowPickerSession(for: shortcut) else {
+        Issue.record("Expected a picker session")
+        return
+    }
+    // Model a process that exited/relaunched while the picker was open: the
+    // session's pid no longer matches any running instance of the bundle.
+    session = WindowPickerSession(
+        bundleIdentifier: session.bundleIdentifier,
+        displayName: session.displayName,
+        pid: session.pid &+ 1,
+        items: session.items,
+        elementsByWindowID: session.elementsByWindowID
+    )
+
+    let focused = switcher.focusPickedWindow(windowID: 201, session: session)
+
+    #expect(focused == false, "stale elements must never aim at a same-bundle successor process")
+    #expect(recorder.activatedWindowIDs.isEmpty)
+    #expect(recorder.madeKeyWindowIDs.isEmpty)
+    #expect(recorder.raisedWindowIDs.isEmpty)
+}

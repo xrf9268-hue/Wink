@@ -175,7 +175,13 @@ final class ShortcutManager {
             }
         )
         holdGestureArbiter = arbiter
-        captureCoordinator.setPhasedKeyObserver { [weak arbiter] keyPress, phase in
+        captureCoordinator.setPhasedKeyObserver { [weak self, weak arbiter] keyPress, phase in
+            // Delivery-time pause guard: a phased event queued on the main
+            // queue from the tap thread can land after a pause transition
+            // already reset the arbiter — starting a fresh gesture then
+            // would let its deadline open the picker (or dispatch a tap)
+            // into a paused session.
+            guard let self, !self.effectivePaused else { return }
             arbiter?.handle(keyPress, phase)
         }
     }
@@ -190,6 +196,12 @@ final class ShortcutManager {
     }
 
     private func handleHoldGesture(_ keyPress: KeyPress) {
+        // Second layer of the late-delivery guard: an arbiter deadline
+        // scheduled before a pause can still fire after it.
+        guard !effectivePaused else {
+            diagnosticClient.log("HOLD_GESTURE_IGNORED: capture paused")
+            return
+        }
         guard !interactivePanelSessionActive else {
             diagnosticClient.log("HOLD_GESTURE_IGNORED: interactive panel session active")
             return
