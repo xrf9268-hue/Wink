@@ -135,6 +135,66 @@ actor TimeZoneAlignedUsageTracker: UsageTracking {
     }
 }
 
+/// Reports nonzero usage for exactly one shortcut id, zero (absent) for
+/// every other — enough to distinguish "genuinely unused" from "excluded
+/// from the nudge entirely" in `unusedShortcutNudgeExcludesTheSearchPaletteTrigger`.
+private actor SingleShortcutUsageTracker: UsageTracking {
+    let usedShortcutId: UUID
+
+    init(usedShortcutId: UUID) {
+        self.usedShortcutId = usedShortcutId
+    }
+
+    func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] { [] }
+    func deleteUsage(shortcutId: UUID) {}
+    func usageCounts(days: Int, relativeTo now: Date) async -> [UUID: Int] { [usedShortcutId: 5] }
+    func dailyCounts(days: Int, relativeTo now: Date) async -> [String: [(date: String, count: Int)]] { [:] }
+    func totalSwitches(days: Int, relativeTo now: Date) async -> Int { 5 }
+    func hourlyCounts(days: Int, relativeTo now: Date) async -> [HourlyUsageBucket] { [] }
+    func previousPeriodTotal(days: Int, relativeTo now: Date) async -> Int { 0 }
+    func streakDays(relativeTo now: Date) async -> Int { 0 }
+    func usageTimeZone() async -> TimeZone { .current }
+}
+
+/// #356: the search-palette trigger never records per-shortcut usage (its
+/// key match dispatches through `onSearchPaletteTriggered`, not
+/// `ShortcutManager.trigger(_:)`), so without an explicit exclusion it would
+/// always read as zero-count and get nudged for removal — even a trigger the
+/// user presses constantly. A genuinely unused real app shortcut (IINA)
+/// stays in the nudge; the trigger never appears in it at all.
+@Test @MainActor
+func unusedShortcutNudgeExcludesTheSearchPaletteTrigger() async {
+    let safari = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "s",
+        modifierFlags: ["command"]
+    )
+    let iina = AppShortcut(
+        appName: "IINA",
+        bundleIdentifier: "com.colliderli.iina",
+        keyEquivalent: "i",
+        modifierFlags: ["command", "option"]
+    )
+    let paletteTrigger = AppShortcut(
+        appName: AppShortcut.searchPaletteTargetStableName,
+        bundleIdentifier: AppShortcut.searchPaletteTargetSentinelBundleIdentifier,
+        keyEquivalent: "space",
+        modifierFlags: ["command", "option"],
+        target: .searchPalette
+    )
+    let store = ShortcutStore()
+    store.replaceAll(with: [safari, iina, paletteTrigger])
+
+    let viewModel = InsightsViewModel(
+        usageTracker: SingleShortcutUsageTracker(usedShortcutId: safari.id),
+        shortcutStore: store
+    )
+    await viewModel.refresh(for: .week)
+
+    #expect(viewModel.unusedShortcutNames == ["IINA"])
+}
+
 @Test @MainActor
 func latestPeriodWinsWhenRefreshesOverlap() async {
     let shortcutId = UUID()

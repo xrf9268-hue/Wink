@@ -137,6 +137,36 @@ import Testing
     #expect(lenient.target == nil)
 }
 
+// MARK: - Search-palette trigger target (#356)
+
+@Test func searchPaletteTargetRoundTripsAndDecodesLeniently() throws {
+    let shortcut = AppShortcut(
+        appName: AppShortcut.searchPaletteTargetStableName,
+        bundleIdentifier: AppShortcut.searchPaletteTargetSentinelBundleIdentifier,
+        keyEquivalent: "space",
+        modifierFlags: ["command", "option"],
+        target: .searchPalette
+    )
+    let decoded = try JSONDecoder().decode(AppShortcut.self, from: JSONEncoder().encode(shortcut))
+    #expect(decoded.target == .searchPalette)
+    #expect(decoded.isSearchPaletteTarget)
+    #expect(!decoded.isFrontmostAppTarget)
+
+    // A build that predates `.searchPalette` (or any hand-edited/future
+    // rawValue) decodes leniently to nil — same guarantee the frontmost
+    // pseudo-target already relies on, exercised here against this specific
+    // sentinel bundle so a regression in either target's leniency shows up
+    // independently.
+    let json = """
+    {"id":"22222222-2222-2222-2222-222222222222","appName":"Search Palette",
+     "bundleIdentifier":"wink.target.search-palette","keyEquivalent":"space",
+     "modifierFlags":["command","option"],"isEnabled":true,"target":"someFutureTarget"}
+    """
+    let lenient = try JSONDecoder().decode(AppShortcut.self, from: Data(json.utf8))
+    #expect(lenient.target == nil)
+    #expect(!lenient.isSearchPaletteTarget)
+}
+
 @Test func recipeWithFrontmostTargetExportsAsV2AndPlansAvailable() throws {
     let codec = WinkRecipeCodec()
     let pseudo = AppShortcut(
