@@ -108,9 +108,9 @@ struct InsightsKpiSection: View {
             spacing: 12
         ) {
             metricCard(
-                title: "Activations",
+                title: String(localized: "Activations", bundle: WinkResourceBundle.bundle),
                 value: totalCount.formatted(.number.grouping(.automatic)),
-                subtitle: "vs previous period",
+                subtitle: String(localized: "vs previous period", bundle: WinkResourceBundle.bundle),
                 help: InsightsKpiFormatter.activationSubtitle(change: activationDelta),
                 badge: {
                     InsightsKpiDelta(change: activationDelta)
@@ -125,10 +125,10 @@ struct InsightsKpiSection: View {
             )
 
             metricCard(
-                title: "Time saved",
+                title: String(localized: "Time saved", bundle: WinkResourceBundle.bundle),
                 value: InsightsKpiFormatter.timeSavedText(totalActivations: totalCount),
-                subtitle: "~3 seconds each",
-                help: "Assumes ~3 seconds per activation.",
+                subtitle: String(localized: "~3 seconds each", bundle: WinkResourceBundle.bundle),
+                help: String(localized: "Assumes ~3 seconds per activation.", bundle: WinkResourceBundle.bundle),
                 badge: {
                     EmptyView()
                 },
@@ -138,10 +138,10 @@ struct InsightsKpiSection: View {
             )
 
             metricCard(
-                title: "Streak",
+                title: String(localized: "Streak", bundle: WinkResourceBundle.bundle),
                 value: "\(currentStreakDays)d",
-                subtitle: "Consecutive active days",
-                help: "Consecutive days with at least one activation.",
+                subtitle: String(localized: "Consecutive active days", bundle: WinkResourceBundle.bundle),
+                help: String(localized: "Consecutive days with at least one activation.", bundle: WinkResourceBundle.bundle),
                 badge: {
                     EmptyView()
                 },
