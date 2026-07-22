@@ -63,14 +63,21 @@ costs a bot review cycle and pollutes the PR timeline.
 
 ## Layer 3 — merge checklist
 
+- The PR body satisfies the `Validate PR metadata` gate: a closing
+  keyword (`Fixes #N`) linking an issue, and the template's three
+  `Validation Status` checklist lines kept verbatim with EXACTLY ONE
+  checked. The gate computes runtime-sensitive paths itself and rejects
+  `Not runtime-sensitive` for them — the checkbox is what it enforces;
+  no label substitutes for it.
 - All checks green on the HEAD commit (a clean bot pass on an older
   commit does not count).
 - Zero unresolved actionable threads.
-- Runtime-sensitive PRs (per AGENTS.md's definition) carry the
-  `macOS runtime validation pending` label and enumerate their physical
-  validation items in the PR body; the label flips to complete only after
-  on-device validation, typically batched (see the batch-validation
-  issues, e.g. #371).
+- Runtime-sensitive PRs (per AGENTS.md's definition) ADDITIONALLY carry
+  the `macOS runtime validation pending` label (tracking convention on
+  top of the enforced checkbox) and enumerate their physical validation
+  items in the PR body; the label flips to complete only after on-device
+  validation, typically batched (see the batch-validation issues, e.g.
+  #371).
 - Bot findings verify against source before accepting: the bot has been
   wrong about liveness before (a "dead" catalog key with a real consumer)
   — confirm each finding the same way you'd confirm a human reviewer's.
