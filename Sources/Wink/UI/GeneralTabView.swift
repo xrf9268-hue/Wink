@@ -31,6 +31,8 @@ struct GeneralTabView: View {
 
                 keyboardCard(importPreviewActive: importPreviewActive)
 
+                searchPaletteCard
+
                 WinkCard(
                     title: {
                         Text("Permissions", bundle: WinkResourceBundle.bundle)
@@ -289,6 +291,95 @@ struct GeneralTabView: View {
                     }
                     .padding(.leading, 2)
                 }
+            }
+        }
+    }
+
+    /// The #356 search-to-switch palette's own settings surface: off by
+    /// default (no shortcut recorded), one dedicated recorder here rather
+    /// than a row in the per-app Shortcuts list — it targets no app, so it
+    /// doesn't belong in the app picker. The Permissions card immediately
+    /// below already surfaces degraded-capture state for every shortcut,
+    /// this one included, so no separate banner is needed here.
+    private var searchPaletteCard: some View {
+        WinkCard(
+            title: {
+                Text("Search Palette", bundle: WinkResourceBundle.bundle)
+            }
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    Text("Type an app name and press Return to switch to it.", bundle: WinkResourceBundle.bundle)
+                        .font(WinkType.labelSmall)
+                        .foregroundStyle(palette.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    searchPaletteAccessory
+                        .frame(width: 200, alignment: .trailing)
+                }
+
+                if let message = editor.searchPaletteConflictMessage {
+                    Text(message)
+                        .font(WinkType.labelSmall)
+                        .foregroundStyle(palette.red)
+                }
+            }
+            .padding(14)
+        }
+    }
+
+    @ViewBuilder
+    private var searchPaletteAccessory: some View {
+        if let shortcut = editor.searchPaletteShortcut {
+            HStack(spacing: 8) {
+                if shortcut.isHyper {
+                    WinkHyperBadge()
+                }
+
+                Text(shortcut.displayText)
+                    .font(WinkType.monoBadge)
+                    .tracking(0.5)
+                    .foregroundStyle(palette.textPrimary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(palette.controlBgRest)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .stroke(palette.controlBorder, lineWidth: 0.5)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+
+                WinkSwitch(isOn: Binding(
+                    get: { shortcut.isEnabled },
+                    set: { editor.setSearchPaletteEnabled($0) }
+                ), size: .small)
+
+                Button {
+                    editor.removeSearchPaletteShortcut()
+                } label: {
+                    WinkIcon.close.image(size: 9)
+                        .foregroundStyle(palette.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Delete Shortcut", bundle: WinkResourceBundle.bundle))
+            }
+        } else if editor.isRecordingSearchPaletteShortcut {
+            ShortcutRecorderView(
+                recordedShortcut: Binding(
+                    get: { editor.recordedSearchPaletteShortcut },
+                    set: { newValue in
+                        editor.recordedSearchPaletteShortcut = newValue
+                        if let newValue {
+                            editor.commitSearchPaletteShortcut(newValue)
+                        }
+                    }
+                ),
+                isRecording: $editor.isRecordingSearchPaletteShortcut
+            )
+            .frame(height: 28)
+        } else {
+            ShortcutRecorderIdleField(recordedShortcut: nil) {
+                editor.isRecordingSearchPaletteShortcut = true
             }
         }
     }

@@ -157,7 +157,12 @@ final class MenuBarPopoverModel {
     }
 
     func refresh() {
-        let shortcuts = shortcutStore.shortcuts
+        // The #356 search-palette trigger targets no app — like
+        // `ShortcutsTabView`'s per-app list, this quick-launch status list
+        // excludes it rather than showing it permanently flagged "App
+        // unavailable" (its sentinel bundle never resolves to an installed
+        // app or a running process).
+        let shortcuts = shortcutStore.shortcuts.filter { !$0.isSearchPaletteTarget }
         shortcutStatusProvider.track(shortcuts)
         shortcutRows = shortcuts.map { shortcut in
             let status = shortcutStatusProvider.status(for: shortcut)

@@ -66,6 +66,7 @@ final class AppController {
             if paused {
                 self?.cheatSheetHUD.reset()
                 self?.windowPickerHUD.dismiss()
+                self?.searchPaletteHUD.dismiss()
                 self?.hyperKeyService.suspendMappingForPause()
             } else {
                 self?.hyperKeyService.resumeMappingAfterPause()
@@ -79,6 +80,54 @@ final class AppController {
         },
         focusWindow: { [weak self] windowID, session in
             self?.appSwitcher.focusPickedWindow(windowID: windowID, session: session) ?? false
+        }
+    )
+    /// Search-to-switch palette (#356). Shares the exact single-flag gate
+    /// #352 wired for the window picker (`setInteractivePanelSessionActive`)
+    /// — since both controllers read/write the SAME shared bool and each
+    /// panel's own trigger keypress is swallowed by `ShortcutManager`
+    /// whenever that bool is already true, only one of the two panels can
+    /// ever be open at a time with no extra coordination code: whichever
+    /// trigger fires first wins, and the other's trigger keypress is a
+    /// silent no-op (consumed, no dispatch) until the first panel closes.
+    private lazy var searchPaletteHUD = SearchPaletteHUDController(
+        onSessionStateChange: { [weak self] active in
+            self?.shortcutManager.setInteractivePanelSessionActive(active)
+        },
+        candidatesProvider: { [weak self] in
+            guard let self else { return [] }
+            // A workspace snapshot taken once per open, not re-queried per
+            // keystroke — see SearchPaletteMatcher.swift for the latency
+            // rationale behind building candidates once up front.
+            let runningBundleIdentifiers = Set(
+                NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
+            )
+            return SearchPaletteCandidateBuilder.build(
+                apps: self.appListProvider.allApps,
+                shortcuts: self.shortcutStore.shortcuts,
+                runningBundleIdentifiers: runningBundleIdentifiers
+            )
+        },
+        activate: { [weak self] entry in
+            guard let self else { return false }
+            // NOT toggleApplication's default semantics: a plain call would
+            // hide the target if it's already frontmost (real toggle-off),
+            // which is wrong for "type a name, land on that app". Forcing
+            // `.focus` makes the already-frontmost branch a pure re-focus
+            // (see AppSwitcher.performFrontmostFocus) — activation only,
+            // independent of whatever frontmost behavior the user may have
+            // separately configured for a real shortcut targeting the same
+            // app. Calling AppSwitcher directly (not shortcutManager.trigger)
+            // matches the wink:// URL scheme's .toggle handling below: this
+            // ad hoc shortcut has no persisted id, so recording "usage"
+            // against it would just orphan a UUID no UI ever shows.
+            return self.appSwitcher.toggleApplication(for: AppShortcut(
+                appName: entry.name,
+                bundleIdentifier: entry.bundleIdentifier,
+                keyEquivalent: "",
+                modifierFlags: [],
+                frontmostBehaviorOverride: .focus
+            ))
         }
     )
     private lazy var appPreferences = AppPreferences(
@@ -293,6 +342,16 @@ final class AppController {
                 return
             }
             self.windowPickerHUD.present(session: session)
+        }
+        // Search-to-switch palette (#356): a plain key-down match on the
+        // dedicated trigger shortcut opens the palette. Pre-warm the app
+        // list now (not on first open) so a trigger pressed any time after
+        // launch sees an already-scanned, cached `AppListProvider.allApps`
+        // — the open-to-first-keystroke latency budget has no room for a
+        // synchronous filesystem scan.
+        appListProvider.refreshIfNeeded()
+        shortcutManager.onSearchPaletteTriggered = { [weak self] in
+            self?.searchPaletteHUD.present()
         }
 
         Self.runStartupSequence(
