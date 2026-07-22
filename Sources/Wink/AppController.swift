@@ -224,9 +224,15 @@ final class AppController {
         }
         // Pause (manual or exception-rule) stops the Hyper provider without
         // an `ended` event; a presented sheet must not outlive capture.
+        // The hidutil mapping follows the same composed bit (#375): a paused
+        // Wink consumes no F19, so Caps Lock must revert to native behavior
+        // for the paused interval and come back on resume.
         shortcutManager.onCapturePauseStateChange = { [weak self] paused in
             if paused {
                 self?.cheatSheetHUD.reset()
+                self?.hyperKeyService.suspendMappingForPause()
+            } else {
+                self?.hyperKeyService.resumeMappingAfterPause()
             }
         }
 

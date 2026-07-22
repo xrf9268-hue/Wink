@@ -52,15 +52,25 @@ final class HyperKeyService {
         set { defaults.set(newValue, forKey: enabledKey) }
     }
 
+    /// True while the mapping is temporarily lifted for a capture pause.
+    /// Orthogonal to `isEnabled` (the persisted user intent): pause never
+    /// persists, so suspension must never touch the defaults-backed bit.
+    private(set) var isSuspended = false
+
     func enable() {
-        guard applyMapping() else {
-            logger.error("Failed to enable Hyper Key")
-            DiagnosticLog.log("Failed to enable Hyper Key")
-            return
+        // While suspended, applying the mapping would hand the paused
+        // foreground app a consumer-less F19 — the exact #375 failure. The
+        // intent persists; the mapping lands on resume.
+        if !isSuspended {
+            guard applyMapping() else {
+                logger.error("Failed to enable Hyper Key")
+                DiagnosticLog.log("Failed to enable Hyper Key")
+                return
+            }
         }
         isEnabled = true
-        logger.info("Hyper Key enabled")
-        DiagnosticLog.log("Hyper Key enabled")
+        logger.info("Hyper Key enabled (suspended=\(self.isSuspended))")
+        DiagnosticLog.log("Hyper Key enabled (suspended=\(isSuspended))")
     }
 
     func disable() {
@@ -70,6 +80,7 @@ final class HyperKeyService {
             return
         }
         isEnabled = false
+        isSuspended = false
         logger.info("Hyper Key disabled")
         DiagnosticLog.log("Hyper Key disabled")
     }
@@ -78,6 +89,10 @@ final class HyperKeyService {
     /// Returns whether the Hyper key mapping is actually applied after the call.
     func reapplyIfNeeded() -> Bool {
         guard isEnabled else { return false }
+        // Launching into a persisted pause suspends before this runs
+        // (AppPreferences init fires the pause transition); re-applying here
+        // would silently undo that suspension.
+        guard !isSuspended else { return false }
         guard applyMapping() else {
             logger.error("Failed to re-apply Hyper Key mapping on launch")
             DiagnosticLog.log("Failed to re-apply Hyper Key mapping on launch")
@@ -86,6 +101,36 @@ final class HyperKeyService {
         logger.info("Hyper Key mapping re-applied on launch")
         DiagnosticLog.log("Hyper Key mapping re-applied on launch")
         return true
+    }
+
+    /// Hands Caps Lock back to the system for the duration of a capture
+    /// pause (#375): a paused Wink consumes no F19, so leaving the mapping
+    /// applied turns Caps Lock into a dead key for the very app (VM, remote
+    /// desktop) the pause exists to protect. Mapping-only: `isEnabled`
+    /// stays untouched, matching the never-persist rule for auto-pause.
+    func suspendMappingForPause() {
+        guard isEnabled, !isSuspended else { return }
+        guard clearMapping() else {
+            logger.error("Failed to suspend Hyper Key mapping for pause")
+            DiagnosticLog.log("Failed to suspend Hyper Key mapping for pause")
+            return
+        }
+        isSuspended = true
+        logger.info("Hyper Key mapping suspended for pause")
+        DiagnosticLog.log("Hyper Key mapping suspended for pause")
+    }
+
+    func resumeMappingAfterPause() {
+        guard isSuspended else { return }
+        isSuspended = false
+        guard isEnabled else { return }
+        guard applyMapping() else {
+            logger.error("Failed to restore Hyper Key mapping after pause")
+            DiagnosticLog.log("Failed to restore Hyper Key mapping after pause")
+            return
+        }
+        logger.info("Hyper Key mapping restored after pause")
+        DiagnosticLog.log("Hyper Key mapping restored after pause")
     }
 
     /// Clear mapping on app exit to restore normal Caps Lock behavior.
