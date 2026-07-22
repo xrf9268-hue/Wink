@@ -6,6 +6,7 @@ This directory maps the maintainer-facing docs for Wink. Last reviewed: 2026-04-
 - [`architecture.md`](./architecture.md) — current architecture and module responsibilities (the source of truth for app shell, toggle pipeline, and activation; supersedes everything in `archive/`)
 - [`github-automation.md`](./github-automation.md) — PR metadata enforcement, deterministic review gating, the checked-in `main` ruleset artifact, Wink Backlog project reconciliation, runtime-validation field sync, and required repository secrets
 - [`privacy.md`](./privacy.md) — current local-data, permissions, and network-behavior note for the in-app Privacy link
+- [`localization.md`](./localization.md) — String Catalog architecture (xcstrings source of truth → generated `.lproj`), how to add a string or a locale, and the `swift build`-doesn't-compile-xcstrings gotcha
 - [`signing-and-release.md`](./signing-and-release.md) — local Sparkle-aware packaging, signed appcast generation, Cloudflare R2 upload requirements, internal-package artifacts, signing, notarization, and the tag-driven public release flow
 
 ## Maintainer Notes
