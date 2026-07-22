@@ -39,9 +39,22 @@ private final class CycleActionRecorder {
 private struct CycleTestWindows {
     let elements: [AXUIElement]
     let idsByIndex: [CGWindowID]
+    /// IDs modeling auxiliary `kAXWindows` elements (Split View divider
+    /// class: non-AXWindow role, valid window ID) that the eligibility
+    /// filter must exclude from rotation (#376).
+    let ineligibleIDs: Set<CGWindowID>
+    /// IDs whose role read transiently fails (nil eligibility). A reference
+    /// box, not a struct field: the fixture closures capture this struct by
+    /// value, and a test must be able to establish a session first and THEN
+    /// inject the failure for the next press.
+    final class RoleFailureBox {
+        var ids: Set<CGWindowID> = []
+    }
+    let roleReadFailures = RoleFailureBox()
 
-    init(ids: [CGWindowID]) {
+    init(ids: [CGWindowID], ineligibleIDs: Set<CGWindowID> = []) {
         self.idsByIndex = ids
+        self.ineligibleIDs = ineligibleIDs
         self.elements = (0..<ids.count).map { AXUIElementCreateApplication(pid_t(90_000 + $0)) }
     }
 
@@ -55,6 +68,12 @@ private struct CycleTestWindows {
     func element(for id: CGWindowID) -> AXUIElement? {
         guard let index = idsByIndex.firstIndex(of: id) else { return nil }
         return elements[index]
+    }
+
+    func isContentWindow(_ element: AXUIElement) -> Bool? {
+        guard let id = windowID(for: element) else { return false }
+        if roleReadFailures.ids.contains(id) { return nil }
+        return !ineligibleIDs.contains(id)
     }
 }
 
@@ -134,6 +153,9 @@ private func makeCycleSwitcher(
             },
             focusedWindowID: { _ in
                 focusedWindowID()
+            },
+            isContentWindow: { element in
+                windows.isContentWindow(element)
             },
             raiseWindow: { element in
                 if let id = windows.windowID(for: element) {
@@ -1059,4 +1081,191 @@ func hudAppearsFromSecondConsecutivePressWithPositionAndTitle() {
     #expect(recorder.hudPresentations.first?.targetWindowID == 103)
     #expect(recorder.hudPresentations.last?.stepIndex == 1)
     #expect(recorder.hudPresentations.last?.windowTitle == "Window 101")
+}
+
+// MARK: - Auxiliary-window eligibility (#376)
+
+@Test @MainActor
+func cycleExcludesAuxiliaryWindowsFromRotationAndHUD() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for eligibility test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    // 103 models the Split View divider: a kAXWindows element with a valid
+    // window ID but a non-AXWindow role. Raising it resizes the panes, so
+    // it must never enter rotation, receive activation, or reach the HUD.
+    let windows = CycleTestWindows(ids: [101, 102, 103], ineligibleIDs: [103])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: bundleIdentifier
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    // Three presses over two eligible windows must wrap 102 → 101 → 102
+    // without ever touching 103.
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    clock.time += 0.2
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    clock.time += 0.2
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+
+    #expect(recorder.activatedWindowIDs == [102, 101, 102])
+    #expect(recorder.madeKeyWindowIDs == [102, 101, 102])
+    #expect(recorder.raisedWindowIDs == [102, 101, 102])
+    #expect(!recorder.activatedWindowIDs.contains(103))
+    #expect(!recorder.raisedWindowIDs.contains(103))
+    #expect(recorder.hudPresentations.allSatisfy { $0.windowCount == 2 })
+    #expect(recorder.hudPresentations.allSatisfy { $0.targetWindowID != 103 })
+    #expect(recorder.hideCalls == 0)
+}
+
+@Test @MainActor
+func cycleWithOneContentWindowPlusAuxiliaryFallsBackToStandardToggle() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for eligibility fallback test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    // One real window + the divider: after filtering there is nothing to
+    // cycle through, so the press must take standard toggle semantics
+    // instead of "cycling" between a window and the divider.
+    let windows = CycleTestWindows(ids: [101, 102], ineligibleIDs: [102])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    _ = switcher.toggleApplication(for: shortcut)
+
+    #expect(recorder.raisedWindowIDs.isEmpty)
+    #expect(recorder.madeKeyWindowIDs.isEmpty)
+    #expect(!recorder.activatedWindowIDs.contains(102))
+    #expect(recorder.hudPresentations.isEmpty)
+}
+
+@Test @MainActor
+func transientRoleReadFailureMidGestureSwallowsThePress() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for role-failure test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: bundleIdentifier
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    // Establish a live session, then make one in-rotation window's role
+    // read fail transiently on the next press.
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102])
+    windows.roleReadFailures.ids = [101]
+    clock.time += 0.2
+
+    // Same invariant as the windows-read-failure path: the press is
+    // swallowed — no hide, no raise, session preserved rather than
+    // collapsing to a sub-two-window standard toggle.
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.hideCalls == 0)
+    #expect(recorder.raisedWindowIDs == [102])
+
+    // Failure clears → the gesture continues from the preserved cursor.
+    windows.roleReadFailures.ids = []
+    clock.time += 0.2
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102, 101])
+    #expect(recorder.hideCalls == 0)
+}
+
+@Test @MainActor
+func firstPressRoleReadFailureBelowTwoWindowsSwallowsInsteadOfHiding() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for first-press role-failure test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    // No prior press: no live session exists. One of two real windows fails
+    // its role read transiently; the readable remainder (one window) must
+    // not be misread as "insufficient windows" and hide the active app.
+    windows.roleReadFailures.ids = [102]
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: bundleIdentifier
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true, "press swallowed, not declined into the hide lanes")
+    #expect(recorder.hideCalls == 0)
+    #expect(recorder.raisedWindowIDs.isEmpty)
+
+    // Failure clears → the next press cycles normally.
+    windows.roleReadFailures.ids = []
+    clock.time += 0.5
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102])
+    #expect(recorder.hideCalls == 0)
 }
