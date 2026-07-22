@@ -1224,3 +1224,48 @@ func transientRoleReadFailureMidGestureSwallowsThePress() {
     #expect(recorder.raisedWindowIDs == [102, 101])
     #expect(recorder.hideCalls == 0)
 }
+
+@Test @MainActor
+func firstPressRoleReadFailureBelowTwoWindowsSwallowsInsteadOfHiding() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for first-press role-failure test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [101, 102])
+    // No prior press: no live session exists. One of two real windows fails
+    // its role read transiently; the readable remainder (one window) must
+    // not be misread as "insufficient windows" and hide the active app.
+    windows.roleReadFailures.ids = [102]
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: bundleIdentifier
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true, "press swallowed, not declined into the hide lanes")
+    #expect(recorder.hideCalls == 0)
+    #expect(recorder.raisedWindowIDs.isEmpty)
+
+    // Failure clears → the next press cycles normally.
+    windows.roleReadFailures.ids = []
+    clock.time += 0.5
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102])
+    #expect(recorder.hideCalls == 0)
+}

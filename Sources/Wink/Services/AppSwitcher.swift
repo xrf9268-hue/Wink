@@ -1483,17 +1483,22 @@ final class AppSwitcher: AppSwitching {
             elementsByWindowID[windowID] = window
         }
         if roleReadFailed,
-           windowCycleCoordinator.liveSession(for: shortcut.bundleIdentifier) != nil {
-            // Same invariant as the windows-read guard above: a transient AX
-            // failure mid-gesture (here: a role read on a window already in
-            // rotation) must swallow the press, not shrink the list below
-            // two and fall through to the hide lanes.
-            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: CYCLE role read failed mid-gesture — press swallowed")
+           windowCycleCoordinator.liveSession(for: shortcut.bundleIdentifier) != nil
+               || elementsByWindowID.count < 2 {
+            // Same invariant as the windows-read guard above, extended to the
+            // partial case: a transient role-read failure must never be the
+            // reason a cycle press falls through to the hide lanes. Covered
+            // both mid-gesture (session cursor preserved) and on a first
+            // press whose readable remainder dropped below two — hiding the
+            // active app because one role read hiccuped is worse than one
+            // dead press. With no failure, the <2 fallback to standard
+            // toggle is unchanged.
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: CYCLE role read failed — press swallowed")
             logToggleTrace(
                 family: .decision,
                 bundleIdentifier: shortcut.bundleIdentifier,
                 event: "cycle_read_failed",
-                reason: "role_read_failed_mid_gesture",
+                reason: "role_read_failed",
                 activationPath: nil
             )
             return true
