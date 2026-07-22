@@ -71,6 +71,11 @@ final class ShortcutManager {
     /// Fires whenever the composed pause state transitions (manual pause,
     /// exception auto-pause, either direction).
     var onCapturePauseStateChange: (@MainActor (_ paused: Bool) -> Void)?
+    /// Fires when a hold-enabled shortcut's chord is held past the hold
+    /// threshold. The consumer (AppController) owns what a hold action does;
+    /// the manager only resolves the gesture and the matched shortcut.
+    var onHoldActionTriggered: (@MainActor (AppShortcut) -> Void)?
+    private var holdGestureArbiter: HoldGestureArbiter?
 
     private var effectivePaused: Bool {
         shortcutsPaused || autoPausedByException
@@ -108,6 +113,7 @@ final class ShortcutManager {
     }
 
     func start() {
+        wireHoldGestureArbiterIfNeeded()
         rebuildIndex()
         let inputMonitoringRequired = captureCoordinator.inputMonitoringRequired
         let ready: Bool
@@ -139,7 +145,48 @@ final class ShortcutManager {
         hasStarted = false
         permissionTimer?.invalidate()
         permissionTimer = nil
+        holdGestureArbiter?.reset()
         captureCoordinator.stop()
+    }
+
+    private func wireHoldGestureArbiterIfNeeded() {
+        guard holdGestureArbiter == nil else { return }
+        let arbiter = HoldGestureArbiter(
+            onTap: { [weak self] keyPress, pressDuration in
+                // The tap-latency cost of opting into a hold action, measured
+                // per gesture: a tap dispatches only at its up edge (or the
+                // lost-keyUp probe), so added latency == press duration.
+                self?.diagnosticClient.log(
+                    "HOLD_GESTURE_TAP: keyCode=\(keyPress.keyCode) durationMs=\(Int(pressDuration * 1000))"
+                )
+                _ = self?.handleKeyPress(keyPress)
+            },
+            onHold: { [weak self] keyPress in
+                self?.handleHoldGesture(keyPress)
+            }
+        )
+        holdGestureArbiter = arbiter
+        captureCoordinator.setPhasedKeyObserver { [weak arbiter] keyPress, phase in
+            arbiter?.handle(keyPress, phase)
+        }
+    }
+
+    private func handleHoldGesture(_ keyPress: KeyPress) {
+        let key = keyMatcher.trigger(for: keyPress)
+        guard let match = triggerIndex[key], match.holdAction != nil else {
+            // The phased set and the trigger index are rebuilt from the same
+            // store, but a hold can resolve after a configuration change
+            // removed the action mid-gesture; a stale hold degrades to a tap
+            // rather than silently dropping the press.
+            diagnosticClient.log(
+                "HOLD_GESTURE_STALE: keyCode=\(keyPress.keyCode) fallback=tap"
+            )
+            _ = handleKeyPress(keyPress)
+            return
+        }
+        logger.info("MATCHED_HOLD: \(match.appName) - \(match.bundleIdentifier)")
+        diagnosticClient.log("MATCHED_HOLD: \(match.appName) - \(match.bundleIdentifier)")
+        onHoldActionTriggered?(match)
     }
 
     /// Persists to disk first and only then updates the in-memory store, so a
@@ -225,6 +272,9 @@ final class ShortcutManager {
     private func applyEffectivePauseTransition() {
         let paused = effectivePaused
         onCapturePauseStateChange?(paused)
+        // A gesture straddling the pause transition must not resolve into a
+        // tap or hold inside the paused session.
+        holdGestureArbiter?.reset()
         if !paused {
             _ = refreshShortcutAvailabilityIfNeeded()
         }

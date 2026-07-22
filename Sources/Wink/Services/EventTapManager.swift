@@ -85,6 +85,29 @@ func handleEventTapEvent(
     case .keyDown:
         let isAutorepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
         if isAutorepeat {
+            // Autorepeats pass through unswallowed (pre-existing contract) —
+            // except for phased chords: a hold gesture's chord autorepeating
+            // into the frontmost app would type into the very window the user
+            // is holding to act on. Swallowed with no delivery; the arbiter's
+            // in-flight gesture already owns the hold. The isEmpty guard
+            // keeps the no-hold-shortcuts hot path at one lock acquisition.
+            let repeatKeyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+            let swallowAutorepeat = box.withLock { () -> Bool in
+                guard !box._phasedChords.isEmpty else { return false }
+                var currentFlags = event.flags.strippingCapsLock
+                if box._isHyperHeld {
+                    currentFlags = currentFlags.union([.maskControl, .maskAlternate, .maskShift, .maskCommand])
+                }
+                let flags = NSEvent.ModifierFlags(rawValue: UInt(currentFlags.rawValue))
+                let keyPress = KeyPress(
+                    keyCode: repeatKeyCode,
+                    modifiers: KeyMatcher.normalizedFlags(from: flags)
+                )
+                return box._phasedChords.contains(keyPress)
+            }
+            if swallowAutorepeat {
+                return nil
+            }
             return Unmanaged.passUnretained(event)
         }
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
