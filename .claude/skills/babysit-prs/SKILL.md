@@ -125,7 +125,7 @@ Max 3 fix-build-test cycles. If still failing → comment, **NEXT ITERATION**.
 
 **5b. Code quality**: If `/simplify` is available, run once before committing. If unavailable, note in PR body.
 
-**5c. Commit and create PR**:
+**5c. Pre-push gate, commit, and create PR**: For runtime-sensitive diffs (per AGENTS.md's definition), pr-review-loop's Layer 1 applies HERE, before the push: run the local Codex deep review over the branch diff and fix confirmed findings first — every post-push fix round costs a bot cycle. Then:
 ```bash
 git add -A
 git commit -m "<type>: <concise description> (#<N>)"
@@ -142,7 +142,7 @@ EOF
 )" --base main
 ```
 
-**5d. Review gate (bounded)**: For runtime-sensitive diffs (per AGENTS.md's definition), pr-review-loop's Layer 1 applies: run the local Codex deep review BEFORE the first push and fix confirmed findings — every post-push fix round costs a bot cycle. Then fire reviews in parallel where possible:
+**5d. Review gate (bounded)**: The pre-push local review already ran in 5c for runtime-sensitive diffs. Fire the remaining reviews in parallel where possible:
 1. `/codex:review --base main --background` first (async, if available)
 2. `/code-review` (sync, if available)
 3. Bot reviews arrive asynchronously — handled in Step 1c of a future iteration
