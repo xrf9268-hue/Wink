@@ -182,6 +182,28 @@ final class AppController {
             self?.updatePanelPresenter.dismiss()
         }
 
+        // Pause (manual or exception-rule) stops the Hyper provider without
+        // an `ended` event; a presented sheet must not outlive capture.
+        // The hidutil mapping follows the same composed bit (#375): a paused
+        // Wink consumes no F19, so Caps Lock must revert to native behavior
+        // for the paused interval and come back on resume.
+        //
+        // Installed BEFORE the first `appPreferences` access below: that
+        // lazy init replays a persisted manual pause, and the exception
+        // monitor configuration can auto-pause immediately. Those initial
+        // transitions must reach this handler — otherwise a launch into a
+        // paused state never suspends, the startup reapply re-arms the
+        // mapping, and Caps Lock stays a dead F19 key until the user
+        // toggles pause (the #375 failure, at launch).
+        shortcutManager.onCapturePauseStateChange = { [weak self] paused in
+            if paused {
+                self?.cheatSheetHUD.reset()
+                self?.hyperKeyService.suspendMappingForPause()
+            } else {
+                self?.hyperKeyService.resumeMappingAfterPause()
+            }
+        }
+
         // Exception rules: configure from persisted preferences, follow
         // future edits, and start following frontmost changes.
         appPreferences.onFrontmostExceptionConfigurationChange = { [weak self] in
@@ -222,20 +244,6 @@ final class AppController {
         shortcutManager.onCaptureStatusChange = { [weak self] in
             self?.appPreferences.refreshPermissions()
         }
-        // Pause (manual or exception-rule) stops the Hyper provider without
-        // an `ended` event; a presented sheet must not outlive capture.
-        // The hidutil mapping follows the same composed bit (#375): a paused
-        // Wink consumes no F19, so Caps Lock must revert to native behavior
-        // for the paused interval and come back on resume.
-        shortcutManager.onCapturePauseStateChange = { [weak self] paused in
-            if paused {
-                self?.cheatSheetHUD.reset()
-                self?.hyperKeyService.suspendMappingForPause()
-            } else {
-                self?.hyperKeyService.resumeMappingAfterPause()
-            }
-        }
-
         // Hold events arrive on the tap thread; hop once to the main actor
         // via the main QUEUE, whose FIFO ordering keeps began/ended in
         // emission order (sibling Tasks carry no such guarantee, and a
