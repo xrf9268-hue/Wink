@@ -13,7 +13,7 @@ Core repository state sync now lives in GitHub Actions:
 /loop 30m /babysit-prs
 ```
 
-The skill lives at `.claude/skills/babysit-prs/SKILL.md` (in this repo) and uses progressive disclosure:
+The skill lives at `.claude/skills/babysit-prs/SKILL.md` (in this repo). Review and merge mechanics are delegated to `.claude/skills/pr-review-loop/SKILL.md` — the single source of truth for the local pre-push review gate on runtime-sensitive diffs, the Codex bot's trigger/terminal semantics, thread etiquette, and the merge checklist. babysit-prs keeps the loop-specific machinery and uses progressive disclosure:
 
 - `SKILL.md` — main pipeline: safety constraints, iteration guard, workflow steps
 - `references/review-gates.md` — three-tier review tool behavior and degraded-tooling rules
