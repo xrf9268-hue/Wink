@@ -156,6 +156,15 @@ final class AppSwitcher: AppSwitching {
     struct WindowCycleClient {
         let windowID: (AXUIElement) -> CGWindowID?
         let focusedWindowID: (pid_t) -> CGWindowID?
+        /// Cycle eligibility: `kAXWindows` also surfaces auxiliary elements
+        /// with valid window IDs — most visibly the native Split View
+        /// divider (role AXUnknown, ~13px wide, untitled, transient ID).
+        /// Raising one moves the divider and resizes both panes (#376), so
+        /// rotation must only ever contain real content windows. A failed
+        /// role read counts as ineligible (fail closed): the windows list
+        /// itself was readable, and misclassifying a divider as a window is
+        /// destructive while dropping a window from one rotation is not.
+        let isContentWindow: (AXUIElement) -> Bool
         let raiseWindow: (AXUIElement) -> Void
         let unminimizeWindow: (AXUIElement) -> Void
         /// Seam over the WindowServer event post so tests never send real
@@ -1453,7 +1462,8 @@ final class AppSwitcher: AppSwitching {
 
         var elementsByWindowID: [CGWindowID: AXUIElement] = [:]
         for window in windows {
-            guard let windowID = windowCycleClient.windowID(window),
+            guard windowCycleClient.isContentWindow(window),
+                  let windowID = windowCycleClient.windowID(window),
                   elementsByWindowID[windowID] == nil else {
                 continue
             }
@@ -2378,6 +2388,12 @@ extension AppSwitcher.WindowCycleClient {
                 return nil
             }
             return windowID
+        },
+        isContentWindow: { element in
+            var roleRef: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
+            guard result == .success, let role = roleRef as? String else { return false }
+            return role == kAXWindowRole
         },
         raiseWindow: { element in
             AXUIElementPerformAction(element, kAXRaiseAction as CFString)
