@@ -122,6 +122,16 @@ struct WinkRecipeImportPlanner {
         var entries: [ImportEntry] = []
 
         for shortcut in recipe.shortcuts {
+            // The #356 search-palette trigger is a local device preference,
+            // never a portable app binding — ShortcutEditorState.exportRecipeData
+            // already excludes it on export, and it must never come back in
+            // on import either (hand-edited recipe, or a future schema): it
+            // targets no app, so every list in this app hides it, and a
+            // second hidden global chord would be undeletable through any
+            // UI. Skip it before planning so it never appears as ready,
+            // conflicting, or unresolved.
+            guard shortcut.shortcutTarget != .searchPalette else { continue }
+
             let planned = plannedShortcut(for: shortcut, installedApps: installedApps)
             let candidate = planned.makeAppShortcut()
             let conflict = shortcutValidator.conflict(

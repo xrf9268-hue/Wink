@@ -200,9 +200,18 @@ struct LayoutRegressionTests {
         let context = SettingsViewLayoutContext()
         defer { context.harness.cleanup() }
 
+        // Height raised from the original 620 to fit the #356 search-palette
+        // card added below keyboardCard: LazyVStack only fully, individually
+        // lays out rows within (or very near) the fixed test viewport when
+        // there is no live scroll gesture driving it, so a viewport shorter
+        // than the (now taller) General tab's total content collapses
+        // keyboardCard's own subviews into unresolved placeholder frames
+        // instead of its real ~138pt height. The row-density assertion below
+        // is unchanged and still targets keyboardCard specifically —
+        // widening the viewport doesn't relax it.
         let hostingView = makeHostingView(
             GeneralTabView(preferences: context.preferences, editor: context.editor),
-            size: NSSize(width: 700, height: 620)
+            size: NSSize(width: 700, height: 900)
         )
 
         let candidateCardHeights = hostingView.subviews
@@ -1148,7 +1157,7 @@ private final class SettingsViewLayoutContext {
 @MainActor
 private struct LayoutFakeAppSwitcher: AppSwitching {
     @discardableResult
-    func toggleApplication(for shortcut: AppShortcut) -> Bool {
+    func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool {
         true
     }
 }

@@ -2335,6 +2335,66 @@ func cooldownBlocksBeforeNewGenerationIsAllocated() {
     #expect(switcher.pendingActivationState?.generation == generationAfterFirst)
 }
 
+/// #356 regression: hide an app via its real shortcut, then commit the same
+/// app from the search palette within the 400ms cooldown window — a very
+/// feasible sequence (open the palette, type, Enter). A plain call would be
+/// silently dropped after the palette already dismissed, leaving the app
+/// hidden with no feedback. `bypassCooldown: true` must get past the gate
+/// that blocks it, while a same-window REAL press still gets blocked (the
+/// existing guarantee for real shortcut presses is untouched), and the
+/// bypassed call still stamps the cooldown so it protects the very next
+/// real press.
+@Test @MainActor
+func bypassCooldownLetsAPaletteCommitThroughWhileARealPressInTheSameWindowStaysBlocked() {
+    let clock = MutableClock(time: 1000.0)
+    let coordinator = ToggleSessionCoordinator(now: { clock.time })
+    let launchCompletions = LockedValue<[@Sendable (NSRunningApplication?, Error?) -> Void]>([])
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        fallbackActivationClient: .init(openApplication: { _, _, completion in
+            launchCompletions.value.append(completion)
+        }),
+        appLookupClient: .init(
+            runningApplications: { _ in [] },
+            applicationURL: { _ in URL(fileURLWithPath: "/Applications/PaletteCooldown.app") }
+        ),
+        confirmationClient: .init(now: { clock.time }, schedule: { _, _ in }),
+        sessionCoordinator: coordinator
+    )
+    let shortcut = AppShortcut(
+        appName: "PaletteCooldown",
+        bundleIdentifier: "com.test.PaletteCooldown",
+        keyEquivalent: "p",
+        modifierFlags: ["command"]
+    )
+
+    // A real shortcut press hides/toggles the app and stamps the cooldown.
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    let firstGeneration = coordinator.session(for: shortcut.bundleIdentifier)?.generation
+    #expect(launchCompletions.value.count == 1)
+
+    // Well within the 400ms window: a plain second press is still dropped —
+    // this guarantee for real shortcut presses is unchanged by the bypass.
+    clock.time += 0.2
+    #expect(switcher.toggleApplication(for: shortcut) == false)
+    #expect(coordinator.session(for: shortcut.bundleIdentifier)?.generation == firstGeneration)
+    #expect(launchCompletions.value.count == 1)
+
+    // The search palette's commit, in the exact same window, must not be
+    // dropped.
+    #expect(switcher.toggleApplication(for: shortcut, bypassCooldown: true) == true)
+    let bypassGeneration = coordinator.session(for: shortcut.bundleIdentifier)?.generation
+    #expect(bypassGeneration != firstGeneration)
+    #expect(launchCompletions.value.count == 2)
+
+    // The bypassed call still stamped the cooldown: an immediately-following
+    // real press is blocked, protecting the app from a stray repeat right
+    // after the palette commit.
+    #expect(switcher.toggleApplication(for: shortcut) == false)
+    #expect(coordinator.session(for: shortcut.bundleIdentifier)?.generation == bypassGeneration)
+    #expect(launchCompletions.value.count == 2)
+}
+
 @Test @MainActor
 func hideToggleLogsStructuredMetricFields() {
     let switcher = AppSwitcher(

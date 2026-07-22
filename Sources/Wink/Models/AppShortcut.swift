@@ -1,10 +1,14 @@
 import Foundation
 
 /// What a shortcut points at. `nil`/`.app` targets the app named by
-/// `bundleIdentifier`; `.frontmostApp` resolves the target at press time.
+/// `bundleIdentifier`; `.frontmostApp` resolves the target at press time;
+/// `.searchPalette` is the #356 search-to-switch trigger — it names no app
+/// at all and is dispatched by `ShortcutManager` through
+/// `onSearchPaletteTriggered` instead of `AppSwitcher.toggleApplication`.
 enum ShortcutTarget: String, Codable, CaseIterable, Equatable, Sendable {
     case app
     case frontmostApp
+    case searchPalette
 }
 
 /// What holding a shortcut chord past the hold threshold does. `nil` keeps
@@ -43,6 +47,24 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         String(localized: "Current App", bundle: WinkResourceBundle.bundle)
     }
 
+    /// Sentinel `bundleIdentifier` for the #356 search-palette trigger.
+    /// Names no installed app, on purpose — same pattern as
+    /// `frontmostTargetSentinelBundleIdentifier` — so a build that predates
+    /// `target` decodes this row as a normal shortcut that the availability
+    /// filter silently disables instead of misdispatching it.
+    static let searchPaletteTargetSentinelBundleIdentifier = "wink.target.search-palette"
+
+    /// Locale-stable name persisted into `appName` for the search-palette
+    /// trigger shortcut. Never localize this constant; see
+    /// `frontmostTargetStableName` for the same principle.
+    static let searchPaletteTargetStableName = "Search Palette"
+
+    /// Localized label for the search-palette trigger. Display-only — never
+    /// persist this; see `searchPaletteTargetStableName`.
+    static var searchPaletteTargetDisplayName: String {
+        String(localized: "Search Palette", bundle: WinkResourceBundle.bundle)
+    }
+
     let id: UUID
     var appName: String
     var bundleIdentifier: String
@@ -64,16 +86,29 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         target == .frontmostApp
     }
 
-    /// `appName` resolved for display: the frontmost-app pseudo-target's
-    /// persisted stable name renders as its localized label; every other
-    /// shortcut's `appName` is already display-ready (an installed app's
-    /// real name) and passes through unchanged. Use this at every UI site
-    /// that renders a shortcut's app name — never render `appName` directly
-    /// where a pseudo-target might appear.
+    /// True for the #356 search-palette trigger shortcut. Its sentinel
+    /// bundle names no app, so every site that resolves a real target
+    /// (activation, the app icon cache, the per-app shortcut list) must
+    /// check this before treating `bundleIdentifier` as an installed app.
+    var isSearchPaletteTarget: Bool {
+        target == .searchPalette
+    }
+
+    /// `appName` resolved for display: a pseudo-target's persisted stable
+    /// name renders as its localized label; every other shortcut's
+    /// `appName` is already display-ready (an installed app's real name)
+    /// and passes through unchanged. Use this at every UI site that renders
+    /// a shortcut's app name — never render `appName` directly where a
+    /// pseudo-target might appear.
     var displayAppName: String {
-        bundleIdentifier == Self.frontmostTargetSentinelBundleIdentifier
-            ? Self.frontmostTargetDisplayName
-            : appName
+        switch bundleIdentifier {
+        case Self.frontmostTargetSentinelBundleIdentifier:
+            return Self.frontmostTargetDisplayName
+        case Self.searchPaletteTargetSentinelBundleIdentifier:
+            return Self.searchPaletteTargetDisplayName
+        default:
+            return appName
+        }
     }
 
     init(

@@ -194,6 +194,12 @@ final class InsightsViewModel {
         self.heatmapBuckets = snapshot.heatmapBuckets
         self.unusedShortcutNames = shortcuts
             .filter(\.isEnabled)
+            // The #356 search-palette trigger never records per-shortcut
+            // usage (see ShortcutManager.handleKeyPress — it dispatches
+            // through onSearchPaletteTriggered, not trigger(_:)), so it
+            // would otherwise always read as zero-count and get nudged for
+            // removal even when the user opens the palette constantly.
+            .filter { !$0.isSearchPaletteTarget }
             .filter { (snapshot.unusedCounts[$0.id] ?? 0) == 0 }
             .map(\.displayAppName)
 

@@ -76,6 +76,18 @@ final class ShortcutEditorState {
     var isRecordingShortcut: Bool = false
     var conflictMessage: String?
     var saveErrorMessage: String?
+    /// Recording state for the #356 search-palette trigger's dedicated
+    /// recorder (General tab) — kept separate from `recordedShortcut` /
+    /// `isRecordingShortcut` above so recording one control never clobbers
+    /// an in-progress draft in the other.
+    var recordedSearchPaletteShortcut: RecordedShortcut?
+    var isRecordingSearchPaletteShortcut: Bool = false
+    var searchPaletteConflictMessage: String?
+    /// Palette-scoped mirror of `saveErrorMessage` — the General tab's card
+    /// shows this instead of the shared property so a persistence failure
+    /// there is never confused with (or masked by) one that happened on the
+    /// Shortcuts tab, and vice versa.
+    var searchPaletteSaveErrorMessage: String?
     var recipeFeedback: RecipeFeedback?
     var pendingRecipeImport: WinkRecipeImportPlanner.ImportPlan?
     var usageCounts: [UUID: Int] = [:]
@@ -133,10 +145,7 @@ final class ShortcutEditorState {
         )
 
         if let conflict = shortcutValidator.conflict(for: candidate, in: shortcuts) {
-            conflictMessage = String(
-                localized: "Conflict: \(conflict.existingShortcut.displayAppName) already uses \(conflict.existingShortcut.modifierFlags.joined(separator: "+"))+\(conflict.existingShortcut.keyEquivalent.uppercased())",
-                bundle: WinkResourceBundle.bundle
-            )
+            conflictMessage = conflictMessageText(for: conflict)
             return
         }
 
@@ -147,6 +156,77 @@ final class ShortcutEditorState {
         conflictMessage = nil
         resetDraft()
         Task { await refreshUsageCounts() }
+    }
+
+    /// The #356 search-palette trigger, if one is currently recorded. Not
+    /// rendered in the per-app "Your Shortcuts" list (it targets no app) —
+    /// see `ShortcutsTabView`'s `visibleShortcuts` filter — but it lives in
+    /// the same `shortcuts` array so `ShortcutValidator` and the trigger
+    /// index treat it exactly like any other binding for conflict detection
+    /// and dispatch.
+    var searchPaletteShortcut: AppShortcut? {
+        shortcuts.first(where: \.isSearchPaletteTarget)
+    }
+
+    /// Records (or re-records) the search-palette trigger. Reuses the
+    /// candidate's existing id on a re-record so this replaces the binding
+    /// in place instead of accumulating duplicate rows.
+    func commitSearchPaletteShortcut(_ recorded: RecordedShortcut) {
+        let candidate = AppShortcut(
+            id: searchPaletteShortcut?.id ?? UUID(),
+            appName: AppShortcut.searchPaletteTargetStableName,
+            bundleIdentifier: AppShortcut.searchPaletteTargetSentinelBundleIdentifier,
+            keyEquivalent: recorded.keyEquivalent,
+            modifierFlags: recorded.modifierFlags,
+            target: .searchPalette
+        )
+
+        if let conflict = shortcutValidator.conflict(for: candidate, in: shortcuts) {
+            searchPaletteConflictMessage = conflictMessageText(for: conflict)
+            recordedSearchPaletteShortcut = nil
+            return
+        }
+
+        var updated = shortcuts
+        if let index = updated.firstIndex(where: { $0.id == candidate.id }) {
+            updated[index] = candidate
+        } else {
+            updated.append(candidate)
+        }
+        // persist() sets the shared saveErrorMessage either way; mirror it
+        // into the palette-scoped copy so the General tab's card shows its
+        // own failure instead of a stale/unrelated message that happened to
+        // land on the Shortcuts tab.
+        guard persist(updated) else {
+            searchPaletteSaveErrorMessage = saveErrorMessage
+            recordedSearchPaletteShortcut = nil
+            return
+        }
+        onShortcutConfigurationChange()
+        searchPaletteConflictMessage = nil
+        searchPaletteSaveErrorMessage = nil
+        recordedSearchPaletteShortcut = nil
+    }
+
+    func setSearchPaletteEnabled(_ enabled: Bool) {
+        guard let index = shortcuts.firstIndex(where: \.isSearchPaletteTarget),
+              shortcuts[index].isEnabled != enabled else { return }
+        var updated = shortcuts
+        updated[index].isEnabled = enabled
+        guard persist(updated) else {
+            searchPaletteSaveErrorMessage = saveErrorMessage
+            return
+        }
+        onShortcutConfigurationChange()
+        searchPaletteSaveErrorMessage = nil
+    }
+
+    func removeSearchPaletteShortcut() {
+        guard let id = searchPaletteShortcut?.id else { return }
+        removeShortcut(id: id)
+        // removeShortcut(id:) is shared with the per-app list and calls
+        // persist() itself; mirror its outcome the same way as above.
+        searchPaletteSaveErrorMessage = saveErrorMessage
     }
 
     func removeShortcut(id: UUID) {
@@ -262,8 +342,16 @@ final class ShortcutEditorState {
         isRecordingShortcut = false
     }
 
+    /// Recipes are a portable set of app bindings to share with others — the
+    /// search-palette trigger is a local device preference (like Hyper Key
+    /// enablement or the frontmost-exceptions list), not an app binding, so
+    /// it never travels in an exported `.winkrecipe`.
+    private var exportableShortcuts: [AppShortcut] {
+        shortcuts.filter { !$0.isSearchPaletteTarget }
+    }
+
     func exportRecipeData() throws -> Data {
-        try recipeCodec.encode(shortcuts: shortcuts)
+        try recipeCodec.encode(shortcuts: exportableShortcuts)
     }
 
     func exportRecipes() {
@@ -278,7 +366,7 @@ final class ShortcutEditorState {
 
             recipeFeedback = .success(
                 String(
-                    localized: "Exported \(shortcuts.count) shortcuts to \(url.lastPathComponent)",
+                    localized: "Exported \(exportableShortcuts.count) shortcuts to \(url.lastPathComponent)",
                     bundle: WinkResourceBundle.bundle
                 )
             )
@@ -373,6 +461,17 @@ final class ShortcutEditorState {
         guard generation == usageRefreshGeneration else { return }
         usageCounts = fetchedCounts
         lastUsed = fetchedLastUsed
+    }
+
+    /// Shared by the per-app composer and the search-palette recorder —
+    /// same wording either way, and `displayAppName` already resolves a
+    /// pseudo-target's sentinel bundle (e.g. a colliding search-palette
+    /// trigger) to its localized label.
+    private func conflictMessageText(for conflict: ShortcutConflict) -> String {
+        String(
+            localized: "Conflict: \(conflict.existingShortcut.displayAppName) already uses \(conflict.existingShortcut.modifierFlags.joined(separator: "+"))+\(conflict.existingShortcut.keyEquivalent.uppercased())",
+            bundle: WinkResourceBundle.bundle
+        )
     }
 
     /// Saves through the manager (disk first, then in-memory store). On

@@ -799,8 +799,19 @@ final class AppSwitcher: AppSwitching {
         return message
     }
 
+    /// - Parameter bypassCooldown: skips ONLY the per-bundle cooldown gate
+    ///   below — the re-entry guard (`isToggling`) and everything downstream
+    ///   of it (confirmation/recovery pipeline) stay fully active either
+    ///   way. The cooldown is still STAMPED on a bypassed call (the `defer`
+    ///   block is unconditional), so a bypassed commit still protects the
+    ///   very next real shortcut press on the same bundle. Exists for the
+    ///   #356 search palette: a palette commit is a direct user choice ("I
+    ///   picked this app right now"), not a repeated key-chord press, so it
+    ///   must not be silently dropped just because a real shortcut recently
+    ///   toggled the same bundle — see `AppController`'s `activate` closure
+    ///   for the only caller that sets this `true`.
     @discardableResult
-    func toggleApplication(for requestedShortcut: AppShortcut) -> Bool {
+    func toggleApplication(for requestedShortcut: AppShortcut, bypassCooldown: Bool = false) -> Bool {
         let shortcut: AppShortcut
         // Keeps the exact frontmost process across the later
         // running-applications lookup: with multiple instances sharing a
@@ -842,7 +853,8 @@ final class AppSwitcher: AppSwitching {
         // chosen, so the Cycle relaxation needs its own cheap frontmost
         // pre-check here (workspace snapshot only — no AX on this path).
         let effectiveCooldown = effectiveToggleCooldown(for: shortcut)
-        if let lastTime = lastToggleTimeByBundle[shortcut.bundleIdentifier],
+        if !bypassCooldown,
+           let lastTime = lastToggleTimeByBundle[shortcut.bundleIdentifier],
            attemptStartedAt - lastTime < effectiveCooldown {
             let elapsed = Int((attemptStartedAt - lastTime) * 1000)
             DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: BLOCKED cooldown elapsedMs=\(elapsed) limit=\(Int(effectiveCooldown * 1000))ms")

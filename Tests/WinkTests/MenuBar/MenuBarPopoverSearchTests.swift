@@ -231,7 +231,7 @@ private final class SearchFakeHyperCaptureProvider: HyperShortcutCaptureProvider
 
 private struct SearchFakeAppSwitcher: AppSwitching {
     @MainActor
-    func toggleApplication(for shortcut: AppShortcut) -> Bool {
+    func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool {
         true
     }
 }

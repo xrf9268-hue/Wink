@@ -67,6 +67,48 @@ struct WinkRecipeImportPlannerTests {
         #expect(plan.entries[2].imported.resolution == .unresolved)
     }
 
+    /// #356: the search-palette trigger is a local device preference, never
+    /// a portable app binding — an inbound recipe carrying one (hand-edited,
+    /// or a future schema) must import none of it. Without this exclusion,
+    /// GeneralTabView.searchPaletteShortcut (which reads only `.first`) and
+    /// every other list (which hides the target entirely) would leave a
+    /// second live global chord invisible and undeletable.
+    @Test
+    func planImportDropsSearchPaletteSentinelRowsEntirely() {
+        let planner = WinkRecipeImportPlanner()
+        let recipe = WinkRecipe(
+            shortcuts: [
+                WinkRecipeShortcut(
+                    appName: AppShortcut.searchPaletteTargetStableName,
+                    bundleIdentifier: AppShortcut.searchPaletteTargetSentinelBundleIdentifier,
+                    keyEquivalent: "space",
+                    modifierFlags: ["command", "option"],
+                    isEnabled: true,
+                    target: "searchPalette"
+                ),
+                WinkRecipeShortcut(
+                    appName: AppShortcut.searchPaletteTargetStableName,
+                    bundleIdentifier: AppShortcut.searchPaletteTargetSentinelBundleIdentifier,
+                    keyEquivalent: "j",
+                    modifierFlags: ["command", "option"],
+                    isEnabled: true,
+                    target: "searchPalette"
+                ),
+            ]
+        )
+
+        let plan = planner.planImport(
+            recipe: recipe,
+            existingShortcuts: [],
+            installedApps: []
+        )
+
+        #expect(plan.entries.isEmpty)
+
+        let applied = planner.applying(plan: plan, to: [], strategy: .replaceExisting)
+        #expect(applied.isEmpty)
+    }
+
     @Test
     func ambiguousNameMatchesStayUnresolved() {
         let planner = WinkRecipeImportPlanner()

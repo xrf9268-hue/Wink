@@ -75,6 +75,10 @@ struct AppIconView: View {
             icon = Self.frontmostTargetIcon
             return
         }
+        if bundleIdentifier == AppShortcut.searchPaletteTargetSentinelBundleIdentifier {
+            icon = Self.searchPaletteTargetIcon
+            return
+        }
         icon = AppIconCache.icon(for: bundleIdentifier) ?? Self.fallbackIcon
     }
 
@@ -84,6 +88,16 @@ struct AppIconView: View {
         return NSImage(
             systemSymbolName: "macwindow.on.rectangle",
             accessibilityDescription: AppShortcut.frontmostTargetDisplayName
+        )?.withSymbolConfiguration(configuration) ?? fallbackIcon
+    }()
+    // Same sentinel-icon treatment as `frontmostTargetIcon`, wherever the
+    // #356 trigger shortcut's own row renders (the General tab card, and the
+    // Hyper cheat sheet if the trigger is bound to a Hyper combo).
+    private static let searchPaletteTargetIcon: NSImage = {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 22, weight: .medium)
+        return NSImage(
+            systemSymbolName: "magnifyingglass",
+            accessibilityDescription: AppShortcut.searchPaletteTargetDisplayName
         )?.withSymbolConfiguration(configuration) ?? fallbackIcon
     }()
 }

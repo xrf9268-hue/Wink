@@ -66,6 +66,7 @@ final class AppController {
             if paused {
                 self?.cheatSheetHUD.reset()
                 self?.windowPickerHUD.dismiss()
+                self?.searchPaletteHUD.dismiss()
                 self?.hyperKeyService.suspendMappingForPause()
             } else {
                 self?.hyperKeyService.resumeMappingAfterPause()
@@ -79,6 +80,78 @@ final class AppController {
         },
         focusWindow: { [weak self] windowID, session in
             self?.appSwitcher.focusPickedWindow(windowID: windowID, session: session) ?? false
+        }
+    )
+    /// Search-to-switch palette (#356). Shares the exact single-flag gate
+    /// #352 wired for the window picker (`setInteractivePanelSessionActive`)
+    /// — since both controllers read/write the SAME shared bool and each
+    /// panel's own trigger keypress is swallowed by `ShortcutManager`
+    /// whenever that bool is already true, only one of the two panels can
+    /// ever be open at a time with no extra coordination code: whichever
+    /// trigger fires first wins, and the other's trigger keypress is a
+    /// silent no-op (consumed, no dispatch) until the first panel closes.
+    private lazy var searchPaletteHUD = SearchPaletteHUDController(
+        onSessionStateChange: { [weak self] active in
+            self?.shortcutManager.setInteractivePanelSessionActive(active)
+        },
+        candidatesProvider: { [weak self] in
+            guard let self else { return [] }
+            // A workspace snapshot taken once per open, not re-queried per
+            // keystroke — see SearchPaletteMatcher.swift for the latency
+            // rationale behind building candidates once up front.
+            let runningBundleIdentifiers = Set(
+                NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
+            )
+            return SearchPaletteCandidateBuilder.build(
+                apps: self.appListProvider.allApps,
+                shortcuts: self.shortcutStore.shortcuts,
+                runningBundleIdentifiers: runningBundleIdentifiers
+            )
+        },
+        recentBundleIdentifiersProvider: { [weak self] in
+            self?.appListProvider.recentBundleIDs ?? []
+        },
+        activate: { [weak self] entry in
+            guard let self else { return false }
+            // NOT toggleApplication's default semantics: a plain call would
+            // hide the target if it's already frontmost (real toggle-off),
+            // which is wrong for "type a name, land on that app". Forcing
+            // `.focus` makes the already-frontmost branch a pure re-focus
+            // (see AppSwitcher.performFrontmostFocus) — activation only,
+            // independent of whatever frontmost behavior the user may have
+            // separately configured for a real shortcut targeting the same
+            // app. Calling AppSwitcher directly (not shortcutManager.trigger)
+            // matches the wink:// URL scheme's .toggle handling below: this
+            // ad hoc shortcut has no persisted id, so recording "usage"
+            // against it would just orphan a UUID no UI ever shows.
+            //
+            // bypassCooldown: true — a palette commit is a direct, one-shot
+            // user choice ("activate this app right now"), not a repeated
+            // key-chord press. Without this, hiding an app via its real
+            // shortcut and then committing the SAME app from the palette
+            // within the 400ms cooldown window would silently drop the
+            // commit after the palette already dismissed, leaving the app
+            // hidden with no feedback. The re-entry guard and cooldown STAMP
+            // stay intact (see AppSwitcher.toggleApplication) — only the
+            // early cooldown *check* is skipped, and the stamp this call
+            // writes still protects the very next real shortcut press.
+            //
+            // Recency at request time (same semantics as AppPickerPopover's
+            // selection path): the palette's own empty-query list is ordered
+            // by recentBundleIDs, so a committed pick must feed it — noted
+            // even if activation later fails, matching the picker's
+            // request-time convention.
+            self.appListProvider.noteRecentApp(bundleIdentifier: entry.bundleIdentifier)
+            return self.appSwitcher.toggleApplication(
+                for: AppShortcut(
+                    appName: entry.name,
+                    bundleIdentifier: entry.bundleIdentifier,
+                    keyEquivalent: "",
+                    modifierFlags: [],
+                    frontmostBehaviorOverride: .focus
+                ),
+                bypassCooldown: true
+            )
         }
     )
     private lazy var appPreferences = AppPreferences(
@@ -293,6 +366,22 @@ final class AppController {
                 return
             }
             self.windowPickerHUD.present(session: session)
+        }
+        // Search-to-switch palette (#356): a plain key-down match on the
+        // dedicated trigger shortcut opens the palette. Pre-warm the app
+        // list now (not on first open) so a trigger pressed any time after
+        // launch sees an already-scanned, cached `AppListProvider.allApps`
+        // — the open-to-first-keystroke latency budget has no room for a
+        // synchronous filesystem scan. The scan is still async, though: a
+        // trigger pressed before it lands must not leave the palette stuck
+        // empty until dismiss/reopen, so the palette also self-heals once
+        // the scan (this one or any later one) actually completes.
+        appListProvider.onRefreshCompleted = { [weak self] in
+            self?.searchPaletteHUD.refreshCandidatesIfPresented()
+        }
+        appListProvider.refreshIfNeeded()
+        shortcutManager.onSearchPaletteTriggered = { [weak self] in
+            self?.searchPaletteHUD.present()
         }
 
         Self.runStartupSequence(

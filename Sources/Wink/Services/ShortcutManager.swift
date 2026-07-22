@@ -75,6 +75,12 @@ final class ShortcutManager {
     /// threshold. The consumer (AppController) owns what a hold action does;
     /// the manager only resolves the gesture and the matched shortcut.
     var onHoldActionTriggered: (@MainActor (AppShortcut) -> Void)?
+    /// Fires when the #356 search-palette trigger shortcut matches a plain
+    /// (non-hold) key-down — its sentinel bundle names no real app, so
+    /// `handleKeyPress` routes it here instead of `trigger(_:)`/
+    /// `AppSwitcher.toggleApplication`. The consumer (AppController) owns
+    /// presenting the palette.
+    var onSearchPaletteTriggered: (@MainActor () -> Void)?
     private var holdGestureArbiter: HoldGestureArbiter?
     /// True while an interactive Wink panel (the hold-to-show window picker)
     /// is key. Matched shortcut dispatch is gated on it instead of the full
@@ -594,11 +600,13 @@ final class ShortcutManager {
         var availableBundleIdentifiers = Set<String>()
 
         for shortcut in shortcutStore.shortcuts where shortcut.isEnabled {
-            // Frontmost-app pseudo-targets have no app URL by design (their
-            // sentinel bundle names no installed app) and are always
-            // available: skipping the locator check here is what makes
-            // them register with Carbon and enter the trigger index.
+            // Frontmost-app pseudo-targets and the search-palette trigger
+            // have no app URL by design (their sentinel bundles name no
+            // installed app) and are always available: skipping the locator
+            // check here is what makes them register with Carbon and enter
+            // the trigger index.
             guard shortcut.isFrontmostAppTarget
+                    || shortcut.isSearchPaletteTarget
                     || appBundleLocator.applicationURL(for: shortcut.bundleIdentifier) != nil else {
                 continue
             }
@@ -639,7 +647,14 @@ final class ShortcutManager {
         logger.info("MATCHED: \(match.appName) - \(match.bundleIdentifier)")
         diagnosticClient.log("MATCHED: \(match.appName) - \(match.bundleIdentifier)")
         diagnosticClient.log(matchedShortcutTraceMessage(for: match))
-        _ = trigger(match)
+        if match.isSearchPaletteTarget {
+            // No real app to toggle — and no usage row to record, since this
+            // shortcut's id is never a real per-app binding a user can see
+            // usage for. AppController owns presentation.
+            onSearchPaletteTriggered?()
+        } else {
+            _ = trigger(match)
+        }
         return true
     }
 

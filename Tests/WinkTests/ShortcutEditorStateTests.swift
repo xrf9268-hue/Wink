@@ -103,6 +103,72 @@ func failedToggleLeavesEnabledStateUnchanged() {
     #expect(context.editor.saveErrorMessage != nil)
 }
 
+/// #356 P2-5 regression: a persistence failure while committing the
+/// search-palette trigger must surface on the General tab's own card
+/// (`searchPaletteSaveErrorMessage`), not only the shared `saveErrorMessage`
+/// that only `ShortcutsTabView` renders.
+@Test @MainActor
+func commitSearchPaletteShortcutSurfacesAPaletteScopedSaveError() {
+    let context = makeFailingSaveEditorContext(existingShortcuts: [])
+
+    context.editor.commitSearchPaletteShortcut(
+        RecordedShortcut(keyEquivalent: "space", modifierFlags: ["command", "option"])
+    )
+
+    #expect(context.editor.searchPaletteShortcut == nil)
+    #expect(context.editor.searchPaletteSaveErrorMessage != nil)
+    #expect(context.editor.searchPaletteSaveErrorMessage == context.editor.saveErrorMessage)
+    #expect(context.editor.recordedSearchPaletteShortcut == nil)
+}
+
+@Test @MainActor
+func setSearchPaletteEnabledSurfacesAPaletteScopedSaveError() {
+    let trigger = AppShortcut(
+        appName: AppShortcut.searchPaletteTargetStableName,
+        bundleIdentifier: AppShortcut.searchPaletteTargetSentinelBundleIdentifier,
+        keyEquivalent: "space",
+        modifierFlags: ["command", "option"],
+        target: .searchPalette
+    )
+    let context = makeFailingSaveEditorContext(existingShortcuts: [trigger])
+
+    context.editor.setSearchPaletteEnabled(false)
+
+    #expect(context.editor.searchPaletteShortcut?.isEnabled == true)
+    #expect(context.editor.searchPaletteSaveErrorMessage != nil)
+}
+
+@Test @MainActor
+func removeSearchPaletteShortcutSurfacesAPaletteScopedSaveError() {
+    let trigger = AppShortcut(
+        appName: AppShortcut.searchPaletteTargetStableName,
+        bundleIdentifier: AppShortcut.searchPaletteTargetSentinelBundleIdentifier,
+        keyEquivalent: "space",
+        modifierFlags: ["command", "option"],
+        target: .searchPalette
+    )
+    let context = makeFailingSaveEditorContext(existingShortcuts: [trigger])
+
+    context.editor.removeSearchPaletteShortcut()
+
+    #expect(context.editor.searchPaletteShortcut != nil)
+    #expect(context.editor.searchPaletteSaveErrorMessage != nil)
+}
+
+/// #356 P2-5: a successful commit clears any prior palette-scoped error.
+@Test @MainActor
+func commitSearchPaletteShortcutClearsAPriorPaletteScopedSaveError() {
+    let context = makeEditorContext()
+    defer { context.harness.cleanup() }
+
+    context.editor.searchPaletteSaveErrorMessage = "stale error"
+    context.editor.commitSearchPaletteShortcut(
+        RecordedShortcut(keyEquivalent: "space", modifierFlags: ["command", "option"])
+    )
+
+    #expect(context.editor.searchPaletteSaveErrorMessage == nil)
+}
+
 @Test @MainActor
 func successfulSaveClearsPreviousSaveError() {
     let context = makeEditorContext()
@@ -705,6 +771,167 @@ func exportRecipeDataUsesShareableSchema() throws {
     ])
 }
 
+// MARK: - Search-palette trigger recorder (#356)
+
+@Test @MainActor
+func commitSearchPaletteShortcutPersistsAnEnabledTrigger() throws {
+    let context = makeEditorContext()
+    defer { context.harness.cleanup() }
+
+    context.editor.commitSearchPaletteShortcut(
+        RecordedShortcut(keyEquivalent: "space", modifierFlags: ["command", "option"])
+    )
+
+    let persisted = try #require(context.editor.searchPaletteShortcut)
+    #expect(persisted.isSearchPaletteTarget)
+    #expect(persisted.isEnabled)
+    #expect(persisted.keyEquivalent == "space")
+    #expect(persisted.modifierFlags == ["command", "option"])
+    #expect(context.editor.searchPaletteConflictMessage == nil)
+    #expect(context.editor.recordedSearchPaletteShortcut == nil)
+    #expect(context.callbackCount.value == 1)
+    #expect(context.shortcutStore.shortcuts.count == 1)
+}
+
+@Test @MainActor
+func commitSearchPaletteShortcutReplacesThePriorBindingInPlace() throws {
+    let context = makeEditorContext()
+    defer { context.harness.cleanup() }
+
+    context.editor.commitSearchPaletteShortcut(
+        RecordedShortcut(keyEquivalent: "space", modifierFlags: ["command", "option"])
+    )
+    let firstID = try #require(context.editor.searchPaletteShortcut?.id)
+
+    context.editor.commitSearchPaletteShortcut(
+        RecordedShortcut(keyEquivalent: "j", modifierFlags: ["command", "option"])
+    )
+
+    // Re-recording replaces the one binding rather than accumulating a
+    // second search-palette row.
+    #expect(context.shortcutStore.shortcuts.count == 1)
+    #expect(context.editor.searchPaletteShortcut?.id == firstID)
+    #expect(context.editor.searchPaletteShortcut?.keyEquivalent == "j")
+}
+
+@Test @MainActor
+func commitSearchPaletteShortcutRejectsAConflictWithAnExistingAppShortcut() throws {
+    let safari = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "s",
+        modifierFlags: ["command", "shift"]
+    )
+    let context = makeEditorContext(existingShortcuts: [safari])
+    defer { context.harness.cleanup() }
+
+    context.editor.commitSearchPaletteShortcut(
+        RecordedShortcut(keyEquivalent: "s", modifierFlags: ["command", "shift"])
+    )
+
+    #expect(context.editor.searchPaletteShortcut == nil)
+    #expect(context.editor.recordedSearchPaletteShortcut == nil)
+    #expect(context.editor.searchPaletteConflictMessage?.contains("Safari") == true)
+    #expect(context.shortcutStore.shortcuts == [safari])
+}
+
+@Test @MainActor
+func addingAnAppShortcutRejectsAConflictWithAnExistingSearchPaletteTrigger() throws {
+    let context = makeEditorContext()
+    defer { context.harness.cleanup() }
+
+    context.editor.commitSearchPaletteShortcut(
+        RecordedShortcut(keyEquivalent: "space", modifierFlags: ["command", "option"])
+    )
+
+    context.editor.selectedAppName = "Safari"
+    context.editor.selectedBundleIdentifier = "com.apple.Safari"
+    context.editor.recordedShortcut = RecordedShortcut(keyEquivalent: "space", modifierFlags: ["command", "option"])
+    context.editor.addShortcut()
+
+    // The conflict message resolves through `displayAppName`, so the
+    // colliding search-palette trigger reads as "Search Palette", not its
+    // sentinel bundle identifier.
+    #expect(context.editor.conflictMessage?.contains("Search Palette") == true)
+    #expect(context.shortcutStore.shortcuts.count == 1)
+    #expect(context.shortcutStore.shortcuts.first?.isSearchPaletteTarget == true)
+}
+
+@Test @MainActor
+func setSearchPaletteEnabledTogglesWithoutRemovingTheBinding() throws {
+    let context = makeEditorContext()
+    defer { context.harness.cleanup() }
+
+    context.editor.commitSearchPaletteShortcut(
+        RecordedShortcut(keyEquivalent: "space", modifierFlags: ["command", "option"])
+    )
+    let callbackCountAfterCommit = context.callbackCount.value
+
+    context.editor.setSearchPaletteEnabled(false)
+    #expect(context.editor.searchPaletteShortcut?.isEnabled == false)
+    #expect(context.callbackCount.value == callbackCountAfterCommit + 1)
+
+    // Same value again is a no-op, matching setFrontmostBehaviorOverride's
+    // established no-op-on-unchanged-value contract.
+    context.editor.setSearchPaletteEnabled(false)
+    #expect(context.callbackCount.value == callbackCountAfterCommit + 1)
+
+    context.editor.setSearchPaletteEnabled(true)
+    #expect(context.editor.searchPaletteShortcut?.isEnabled == true)
+    #expect(context.callbackCount.value == callbackCountAfterCommit + 2)
+}
+
+@Test @MainActor
+func removeSearchPaletteShortcutClearsTheBinding() throws {
+    let context = makeEditorContext()
+    defer { context.harness.cleanup() }
+
+    context.editor.commitSearchPaletteShortcut(
+        RecordedShortcut(keyEquivalent: "space", modifierFlags: ["command", "option"])
+    )
+    #expect(context.editor.searchPaletteShortcut != nil)
+
+    context.editor.removeSearchPaletteShortcut()
+
+    #expect(context.editor.searchPaletteShortcut == nil)
+    #expect(context.shortcutStore.shortcuts.isEmpty)
+}
+
+@Test @MainActor
+func removeSearchPaletteShortcutWithNoBindingIsANoOp() throws {
+    let context = makeEditorContext()
+    defer { context.harness.cleanup() }
+
+    context.editor.removeSearchPaletteShortcut()
+
+    #expect(context.callbackCount.value == 0)
+    #expect(context.shortcutStore.shortcuts.isEmpty)
+}
+
+@Test @MainActor
+func exportRecipeDataExcludesTheSearchPaletteTrigger() throws {
+    let safari = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "s",
+        modifierFlags: ["command", "shift"]
+    )
+    let context = makeEditorContext(existingShortcuts: [safari])
+    defer { context.harness.cleanup() }
+
+    context.editor.commitSearchPaletteShortcut(
+        RecordedShortcut(keyEquivalent: "space", modifierFlags: ["command", "option"])
+    )
+    // Both a real binding and the trigger now live in the store...
+    #expect(context.shortcutStore.shortcuts.count == 2)
+
+    // ...but only the real binding travels in an exported recipe — the
+    // trigger is a local device preference, not a portable app binding.
+    let data = try context.editor.exportRecipeData()
+    let decoded = try WinkRecipeCodec().decode(data)
+    #expect(decoded.shortcuts.map(\.bundleIdentifier) == ["com.apple.Safari"])
+}
+
 private struct FakePermissionService: PermissionServicing {
     let ax: Bool
     let input: Bool
@@ -778,7 +1005,7 @@ private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
 @MainActor
 private struct FakeAppSwitcher: AppSwitching {
     @discardableResult
-    func toggleApplication(for shortcut: AppShortcut) -> Bool {
+    func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool {
         true
     }
 }

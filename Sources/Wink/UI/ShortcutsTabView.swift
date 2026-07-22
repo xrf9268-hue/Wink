@@ -304,13 +304,21 @@ struct ShortcutsTabView: View {
     @State private var dragStartSourceFrame: CGRect?
     @State private var dragTranslationY: CGFloat = 0
 
+    /// The #356 search-palette trigger targets no app — it lives in
+    /// `editor.shortcuts` for conflict validation and dispatch, but has its
+    /// own recorder in the General tab and never appears in this per-app
+    /// list (its sentinel bundle would otherwise render a broken icon row).
+    private var visibleShortcuts: [AppShortcut] {
+        editor.shortcuts.filter { !$0.isSearchPaletteTarget }
+    }
+
     private var filteredShortcuts: [AppShortcut] {
         let query = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
-            return editor.shortcuts
+            return visibleShortcuts
         }
 
-        return editor.shortcuts.filter { shortcut in
+        return visibleShortcuts.filter { shortcut in
             shortcut.displayAppName.localizedCaseInsensitiveContains(query)
                 || shortcut.displayText.localizedCaseInsensitiveContains(query)
         }
@@ -482,10 +490,10 @@ struct ShortcutsTabView: View {
         .background(palette.windowBg)
         .onAppear {
             accessibilityOptions = .current
-            shortcutStatusProvider.track(editor.shortcuts)
+            shortcutStatusProvider.track(visibleShortcuts)
         }
-        .onChange(of: editor.shortcuts) { _, newShortcuts in
-            shortcutStatusProvider.track(newShortcuts)
+        .onChange(of: editor.shortcuts) { _, _ in
+            shortcutStatusProvider.track(visibleShortcuts)
         }
         .onReceive(
             NSWorkspace.shared.notificationCenter.publisher(
@@ -535,7 +543,7 @@ struct ShortcutsTabView: View {
 
         WinkCard(
             title: {
-                Text("Your Shortcuts · \(editor.shortcuts.count)", bundle: WinkResourceBundle.bundle)
+                Text("Your Shortcuts · \(visibleShortcuts.count)", bundle: WinkResourceBundle.bundle)
             },
             accessory: {
                 HStack(spacing: 6) {
@@ -558,7 +566,7 @@ struct ShortcutsTabView: View {
                         Button(String(localized: "Export…", bundle: WinkResourceBundle.bundle)) {
                             editor.exportRecipes()
                         }
-                        .disabled(editor.shortcuts.isEmpty)
+                        .disabled(visibleShortcuts.isEmpty)
                     } label: {
                         WinkIcon.more.image(size: 12)
                             .foregroundStyle(palette.textSecondary)

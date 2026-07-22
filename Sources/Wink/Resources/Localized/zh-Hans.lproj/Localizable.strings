@@ -250,6 +250,8 @@
 	<string>无变化</string>
 	<key>No change versus the previous period.</key>
 	<string>相较上一时段无变化。</string>
+	<key>No matching apps</key>
+	<string>没有匹配的应用</string>
 	<key>No shortcuts configured</key>
 	<string>尚未配置快捷键</string>
 	<key>No shortcuts match your filter</key>
@@ -326,8 +328,12 @@
 	<string>用于路由全局快捷键。</string>
 	<key>Running</key>
 	<string>运行中</string>
+	<key>Search Palette</key>
+	<string>搜索面板</string>
 	<key>Search apps...</key>
 	<string>搜索应用...</string>
+	<key>Search apps…</key>
+	<string>搜索应用…</string>
 	<key>Search shortcuts</key>
 	<string>搜索快捷键</string>
 	<key>Settings…</key>
@@ -396,6 +402,8 @@
 	<string>切换侧边栏</string>
 	<key>Toggle apps with global shortcuts</key>
 	<string>使用全局快捷键切换应用</string>
+	<key>Type an app name and press Return to switch to it.</key>
+	<string>输入应用名称，按下 Return 键即可切换到该应用。</string>
 	<key>Unresolved</key>
 	<string>未解析</string>
 	<key>Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.</key>

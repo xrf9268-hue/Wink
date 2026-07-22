@@ -726,7 +726,7 @@ private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
 @MainActor
 private struct FakeAppSwitcher: AppSwitching {
     @discardableResult
-    func toggleApplication(for shortcut: AppShortcut) -> Bool {
+    func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool {
         true
     }
 }
@@ -736,7 +736,7 @@ private final class RecordingAppSwitcher: AppSwitching {
     private(set) var lastBehavior: FrontmostTargetBehavior?
 
     @discardableResult
-    func toggleApplication(for shortcut: AppShortcut) -> Bool {
+    func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool {
         true
     }
 

@@ -6,6 +6,36 @@ import Testing
 
 @Suite("Menu bar popover")
 struct MenuBarPopoverViewTests {
+    /// #356: the search-palette trigger's sentinel bundle never resolves to
+    /// an installed app or a running process, so an unfiltered status list
+    /// would permanently flag it "App unavailable" even though it's working
+    /// exactly as configured — this quick-launch list excludes it entirely,
+    /// same as `ShortcutsTabView`'s per-app list.
+    @Test @MainActor
+    func shortcutRowsExcludeTheSearchPaletteTrigger() {
+        let context = makePopoverContext(
+            shortcuts: [
+                AppShortcut(
+                    appName: "Safari",
+                    bundleIdentifier: "com.apple.Safari",
+                    keyEquivalent: "s",
+                    modifierFlags: ["command"]
+                ),
+                AppShortcut(
+                    appName: AppShortcut.searchPaletteTargetStableName,
+                    bundleIdentifier: AppShortcut.searchPaletteTargetSentinelBundleIdentifier,
+                    keyEquivalent: "space",
+                    modifierFlags: ["command", "option"],
+                    target: .searchPalette
+                ),
+            ],
+            usageTotal: 0
+        )
+
+        #expect(context.model.shortcutRows.count == 1)
+        #expect(context.model.shortcutRows.first?.shortcut.bundleIdentifier == "com.apple.Safari")
+    }
+
     @Test @MainActor
     func viewRendersSearchSectionsRowsAndActions() async {
         let context = makePopoverContext(
@@ -466,7 +496,7 @@ private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
 @MainActor
 private struct FakeAppSwitcher: AppSwitching {
     @discardableResult
-    func toggleApplication(for shortcut: AppShortcut) -> Bool {
+    func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool {
         true
     }
 }
