@@ -1,16 +1,61 @@
 import AppKit
 import SwiftUI
 
-/// Key-capable, non-activating panel (#352): `.nonactivatingPanel` keeps
-/// Wink from activating when the panel fronts, while the explicit
-/// `canBecomeKey` override (borderless panels are never key by default)
-/// lets it receive arrow/Enter/Escape directly. This is the TilesPanel
-/// pattern — deliberately NOT WhatsNewPanel, whose `.titled` mask only
-/// avoids stealing focus at order-front time.
-final class WindowPickerPanel: NSPanel {
-    var onKeyDown: ((NSEvent) -> Bool)?
-
+/// Shared base for Wink's key-capable, non-activating HUD panels (#352's
+/// window picker, #356's search palette): `.nonactivatingPanel` keeps Wink
+/// from activating when the panel fronts, while the explicit `canBecomeKey`
+/// override (borderless panels are never key by default) lets the panel
+/// receive keyboard input directly — discrete arrow/Enter/Escape routing for
+/// the window picker, real text input via the field editor for the search
+/// palette (a focused `TextField` needs key status to get the field editor
+/// at all). This is the TilesPanel pattern — deliberately NOT WhatsNewPanel,
+/// whose `.titled` mask only avoids stealing focus at order-front time.
+class KeyCapableHUDPanel: NSPanel {
     override var canBecomeKey: Bool { true }
+
+    init() {
+        super.init(
+            contentRect: .zero,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: true
+        )
+        isFloatingPanel = true
+        level = .popUpMenu
+        backgroundColor = .clear
+        isOpaque = false
+        hasShadow = true
+        ignoresMouseEvents = false
+        hidesOnDeactivate = false
+        collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+    }
+}
+
+/// Anchors a HUD panel centered on the screen holding the pointer — these
+/// panels follow the user's attention, not a target window. Shared by the
+/// window picker (#352) and the search palette (#356); the panel must
+/// already be sized (`setContentSize`/`setFrame`) before calling this.
+@MainActor
+enum HUDPanelPlacement {
+    static func centerOnPointerScreen(_ panel: NSPanel) {
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { $0.frame.contains(mouse) }
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+        guard let screenFrame = screen?.visibleFrame else { return }
+        let size = panel.frame.size
+        panel.setFrameOrigin(NSPoint(
+            x: screenFrame.midX - size.width / 2,
+            y: screenFrame.midY - size.height / 2
+        ))
+    }
+}
+
+/// Window-picker-specific panel: same key-capable base as above, plus the
+/// discrete `keyDown` routing the picker's arrow/Enter/Escape handling
+/// needs (there's no focused text field here to dispatch through).
+final class WindowPickerPanel: KeyCapableHUDPanel {
+    var onKeyDown: ((NSEvent) -> Bool)?
 
     override func keyDown(with event: NSEvent) {
         if onKeyDown?(event) != true {
@@ -53,7 +98,7 @@ final class WindowPickerHUDController {
 
         let panel = ensurePanel()
         renderContent()
-        anchorToPointerScreen(panel)
+        HUDPanelPlacement.centerOnPointerScreen(panel)
         panel.makeKeyAndOrderFront(nil)
 
         resignKeyObserver = NotificationCenter.default.addObserver(
@@ -125,20 +170,7 @@ final class WindowPickerHUDController {
         if let panel {
             return panel
         }
-        let panel = WindowPickerPanel(
-            contentRect: .zero,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: true
-        )
-        panel.isFloatingPanel = true
-        panel.level = .popUpMenu
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.hasShadow = true
-        panel.ignoresMouseEvents = false
-        panel.hidesOnDeactivate = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .fullScreenAuxiliary]
+        let panel = WindowPickerPanel()
         panel.onKeyDown = { [weak self] event in
             MainActor.assumeIsolated {
                 self?.handleKeyDown(event) ?? false
@@ -167,21 +199,6 @@ final class WindowPickerHUDController {
         hosting?.layoutSubtreeIfNeeded()
         let size = hosting?.fittingSize ?? .zero
         panel.setContentSize(size)
-    }
-
-    /// Same anchoring rule as the cheat sheet: the pointer's screen, since
-    /// the picker follows the user's attention, not the target window.
-    private func anchorToPointerScreen(_ panel: NSPanel) {
-        let mouse = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first { $0.frame.contains(mouse) }
-            ?? NSScreen.main
-            ?? NSScreen.screens.first
-        guard let screenFrame = screen?.visibleFrame else { return }
-        let size = panel.frame.size
-        panel.setFrameOrigin(NSPoint(
-            x: screenFrame.midX - size.width / 2,
-            y: screenFrame.midY - size.height / 2
-        ))
     }
 }
 
