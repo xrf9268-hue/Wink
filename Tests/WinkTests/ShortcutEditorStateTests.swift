@@ -103,6 +103,72 @@ func failedToggleLeavesEnabledStateUnchanged() {
     #expect(context.editor.saveErrorMessage != nil)
 }
 
+/// #356 P2-5 regression: a persistence failure while committing the
+/// search-palette trigger must surface on the General tab's own card
+/// (`searchPaletteSaveErrorMessage`), not only the shared `saveErrorMessage`
+/// that only `ShortcutsTabView` renders.
+@Test @MainActor
+func commitSearchPaletteShortcutSurfacesAPaletteScopedSaveError() {
+    let context = makeFailingSaveEditorContext(existingShortcuts: [])
+
+    context.editor.commitSearchPaletteShortcut(
+        RecordedShortcut(keyEquivalent: "space", modifierFlags: ["command", "option"])
+    )
+
+    #expect(context.editor.searchPaletteShortcut == nil)
+    #expect(context.editor.searchPaletteSaveErrorMessage != nil)
+    #expect(context.editor.searchPaletteSaveErrorMessage == context.editor.saveErrorMessage)
+    #expect(context.editor.recordedSearchPaletteShortcut == nil)
+}
+
+@Test @MainActor
+func setSearchPaletteEnabledSurfacesAPaletteScopedSaveError() {
+    let trigger = AppShortcut(
+        appName: AppShortcut.searchPaletteTargetStableName,
+        bundleIdentifier: AppShortcut.searchPaletteTargetSentinelBundleIdentifier,
+        keyEquivalent: "space",
+        modifierFlags: ["command", "option"],
+        target: .searchPalette
+    )
+    let context = makeFailingSaveEditorContext(existingShortcuts: [trigger])
+
+    context.editor.setSearchPaletteEnabled(false)
+
+    #expect(context.editor.searchPaletteShortcut?.isEnabled == true)
+    #expect(context.editor.searchPaletteSaveErrorMessage != nil)
+}
+
+@Test @MainActor
+func removeSearchPaletteShortcutSurfacesAPaletteScopedSaveError() {
+    let trigger = AppShortcut(
+        appName: AppShortcut.searchPaletteTargetStableName,
+        bundleIdentifier: AppShortcut.searchPaletteTargetSentinelBundleIdentifier,
+        keyEquivalent: "space",
+        modifierFlags: ["command", "option"],
+        target: .searchPalette
+    )
+    let context = makeFailingSaveEditorContext(existingShortcuts: [trigger])
+
+    context.editor.removeSearchPaletteShortcut()
+
+    #expect(context.editor.searchPaletteShortcut != nil)
+    #expect(context.editor.searchPaletteSaveErrorMessage != nil)
+}
+
+/// #356 P2-5: a successful commit clears any prior palette-scoped error.
+@Test @MainActor
+func commitSearchPaletteShortcutClearsAPriorPaletteScopedSaveError() {
+    let context = makeEditorContext()
+    defer { context.harness.cleanup() }
+
+    context.editor.searchPaletteSaveErrorMessage = "stale error"
+    context.editor.commitSearchPaletteShortcut(
+        RecordedShortcut(keyEquivalent: "space", modifierFlags: ["command", "option"])
+    )
+
+    #expect(context.editor.searchPaletteSaveErrorMessage == nil)
+}
+
 @Test @MainActor
 func successfulSaveClearsPreviousSaveError() {
     let context = makeEditorContext()
@@ -939,7 +1005,7 @@ private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
 @MainActor
 private struct FakeAppSwitcher: AppSwitching {
     @discardableResult
-    func toggleApplication(for shortcut: AppShortcut) -> Bool {
+    func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool {
         true
     }
 }

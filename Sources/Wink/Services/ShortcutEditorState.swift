@@ -83,6 +83,11 @@ final class ShortcutEditorState {
     var recordedSearchPaletteShortcut: RecordedShortcut?
     var isRecordingSearchPaletteShortcut: Bool = false
     var searchPaletteConflictMessage: String?
+    /// Palette-scoped mirror of `saveErrorMessage` — the General tab's card
+    /// shows this instead of the shared property so a persistence failure
+    /// there is never confused with (or masked by) one that happened on the
+    /// Shortcuts tab, and vice versa.
+    var searchPaletteSaveErrorMessage: String?
     var recipeFeedback: RecipeFeedback?
     var pendingRecipeImport: WinkRecipeImportPlanner.ImportPlan?
     var usageCounts: [UUID: Int] = [:]
@@ -188,9 +193,18 @@ final class ShortcutEditorState {
         } else {
             updated.append(candidate)
         }
-        guard persist(updated) else { return }
+        // persist() sets the shared saveErrorMessage either way; mirror it
+        // into the palette-scoped copy so the General tab's card shows its
+        // own failure instead of a stale/unrelated message that happened to
+        // land on the Shortcuts tab.
+        guard persist(updated) else {
+            searchPaletteSaveErrorMessage = saveErrorMessage
+            recordedSearchPaletteShortcut = nil
+            return
+        }
         onShortcutConfigurationChange()
         searchPaletteConflictMessage = nil
+        searchPaletteSaveErrorMessage = nil
         recordedSearchPaletteShortcut = nil
     }
 
@@ -199,19 +213,20 @@ final class ShortcutEditorState {
               shortcuts[index].isEnabled != enabled else { return }
         var updated = shortcuts
         updated[index].isEnabled = enabled
-        guard persist(updated) else { return }
+        guard persist(updated) else {
+            searchPaletteSaveErrorMessage = saveErrorMessage
+            return
+        }
         onShortcutConfigurationChange()
+        searchPaletteSaveErrorMessage = nil
     }
 
     func removeSearchPaletteShortcut() {
         guard let id = searchPaletteShortcut?.id else { return }
         removeShortcut(id: id)
-    }
-
-    func clearRecordedSearchPaletteShortcut() {
-        recordedSearchPaletteShortcut = nil
-        isRecordingSearchPaletteShortcut = false
-        searchPaletteConflictMessage = nil
+        // removeShortcut(id:) is shared with the per-app list and calls
+        // persist() itself; mirror its outcome the same way as above.
+        searchPaletteSaveErrorMessage = saveErrorMessage
     }
 
     func removeShortcut(id: UUID) {

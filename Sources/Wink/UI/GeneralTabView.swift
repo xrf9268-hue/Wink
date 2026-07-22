@@ -31,7 +31,7 @@ struct GeneralTabView: View {
 
                 keyboardCard(importPreviewActive: importPreviewActive)
 
-                searchPaletteCard
+                searchPaletteCard(importPreviewActive: importPreviewActive)
 
                 WinkCard(
                     title: {
@@ -300,8 +300,11 @@ struct GeneralTabView: View {
     /// than a row in the per-app Shortcuts list — it targets no app, so it
     /// doesn't belong in the app picker. The Permissions card immediately
     /// below already surfaces degraded-capture state for every shortcut,
-    /// this one included, so no separate banner is needed here.
-    private var searchPaletteCard: some View {
+    /// this one included, so no separate banner is needed here. Disabled
+    /// during an active import preview, same as `keyboardCard`'s controls —
+    /// recording a chord mid-preview would silently invalidate an already
+    /// "ready" plan entry by the time the user applies it.
+    private func searchPaletteCard(importPreviewActive: Bool) -> some View {
         WinkCard(
             title: {
                 Text("Search Palette", bundle: WinkResourceBundle.bundle)
@@ -316,9 +319,16 @@ struct GeneralTabView: View {
 
                     searchPaletteAccessory
                         .frame(width: 200, alignment: .trailing)
+                        .disabled(importPreviewActive)
                 }
 
                 if let message = editor.searchPaletteConflictMessage {
+                    Text(message)
+                        .font(WinkType.labelSmall)
+                        .foregroundStyle(palette.red)
+                }
+
+                if let message = editor.searchPaletteSaveErrorMessage {
                     Text(message)
                         .font(WinkType.labelSmall)
                         .foregroundStyle(palette.red)
