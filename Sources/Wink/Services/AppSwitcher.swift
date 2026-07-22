@@ -160,11 +160,15 @@ final class AppSwitcher: AppSwitching {
         /// with valid window IDs — most visibly the native Split View
         /// divider (role AXUnknown, ~13px wide, untitled, transient ID).
         /// Raising one moves the divider and resizes both panes (#376), so
-        /// rotation must only ever contain real content windows. A failed
-        /// role read counts as ineligible (fail closed): the windows list
-        /// itself was readable, and misclassifying a divider as a window is
-        /// destructive while dropping a window from one rotation is not.
-        let isContentWindow: (AXUIElement) -> Bool
+        /// rotation must only ever contain real content windows.
+        ///
+        /// Tri-state: `false` = the role read succeeded and the element is
+        /// definitively not a content window (excluded); `nil` = the role
+        /// read itself failed. The distinction matters mid-gesture: a
+        /// transient read failure must swallow the press like the
+        /// windows-read-failure path (never fall through to the hide lanes),
+        /// while a definitive auxiliary role is simply filtered out.
+        let isContentWindow: (AXUIElement) -> Bool?
         let raiseWindow: (AXUIElement) -> Void
         let unminimizeWindow: (AXUIElement) -> Void
         /// Seam over the WindowServer event post so tests never send real
@@ -1461,13 +1465,38 @@ final class AppSwitcher: AppSwitching {
         }
 
         var elementsByWindowID: [CGWindowID: AXUIElement] = [:]
+        var roleReadFailed = false
         for window in windows {
-            guard windowCycleClient.isContentWindow(window),
-                  let windowID = windowCycleClient.windowID(window),
+            switch windowCycleClient.isContentWindow(window) {
+            case true?:
+                break
+            case false?:
+                continue
+            case nil:
+                roleReadFailed = true
+                continue
+            }
+            guard let windowID = windowCycleClient.windowID(window),
                   elementsByWindowID[windowID] == nil else {
                 continue
             }
             elementsByWindowID[windowID] = window
+        }
+        if roleReadFailed,
+           windowCycleCoordinator.liveSession(for: shortcut.bundleIdentifier) != nil {
+            // Same invariant as the windows-read guard above: a transient AX
+            // failure mid-gesture (here: a role read on a window already in
+            // rotation) must swallow the press, not shrink the list below
+            // two and fall through to the hide lanes.
+            DiagnosticLog.log("TOGGLE[\(shortcut.appName)]: CYCLE role read failed mid-gesture — press swallowed")
+            logToggleTrace(
+                family: .decision,
+                bundleIdentifier: shortcut.bundleIdentifier,
+                event: "cycle_read_failed",
+                reason: "role_read_failed_mid_gesture",
+                activationPath: nil
+            )
+            return true
         }
         // Rotation order is the sorted CGWindowID list: stable across
         // presses, unlike kAXWindows order, which reshuffles after a raise.
@@ -2392,7 +2421,7 @@ extension AppSwitcher.WindowCycleClient {
         isContentWindow: { element in
             var roleRef: CFTypeRef?
             let result = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
-            guard result == .success, let role = roleRef as? String else { return false }
+            guard result == .success, let role = roleRef as? String else { return nil }
             return role == kAXWindowRole
         },
         raiseWindow: { element in
