@@ -354,7 +354,17 @@ Global shortcut event
   -> ShortcutManager.handleKeyPress()
   -> KeyMatcher normalizes KeyPress into ShortcutTrigger and triggerIndex finds the matching AppShortcut
   -> ShortcutManager emits `SHORTCUT_TRACE_DECISION event=matched`
-  -> AppSwitcher.toggleApplication()
+  -> match.isSearchPaletteTarget? (the #356 search-palette trigger's sentinel bundle names no app)
+       yes -> ShortcutManager.onSearchPaletteTriggered() -> AppController presents SearchPaletteHUDController
+              -> palette open gates matched dispatch via ShortcutManager.setInteractivePanelSessionActive(true),
+                 the same shared gate #352's window picker uses (mutual exclusion falls out of that one flag)
+              -> Enter commits: AppController's `activate` closure calls
+                 AppSwitcher.toggleApplication(for: adHocShortcut, bypassCooldown: true) with
+                 frontmostBehaviorOverride: .focus forced — activate/re-focus only, never a real
+                 toggle-off, and never routed through ShortcutManager.trigger (no usage recorded
+                 against an unpersisted ad hoc shortcut)
+              -> Escape or losing key status dismisses with zero side effects
+       no  -> AppSwitcher.toggleApplication() (the standard path below)
   -> ToggleSessionCoordinator creates/updates the pid-aware attempt session
   -> ApplicationObservation captures frontmost/window evidence
   -> activate / confirm / recover stage-by-stage
