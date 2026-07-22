@@ -174,6 +174,11 @@ final class ShortcutManager {
                 self?.handleHoldGesture(keyPress)
             }
         )
+        arbiter.onDroppedAmbiguousGesture = { [weak self] keyPress, elapsed in
+            self?.diagnosticClient.log(
+                "HOLD_GESTURE_DROPPED: keyCode=\(keyPress.keyCode) elapsedMs=\(Int(elapsed * 1000)) reason=late_deadline_ambiguous"
+            )
+        }
         holdGestureArbiter = arbiter
         captureCoordinator.setPhasedKeyObserver { [weak self, weak arbiter] keyPress, phase in
             // Delivery-time guards: a phased event queued on the main queue

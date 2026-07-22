@@ -248,17 +248,23 @@ final class ShortcutCaptureCoordinator {
         hyperConfigurationChanged: Bool = false,
         retryStandardProvider: Bool = false
     ) {
-        if standardShortcutsChanged {
-            standardProvider.updateRegisteredShortcuts(standardShortcuts)
-        }
-        if hyperShortcutsChanged {
-            hyperProvider.updateRegisteredShortcuts(hyperShortcuts)
-        }
+        // Phased sets are pushed BEFORE registered sets: the two writes are
+        // not atomic across the tap thread, and the harmful interleaving is
+        // a chord that is already registered but not yet phased (one event
+        // takes the legacy key-down dispatch instead of hold arbitration).
+        // Phased-but-not-yet-registered is inert — the chord doesn't match
+        // at all until the registered write lands.
         if standardShortcutsChanged || phasedChordsChanged {
             standardProvider.updatePhasedChords(standardPhasedChords)
         }
         if hyperShortcutsChanged || phasedChordsChanged {
             hyperProvider.updatePhasedChords(hyperPhasedChords)
+        }
+        if standardShortcutsChanged {
+            standardProvider.updateRegisteredShortcuts(standardShortcuts)
+        }
+        if hyperShortcutsChanged {
+            hyperProvider.updateRegisteredShortcuts(hyperShortcuts)
         }
         if hyperConfigurationChanged || hyperShortcutsChanged {
             hyperProvider.setHyperKeyEnabled(hyperKeyEnabled && !hyperShortcuts.isEmpty)

@@ -487,7 +487,7 @@ final class EventTapManager: EventTapManaging {
         }
         box.registeredShortcuts = registeredKeyPresses
         box.phasedChords = phasedKeyPresses
-        box.setPhasedKeyObserver(phasedKeyObserver)
+        box.setPhasedKeyObserver(wrappedPhasedObserver(generation: generation))
         box.setHyperKey(enabled: hyperKeyEnabled)
         ownershipLedger.boxCreates += 1
         let session = EventTapOwnedSession(
@@ -573,7 +573,31 @@ final class EventTapManager: EventTapManaging {
 
     func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?) {
         phasedKeyObserver = observer
-        owner?.box.setPhasedKeyObserver(observer)
+        if let owner {
+            owner.box.setPhasedKeyObserver(wrappedPhasedObserver(generation: owner.generation))
+        }
+    }
+
+    /// Generation-bound wrapper, mirroring the ordinary path's
+    /// `handleAsync(_:generation:)` guard: a phased event queued from the
+    /// tap thread must be discarded if the provider stopped or the tap was
+    /// recreated before the main queue drained it. Teardown clears the box's
+    /// stored observer, but an already-captured closure in a queued block
+    /// outlives that — the generation check is what actually revokes it.
+    private func wrappedPhasedObserver(
+        generation: UInt64
+    ) -> (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)? {
+        guard let phasedKeyObserver else { return nil }
+        return { [weak self] keyPress, phase in
+            guard let self,
+                  self.owner?.generation == generation,
+                  self.lifecycleState == .running else {
+                self?.ownershipLedger.staleCallbacksDiscarded += 1
+                self?.emitOwnershipLog(event: "stale_phased_callback_discarded")
+                return
+            }
+            phasedKeyObserver(keyPress, phase)
+        }
     }
 
     private var registeredKeyPresses: Set<KeyPress> = []

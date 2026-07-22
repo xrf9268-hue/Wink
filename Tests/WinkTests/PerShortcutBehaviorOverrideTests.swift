@@ -207,3 +207,19 @@ import Testing
     #expect(recipe.shortcuts.first?.holdAction == "someFutureAction")
     #expect(recipe.shortcuts.first?.holdActionValue == nil)
 }
+
+@Test func recipeWithWrongTypedOptionalFieldDegradesInsteadOfRejecting() throws {
+    // A wrong-TYPE optional raw field (hand-edited or future schema) must
+    // degrade to nil like shortcuts.json does, not quarantine the recipe.
+    let json = """
+    {"schemaVersion":1,"shortcuts":[
+      {"appName":"Safari","bundleIdentifier":"com.apple.Safari",
+       "keyEquivalent":"s","modifierFlags":["command"],"isEnabled":true,
+       "holdAction":42,"frontmostBehaviorOverride":7}
+    ]}
+    """
+    let recipe = try WinkRecipeCodec().decode(Data(json.utf8))
+    #expect(recipe.shortcuts.first?.holdActionValue == nil)
+    #expect(recipe.shortcuts.first?.behaviorOverride == nil)
+    #expect(recipe.shortcuts.first?.appName == "Safari")
+}

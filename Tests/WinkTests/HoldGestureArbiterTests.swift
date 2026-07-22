@@ -112,14 +112,50 @@ struct HoldGestureArbiterTests {
     }
 
     @Test
-    func duplicateDownDoesNotRestartTheClock() {
+    func duplicateDownRestartsTheGestureAndStalesTheOldDeadline() {
+        // Autorepeat never reaches the phased channel (tap swallows phased
+        // autorepeats pre-delivery; Carbon fires once per press), so a
+        // duplicate down means the previous up was lost and the user
+        // pressed again — two quick presses must resolve as a tap, never
+        // let the ORIGINAL deadline read the new press as a hold.
         let harness = Harness()
         let arbiter = harness.makeArbiter()
 
         arbiter.handle(chord, .down)
+        harness.clock += 0.15
         arbiter.handle(chord, .down)
+        #expect(harness.pendingDeadlines.count == 2, "the restart schedules a fresh deadline")
 
-        #expect(harness.pendingDeadlines.count == 1, "an unfiltered autorepeat down must not schedule a second deadline")
+        harness.clock += 0.1
+        arbiter.handle(chord, .up)
+        #expect(harness.taps.count == 1)
+        #expect(harness.taps.first.map { abs($0.1 - 0.1) < 0.001 } == true, "duration measures the SECOND press")
+
+        harness.fireDeadlines()
+        #expect(harness.holds.isEmpty, "both deadlines are stale after the up")
+        #expect(harness.taps.count == 1)
+    }
+
+    @Test
+    func severelyLateDeadlineWithReleasedKeyDropsInsteadOfTapping() {
+        let harness = Harness()
+        harness.physicallyHeld = false
+        let arbiter = harness.makeArbiter()
+        nonisolated(unsafe) var dropped: [(KeyPress, TimeInterval)] = []
+        arbiter.onDroppedAmbiguousGesture = { keyPress, elapsed in
+            dropped.append((keyPress, elapsed))
+        }
+
+        arbiter.handle(chord, .down)
+        // Deadline runs 200ms late (blocked main thread): the user may have
+        // held past the threshold and released before the probe — ambiguous,
+        // so neither a tap nor a hold may fire.
+        harness.clock += 0.5
+        harness.fireDeadlines()
+
+        #expect(harness.taps.isEmpty)
+        #expect(harness.holds.isEmpty)
+        #expect(dropped.count == 1)
     }
 
     @Test

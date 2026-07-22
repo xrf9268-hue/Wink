@@ -79,9 +79,14 @@ final class HoldGestureArbiter {
     func handle(_ keyPress: KeyPress, _ phase: KeyEventPhase) {
         switch phase {
         case .down:
-            // A second down for an in-flight chord can only be an autorepeat
-            // the providers failed to filter; it must not restart the clock.
-            guard gestures[keyPress] == nil else { return }
+            // A duplicate down for an in-flight chord RESTARTS the gesture.
+            // Autorepeat can never reach this channel (the tap swallows
+            // phased-chord autorepeats before delivery, and Carbon sends one
+            // pressed event per physical press), so a second down can only
+            // mean the previous up was lost (modifiers-first release) and
+            // the user pressed again — treating it as an autorepeat would
+            // let the ORIGINAL deadline read the new press's physical state
+            // and turn two taps into a hold.
             generation &+= 1
             let gestureGeneration = generation
             gestures[keyPress] = Gesture(generation: gestureGeneration, startedAt: now())
@@ -106,6 +111,12 @@ final class HoldGestureArbiter {
         generation &+= 1
     }
 
+    /// Slack past the deadline within which a keyState probe still yields a
+    /// trustworthy tap-vs-hold answer. Beyond it (a blocked main thread ran
+    /// the deadline late), a released key is ambiguous — the user may have
+    /// held well past the threshold and released before the late probe.
+    private static let deadlineLatenessSlack: TimeInterval = 0.15
+
     private func deadlineFired(_ keyPress: KeyPress, _ gestureGeneration: UInt64) {
         guard let gesture = gestures[keyPress],
               gesture.generation == gestureGeneration else {
@@ -114,8 +125,21 @@ final class HoldGestureArbiter {
         gestures.removeValue(forKey: keyPress)
         if physicalState.isKeyPressed(keyPress.keyCode) {
             onHold(keyPress)
-        } else {
-            onTap(keyPress, now() - gesture.startedAt)
+            return
         }
+        let elapsed = now() - gesture.startedAt
+        if elapsed > configuration.holdThreshold + Self.deadlineLatenessSlack {
+            // The probe ran too late to distinguish "released before the
+            // threshold (tap)" from "held past it and released before the
+            // late probe (hold)". Dropping is the least-wrong outcome:
+            // a misfired toggle acts on the user's windows; a dead press
+            // just invites a retry.
+            onDroppedAmbiguousGesture?(keyPress, elapsed)
+            return
+        }
+        onTap(keyPress, elapsed)
     }
+
+    /// Diagnostics-only hook for the ambiguous late-deadline drop.
+    var onDroppedAmbiguousGesture: (@MainActor (KeyPress, TimeInterval) -> Void)?
 }

@@ -200,28 +200,45 @@ private struct WindowPickerView: View {
             }
             .padding(.bottom, 4)
 
-            ForEach(Array(session.items.enumerated()), id: \.element.id) { index, item in
-                HStack(spacing: 8) {
-                    Image(systemName: item.isMinimized ? "arrow.down.right.square" : "macwindow")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 14)
-                    Text(item.title ?? String(localized: "Untitled Window", bundle: WinkResourceBundle.bundle))
-                        .font(.system(size: 13))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 12)
+            // Bounded height + scroll: an app with dozens of windows must
+            // not produce a panel taller than the screen; the selected row
+            // stays scrolled into view for keyboard navigation.
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(session.items.enumerated()), id: \.element.id) { index, item in
+                            HStack(spacing: 8) {
+                                Image(systemName: item.isMinimized ? "arrow.down.right.square" : "macwindow")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 14)
+                                Text(item.title ?? String(localized: "Untitled Window", bundle: WinkResourceBundle.bundle))
+                                    .font(.system(size: 13))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer(minLength: 12)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(index == selectionIndex ? Color.accentColor.opacity(0.25) : .clear)
+                            )
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                onRowTap(item.windowID)
+                            }
+                            .id(index)
+                        }
+                    }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(index == selectionIndex ? Color.accentColor.opacity(0.25) : .clear)
-                )
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    onRowTap(item.windowID)
+                .frame(maxHeight: 460)
+                .onAppear {
+                    proxy.scrollTo(selectionIndex)
+                }
+                .onChange(of: selectionIndex) { _, newIndex in
+                    proxy.scrollTo(newIndex)
                 }
             }
         }

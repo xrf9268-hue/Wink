@@ -70,6 +70,23 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
         self.holdAction = holdAction
     }
 
+    /// Custom decoding so the optional raw-string fields are fully lenient:
+    /// a wrong-TYPE value (e.g. `"holdAction": 42` from a hand-edited or
+    /// future-schema file) degrades that field to nil instead of rejecting
+    /// the entire recipe — matching shortcuts.json's leniency contract.
+    /// Required fields stay strict.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        appName = try container.decode(String.self, forKey: .appName)
+        bundleIdentifier = try container.decode(String.self, forKey: .bundleIdentifier)
+        keyEquivalent = try container.decode(String.self, forKey: .keyEquivalent)
+        modifierFlags = try container.decode([String].self, forKey: .modifierFlags)
+        isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
+        frontmostBehaviorOverride = try? container.decodeIfPresent(String.self, forKey: .frontmostBehaviorOverride)
+        target = try? container.decodeIfPresent(String.self, forKey: .target)
+        holdAction = try? container.decodeIfPresent(String.self, forKey: .holdAction)
+    }
+
     init(_ shortcut: AppShortcut) {
         self.init(
             appName: shortcut.appName,
