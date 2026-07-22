@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import SwiftUI
 
 private enum GeneralTabLinks {
@@ -22,8 +23,8 @@ struct GeneralTabView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
                 SettingsTabHeader(
-                    title: "General",
-                    subtitle: "Startup, keyboard behavior, and updates."
+                    title: String(localized: "General", bundle: WinkResourceBundle.bundle),
+                    subtitle: String(localized: "Startup, keyboard behavior, and updates.", bundle: WinkResourceBundle.bundle)
                 )
 
                 startupCard
@@ -32,28 +33,28 @@ struct GeneralTabView: View {
 
                 WinkCard(
                     title: {
-                        Text("Permissions")
+                        Text("Permissions", bundle: WinkResourceBundle.bundle)
                     },
                     accessory: {
-                        Text("Required for global shortcuts")
+                        Text("Required for global shortcuts", bundle: WinkResourceBundle.bundle)
                             .font(WinkType.labelSmall)
                             .foregroundStyle(palette.textTertiary)
                     }
                 ) {
                     VStack(spacing: 0) {
                         PermissionSummaryRow(
-                            label: "Accessibility",
-                            detail: "Routes global shortcuts.",
+                            label: String(localized: "Accessibility", bundle: WinkResourceBundle.bundle),
+                            detail: String(localized: "Routes global shortcuts.", bundle: WinkResourceBundle.bundle),
                             state: preferences.shortcutCaptureStatus.accessibilityGranted
                                 ? .granted
                                 : .needed
                         )
                         Divider().overlay(palette.hairline)
                         PermissionSummaryRow(
-                            label: "Input Monitoring",
+                            label: String(localized: "Input Monitoring", bundle: WinkResourceBundle.bundle),
                             detail: preferences.shortcutCaptureStatus.inputMonitoringRequired
-                                ? "Needed for the current shortcut configuration."
-                                : "Not required for the current shortcut configuration.",
+                                ? String(localized: "Needed for the current shortcut configuration.", bundle: WinkResourceBundle.bundle)
+                                : String(localized: "Not required for the current shortcut configuration.", bundle: WinkResourceBundle.bundle),
                             state: inputMonitoringPresentationState(for: preferences.shortcutCaptureStatus)
                         )
                     }
@@ -80,7 +81,7 @@ struct GeneralTabView: View {
 
                             Spacer(minLength: 8)
 
-                            WinkButton("Check for Updates…") {
+                            WinkButton(String(localized: "Check for Updates…", bundle: WinkResourceBundle.bundle)) {
                                 preferences.checkForUpdates()
                             }
                             .disabled(!updatePresentation.checkForUpdatesEnabled)
@@ -91,8 +92,8 @@ struct GeneralTabView: View {
                         Divider().overlay(palette.hairline)
 
                         SettingsToggleRow(
-                            title: "Automatic Updates",
-                            subtitle: "Download and install new versions in the background.",
+                            title: String(localized: "Automatic Updates", bundle: WinkResourceBundle.bundle),
+                            subtitle: String(localized: "Download and install new versions in the background.", bundle: WinkResourceBundle.bundle),
                             isOn: Binding(
                                 get: { preferences.automaticUpdatesEnabled },
                                 set: { preferences.setAutomaticUpdatesEnabled($0) }
@@ -103,13 +104,19 @@ struct GeneralTabView: View {
                 }
 
                 HStack(spacing: 8) {
-                    Link("Release Notes", destination: GeneralTabLinks.releases)
+                    Link(destination: GeneralTabLinks.releases) {
+                        Text("Release Notes", bundle: WinkResourceBundle.bundle)
+                    }
                     Text("·")
                         .foregroundStyle(palette.textTertiary)
-                    Link("Privacy", destination: GeneralTabLinks.privacy)
+                    Link(destination: GeneralTabLinks.privacy) {
+                        Text("Privacy", bundle: WinkResourceBundle.bundle)
+                    }
                     Text("·")
                         .foregroundStyle(palette.textTertiary)
-                    Link("Support", destination: GeneralTabLinks.support)
+                    Link(destination: GeneralTabLinks.support) {
+                        Text("Support", bundle: WinkResourceBundle.bundle)
+                    }
                 }
                 .font(WinkType.labelSmall)
                 .foregroundStyle(palette.textTertiary)
@@ -127,8 +134,8 @@ struct GeneralTabView: View {
         WinkCard {
             VStack(alignment: .leading, spacing: 0) {
                 SettingsToggleRow(
-                    title: "Launch at Login",
-                    subtitle: "Opens Wink in the menu bar when you sign in.",
+                    title: String(localized: "Launch at Login", bundle: WinkResourceBundle.bundle),
+                    subtitle: String(localized: "Opens Wink in the menu bar when you sign in.", bundle: WinkResourceBundle.bundle),
                     isOn: Binding(
                         get: { preferences.launchAtLoginPresentation.toggleIsOn },
                         set: { preferences.setLaunchAtLogin($0) }
@@ -139,8 +146,8 @@ struct GeneralTabView: View {
                 Divider().overlay(palette.hairline)
 
                 SettingsToggleRow(
-                    title: "Show Menu Bar Icon",
-                    subtitle: "Hide the icon if you prefer a minimal menu bar.",
+                    title: String(localized: "Show Menu Bar Icon", bundle: WinkResourceBundle.bundle),
+                    subtitle: String(localized: "Hide the icon if you prefer a minimal menu bar.", bundle: WinkResourceBundle.bundle),
                     isOn: $menuBarIconVisible
                 )
 
@@ -151,7 +158,7 @@ struct GeneralTabView: View {
                         title: message
                     ) {
                         if preferences.launchAtLoginPresentation.showsOpenSettingsButton {
-                            WinkButton("Open Login Items Settings") {
+                            WinkButton(String(localized: "Open Login Items Settings", bundle: WinkResourceBundle.bundle)) {
                                 preferences.openLoginItemsSettings()
                             }
                         }
@@ -167,8 +174,8 @@ struct GeneralTabView: View {
         WinkCard {
             VStack(alignment: .leading, spacing: 0) {
                 SettingsToggleRow(
-                    title: "Enable All Shortcuts",
-                    subtitle: "Master switch for global shortcut routing.",
+                    title: String(localized: "Enable All Shortcuts", bundle: WinkResourceBundle.bundle),
+                    subtitle: String(localized: "Master switch for global shortcut routing.", bundle: WinkResourceBundle.bundle),
                     isOn: Binding(
                         get: { editor.allEnabled },
                         set: { editor.setAllEnabled($0) }
@@ -179,14 +186,14 @@ struct GeneralTabView: View {
                 Divider().overlay(palette.hairline)
 
                 SettingsToggleRow(
-                    title: "Hyper Key",
+                    title: String(localized: "Hyper Key", bundle: WinkResourceBundle.bundle),
                     subtitleView: {
                         HStack(spacing: 6) {
-                            Text("Hold")
+                            Text("Hold", bundle: WinkResourceBundle.bundle)
                             WinkKeycap("Caps Lock", size: .small)
-                            Text("to act as")
+                            Text("to act as", bundle: WinkResourceBundle.bundle)
                             WinkKeycap("⌃⌥⇧⌘", size: .small)
-                            Text(". Tap alone to keep its original behavior.")
+                            Text(". Tap alone to keep its original behavior.", bundle: WinkResourceBundle.bundle)
                         }
                     },
                     isOn: Binding(
@@ -198,8 +205,8 @@ struct GeneralTabView: View {
                 Divider().overlay(palette.hairline)
 
                 SettingsRow(
-                    title: "When target is frontmost",
-                    subtitle: "How Wink reacts when the target app is already active."
+                    title: String(localized: "When target is frontmost", bundle: WinkResourceBundle.bundle),
+                    subtitle: String(localized: "How Wink reacts when the target app is already active.", bundle: WinkResourceBundle.bundle)
                 ) {
                     WinkSegmented(
                         options: FrontmostTargetBehavior.allCases.map { behavior in
@@ -209,7 +216,7 @@ struct GeneralTabView: View {
                             get: { preferences.frontmostTargetBehavior },
                             set: { preferences.frontmostTargetBehavior = $0 }
                         ),
-                        accessibilityLabel: "When target is frontmost"
+                        accessibilityLabel: String(localized: "When target is frontmost", bundle: WinkResourceBundle.bundle)
                     )
                     .frame(width: 224)
                 }
@@ -217,7 +224,7 @@ struct GeneralTabView: View {
                 Divider().overlay(palette.hairline)
 
                 SettingsToggleRow(
-                    title: "Hyper cheat sheet",
+                    title: String(localized: "Hyper cheat sheet", bundle: WinkResourceBundle.bundle),
                     subtitle: hyperCheatSheetSubtitle,
                     isOn: Binding(
                         get: { preferences.hyperCheatSheetEnabled },
@@ -228,8 +235,11 @@ struct GeneralTabView: View {
                 Divider().overlay(palette.hairline)
 
                 SettingsToggleRow(
-                    title: "Suggest shortcuts from app usage",
-                    subtitle: "Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.",
+                    title: String(localized: "Suggest shortcuts from app usage", bundle: WinkResourceBundle.bundle),
+                    subtitle: String(
+                        localized: "Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.",
+                        bundle: WinkResourceBundle.bundle
+                    ),
                     isOn: Binding(
                         get: { preferences.suggestShortcutsFromUsage },
                         set: { preferences.setSuggestShortcutsFromUsage($0) }
@@ -239,8 +249,11 @@ struct GeneralTabView: View {
                 Divider().overlay(palette.hairline)
 
                 SettingsToggleRow(
-                    title: "Pause in exception apps",
-                    subtitle: "Hand shortcuts back to the system while a listed app (VM, remote desktop) is frontmost.",
+                    title: String(localized: "Pause in exception apps", bundle: WinkResourceBundle.bundle),
+                    subtitle: String(
+                        localized: "Hand shortcuts back to the system while a listed app (VM, remote desktop) is frontmost.",
+                        bundle: WinkResourceBundle.bundle
+                    ),
                     isOn: Binding(
                         get: { preferences.frontmostExceptionsEnabled },
                         set: { preferences.setFrontmostExceptionsEnabled($0) }
@@ -265,11 +278,11 @@ struct GeneralTabView: View {
                                         .foregroundStyle(palette.textTertiary)
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityLabel("Remove \(bundleIdentifier)")
+                                .accessibilityLabel(String(localized: "Remove \(bundleIdentifier)", bundle: WinkResourceBundle.bundle))
                             }
                         }
 
-                        WinkButton("Add App…") {
+                        WinkButton(String(localized: "Add App…", bundle: WinkResourceBundle.bundle)) {
                             addExceptionApp()
                         }
                         .padding(.top, 2)
@@ -281,15 +294,25 @@ struct GeneralTabView: View {
     }
 
     private var hyperCheatSheetSubtitle: String {
-        let base = "Hold Caps Lock without a second key to see all shortcuts."
-        guard preferences.hyperCheatSheetEnabled else { return base }
+        // Each branch is one full self-contained catalog entry (not a
+        // concatenation of localized fragments) so translators see a
+        // complete, naturally-ordered sentence.
+        guard preferences.hyperCheatSheetEnabled else {
+            return String(localized: "Hold Caps Lock without a second key to see all shortcuts.", bundle: WinkResourceBundle.bundle)
+        }
         if !preferences.hyperKeyEnabled {
-            return base + " Needs Hyper Key enabled."
+            return String(
+                localized: "Hold Caps Lock without a second key to see all shortcuts. Needs Hyper Key enabled.",
+                bundle: WinkResourceBundle.bundle
+            )
         }
         if !preferences.shortcutCaptureStatus.eventTapActive {
-            return base + " Needs at least one enabled Hyper shortcut."
+            return String(
+                localized: "Hold Caps Lock without a second key to see all shortcuts. Needs at least one enabled Hyper shortcut.",
+                bundle: WinkResourceBundle.bundle
+            )
         }
-        return base
+        return String(localized: "Hold Caps Lock without a second key to see all shortcuts.", bundle: WinkResourceBundle.bundle)
     }
 
     private func addExceptionApp() {
@@ -313,37 +336,52 @@ struct GeneralTabView: View {
 
     private func updateBehaviorDescription(_ presentation: UpdatePresentation) -> String {
         guard presentation.isConfigured else {
-            return "Automatic updates become available after this build is configured with a signed Sparkle appcast feed."
+            return String(
+                localized: "Automatic updates become available after this build is configured with a signed Sparkle appcast feed.",
+                bundle: WinkResourceBundle.bundle
+            )
         }
 
         // Live session state outranks the static behavior description.
         switch preferences.updatePhase {
         case .checking:
-            return "Checking for updates…"
+            return String(localized: "Checking for updates…", bundle: WinkResourceBundle.bundle)
         case .available(let version):
-            return "Version \(version) is available. Use Check for Updates… to review and install."
+            return String(
+                localized: "Version \(version) is available. Use Check for Updates… to review and install.",
+                bundle: WinkResourceBundle.bundle
+            )
         case .downloading(let version, let received, let expected):
             let percent = expected > 0 ? " (\(Int(Double(received) / Double(expected) * 100))%)" : ""
-            return "Downloading version \(version)…\(percent)"
+            return String(localized: "Downloading version \(version)…\(percent)", bundle: WinkResourceBundle.bundle)
         case .extracting:
-            return "Preparing the downloaded update…"
+            return String(localized: "Preparing the downloaded update…", bundle: WinkResourceBundle.bundle)
         case .ready(let version):
-            return "Version \(version) is downloaded and installs when Wink quits. Use Check for Updates… to install now."
+            return String(
+                localized: "Version \(version) is downloaded and installs when Wink quits. Use Check for Updates… to install now.",
+                bundle: WinkResourceBundle.bundle
+            )
         case .installing:
-            return "Installing the update — Wink will relaunch shortly."
+            return String(localized: "Installing the update — Wink will relaunch shortly.", bundle: WinkResourceBundle.bundle)
         case .error(let message):
-            return "The last automatic update check failed: \(message)"
+            return String(localized: "The last automatic update check failed: \(message)", bundle: WinkResourceBundle.bundle)
         case .idle, .upToDate:
             break
         }
 
         let behavior: String
         if presentation.automaticChecksEnabled && presentation.automaticDownloadsEnabled {
-            behavior = "Automatic update checks and downloads are enabled."
+            behavior = String(localized: "Automatic update checks and downloads are enabled.", bundle: WinkResourceBundle.bundle)
         } else if presentation.automaticChecksEnabled {
-            behavior = "Wink checks for updates automatically and asks before downloading."
+            behavior = String(
+                localized: "Wink checks for updates automatically and asks before downloading.",
+                bundle: WinkResourceBundle.bundle
+            )
         } else {
-            behavior = "Automatic update checks are off. Use Check for Updates… to check manually."
+            behavior = String(
+                localized: "Automatic update checks are off. Use Check for Updates… to check manually.",
+                bundle: WinkResourceBundle.bundle
+            )
         }
 
         guard let lastChecked = preferences.lastUpdateCheckDate else {
@@ -352,7 +390,10 @@ struct GeneralTabView: View {
         let relative = RelativeDateTimeFormatter()
         relative.unitsStyle = .full
         let when = relative.localizedString(for: lastChecked, relativeTo: Date())
-        return behavior + " Last checked \(when)."
+        // `behavior` is already fully localized text; composing it as a %@
+        // argument (not raw Swift concatenation) keeps the whole sentence
+        // routed through the catalog.
+        return String(localized: "\(behavior) Last checked \(when).", bundle: WinkResourceBundle.bundle)
     }
 }
 
@@ -401,9 +442,9 @@ private enum PermissionSummaryState {
 
     var label: String {
         switch self {
-        case .granted: return "Granted"
-        case .needed: return "Needed"
-        case .optional: return "Optional"
+        case .granted: return String(localized: "Granted", bundle: WinkResourceBundle.bundle)
+        case .needed: return String(localized: "Needed", bundle: WinkResourceBundle.bundle)
+        case .optional: return String(localized: "Optional", bundle: WinkResourceBundle.bundle)
         }
     }
 

@@ -8,9 +8,9 @@ enum SettingsTab: String, CaseIterable, Sendable {
 
     var title: String {
         switch self {
-        case .shortcuts: return "Shortcuts"
-        case .insights: return "Insights"
-        case .general: return "General"
+        case .shortcuts: return String(localized: "Shortcuts", bundle: WinkResourceBundle.bundle)
+        case .insights: return String(localized: "Insights", bundle: WinkResourceBundle.bundle)
+        case .general: return String(localized: "General", bundle: WinkResourceBundle.bundle)
         }
     }
 

@@ -179,14 +179,14 @@ struct ShortcutsListRowPresentation {
         now: Date = Date()
     ) {
         title = shortcut.appName
-        let usageSummary = "\(usageCount)× past 7 days"
+        let usageSummary = String(localized: "\(usageCount)× past 7 days", bundle: WinkResourceBundle.bundle)
         usageText = usageSummary
 
         if let lastUsed {
             let relative = Self.makeRelativeFormatter().localizedString(for: lastUsed, relativeTo: now)
-            lastUsedText = "Last used \(relative)"
+            lastUsedText = String(localized: "Last used \(relative)", bundle: WinkResourceBundle.bundle)
         } else {
-            lastUsedText = "Last used —"
+            lastUsedText = String(localized: "Last used —", bundle: WinkResourceBundle.bundle)
         }
 
         // `usageCount` only covers the past 7 days, but `lastUsed` reflects all stored
@@ -194,21 +194,26 @@ struct ShortcutsListRowPresentation {
         // count == 0 while still carrying a real last-used bucket, so only fall back
         // to "Not used yet" when we truly have no history to report.
         if usageCount > 0 {
+            // " · " is a fixed design-system glue between two already-localized
+            // fragments (matches the CycleHUD "N/M · Title" convention) — not
+            // routed through the catalog itself.
             metadataText = "\(usageSummary) · \(lastUsedText)"
         } else if lastUsed != nil {
             metadataText = lastUsedText
         } else {
-            metadataText = "Not used yet"
+            metadataText = String(localized: "Not used yet", bundle: WinkResourceBundle.bundle)
         }
 
         contentOpacity = shortcut.isEnabled ? 1.0 : 0.65
         showsRunningIndicator = runtimeStatus.isRunning
         runningStatusText = runtimeStatus.isRunning && accessibilityOptions.differentiateWithoutColor
-            ? "Running"
+            ? String(localized: "Running", bundle: WinkResourceBundle.bundle)
             : nil
-        unavailableStatusText = runtimeStatus.isUnavailable ? "App unavailable" : nil
+        unavailableStatusText = runtimeStatus.isUnavailable
+            ? String(localized: "App unavailable", bundle: WinkResourceBundle.bundle)
+            : nil
         unavailableHelpText = runtimeStatus.isUnavailable
-            ? "Couldn't find this app. Rebind it to restore the shortcut."
+            ? String(localized: "Couldn't find this app. Rebind it to restore the shortcut.", bundle: WinkResourceBundle.bundle)
             : nil
     }
 
@@ -225,7 +230,7 @@ enum ShortcutBannerPresentation: Equatable {
     init(status: ShortcutCaptureStatus) {
         if status.shortcutsPaused {
             self = .info(
-                title: "Shortcuts paused",
+                title: String(localized: "Shortcuts paused", bundle: WinkResourceBundle.bundle),
                 message: status.bannerDetail
             )
             return
@@ -233,8 +238,8 @@ enum ShortcutBannerPresentation: Equatable {
 
         if !status.accessibilityGranted {
             self = .warning(
-                title: "Accessibility permission needed",
-                message: "Wink needs Accessibility access to route global shortcuts.",
+                title: String(localized: "Accessibility permission needed", bundle: WinkResourceBundle.bundle),
+                message: String(localized: "Wink needs Accessibility access to route global shortcuts.", bundle: WinkResourceBundle.bundle),
                 showsAction: true
             )
             return
@@ -242,8 +247,8 @@ enum ShortcutBannerPresentation: Equatable {
 
         if status.inputMonitoringRequired && !status.inputMonitoringGranted {
             self = .warning(
-                title: "Input Monitoring needed",
-                message: "Some shortcuts need Input Monitoring before Wink can capture them.",
+                title: String(localized: "Input Monitoring needed", bundle: WinkResourceBundle.bundle),
+                message: String(localized: "Some shortcuts need Input Monitoring before Wink can capture them.", bundle: WinkResourceBundle.bundle),
                 showsAction: true
             )
             return
@@ -251,7 +256,7 @@ enum ShortcutBannerPresentation: Equatable {
 
         if let warning = status.standardRegistrationWarning {
             self = .warning(
-                title: "Shortcut capture needs attention",
+                title: String(localized: "Shortcut capture needs attention", bundle: WinkResourceBundle.bundle),
                 message: warning,
                 showsAction: false
             )
@@ -261,7 +266,7 @@ enum ShortcutBannerPresentation: Equatable {
         if status.inputMonitoringRequired,
            let warning = status.permissionWarning {
             self = .warning(
-                title: "Shortcut capture needs attention",
+                title: String(localized: "Shortcut capture needs attention", bundle: WinkResourceBundle.bundle),
                 message: warning,
                 showsAction: false
             )
@@ -270,9 +275,9 @@ enum ShortcutBannerPresentation: Equatable {
 
         let title: String
         if status.standardShortcutsReady && status.hyperShortcutsReady {
-            title = "Shortcut capture ready"
+            title = String(localized: "Shortcut capture ready", bundle: WinkResourceBundle.bundle)
         } else {
-            title = "Standard shortcuts ready"
+            title = String(localized: "Standard shortcuts ready", bundle: WinkResourceBundle.bundle)
         }
 
         let message = [status.bannerDetail, status.systemSettingsGuidance]
@@ -316,10 +321,10 @@ struct ShortcutsTabView: View {
 
         VStack(alignment: .leading, spacing: 14) {
             SettingsTabHeader(
-                title: "Shortcuts",
-                subtitle: "Bind a keystroke to launch, toggle, or hide an app."
+                title: String(localized: "Shortcuts", bundle: WinkResourceBundle.bundle),
+                subtitle: String(localized: "Bind a keystroke to launch, toggle, or hide an app.", bundle: WinkResourceBundle.bundle)
             ) {
-                WinkButton("Refresh", systemImage: WinkIcon.refresh.systemName) {
+                WinkButton(String(localized: "Refresh", bundle: WinkResourceBundle.bundle), systemImage: WinkIcon.refresh.systemName) {
                     preferences.requestShortcutPermissions()
                 }
             }
@@ -328,13 +333,13 @@ struct ShortcutsTabView: View {
 
             WinkCard(
                 title: {
-                    Text("New Shortcut")
+                    Text("New Shortcut", bundle: WinkResourceBundle.bundle)
                 }
             ) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .top, spacing: 12) {
                         VStack(alignment: .leading, spacing: 5) {
-                            SettingsFieldLabel("Target app")
+                            SettingsFieldLabel(String(localized: "Target app", bundle: WinkResourceBundle.bundle))
                             Button {
                                 showingAppPicker = true
                             } label: {
@@ -348,7 +353,7 @@ struct ShortcutsTabView: View {
                                                     .foregroundStyle(.white)
                                             }
 
-                                        Text("Choose an app…")
+                                        Text("Choose an app…", bundle: WinkResourceBundle.bundle)
                                             .font(WinkType.bodyText)
                                             .foregroundStyle(palette.textTertiary)
                                     } else {
@@ -391,7 +396,10 @@ struct ShortcutsTabView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                         VStack(alignment: .leading, spacing: 5) {
-                            SettingsFieldLabel("Shortcut", trailing: "Click to record")
+                            SettingsFieldLabel(
+                                String(localized: "Shortcut", bundle: WinkResourceBundle.bundle),
+                                trailing: String(localized: "Click to record", bundle: WinkResourceBundle.bundle)
+                            )
 
                             if editor.isRecordingShortcut {
                                 ShortcutRecorderView(
@@ -413,21 +421,21 @@ struct ShortcutsTabView: View {
 
                     HStack(alignment: .center, spacing: 10) {
                         HStack(spacing: 6) {
-                            Text("Tip: hold")
+                            Text("Tip: hold", bundle: WinkResourceBundle.bundle)
                             WinkKeycap("Caps Lock", size: .small)
-                            Text("for a Hyper shortcut.")
+                            Text("for a Hyper shortcut.", bundle: WinkResourceBundle.bundle)
                         }
                         .font(WinkType.labelSmall)
                         .foregroundStyle(palette.textTertiary)
 
                         Spacer(minLength: 8)
 
-                        WinkButton("Clear") {
+                        WinkButton(String(localized: "Clear", bundle: WinkResourceBundle.bundle)) {
                             editor.clearRecordedShortcut()
                         }
                         .disabled(importPreviewActive || (editor.recordedShortcut == nil && !editor.isRecordingShortcut))
 
-                        WinkButton("Add Shortcut", variant: .primary) {
+                        WinkButton(String(localized: "Add Shortcut", bundle: WinkResourceBundle.bundle), variant: .primary) {
                             editor.addShortcut()
                         }
                         .disabled(importPreviewActive || editor.selectedBundleIdentifier.isEmpty || editor.recordedShortcut == nil)
@@ -494,7 +502,7 @@ struct ShortcutsTabView: View {
                         preferences.requestShortcutPermissions()
                     }
                 } else {
-                    WinkButton("Refresh") {
+                    WinkButton(String(localized: "Refresh", bundle: WinkResourceBundle.bundle)) {
                         preferences.refreshPermissions()
                     }
                 }
@@ -505,12 +513,12 @@ struct ShortcutsTabView: View {
     private var permissionActionTitle: String {
         let status = preferences.shortcutCaptureStatus
         if !status.accessibilityGranted {
-            return "Request Accessibility"
+            return String(localized: "Request Accessibility", bundle: WinkResourceBundle.bundle)
         }
         if status.inputMonitoringRequired && !status.inputMonitoringGranted {
-            return "Request Input Monitoring"
+            return String(localized: "Request Input Monitoring", bundle: WinkResourceBundle.bundle)
         }
-        return "Request Access"
+        return String(localized: "Request Access", bundle: WinkResourceBundle.bundle)
     }
 
     @ViewBuilder
@@ -519,12 +527,12 @@ struct ShortcutsTabView: View {
 
         WinkCard(
             title: {
-                Text("Your Shortcuts · \(editor.shortcuts.count)")
+                Text("Your Shortcuts · \(editor.shortcuts.count)", bundle: WinkResourceBundle.bundle)
             },
             accessory: {
                 HStack(spacing: 6) {
                     WinkTextField(
-                        placeholder: "Filter…",
+                        placeholder: String(localized: "Filter…", bundle: WinkResourceBundle.bundle),
                         text: $filterText,
                         leading: {
                             WinkIcon.search.image(size: 11)
@@ -534,12 +542,12 @@ struct ShortcutsTabView: View {
                     .frame(width: 140)
 
                     Menu {
-                        Button("Import…") {
+                        Button(String(localized: "Import…", bundle: WinkResourceBundle.bundle)) {
                             Task {
                                 await editor.importRecipes(using: appListProvider)
                             }
                         }
-                        Button("Export…") {
+                        Button(String(localized: "Export…", bundle: WinkResourceBundle.bundle)) {
                             editor.exportRecipes()
                         }
                         .disabled(editor.shortcuts.isEmpty)
@@ -557,13 +565,17 @@ struct ShortcutsTabView: View {
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
-                    .help("Import or export shortcuts")
+                    .help(String(localized: "Import or export shortcuts", bundle: WinkResourceBundle.bundle))
                     .disabled(importPreviewActive)
                 }
             }
         ) {
             if filteredShortcuts.isEmpty {
-                Text(filterText.isEmpty ? "No shortcuts configured" : "No shortcuts match your filter")
+                Text(
+                    filterText.isEmpty
+                        ? String(localized: "No shortcuts configured", bundle: WinkResourceBundle.bundle)
+                        : String(localized: "No shortcuts match your filter", bundle: WinkResourceBundle.bundle)
+                )
                     .font(WinkType.bodyText)
                     .foregroundStyle(palette.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -725,30 +737,30 @@ struct ShortcutsTabView: View {
     private func importPreviewCard(_ plan: WinkRecipeImportPlanner.ImportPlan) -> some View {
         WinkCard(
             title: {
-                Text("Import Preview")
+                Text("Import Preview", bundle: WinkResourceBundle.bundle)
             }
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
-                    statView(title: "Ready", count: plan.readyEntries.count, tint: palette.green)
-                    statView(title: "Conflicts", count: plan.conflictEntries.count, tint: palette.amber)
-                    statView(title: "Unresolved", count: plan.unresolvedEntries.count, tint: palette.textSecondary)
+                    statView(title: String(localized: "Ready", bundle: WinkResourceBundle.bundle), count: plan.readyEntries.count, tint: palette.green)
+                    statView(title: String(localized: "Conflicts", bundle: WinkResourceBundle.bundle), count: plan.conflictEntries.count, tint: palette.amber)
+                    statView(title: String(localized: "Unresolved", bundle: WinkResourceBundle.bundle), count: plan.unresolvedEntries.count, tint: palette.textSecondary)
                 }
 
                 importPreviewDetails(plan)
 
                 HStack(spacing: 8) {
-                    WinkButton("Cancel") {
+                    WinkButton(String(localized: "Cancel", bundle: WinkResourceBundle.bundle)) {
                         editor.discardPendingRecipeImport()
                     }
 
                     Spacer(minLength: 8)
 
-                    WinkButton("Skip Conflicts") {
+                    WinkButton(String(localized: "Skip Conflicts", bundle: WinkResourceBundle.bundle)) {
                         editor.applyPendingImport(strategy: .skipConflicts)
                     }
 
-                    WinkButton("Replace Existing", variant: .primary) {
+                    WinkButton(String(localized: "Replace Existing", bundle: WinkResourceBundle.bundle), variant: .primary) {
                         editor.applyPendingImport(strategy: .replaceExisting)
                     }
                 }
@@ -764,7 +776,7 @@ struct ShortcutsTabView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     if !plan.conflictEntries.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Conflicts")
+                            Text("Conflicts", bundle: WinkResourceBundle.bundle)
                                 .font(WinkType.captionStrong)
                                 .foregroundStyle(palette.textPrimary)
 
@@ -774,7 +786,7 @@ struct ShortcutsTabView: View {
                                         .font(WinkType.labelSmall)
                                         .foregroundStyle(palette.textPrimary)
                                     if let conflictingShortcut = entry.conflictingShortcut {
-                                        Text("Conflicts with \(conflictingShortcut.appName) · \(conflictingShortcut.displayText)")
+                                        Text("Conflicts with \(conflictingShortcut.appName) · \(conflictingShortcut.displayText)", bundle: WinkResourceBundle.bundle)
                                             .font(WinkType.labelSmall)
                                             .foregroundStyle(palette.textSecondary)
                                     }
@@ -785,7 +797,7 @@ struct ShortcutsTabView: View {
 
                     if !plan.unresolvedEntries.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.")
+                            Text("Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.", bundle: WinkResourceBundle.bundle)
                                 .font(WinkType.labelSmall)
                                 .foregroundStyle(palette.textSecondary)
 
@@ -903,7 +915,7 @@ struct ShortcutsListRow: View {
                                     .foregroundStyle(palette.textSecondary)
                             }
                         }
-                        .help("App is currently running")
+                        .help(String(localized: "App is currently running", bundle: WinkResourceBundle.bundle))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -915,6 +927,10 @@ struct ShortcutsListRow: View {
                     .truncationMode(.tail)
 
                 if let unavailableStatusText = presentation.unavailableStatusText {
+                    // `unavailableStatusText`/`unavailableHelpText` are already
+                    // localized `String` values built in `ShortcutsListRowPresentation`
+                    // — `Label`/`.help` take a concrete `String` verbatim (no further
+                    // catalog lookup) via their `StringProtocol` overloads.
                     Label(unavailableStatusText, systemImage: "exclamationmark.triangle.fill")
                         .font(WinkType.labelSmall)
                         .foregroundStyle(palette.amber)
@@ -945,7 +961,7 @@ struct ShortcutsListRow: View {
                 height: ShortcutRowMetrics.gripHitHeight
             )
             .contentShape(Rectangle())
-            .help("Drag to reorder")
+            .help(String(localized: "Drag to reorder", bundle: WinkResourceBundle.bundle))
 
         if let reorderHandlers {
             icon
@@ -1006,12 +1022,13 @@ struct ShortcutsListRow: View {
             .disabled(importPreviewActive)
 
             Menu {
-                Picker("When Frontmost", selection: Binding(
+                Picker(String(localized: "When Frontmost", bundle: WinkResourceBundle.bundle), selection: Binding(
                     get: { shortcut.frontmostBehaviorOverride },
                     set: { onSetFrontmostBehaviorOverride($0) }
                 )) {
-                    Text("Default").tag(FrontmostTargetBehavior?.none)
+                    Text(String(localized: "Default", bundle: WinkResourceBundle.bundle)).tag(FrontmostTargetBehavior?.none)
                     ForEach(FrontmostTargetBehavior.allCases, id: \.self) { behavior in
+                        // `behavior.title` is already localized (AppPreferences.swift).
                         Text(behavior.title).tag(FrontmostTargetBehavior?.some(behavior))
                     }
                 }
@@ -1019,7 +1036,7 @@ struct ShortcutsListRow: View {
 
                 Divider()
 
-                Button("Delete Shortcut", role: .destructive, action: onRemove)
+                Button(String(localized: "Delete Shortcut", bundle: WinkResourceBundle.bundle), role: .destructive, action: onRemove)
             } label: {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(isMenuButtonHovering ? palette.controlBgRest : Color.clear)
@@ -1071,7 +1088,9 @@ private struct SettingsFieldLabel: View {
 }
 
 struct ShortcutRecorderIdleField: View {
-    nonisolated static let placeholderText = "Press a key combination…"
+    nonisolated static var placeholderText: String {
+        String(localized: "Press a key combination…", bundle: WinkResourceBundle.bundle)
+    }
     nonisolated static let dashPattern: [CGFloat] = [4, 4]
 
     @Environment(\.winkPalette) private var palette

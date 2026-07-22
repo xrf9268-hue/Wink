@@ -37,10 +37,10 @@ struct InsightsHourlyHeatmap: View {
     var body: some View {
         WinkCard(
             title: {
-                Text("Hourly heatmap")
+                Text("Hourly heatmap", bundle: WinkResourceBundle.bundle)
             },
             accessory: {
-                Text("Past 7 days")
+                Text("Past 7 days", bundle: WinkResourceBundle.bundle)
                     .font(WinkType.labelSmall)
                     .foregroundStyle(palette.textTertiary)
             }

@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import Observation
 import SwiftUI
 
@@ -31,11 +32,11 @@ final class MenuBarPopoverModel {
 
         var statusText: String? {
             if isUnavailable {
-                return "App unavailable"
+                return String(localized: "App unavailable", bundle: WinkResourceBundle.bundle)
             }
 
             if !shortcut.isEnabled {
-                return "Disabled"
+                return String(localized: "Disabled", bundle: WinkResourceBundle.bundle)
             }
 
             return nil
@@ -105,7 +106,7 @@ final class MenuBarPopoverModel {
     var updateUnavailableCaption: String? {
         preferences.updatePresentation.isConfigured
             ? nil
-            : "Updates are available in packaged builds with a signed update feed."
+            : String(localized: "Updates are available in packaged builds with a signed update feed.", bundle: WinkResourceBundle.bundle)
     }
 
     struct UpdateNotice: Equatable {
@@ -122,23 +123,23 @@ final class MenuBarPopoverModel {
             return nil
         case .available(let version):
             return UpdateNotice(
-                title: "Update available — v\(version)",
-                subtitle: "Click to review and install."
+                title: String(localized: "Update available — v\(version)", bundle: WinkResourceBundle.bundle),
+                subtitle: String(localized: "Click to review and install.", bundle: WinkResourceBundle.bundle)
             )
         case .downloading(let version, _, _):
             return UpdateNotice(
-                title: "Downloading update — v\(version)",
-                subtitle: "Click to view progress."
+                title: String(localized: "Downloading update — v\(version)", bundle: WinkResourceBundle.bundle),
+                subtitle: String(localized: "Click to view progress.", bundle: WinkResourceBundle.bundle)
             )
         case .extracting:
             return UpdateNotice(
-                title: "Preparing update…",
-                subtitle: "Click to view progress."
+                title: String(localized: "Preparing update…", bundle: WinkResourceBundle.bundle),
+                subtitle: String(localized: "Click to view progress.", bundle: WinkResourceBundle.bundle)
             )
         case .ready(let version):
             return UpdateNotice(
-                title: "Update ready — v\(version)",
-                subtitle: "Installs when Wink quits. Click to install now."
+                title: String(localized: "Update ready — v\(version)", bundle: WinkResourceBundle.bundle),
+                subtitle: String(localized: "Installs when Wink quits. Click to install now.", bundle: WinkResourceBundle.bundle)
             )
         }
     }
@@ -322,7 +323,7 @@ struct MenuBarPopoverView: View {
 
     private var search: some View {
         WinkTextField(
-            placeholder: "Search shortcuts",
+            placeholder: String(localized: "Search shortcuts", bundle: WinkResourceBundle.bundle),
             text: $model.searchText
         ) {
             WinkIcon.search.image(size: 11)
@@ -335,9 +336,9 @@ struct MenuBarPopoverView: View {
     private var todaySection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
-                WinkSectionLabel("Today")
+                WinkSectionLabel(String(localized: "Today", bundle: WinkResourceBundle.bundle))
                 Spacer(minLength: 8)
-                Text("\(model.todayActivationCount) activations")
+                Text("\(model.todayActivationCount) activations", bundle: WinkResourceBundle.bundle)
                     .font(WinkType.labelSmall)
                     .foregroundStyle(palette.textTertiary)
             }
@@ -349,7 +350,7 @@ struct MenuBarPopoverView: View {
 
     private var shortcutsHeader: some View {
         HStack(alignment: .center, spacing: 8) {
-            WinkSectionLabel("Shortcuts")
+            WinkSectionLabel(String(localized: "Shortcuts", bundle: WinkResourceBundle.bundle))
             Spacer(minLength: 8)
         }
         .padding(.horizontal, 14)
@@ -361,14 +362,14 @@ struct MenuBarPopoverView: View {
         let filteredRows = model.filteredShortcutRows
         return Group {
             if model.shortcutRows.isEmpty {
-                Text("No shortcuts configured")
+                Text("No shortcuts configured", bundle: WinkResourceBundle.bundle)
                     .font(WinkType.bodyText)
                     .foregroundStyle(palette.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
                     .padding(.bottom, 10)
             } else if filteredRows.isEmpty {
-                Text("No shortcuts match your search")
+                Text("No shortcuts match your search", bundle: WinkResourceBundle.bundle)
                     .font(WinkType.bodyText)
                     .foregroundStyle(palette.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -395,7 +396,7 @@ struct MenuBarPopoverView: View {
     private var manageRow: some View {
         Button(action: model.openManageShortcuts) {
             HStack(spacing: 6) {
-                Text("Manage…")
+                Text("Manage…", bundle: WinkResourceBundle.bundle)
                 WinkIcon.chevronRight.image(size: 10)
             }
             .font(WinkType.bodyMedium)
@@ -410,7 +411,7 @@ struct MenuBarPopoverView: View {
     private var actionsSection: some View {
         VStack(spacing: 0) {
             MenuBarToggleRow(
-                title: "Pause all shortcuts",
+                title: String(localized: "Pause all shortcuts", bundle: WinkResourceBundle.bundle),
                 isOn: Binding(
                     get: { model.shortcutsPaused },
                     set: { model.setShortcutsPaused($0) }
@@ -420,7 +421,7 @@ struct MenuBarPopoverView: View {
             Divider().overlay(palette.hairline)
 
             MenuBarActionRow(
-                title: "Settings…",
+                title: String(localized: "Settings…", bundle: WinkResourceBundle.bundle),
                 keycaps: ["⌘", ","],
                 action: model.openSettings
             )
@@ -434,7 +435,7 @@ struct MenuBarPopoverView: View {
             }
 
             MenuBarActionRow(
-                title: "Check for Updates…",
+                title: String(localized: "Check for Updates…", bundle: WinkResourceBundle.bundle),
                 action: model.checkForUpdates
             )
             .disabled(!model.isCheckForUpdatesEnabled)
@@ -452,7 +453,7 @@ struct MenuBarPopoverView: View {
             Divider().overlay(palette.hairline)
 
             MenuBarActionRow(
-                title: "Quit Wink",
+                title: String(localized: "Quit Wink", bundle: WinkResourceBundle.bundle),
                 keycaps: ["⌘", "Q"],
                 action: model.quit
             )
@@ -472,14 +473,17 @@ private struct MenuBarStatusPill: View {
         guard paused else {
             // Secure Input silently starves the Hyper/event-tap route;
             // name it instead of showing a false "Ready".
-            return secureInputActive ? "Limited · Secure Input" : "Ready"
+            return secureInputActive
+                ? String(localized: "Limited · Secure Input", bundle: WinkResourceBundle.bundle)
+                : String(localized: "Ready", bundle: WinkResourceBundle.bundle)
         }
-        // Exception auto-pause names its trigger so "my shortcuts are
-        // dead" never reads as a mystery.
+        // Exception auto-pause names its trigger (an NSWorkspace app display
+        // name — not itself localized) so "my shortcuts are dead" never
+        // reads as a mystery.
         if let autoPausedBy {
-            return "Paused · \(autoPausedBy)"
+            return String(localized: "Paused · \(autoPausedBy)", bundle: WinkResourceBundle.bundle)
         }
-        return "Paused"
+        return String(localized: "Paused", bundle: WinkResourceBundle.bundle)
     }
 
     private var degraded: Bool {
@@ -497,7 +501,10 @@ private struct MenuBarStatusPill: View {
     var body: some View {
         Text(title)
             .help(secureInputActive && !paused
-                ? "A password field or secure prompt is capturing keyboard input. Hyper and Fn-based shortcuts may not fire until it ends; other standard shortcuts keep working."
+                ? String(
+                    localized: "A password field or secure prompt is capturing keyboard input. Hyper and Fn-based shortcuts may not fire until it ends; other standard shortcuts keep working.",
+                    bundle: WinkResourceBundle.bundle
+                  )
                 : "")
             .font(WinkType.labelSmall.weight(.semibold))
             .foregroundStyle(foreground)

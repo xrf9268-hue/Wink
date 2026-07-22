@@ -1,4 +1,5 @@
 import AppKit
+import Foundation
 import SwiftUI
 
 /// Keyboard-navigation highlight state for `AppPickerPopover`, kept as a pure
@@ -87,7 +88,7 @@ struct AppPickerPopover: View {
                 HStack(spacing: 6) {
                     WinkIcon.search.image(size: 12)
                         .foregroundStyle(palette.textTertiary)
-                    TextField("Search apps...", text: $searchText)
+                    TextField(String(localized: "Search apps...", bundle: WinkResourceBundle.bundle), text: $searchText)
                         .textFieldStyle(.plain)
                         .font(WinkType.bodyText)
                         .foregroundStyle(palette.textPrimary)
@@ -106,7 +107,7 @@ struct AppPickerPopover: View {
                             }
 
                             if !sections.recent.isEmpty {
-                                WinkSectionLabel("Recently Used")
+                                WinkSectionLabel(String(localized: "Recently Used", bundle: WinkResourceBundle.bundle))
                                     .padding(.horizontal, 14)
                                     .padding(.top, 8)
                                     .padding(.bottom, 4)
@@ -116,7 +117,7 @@ struct AppPickerPopover: View {
                             }
 
                             if !sections.nonRecent.isEmpty {
-                                WinkSectionLabel("All Apps")
+                                WinkSectionLabel(String(localized: "All Apps", bundle: WinkResourceBundle.bundle))
                                     .padding(.horizontal, 14)
                                     .padding(.top, 8)
                                     .padding(.bottom, 4)
@@ -145,7 +146,7 @@ struct AppPickerPopover: View {
                 } label: {
                     HStack {
                         Image(systemName: "folder")
-                        Text("Browse...")
+                        Text("Browse...", bundle: WinkResourceBundle.bundle)
                     }
                     .font(WinkType.labelSmall)
                     .foregroundStyle(palette.textSecondary)
