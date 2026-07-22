@@ -13,7 +13,9 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
     /// a normal shortcut and the availability filter silently disables it
     /// instead of misfiring.
     static let frontmostTargetSentinelBundleIdentifier = "wink.target.frontmost-app"
-    static let frontmostTargetDisplayName = "Current App"
+    static var frontmostTargetDisplayName: String {
+        String(localized: "Current App", bundle: WinkResourceBundle.bundle)
+    }
 
     let id: UUID
     var appName: String

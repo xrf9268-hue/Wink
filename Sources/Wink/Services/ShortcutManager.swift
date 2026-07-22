@@ -284,7 +284,7 @@ final class ShortcutManager {
             } else {
                 logger.error("Accessibility permission: REVOKED")
                 diagnosticClient.log("Accessibility permission: REVOKED")
-                sendPermissionNotification(permission: "Accessibility")
+                sendPermissionNotification(permission: String(localized: "Accessibility", bundle: WinkResourceBundle.bundle))
             }
             lastAccessibilityState = axGranted
         }
@@ -296,7 +296,7 @@ final class ShortcutManager {
             } else {
                 logger.error("Input Monitoring permission: REVOKED")
                 diagnosticClient.log("Input Monitoring permission: REVOKED")
-                sendPermissionNotification(permission: "Input Monitoring")
+                sendPermissionNotification(permission: String(localized: "Input Monitoring", bundle: WinkResourceBundle.bundle))
             }
             lastInputMonitoringState = imGranted
         }
@@ -362,8 +362,11 @@ final class ShortcutManager {
         center.requestAuthorization(options: [.alert]) { granted, _ in
             guard granted else { return }
             let content = UNMutableNotificationContent()
-            content.title = "Wink: Permission Lost"
-            content.body = "\(permission) permission was revoked. Wink needs this permission to work. Please re-enable it in System Settings > Privacy & Security > \(permission)."
+            content.title = String(localized: "Wink: Permission Lost", bundle: WinkResourceBundle.bundle)
+            content.body = String(
+                localized: "\(permission) permission was revoked. Wink needs this permission to work. Please re-enable it in System Settings > Privacy & Security > \(permission).",
+                bundle: WinkResourceBundle.bundle
+            )
             let request = UNNotificationRequest(identifier: "wink-permission-\(permission)", content: content, trigger: nil)
             UNUserNotificationCenter.current().add(request)
         }

@@ -1,3 +1,5 @@
+import Foundation
+
 struct ShortcutCaptureStatus: Equatable, Sendable {
     let accessibilityGranted: Bool
     let inputMonitoringGranted: Bool
@@ -55,29 +57,29 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
             return nil
         }
         guard accessibilityGranted else {
-            return "Accessibility permission is required for app switching."
+            return String(localized: "Accessibility permission is required for app switching.", bundle: WinkResourceBundle.bundle)
         }
         guard inputMonitoringRequired else {
             guard inputMonitoringGranted else {
                 guard standardRegistrationWarning == nil else {
                     return nil
                 }
-                return "Input Monitoring is not required for the current shortcuts."
+                return String(localized: "Input Monitoring is not required for the current shortcuts.", bundle: WinkResourceBundle.bundle)
             }
             return nil
         }
         guard inputMonitoringGranted else {
-            return "Some shortcuts need Input Monitoring."
+            return String(localized: "Some shortcuts need Input Monitoring.", bundle: WinkResourceBundle.bundle)
         }
         guard hyperShortcutsReady else {
-            return "Hyper shortcuts are configured, but shortcut capture is not active."
+            return String(localized: "Hyper shortcuts are configured, but shortcut capture is not active.", bundle: WinkResourceBundle.bundle)
         }
         return nil
     }
 
     var bannerDetail: String {
         if shortcutsPaused {
-            return "All shortcuts are paused."
+            return String(localized: "All shortcuts are paused.", bundle: WinkResourceBundle.bundle)
         }
 
         if let warning = permissionWarning {
@@ -89,16 +91,16 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
         }
 
         if !inputMonitoringRequired {
-            return "Standard shortcuts are active."
+            return String(localized: "Standard shortcuts are active.", bundle: WinkResourceBundle.bundle)
         }
 
         if !inputMonitoringGranted {
-            return "Some shortcuts need Input Monitoring."
+            return String(localized: "Some shortcuts need Input Monitoring.", bundle: WinkResourceBundle.bundle)
         }
 
         return eventTapActive
-            ? "Standard and Hyper shortcuts are active."
-            : "Standard shortcuts are active."
+            ? String(localized: "Standard and Hyper shortcuts are active.", bundle: WinkResourceBundle.bundle)
+            : String(localized: "Standard shortcuts are active.", bundle: WinkResourceBundle.bundle)
     }
 
     var systemSettingsGuidance: String? {
@@ -116,7 +118,10 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
             return nil
         }
 
-        return "System Settings > Input Monitoring can lag behind live access. If the affected shortcuts work here, Wink already has the permission it needs."
+        return String(
+            localized: "System Settings > Input Monitoring can lag behind live access. If the affected shortcuts work here, Wink already has the permission it needs.",
+            bundle: WinkResourceBundle.bundle
+        )
     }
 
     var standardRegistrationWarning: String? {
@@ -125,7 +130,7 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
         }
         if standardShortcutCount > 0,
            case .installationFailed = standardHandlerState {
-            return "Standard shortcut capture failed to start. Check logs for the Carbon handler status."
+            return String(localized: "Standard shortcut capture failed to start. Check logs for the Carbon handler status.", bundle: WinkResourceBundle.bundle)
         }
         let failedCount = max(0, standardShortcutCount - registeredStandardShortcutCount)
         guard failedCount > 0 else {
@@ -133,13 +138,15 @@ struct ShortcutCaptureStatus: Equatable, Sendable {
         }
 
         if failedCount == standardShortcutCount {
-            return "Standard shortcuts failed to register. Check logs for the blocked key combinations."
+            return String(localized: "Standard shortcuts failed to register. Check logs for the blocked key combinations.", bundle: WinkResourceBundle.bundle)
         }
 
-        if failedCount == 1 {
-            return "1 standard shortcut binding failed to register. Check logs for the blocked key combination."
-        }
-
-        return "\(failedCount) standard shortcut bindings failed to register. Check logs for the blocked key combinations."
+        // Interpolating `failedCount` (not a literal "1 …") lets the catalog's
+        // plural `variations` block pick "one" vs "other" — do not special-case
+        // failedCount == 1 with a separate hard-coded string.
+        return String(
+            localized: "\(failedCount) standard shortcut bindings failed to register. Check logs for the blocked key combinations.",
+            bundle: WinkResourceBundle.bundle
+        )
     }
 }
