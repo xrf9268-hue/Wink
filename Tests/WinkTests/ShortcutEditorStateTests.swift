@@ -1032,6 +1032,19 @@ func setFrontmostBehaviorOverridePersistsAndNotifiesOnce() {
     editor.setFrontmostBehaviorOverride(id: shortcut.id, behavior: nil)
     #expect(shortcutStore.shortcuts.first?.frontmostBehaviorOverride == nil)
     #expect(callbackCount == 2)
+
+    // Hold action mirrors the override lifecycle: persist + notify once,
+    // same-value no-op, nil clears.
+    editor.setHoldAction(id: shortcut.id, holdAction: .windowPicker)
+    #expect(shortcutStore.shortcuts.first?.holdAction == .windowPicker)
+    #expect(callbackCount == 3)
+
+    editor.setHoldAction(id: shortcut.id, holdAction: .windowPicker)
+    #expect(callbackCount == 3)
+
+    editor.setHoldAction(id: shortcut.id, holdAction: nil)
+    #expect(shortcutStore.shortcuts.first?.holdAction == nil)
+    #expect(callbackCount == 4)
 }
 
 @Test @MainActor

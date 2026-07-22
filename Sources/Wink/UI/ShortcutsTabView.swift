@@ -737,6 +737,9 @@ struct ShortcutsTabView: View {
             onSetFrontmostBehaviorOverride: { behavior in
                 editor.setFrontmostBehaviorOverride(id: shortcut.id, behavior: behavior)
             },
+            onSetHoldAction: { holdAction in
+                editor.setHoldAction(id: shortcut.id, holdAction: holdAction)
+            },
             reorderHandlers: reorderHandlers
         )
     }
@@ -851,6 +854,7 @@ struct ShortcutsListRow: View {
     let onToggleEnabled: @MainActor () -> Void
     let onRemove: @MainActor () -> Void
     let onSetFrontmostBehaviorOverride: @MainActor (FrontmostTargetBehavior?) -> Void
+    let onSetHoldAction: @MainActor (HoldAction?) -> Void
     let reorderHandlers: ShortcutRowReorderHandlers?
 
     @State private var isRowHovering = false
@@ -1038,6 +1042,17 @@ struct ShortcutsListRow: View {
                     ForEach(FrontmostTargetBehavior.allCases, id: \.self) { behavior in
                         // `behavior.title` is already localized (AppPreferences.swift).
                         Text(behavior.title).tag(FrontmostTargetBehavior?.some(behavior))
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Picker(String(localized: "Hold Action", bundle: WinkResourceBundle.bundle), selection: Binding(
+                    get: { shortcut.holdAction },
+                    set: { onSetHoldAction($0) }
+                )) {
+                    Text(String(localized: "None", bundle: WinkResourceBundle.bundle)).tag(HoldAction?.none)
+                    ForEach(HoldAction.allCases, id: \.self) { action in
+                        Text(action.title).tag(HoldAction?.some(action))
                     }
                 }
                 .pickerStyle(.menu)

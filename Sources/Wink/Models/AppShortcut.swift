@@ -12,6 +12,13 @@ enum ShortcutTarget: String, Codable, CaseIterable, Equatable, Sendable {
 /// release tracking, so non-opted-in shortcuts pay zero added latency.
 enum HoldAction: String, Codable, CaseIterable, Equatable, Sendable {
     case windowPicker
+
+    var title: String {
+        switch self {
+        case .windowPicker:
+            return String(localized: "Window Picker", bundle: WinkResourceBundle.bundle)
+        }
+    }
 }
 
 struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
