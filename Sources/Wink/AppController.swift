@@ -36,15 +36,42 @@ final class AppController {
     private lazy var appSwitcher = AppSwitcher()
     private lazy var settingsLauncher = SettingsLauncher(userDefaults: userDefaults)
     private lazy var settingsShortcutStatusProvider = ShortcutStatusProvider()
-    private lazy var shortcutManager = ShortcutManager(
-        shortcutStore: shortcutStore,
-        persistenceService: persistenceService,
-        appSwitcher: appSwitcher,
-        usageTracker: usageTracker,
-        appBundleLocator: appBundleLocator,
-        automaticPermissionPromptingEnabled: ShortcutManager.defaultAutomaticPermissionPromptingEnabled(),
-        diagnosticClient: .live
-    )
+    private lazy var shortcutManager: ShortcutManager = {
+        let manager = ShortcutManager(
+            shortcutStore: shortcutStore,
+            persistenceService: persistenceService,
+            appSwitcher: appSwitcher,
+            usageTracker: usageTracker,
+            appBundleLocator: appBundleLocator,
+            automaticPermissionPromptingEnabled: ShortcutManager.defaultAutomaticPermissionPromptingEnabled(),
+            diagnosticClient: .live
+        )
+        // Installed HERE, not in start(): AppPreferences' initializer replays
+        // a persisted manual pause, and SwiftUI evaluates the scene services
+        // (which construct AppPreferences) before applicationDidFinishLaunching
+        // ever calls start(). Since AppPreferences takes this manager as an
+        // init argument, any path that constructs it forces this lazy block
+        // first — the handler is provably installed before the first pause
+        // transition can fire, whichever access path wins. Without that
+        // ordering, a launch into a paused state never suspends the hidutil
+        // mapping and the startup reapply re-arms Caps Lock → F19 with
+        // capture stopped (#375 at launch).
+        //
+        // Pause (manual or exception-rule) stops the Hyper provider without
+        // an `ended` event; a presented sheet must not outlive capture, and
+        // the mapping follows the same composed bit: a paused Wink consumes
+        // no F19, so Caps Lock reverts to native behavior for the paused
+        // interval and comes back on resume.
+        manager.onCapturePauseStateChange = { [weak self] paused in
+            if paused {
+                self?.cheatSheetHUD.reset()
+                self?.hyperKeyService.suspendMappingForPause()
+            } else {
+                self?.hyperKeyService.resumeMappingAfterPause()
+            }
+        }
+        return manager
+    }()
     private lazy var appPreferences = AppPreferences(
         shortcutManager: shortcutManager,
         hyperKeyService: hyperKeyService,
@@ -182,6 +209,11 @@ final class AppController {
             self?.updatePanelPresenter.dismiss()
         }
 
+        // The onCapturePauseStateChange handler is installed inside the
+        // shortcutManager lazy initializer, not here — SwiftUI's scene
+        // services construct AppPreferences before start() runs, and the
+        // initial pause replay must already see the handler.
+
         // Exception rules: configure from persisted preferences, follow
         // future edits, and start following frontmost changes.
         appPreferences.onFrontmostExceptionConfigurationChange = { [weak self] in
@@ -222,14 +254,6 @@ final class AppController {
         shortcutManager.onCaptureStatusChange = { [weak self] in
             self?.appPreferences.refreshPermissions()
         }
-        // Pause (manual or exception-rule) stops the Hyper provider without
-        // an `ended` event; a presented sheet must not outlive capture.
-        shortcutManager.onCapturePauseStateChange = { [weak self] paused in
-            if paused {
-                self?.cheatSheetHUD.reset()
-            }
-        }
-
         // Hold events arrive on the tap thread; hop once to the main actor
         // via the main QUEUE, whose FIFO ordering keeps began/ended in
         // emission order (sibling Tasks carry no such guarantee, and a
@@ -255,7 +279,15 @@ final class AppController {
             startUpdateService: { _ = updateService },
             loadShortcuts: { try persistenceService.load() },
             replaceShortcuts: { shortcutStore.replaceAll(with: $0) },
-            reapplyHyperIfNeeded: { hyperKeyService.reapplyIfNeeded() },
+            // "Deferred by an active pause" counts as armed: the routing
+            // decision below must reflect user intent, not the pause. With
+            // capture paused the tap isn't running anyway, and resume
+            // restores the mapping — disabling Hyper routing here instead
+            // would leave F19 mapped-but-unintercepted after resume until a
+            // manual Hyper off/on cycle.
+            reapplyHyperIfNeeded: {
+                hyperKeyService.reapplyIfNeeded() || hyperKeyService.isSuspended
+            },
             isHyperEnabled: { hyperKeyService.isEnabled },
             setHyperKeyEnabled: { shortcutManager.setHyperKeyEnabled($0) },
             preparePreferences: { _ = appPreferences },

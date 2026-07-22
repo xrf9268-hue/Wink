@@ -100,3 +100,160 @@ private final class HidutilRunnerRecorder: @unchecked Sendable {
         return returnValue
     }
 }
+
+// MARK: - Pause suspension (#375)
+
+@Test @MainActor
+func suspendClearsMappingAndResumeRestoresItWithoutTouchingPersistence() {
+    let suiteName = "HyperKeyServiceTests.suspend.roundTrip"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+    defaults.set(true, forKey: "hyperKeyEnabled")
+
+    let recorder = HidutilRunnerRecorder(returns: true)
+    let service = HyperKeyService(runner: recorder.run, defaults: defaults)
+
+    service.suspendMappingForPause()
+    #expect(service.isSuspended == true)
+    #expect(service.isEnabled == true, "suspension must never touch the persisted bit")
+    #expect(recorder.invocations.count == 1)
+    #expect(recorder.invocations.first?.last?.contains("\"UserKeyMapping\":[]") == true)
+    #expect(recorder.invocations.first?.last?.contains("\"CapsLockDelayOverride\":100") == true)
+
+    // Idempotent while suspended.
+    service.suspendMappingForPause()
+    #expect(recorder.invocations.count == 1)
+
+    service.resumeMappingAfterPause()
+    #expect(service.isSuspended == false)
+    #expect(recorder.invocations.count == 2)
+    #expect(recorder.invocations.last?.last?.contains("HIDKeyboardModifierMappingSrc") == true)
+}
+
+@Test @MainActor
+func suspendWithHyperDisabledRecordsThePauseWithoutTouchingHidutil() {
+    let suiteName = "HyperKeyServiceTests.suspend.disabled"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+
+    let recorder = HidutilRunnerRecorder(returns: true)
+    let service = HyperKeyService(runner: recorder.run, defaults: defaults)
+
+    // The pause fact must be recorded even with no mapping to lift —
+    // enabling Hyper mid-pause has to see it (see the dedicated test).
+    service.suspendMappingForPause()
+    #expect(service.isSuspended == true)
+    #expect(recorder.invocations.isEmpty, "no mapping exists to lift")
+
+    service.resumeMappingAfterPause()
+    #expect(service.isSuspended == false)
+    #expect(recorder.invocations.isEmpty, "nothing to restore either")
+}
+
+@Test @MainActor
+func enablingHyperDuringAPauseThatStartedDisabledDefersToResume() {
+    let suiteName = "HyperKeyServiceTests.suspend.enableWhileDisabledPause"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+
+    let recorder = HidutilRunnerRecorder(returns: true)
+    let service = HyperKeyService(runner: recorder.run, defaults: defaults)
+
+    // Pause begins with Hyper off; the user enables Hyper mid-pause.
+    service.suspendMappingForPause()
+    service.enable()
+
+    #expect(service.isEnabled == true)
+    #expect(recorder.invocations.isEmpty, "the mapping must not arm a dead F19 under the paused app")
+
+    service.resumeMappingAfterPause()
+    #expect(recorder.invocations.count == 1)
+    #expect(recorder.invocations.last?.last?.contains("HIDKeyboardModifierMappingSrc") == true)
+}
+
+@Test @MainActor
+func reapplyDuringSuspensionDoesNotUndoTheSuspension() {
+    // Launching into a persisted pause suspends during AppPreferences init,
+    // BEFORE the startup sequence's reapplyIfNeeded runs; re-applying there
+    // would hand the paused foreground app a consumer-less F19 again.
+    let suiteName = "HyperKeyServiceTests.suspend.reapply"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+    defaults.set(true, forKey: "hyperKeyEnabled")
+
+    let recorder = HidutilRunnerRecorder(returns: true)
+    let service = HyperKeyService(runner: recorder.run, defaults: defaults)
+
+    service.suspendMappingForPause()
+    let applied = service.reapplyIfNeeded()
+
+    #expect(applied == false)
+    #expect(recorder.invocations.count == 1, "only the suspension's clear may run")
+    #expect(service.isSuspended == true)
+}
+
+@Test @MainActor
+func enableDuringSuspensionDefersTheMappingToResume() {
+    let suiteName = "HyperKeyServiceTests.suspend.enable"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+    defaults.set(true, forKey: "hyperKeyEnabled")
+
+    let recorder = HidutilRunnerRecorder(returns: true)
+    let service = HyperKeyService(runner: recorder.run, defaults: defaults)
+
+    service.suspendMappingForPause()
+    service.enable()
+
+    #expect(service.isEnabled == true)
+    #expect(recorder.invocations.count == 1, "enable during a pause must not apply the mapping yet")
+
+    service.resumeMappingAfterPause()
+    #expect(recorder.invocations.count == 2)
+    #expect(recorder.invocations.last?.last?.contains("HIDKeyboardModifierMappingSrc") == true)
+}
+
+@Test @MainActor
+func disableDuringPauseKeepsThePauseAndBlocksAMidPauseReenableMapping() {
+    let suiteName = "HyperKeyServiceTests.suspend.disable"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+    defaults.set(true, forKey: "hyperKeyEnabled")
+
+    let recorder = HidutilRunnerRecorder(returns: true)
+    let service = HyperKeyService(runner: recorder.run, defaults: defaults)
+
+    service.suspendMappingForPause()
+    service.disable()
+
+    #expect(service.isEnabled == false)
+    #expect(service.isSuspended == true, "the pause interval outlives an intent toggle")
+
+    // Off→on inside the same pause must keep deferring the mapping.
+    service.enable()
+    #expect(recorder.invocations.count == 2, "suspend clear + disable clear; enable defers")
+
+    // Resume ends the pause; the (re-enabled) mapping applies now.
+    service.resumeMappingAfterPause()
+    #expect(recorder.invocations.count == 3)
+    #expect(recorder.invocations.last?.last?.contains("HIDKeyboardModifierMappingSrc") == true)
+    #expect(service.isSuspended == false)
+}
+
+@Test @MainActor
+func disableDuringPauseThenResumeDoesNotResurrectTheMapping() {
+    let suiteName = "HyperKeyServiceTests.suspend.disableStaysOff"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+    defaults.set(true, forKey: "hyperKeyEnabled")
+
+    let recorder = HidutilRunnerRecorder(returns: true)
+    let service = HyperKeyService(runner: recorder.run, defaults: defaults)
+
+    service.suspendMappingForPause()
+    service.disable()
+    service.resumeMappingAfterPause()
+
+    #expect(service.isSuspended == false)
+    #expect(recorder.invocations.count == 2, "suspend clear + disable clear only — no re-apply of a disabled mapping")
+}
