@@ -17,10 +17,16 @@ protocol EventTapManaging {
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>)
     func setHyperKeyEnabled(_ enabled: Bool)
     func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?)
+    func updatePhasedChords(_ keyPresses: Set<KeyPress>)
+    func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?)
 }
 
 extension EventTapManaging {
     // Sync no-op default (sync requirement + sync default: no async
     // overload-shadowing hazard); display-only consumers are optional.
     func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {}
+    // Same shape for phased delivery: declared requirements + sync no-op
+    // defaults keep pre-phase fakes compiling with dynamic dispatch intact.
+    func updatePhasedChords(_ keyPresses: Set<KeyPress>) {}
+    func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?) {}
 }

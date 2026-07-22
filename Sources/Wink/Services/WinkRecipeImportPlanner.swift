@@ -22,6 +22,7 @@ struct WinkRecipeImportPlanner {
         let modifierFlags: [String]
         let isEnabled: Bool
         let frontmostBehaviorOverride: FrontmostTargetBehavior?
+        let holdAction: HoldAction?
         let target: ShortcutTarget?
         let resolution: AppResolution
 
@@ -53,7 +54,8 @@ struct WinkRecipeImportPlanner {
                 modifierFlags: modifierFlags,
                 isEnabled: isEnabled,
                 frontmostBehaviorOverride: frontmostBehaviorOverride,
-                target: target
+                target: target,
+                holdAction: holdAction
             )
         }
     }
@@ -200,6 +202,7 @@ struct WinkRecipeImportPlanner {
                 modifierFlags: recipeShortcut.modifierFlags,
                 isEnabled: recipeShortcut.isEnabled,
                 frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
+                holdAction: recipeShortcut.holdActionValue,
                 target: .frontmostApp,
                 resolution: .matchedByBundleIdentifier
             )
@@ -218,6 +221,7 @@ struct WinkRecipeImportPlanner {
                 modifierFlags: recipeShortcut.modifierFlags,
                 isEnabled: recipeShortcut.isEnabled,
                 frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
+                holdAction: recipeShortcut.holdActionValue,
                 target: recipeShortcut.shortcutTarget,
                 resolution: .matchedByBundleIdentifier
             )
@@ -241,6 +245,7 @@ struct WinkRecipeImportPlanner {
                 modifierFlags: recipeShortcut.modifierFlags,
                 isEnabled: recipeShortcut.isEnabled,
                 frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
+                holdAction: recipeShortcut.holdActionValue,
                 target: recipeShortcut.shortcutTarget,
                 resolution: .matchedByAppName
             )
@@ -256,6 +261,7 @@ struct WinkRecipeImportPlanner {
             modifierFlags: recipeShortcut.modifierFlags,
             isEnabled: recipeShortcut.isEnabled,
             frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
+                holdAction: recipeShortcut.holdActionValue,
             target: recipeShortcut.shortcutTarget,
             resolution: .unresolved
         )

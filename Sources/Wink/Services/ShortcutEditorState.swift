@@ -221,6 +221,15 @@ final class ShortcutEditorState {
         onShortcutConfigurationChange()
     }
 
+    func setHoldAction(id: UUID, holdAction: HoldAction?) {
+        guard let index = shortcuts.firstIndex(where: { $0.id == id }),
+              shortcuts[index].holdAction != holdAction else { return }
+        var updated = shortcuts
+        updated[index].holdAction = holdAction
+        guard persist(updated) else { return }
+        onShortcutConfigurationChange()
+    }
+
     func setAllEnabled(_ enabled: Bool) {
         var updated = shortcuts
         for index in updated.indices {

@@ -65,6 +65,7 @@ final class AppController {
         manager.onCapturePauseStateChange = { [weak self] paused in
             if paused {
                 self?.cheatSheetHUD.reset()
+                self?.windowPickerHUD.dismiss()
                 self?.hyperKeyService.suspendMappingForPause()
             } else {
                 self?.hyperKeyService.resumeMappingAfterPause()
@@ -72,6 +73,14 @@ final class AppController {
         }
         return manager
     }()
+    private lazy var windowPickerHUD = WindowPickerHUDController(
+        onSessionStateChange: { [weak self] active in
+            self?.shortcutManager.setInteractivePanelSessionActive(active)
+        },
+        focusWindow: { [weak self] windowID, session in
+            self?.appSwitcher.focusPickedWindow(windowID: windowID, session: session) ?? false
+        }
+    )
     private lazy var appPreferences = AppPreferences(
         shortcutManager: shortcutManager,
         hyperKeyService: hyperKeyService,
@@ -273,6 +282,17 @@ final class AppController {
                 // sheet sticks.
                 self?.cheatSheetHUD.reset()
             }
+        }
+        // Hold-to-show window picker (#352): a hold-enabled shortcut's chord
+        // held past the threshold resolves the target's windows and presents
+        // the picker; nothing to pick (target not running, no eligible
+        // windows, transient AX failure) degrades to a silent no-op.
+        shortcutManager.onHoldActionTriggered = { [weak self] shortcut in
+            guard let self,
+                  let session = self.appSwitcher.windowPickerSession(for: shortcut) else {
+                return
+            }
+            self.windowPickerHUD.present(session: session)
         }
 
         Self.runStartupSequence(

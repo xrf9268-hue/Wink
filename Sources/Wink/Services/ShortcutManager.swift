@@ -71,6 +71,20 @@ final class ShortcutManager {
     /// Fires whenever the composed pause state transitions (manual pause,
     /// exception auto-pause, either direction).
     var onCapturePauseStateChange: (@MainActor (_ paused: Bool) -> Void)?
+    /// Fires when a hold-enabled shortcut's chord is held past the hold
+    /// threshold. The consumer (AppController) owns what a hold action does;
+    /// the manager only resolves the gesture and the matched shortcut.
+    var onHoldActionTriggered: (@MainActor (AppShortcut) -> Void)?
+    private var holdGestureArbiter: HoldGestureArbiter?
+    /// True while an interactive Wink panel (the hold-to-show window picker)
+    /// is key. Matched shortcut dispatch is gated on it instead of the full
+    /// capture-pause machinery: providers keep running (registered chords
+    /// stay swallowed and can't leak into the panel or the app underneath),
+    /// nothing user-visible flips to "Paused", and the #375 mapping
+    /// suspension isn't churned by every picker open. The original goal —
+    /// no toggleApplication re-entry while the panel is up — holds because
+    /// dispatch, not capture, is what's gated.
+    private var interactivePanelSessionActive = false
 
     private var effectivePaused: Bool {
         shortcutsPaused || autoPausedByException
@@ -108,6 +122,7 @@ final class ShortcutManager {
     }
 
     func start() {
+        wireHoldGestureArbiterIfNeeded()
         rebuildIndex()
         let inputMonitoringRequired = captureCoordinator.inputMonitoringRequired
         let ready: Bool
@@ -139,7 +154,83 @@ final class ShortcutManager {
         hasStarted = false
         permissionTimer?.invalidate()
         permissionTimer = nil
+        holdGestureArbiter?.reset()
         captureCoordinator.stop()
+    }
+
+    private func wireHoldGestureArbiterIfNeeded() {
+        guard holdGestureArbiter == nil else { return }
+        let arbiter = HoldGestureArbiter(
+            onTap: { [weak self] keyPress, pressDuration in
+                // The tap-latency cost of opting into a hold action, measured
+                // per gesture: a tap dispatches only at its up edge (or the
+                // lost-keyUp probe), so added latency == press duration.
+                self?.diagnosticClient.log(
+                    "HOLD_GESTURE_TAP: keyCode=\(keyPress.keyCode) durationMs=\(Int(pressDuration * 1000))"
+                )
+                _ = self?.handleKeyPress(keyPress)
+            },
+            onHold: { [weak self] keyPress in
+                self?.handleHoldGesture(keyPress)
+            }
+        )
+        arbiter.onDroppedAmbiguousGesture = { [weak self] keyPress, elapsed in
+            self?.diagnosticClient.log(
+                "HOLD_GESTURE_DROPPED: keyCode=\(keyPress.keyCode) elapsedMs=\(Int(elapsed * 1000)) reason=late_deadline_ambiguous"
+            )
+        }
+        holdGestureArbiter = arbiter
+        captureCoordinator.setPhasedKeyObserver { [weak self, weak arbiter] keyPress, phase in
+            // Delivery-time guards: a phased event queued on the main queue
+            // from the tap thread can land after a pause transition already
+            // reset the arbiter — starting a fresh gesture then would let
+            // its deadline open the picker (or dispatch a tap) into a
+            // paused session. Same for chords pressed while the picker is
+            // already key: a gesture started mid-session would survive the
+            // session's dismissal and its deadline would resurrect the
+            // picker the user just closed.
+            guard let self, !self.effectivePaused, !self.interactivePanelSessionActive else {
+                return
+            }
+            arbiter?.handle(keyPress, phase)
+        }
+    }
+
+    func setInteractivePanelSessionActive(_ active: Bool) {
+        interactivePanelSessionActive = active
+        // Reset on BOTH transitions: opening drops a gesture straddling the
+        // open (no toggle or second panel underneath), and closing drops any
+        // gesture that slipped in around the session boundary so a stale
+        // deadline cannot resurrect the picker the user just dismissed.
+        holdGestureArbiter?.reset()
+    }
+
+    private func handleHoldGesture(_ keyPress: KeyPress) {
+        // Second layer of the late-delivery guard: an arbiter deadline
+        // scheduled before a pause can still fire after it.
+        guard !effectivePaused else {
+            diagnosticClient.log("HOLD_GESTURE_IGNORED: capture paused")
+            return
+        }
+        guard !interactivePanelSessionActive else {
+            diagnosticClient.log("HOLD_GESTURE_IGNORED: interactive panel session active")
+            return
+        }
+        let key = keyMatcher.trigger(for: keyPress)
+        guard let match = triggerIndex[key], match.holdAction != nil else {
+            // The phased set and the trigger index are rebuilt from the same
+            // store, but a hold can resolve after a configuration change
+            // removed the action mid-gesture; a stale hold degrades to a tap
+            // rather than silently dropping the press.
+            diagnosticClient.log(
+                "HOLD_GESTURE_STALE: keyCode=\(keyPress.keyCode) fallback=tap"
+            )
+            _ = handleKeyPress(keyPress)
+            return
+        }
+        logger.info("MATCHED_HOLD: \(match.appName) - \(match.bundleIdentifier)")
+        diagnosticClient.log("MATCHED_HOLD: \(match.appName) - \(match.bundleIdentifier)")
+        onHoldActionTriggered?(match)
     }
 
     /// Persists to disk first and only then updates the in-memory store, so a
@@ -225,6 +316,9 @@ final class ShortcutManager {
     private func applyEffectivePauseTransition() {
         let paused = effectivePaused
         onCapturePauseStateChange?(paused)
+        // A gesture straddling the pause transition must not resolve into a
+        // tap or hold inside the paused session.
+        holdGestureArbiter?.reset()
         if !paused {
             _ = refreshShortcutAvailabilityIfNeeded()
         }
@@ -526,6 +620,13 @@ final class ShortcutManager {
 
     /// Returns `true` if the key press matched a shortcut (so the event should be consumed).
     private func handleKeyPress(_ keyPress: KeyPress) -> Bool {
+        guard !interactivePanelSessionActive else {
+            // The chord stays swallowed by the providers; only dispatch is
+            // gated, so a press can never re-enter toggleApplication under
+            // an open picker.
+            diagnosticClient.log("KEYPRESS_IGNORED: interactive panel session active")
+            return true
+        }
         let key = keyMatcher.trigger(for: keyPress)
         #if DEBUG
         if !triggerIndex.isEmpty {

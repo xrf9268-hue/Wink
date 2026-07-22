@@ -154,6 +154,8 @@
 	<string>Hide the icon if you prefer a minimal menu bar.</string>
 	<key>Hold</key>
 	<string>Hold</string>
+	<key>Hold Action</key>
+	<string>Hold Action</string>
 	<key>Hold Caps Lock as a Hyper modifier alongside normal shortcut combos.</key>
 	<string>Hold Caps Lock as a Hyper modifier alongside normal shortcut combos.</string>
 	<key>Hold Caps Lock without a second key to see all shortcuts.</key>
@@ -252,6 +254,8 @@
 	<string>No shortcuts match your search</string>
 	<key>No shortcuts used in this period</key>
 	<string>No shortcuts used in this period</string>
+	<key>None</key>
+	<string>None</string>
 	<key>Not required for the current shortcut configuration.</key>
 	<string>Not required for the current shortcut configuration.</string>
 	<key>Not used yet</key>
@@ -394,6 +398,8 @@
 	<string>Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.</string>
 	<key>Unsupported key — try a letter, number, or F-key</key>
 	<string>Unsupported key — try a letter, number, or F-key</string>
+	<key>Untitled Window</key>
+	<string>Untitled Window</string>
 	<key>Unused shortcuts this week</key>
 	<string>Unused shortcuts this week</string>
 	<key>Update Available</key>
@@ -428,6 +434,8 @@
 	<string>When Frontmost</string>
 	<key>When target is frontmost</key>
 	<string>When target is frontmost</string>
+	<key>Window Picker</key>
+	<string>Window Picker</string>
 	<key>Wink %@ is available — you have %@. The update downloads in the background and installs on relaunch.</key>
 	<string>Wink %@ is available — you have %@. The update downloads in the background and installs on relaunch.</string>
 	<key>Wink %@ is downloaded. Relaunch now to finish installing, or keep working — it installs when Wink quits.</key>

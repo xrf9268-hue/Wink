@@ -51,4 +51,12 @@ final class EventTapCaptureProvider: HyperShortcutCaptureProvider {
     func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {
         manager.setHyperHoldObserver(observer)
     }
+
+    func updatePhasedChords(_ keyPresses: Set<KeyPress>) {
+        manager.updatePhasedChords(keyPresses)
+    }
+
+    func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?) {
+        manager.setPhasedKeyObserver(observer)
+    }
 }

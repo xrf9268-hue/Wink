@@ -158,6 +158,8 @@
 	<string>如果偏好简洁的菜单栏，可以隐藏图标。</string>
 	<key>Hold</key>
 	<string>按住</string>
+	<key>Hold Action</key>
+	<string>长按动作</string>
 	<key>Hold Caps Lock as a Hyper modifier alongside normal shortcut combos.</key>
 	<string>按住 Caps Lock 作为 Hyper 修饰键，与常规组合键搭配使用。</string>
 	<key>Hold Caps Lock without a second key to see all shortcuts.</key>
@@ -256,6 +258,8 @@
 	<string>没有符合搜索条件的快捷键</string>
 	<key>No shortcuts used in this period</key>
 	<string>此时段内没有已使用的快捷键</string>
+	<key>None</key>
+	<string>无</string>
 	<key>Not required for the current shortcut configuration.</key>
 	<string>当前快捷键配置不需要此权限。</string>
 	<key>Not used yet</key>
@@ -398,6 +402,8 @@
 	<string>没有冲突的未解析应用仍会使用配方中的应用名称和 Bundle ID 导入。</string>
 	<key>Unsupported key — try a letter, number, or F-key</key>
 	<string>不支持的按键 — 请尝试字母、数字或 F 键</string>
+	<key>Untitled Window</key>
+	<string>未命名窗口</string>
 	<key>Unused shortcuts this week</key>
 	<string>本周未使用的快捷键</string>
 	<key>Update Available</key>
@@ -432,6 +438,8 @@
 	<string>当目标在前台时</string>
 	<key>When target is frontmost</key>
 	<string>当目标已在前台时</string>
+	<key>Window Picker</key>
+	<string>窗口选择器</string>
 	<key>Wink %@ is available — you have %@. The update downloads in the background and installs on relaunch.</key>
 	<string>Wink %@ 现已可用 — 当前版本为 %@。更新将在后台下载，并在重新启动时安装。</string>
 	<key>Wink %@ is downloaded. Relaunch now to finish installing, or keep working — it installs when Wink quits.</key>

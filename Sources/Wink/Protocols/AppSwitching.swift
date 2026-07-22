@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 @MainActor
@@ -12,10 +13,30 @@ protocol AppSwitching {
     /// away from Cycle and back) cannot steer the next gesture or qualify
     /// for the relaxed cycle cooldown.
     func invalidateWindowCycleSession(reason: String)
+
+    /// Resolve a hold gesture into a picker session: the shortcut's target
+    /// (frontmost pseudo-targets resolve to the concrete frontmost app),
+    /// its running process, and its eligible current-Space windows.
+    /// `nil` = nothing to pick (target not running, no eligible windows, or
+    /// a transient AX failure) — the hold degrades to a silent no-op.
+    func windowPickerSession(for shortcut: AppShortcut) -> WindowPickerSession?
+
+    /// Focus one window from a picker session via the per-window activation
+    /// trio, promoting any pending activation session so the confirmation
+    /// ladder cannot re-raise a different window over the user's choice.
+    @discardableResult
+    func focusPickedWindow(windowID: CGWindowID, session: WindowPickerSession) -> Bool
 }
 
 extension AppSwitching {
     func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior) {}
 
     func invalidateWindowCycleSession(reason: String) {}
+
+    // Declared requirements + defaults (witness-table dispatch): doubles
+    // that predate the picker keep compiling as "no windows to pick".
+    func windowPickerSession(for shortcut: AppShortcut) -> WindowPickerSession? { nil }
+
+    @discardableResult
+    func focusPickedWindow(windowID: CGWindowID, session: WindowPickerSession) -> Bool { false }
 }

@@ -1352,6 +1352,23 @@
         }
       }
     },
+    "Hold Action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hold Action"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "长按动作"
+          }
+        }
+      }
+    },
     "Hold Caps Lock as a Hyper modifier alongside normal shortcut combos.": {
       "extractionState": "manual",
       "localizations": {
@@ -2182,6 +2199,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "此时段内没有已使用的快捷键"
+          }
+        }
+      }
+    },
+    "None": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "None"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无"
           }
         }
       }
@@ -3393,6 +3427,23 @@
         }
       }
     },
+    "Untitled Window": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Untitled Window"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未命名窗口"
+          }
+        }
+      }
+    },
     "Unused shortcuts this week": {
       "extractionState": "manual",
       "localizations": {
@@ -3679,6 +3730,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "当目标已在前台时"
+          }
+        }
+      }
+    },
+    "Window Picker": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Window Picker"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "窗口选择器"
           }
         }
       }

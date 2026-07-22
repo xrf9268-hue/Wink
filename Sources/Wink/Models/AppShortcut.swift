@@ -7,6 +7,20 @@ enum ShortcutTarget: String, Codable, CaseIterable, Equatable, Sendable {
     case frontmostApp
 }
 
+/// What holding a shortcut chord past the hold threshold does. `nil` keeps
+/// the pre-existing semantics: the action dispatches on key-down with no
+/// release tracking, so non-opted-in shortcuts pay zero added latency.
+enum HoldAction: String, Codable, CaseIterable, Equatable, Sendable {
+    case windowPicker
+
+    var title: String {
+        switch self {
+        case .windowPicker:
+            return String(localized: "Window Picker", bundle: WinkResourceBundle.bundle)
+        }
+    }
+}
+
 struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
     /// Sentinel `bundleIdentifier` stored by frontmost-app shortcuts. No
     /// such app exists, so builds that predate `target` decode the row as
@@ -40,6 +54,11 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
     var frontmostBehaviorOverride: FrontmostTargetBehavior?
     /// `nil` means `.app` (the pre-existing semantics).
     var target: ShortcutTarget?
+    /// Opt-in hold gesture for this shortcut. `nil` = plain key-down
+    /// dispatch (no latency cost). Non-nil moves the shortcut to
+    /// key-up-or-deadline dispatch: tap = the usual toggle, hold past the
+    /// threshold = this action.
+    var holdAction: HoldAction?
 
     var isFrontmostAppTarget: Bool {
         target == .frontmostApp
@@ -65,7 +84,8 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         modifierFlags: [String],
         isEnabled: Bool = true,
         frontmostBehaviorOverride: FrontmostTargetBehavior? = nil,
-        target: ShortcutTarget? = nil
+        target: ShortcutTarget? = nil,
+        holdAction: HoldAction? = nil
     ) {
         self.id = id
         self.appName = appName
@@ -75,6 +95,7 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         self.isEnabled = isEnabled
         self.frontmostBehaviorOverride = frontmostBehaviorOverride
         self.target = target
+        self.holdAction = holdAction
     }
 
     // Custom decoding solely for the override's leniency: shortcuts.json is
@@ -97,5 +118,9 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         // rather than misfiring or failing the file.
         target = (try? container.decodeIfPresent(String.self, forKey: .target))
             .flatMap { ShortcutTarget(rawValue: $0) }
+        // Same leniency: an unknown hold action from a newer build degrades
+        // to plain key-down dispatch instead of quarantining the file.
+        holdAction = (try? container.decodeIfPresent(String.self, forKey: .holdAction))
+            .flatMap { HoldAction(rawValue: $0) }
     }
 }

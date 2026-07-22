@@ -85,17 +85,40 @@ func handleEventTapEvent(
     case .keyDown:
         let isAutorepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
         if isAutorepeat {
+            // Autorepeats pass through unswallowed (pre-existing contract) —
+            // except for phased chords: a hold gesture's chord autorepeating
+            // into the frontmost app would type into the very window the user
+            // is holding to act on. Swallowed with no delivery; the arbiter's
+            // in-flight gesture already owns the hold. The isEmpty guard
+            // keeps the no-hold-shortcuts hot path at one lock acquisition.
+            let repeatKeyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+            let swallowAutorepeat = box.withLock { () -> Bool in
+                guard !box._phasedChords.isEmpty else { return false }
+                var currentFlags = event.flags.strippingCapsLock
+                if box._isHyperHeld {
+                    currentFlags = currentFlags.union([.maskControl, .maskAlternate, .maskShift, .maskCommand])
+                }
+                let flags = NSEvent.ModifierFlags(rawValue: UInt(currentFlags.rawValue))
+                let keyPress = KeyPress(
+                    keyCode: repeatKeyCode,
+                    modifiers: KeyMatcher.normalizedFlags(from: flags)
+                )
+                return box._phasedChords.contains(keyPress)
+            }
+            if swallowAutorepeat {
+                return nil
+            }
             return Unmanaged.passUnretained(event)
         }
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
         let eventTimestamp = event.timestamp
 
-        let (swallow, injectHyper) = box.withLock { () -> (Bool, Bool) in
+        let (swallow, injectHyper, phased) = box.withLock { () -> (Bool, Bool, Bool) in
             if box._hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
                 box._isHyperHeld = true
                 box._hyperKeyDownTimestamp = eventTimestamp
                 box._f19ReceivedViaKeyDown = true
-                return (true, false)
+                return (true, false, false)
             }
             let hyper = box._isHyperHeld
 
@@ -109,6 +132,7 @@ func handleEventTapEvent(
                 modifiers: KeyMatcher.normalizedFlags(from: flags)
             )
             let shouldSwallow = box._registeredShortcuts.contains(keyPress)
+            let isPhased = shouldSwallow && box._phasedChords.contains(keyPress)
             // Clear deferred keyUp state on any non-F19 keyDown. The current
             // keystroke still sees hyper=true (captured above), but subsequent
             // keystrokes will not have Hyper injected.
@@ -116,7 +140,7 @@ func handleEventTapEvent(
                 box._isHyperHeld = false
                 box._hyperKeyUpDeferred = false
             }
-            return (shouldSwallow, hyper)
+            return (shouldSwallow, hyper, isPhased)
         }
 
         #if DEBUG
@@ -194,14 +218,22 @@ func handleEventTapEvent(
             if injectHyper {
                 box.notifyHyperHoldEvent(.chordConsumed)
             }
-            box.onKeyPress?(keyPress)
+            if phased {
+                // Phased chords bypass onKeyPress entirely: both edges travel
+                // the FIFO phased channel so an up can never overtake its
+                // down, and the 200ms same-chord debounce in handleAsync
+                // (keyed on phase-less KeyPress) never eats the up edge.
+                box.notifyPhasedKeyEvent(keyPress, .down)
+            } else {
+                box.onKeyPress?(keyPress)
+            }
             return nil
         }
         return Unmanaged.passUnretained(event)
 
     case .keyUp:
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-        let swallowUp = box.withLock { () -> Bool in
+        let (swallowUp, phasedUpKeyPress) = box.withLock { () -> (Bool, KeyPress?) in
             if box._hyperKeyEnabled && keyCode == HyperKeyService.f19KeyCode {
                 // Caps Lock hardware may generate instant keyDown+keyUp on a single
                 // physical press (toggle quirk). If keyUp arrives within 80ms of
@@ -214,9 +246,29 @@ func handleEventTapEvent(
                 } else {
                     box._hyperKeyUpDeferred = true
                 }
-                return true
+                return (true, nil)
             }
-            return false
+            guard !box._phasedChords.isEmpty else { return (false, nil) }
+            // Stateless recomputation of the chord identity, mirroring the
+            // keyDown match (same Hyper-union + normalization). Best-effort by
+            // design: releasing modifiers (or F19) before the key changes the
+            // identity and the up passes through — the gesture consumer's
+            // deadline fallback owns that case. No down/up pairing state is
+            // kept because interleaved holds would make it lie.
+            var currentFlags = event.flags.strippingCapsLock
+            if box._isHyperHeld {
+                currentFlags = currentFlags.union([.maskControl, .maskAlternate, .maskShift, .maskCommand])
+            }
+            let flags = NSEvent.ModifierFlags(rawValue: UInt(currentFlags.rawValue))
+            let keyPress = KeyPress(
+                keyCode: keyCode,
+                modifiers: KeyMatcher.normalizedFlags(from: flags)
+            )
+            guard box._phasedChords.contains(keyPress) else { return (false, nil) }
+            return (true, keyPress)
+        }
+        if let phasedUpKeyPress {
+            box.notifyPhasedKeyEvent(phasedUpKeyPress, .up)
         }
         let modifierFlags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
         if swallowUp {
@@ -434,6 +486,8 @@ final class EventTapManager: EventTapManaging {
             }
         }
         box.registeredShortcuts = registeredKeyPresses
+        box.phasedChords = phasedKeyPresses
+        box.setPhasedKeyObserver(wrappedPhasedObserver(generation: generation))
         box.setHyperKey(enabled: hyperKeyEnabled)
         ownershipLedger.boxCreates += 1
         let session = EventTapOwnedSession(
@@ -510,7 +564,45 @@ final class EventTapManager: EventTapManaging {
         owner?.box.registeredShortcuts = keyPresses
     }
 
+    /// Update the subset of registered chords delivered with phase through
+    /// the phased observer (both edges swallowed) instead of `onKeyPress`.
+    func updatePhasedChords(_ keyPresses: Set<KeyPress>) {
+        phasedKeyPresses = keyPresses
+        owner?.box.phasedChords = keyPresses
+    }
+
+    func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?) {
+        phasedKeyObserver = observer
+        if let owner {
+            owner.box.setPhasedKeyObserver(wrappedPhasedObserver(generation: owner.generation))
+        }
+    }
+
+    /// Generation-bound wrapper, mirroring the ordinary path's
+    /// `handleAsync(_:generation:)` guard: a phased event queued from the
+    /// tap thread must be discarded if the provider stopped or the tap was
+    /// recreated before the main queue drained it. Teardown clears the box's
+    /// stored observer, but an already-captured closure in a queued block
+    /// outlives that — the generation check is what actually revokes it.
+    private func wrappedPhasedObserver(
+        generation: UInt64
+    ) -> (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)? {
+        guard let phasedKeyObserver else { return nil }
+        return { [weak self] keyPress, phase in
+            guard let self,
+                  self.owner?.generation == generation,
+                  self.lifecycleState == .running else {
+                self?.ownershipLedger.staleCallbacksDiscarded += 1
+                self?.emitOwnershipLog(event: "stale_phased_callback_discarded")
+                return
+            }
+            phasedKeyObserver(keyPress, phase)
+        }
+    }
+
     private var registeredKeyPresses: Set<KeyPress> = []
+    private var phasedKeyPresses: Set<KeyPress> = []
+    private var phasedKeyObserver: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?
     private var hyperKeyEnabled = false
 
     func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {
@@ -732,6 +824,7 @@ final class EventTapManager: EventTapManaging {
             // The join above is the lifetime boundary: no tap callback can
             // still be reading these fields when session ownership is released.
             session.box.onKeyPress = nil
+            session.box.setPhasedKeyObserver(nil)
             session.box.onTapDisabled = nil
             session.box.onRecoveryNeeded = nil
             session.box.reenableTap = nil
@@ -1077,6 +1170,26 @@ final class EventTapBox: @unchecked Sendable {
         let observer = withLock { _onHyperHoldEvent }
         observer?(event)
     }
+
+    /// Phased-chord observer. Written under the lock; snapshot-read like
+    /// `_onHyperHoldEvent`. Invocation hops to the main queue *inside*
+    /// `notifyPhasedKeyEvent` so down/up ordering is a box guarantee: the
+    /// main dispatch queue is FIFO, sibling `Task`s are not.
+    private var _onPhasedKeyEvent: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?
+
+    func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?) {
+        withLock { _onPhasedKeyEvent = observer }
+    }
+
+    func notifyPhasedKeyEvent(_ keyPress: KeyPress, _ phase: KeyEventPhase) {
+        let observer = withLock { _onPhasedKeyEvent }
+        guard let observer else { return }
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                observer(keyPress, phase)
+            }
+        }
+    }
     /// Background-safe closure for asynchronous timeout diagnostics.
     var onTapDisabled: (@Sendable (EventTapDiagnosticsSnapshot) -> Void)?
     /// Background-safe closure dispatched when the lifecycle tracker decides
@@ -1093,6 +1206,11 @@ final class EventTapBox: @unchecked Sendable {
     /// `_registeredShortcuts`. Lets the DEBUG near-miss diagnostic stay O(1)
     /// on the event-tap callback thread without holding onto modifier data.
     fileprivate var _registeredKeyCodes: Set<CGKeyCode> = []
+    /// Subset of `_registeredShortcuts` whose down AND up edges are swallowed
+    /// and delivered via the phased observer instead of `onKeyPress`.
+    /// Persists across tap recreation (the box outlives sessions) and is
+    /// cleared with the rest of the delivery closures at teardown.
+    fileprivate var _phasedChords: Set<KeyPress> = []
     fileprivate var _hyperKeyEnabled: Bool = false
     fileprivate var _isHyperHeld: Bool = false
     /// CGEvent.timestamp (nanoseconds since startup) of the most recent F19
@@ -1124,6 +1242,10 @@ final class EventTapBox: @unchecked Sendable {
                 _registeredKeyCodes = keyCodes
             }
         }
+    }
+    var phasedChords: Set<KeyPress> {
+        get { withLock { _phasedChords } }
+        set { withLock { _phasedChords = newValue } }
     }
     var hyperKeyEnabled: Bool {
         get { withLock { _hyperKeyEnabled } }

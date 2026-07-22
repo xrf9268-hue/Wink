@@ -856,7 +856,7 @@ struct CarbonHotKeyProviderTests {
 }
 
 @MainActor
-private final class RecordingCarbonHotKeyRegistrar {
+final class RecordingCarbonHotKeyRegistrar {
     struct Registration {
         let keyCode: UInt32
         let modifiers: UInt32
@@ -911,7 +911,7 @@ private final class RecordingCarbonHotKeyRegistrar {
 }
 
 @MainActor
-private final class RecordingCarbonHotKeyHandlerFactory {
+final class RecordingCarbonHotKeyHandlerFactory {
     private var results: [Int32?]
     private(set) var installCount = 0
     private(set) var sessions: [RecordingCarbonHotKeyHandlerSession] = []
@@ -934,7 +934,7 @@ private final class RecordingCarbonHotKeyHandlerFactory {
 }
 
 @MainActor
-private final class RecordingCarbonHotKeyHandlerSession: CarbonHotKeyHandlerSession {
+final class RecordingCarbonHotKeyHandlerSession: CarbonHotKeyHandlerSession {
     private let delivery: CarbonHotKeyDelivery
     private(set) var isLive = true
     private(set) var stopCount = 0
@@ -949,8 +949,12 @@ private final class RecordingCarbonHotKeyHandlerSession: CarbonHotKeyHandlerSess
         stopCount += 1
     }
 
-    func emit(identifier: UInt32, timestamp: CGEventTimestamp = .max) {
-        delivery(identifier, timestamp)
+    func emit(
+        identifier: UInt32,
+        timestamp: CGEventTimestamp = .max,
+        phase: KeyEventPhase = .down
+    ) {
+        delivery(identifier, timestamp, phase)
     }
 }
 
