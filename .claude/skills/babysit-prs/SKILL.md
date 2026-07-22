@@ -77,7 +77,7 @@ Process each PR in order: **1b → 1c → 1a**.
 
 **1b. CI failures**: Check `gh pr checks <number>`. Attempt fix (max 2 attempts). If still failing: add label `needs-human-review`, comment, move on. If you push a fix, leave the PR open for a later iteration.
 
-**1c. Review feedback**: Load `.claude/skills/pr-review-loop/SKILL.md` — it is the single source of truth for bot-review mechanics (trigger semantics, the THREE terminal-signal forms, thread reply/resolve etiquette, rerunning the stale `Validate review state` check). `references/review-gates.md` adds the loop-specific tool tiers on top. Read PR comments: `gh pr view <number> --comments`. Check session memory for `/codex:review` findings. All bot review findings (any priority) and high-confidence `/code-review` findings (≥80): must-fix. Only skip a finding if it is clearly a false positive or provides no actionable value — in that case, comment on the PR explaining why it was dismissed. If a review tool is unavailable, comment that the gate was unavailable and leave the PR open.
+**1c. Review feedback**: Load `.claude/skills/pr-review-loop/SKILL.md` — it is the single source of truth for bot-review mechanics (trigger semantics, the THREE terminal-signal forms, thread reply/resolve etiquette, rerunning the stale `Validate review state` check). `references/review-gates.md` adds the loop-specific tool tiers on top. Read PR comments: `gh pr view <number> --comments`. Check session memory for `/codex:review` findings. All bot review findings (any priority) and high-confidence `/code-review` findings (≥80): must-fix. Only skip a finding if it is clearly a false positive or provides no actionable value — in that case, comment on the PR explaining why it was dismissed. After pushing fixes for bot findings: reply on each thread with the commit hash, resolve it, and post `@codex review` to obtain a fresh verdict on the new HEAD — a push alone does NOT re-trigger the bot, and Layer 3 requires the clean pass on the current head. Leave the PR open for a later iteration to read that verdict. If a review tool is unavailable, comment that the gate was unavailable and leave the PR open.
 
 **1a. Merge eligible**: Apply pr-review-loop's Layer 3 checklist (clean pass on the HEAD commit, zero unresolved actionable threads, runtime-validation label discipline) plus the loop-specific rules:
 - PR was NOT created or pushed to in this iteration
@@ -138,9 +138,24 @@ Closes #<N>
 
 ## Verification
 - Automated: swift build, swift test, swift build -c release
+
+## Validation Status
+- [ ] Not runtime-sensitive
+- [ ] macOS runtime validation pending
+- [ ] macOS runtime validation complete
+
+## Docs Sync Check (issue #230)
+- [ ] If this PR touches toggle / activation / event tap / persistence behavior, the relevant `AGENTS.md` and `docs/architecture.md` sections still describe the new behavior accurately (or have been updated in this PR).
+- [ ] No new references to `docs/archive/` as a current source of truth.
 EOF
 )" --base main
 ```
+
+Check EXACTLY ONE `Validation Status` box before submitting: the
+`Validate PR metadata` gate rejects zero or multiple selections and
+computes runtime-sensitive paths server-side, rejecting
+`Not runtime-sensitive` for diffs touching them — those PRs check
+`macOS runtime validation pending` and carry the matching label.
 
 **5d. Review gate (bounded)**: The pre-push local review already ran in 5c for Layer 1-category diffs. Fire the remaining reviews in parallel where possible:
 1. `/codex:review --base main --background` first (async, if available)
