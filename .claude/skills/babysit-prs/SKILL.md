@@ -83,7 +83,7 @@ Process each PR in order: **1b → 1c → 1a**.
 - PR was NOT created or pushed to in this iteration
 - No `needs-human-review` or `arch-decision` label
 
-If eligible: merge per pr-review-loop Layer 3. Note the branch ruleset blocks a plain `gh pr merge` — merging requires an account with the ruleset's bypass (`--admin`). If the active account lacks it, add label `needs-human-review` with a "merge-ready" comment instead of retrying.
+If eligible: merge per pr-review-loop Layer 3. Attempt the normal `gh pr merge <number> --squash --delete-branch` FIRST — a PR with a fresh approving review, resolved threads, and green checks satisfies the ruleset without any bypass. Only when the merge is rejected by base-branch policy (the common case for bot-reviewed-only PRs, which carry no approving review) does merging require an account with the ruleset bypass (`--admin`); if the active account lacks it, add label `needs-human-review` with a "merge-ready" comment instead of retrying.
 
 ### Step 2: Select Next Issue
 
