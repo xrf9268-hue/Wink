@@ -4,6 +4,27 @@ Newest first. One `## X.Y.Z` section per release, written by hand **before** run
 `scripts/bump-version.sh X.Y.Z`. `scripts/release-notes.sh X.Y.Z` extracts a section as the
 GitHub Release body; the release workflow fails if the tagged version has no section here.
 
+## 0.7.1
+
+Three sharp edges off the window-switching release.
+
+- **Palette switches land in front** — committing the search palette on an
+  app whose windows sat behind another app's activated it without raising
+  anything: the menu bar said Safari, the screen still showed Terminal.
+  Every activation now orders the target's first real content window key
+  and front (auxiliary elements like Split View dividers are never
+  touched), so the window you asked for is the window you see.
+- **Hand-written configs can't half-arm** — a shortcuts.json or .winkrecipe
+  entry naming a sentinel target (Search Palette, Current App) without the
+  explicit "target" field used to render everywhere and fire nowhere. The
+  unambiguous sentinel now backfills; unknown or malformed target values
+  stay safely disarmed — and stay that way across every save, load,
+  export, and import. The cheat sheet now shows exactly the chords that
+  can fire: duplicate-chord losers and uninstalled apps are excluded.
+- **Badges keep their shape** — the Search Palette row's HYPER and
+  key-combo badges no longer wrap mid-token under tight layouts
+  ("⌃⌥⇧⌘SPAC / E").
+
 ## 0.7.0
 
 The window-switching release: cycle through an app's windows, search-to-switch
