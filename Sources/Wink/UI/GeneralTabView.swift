@@ -349,6 +349,10 @@ struct GeneralTabView: View {
                 Text(shortcut.displayText)
                     .font(WinkType.monoBadge)
                     .tracking(0.5)
+                    .lineLimit(1)
+                    // Never yield to row compression: a key combo that wraps
+                    // ("⌃⌥⇧⌘SPAC / E") reads as two chords (#409).
+                    .fixedSize()
                     .foregroundStyle(palette.textPrimary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
