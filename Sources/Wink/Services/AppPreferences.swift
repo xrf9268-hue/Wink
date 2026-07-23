@@ -274,6 +274,17 @@ final class AppPreferences {
         }
     }
 
+    /// Applies a status pushed by `ShortcutManager.onCaptureStatusChange`
+    /// directly, instead of re-pulling `shortcutCaptureStatus()`. AX/IM
+    /// trust and Secure Input are volatile external probes — a second
+    /// independent pull here could race the manager's own probe and land on
+    /// a different (even already-reverted) value, permanently desyncing
+    /// this cached status from what the manager just deduped on (#383).
+    func applyCaptureStatus(_ status: ShortcutCaptureStatus) {
+        guard status != shortcutCaptureStatus else { return }
+        shortcutCaptureStatus = status
+    }
+
     func requestShortcutPermissions() {
         shortcutManager.requestPermissions()
         refreshPermissions()

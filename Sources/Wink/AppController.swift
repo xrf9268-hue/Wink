@@ -332,9 +332,13 @@ final class AppController {
 
         // Configured BEFORE the startup sequence so launching while an
         // exception app is frontmost never lets capture (or permission
-        // prompts) fire ahead of the auto-pause.
-        shortcutManager.onCaptureStatusChange = { [weak self] in
-            self?.appPreferences.refreshPermissions()
+        // prompts) fire ahead of the auto-pause. Applies the delivered
+        // snapshot directly (not `refreshPermissions()`'s independent
+        // re-pull) — the manager's AX/IM/Secure-Input probes are volatile,
+        // and a second probe here could race and desync from what the
+        // manager just deduped on (#383).
+        shortcutManager.onCaptureStatusChange = { [weak self] status in
+            self?.appPreferences.applyCaptureStatus(status)
         }
         // Hold events arrive on the tap thread; hop once to the main actor
         // via the main QUEUE, whose FIFO ordering keeps began/ended in

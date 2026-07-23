@@ -1328,7 +1328,7 @@ func captureStatusReflectsSecureInputProbeAndPollNotifiesOnChange() {
         secureInputProbe: { secureInput },
         diagnosticClient: .init(log: { _ in })
     )
-    manager.onCaptureStatusChange = {
+    manager.onCaptureStatusChange = { _ in
         statusChangeNotifications += 1
     }
 

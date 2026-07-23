@@ -395,19 +395,34 @@ struct GeneralTabView: View {
     }
 
     private var hyperCheatSheetSubtitle: String {
+        Self.hyperCheatSheetSubtitleText(
+            hyperCheatSheetEnabled: preferences.hyperCheatSheetEnabled,
+            hyperKeyEnabled: preferences.hyperKeyEnabled,
+            eventTapActive: preferences.shortcutCaptureStatus.eventTapActive
+        )
+    }
+
+    /// Pure decision logic pulled out of `hyperCheatSheetSubtitle` so tests
+    /// can drive the cold-start-then-tap-starts sequence (#383) directly,
+    /// without a live `AppPreferences`/`SwiftUI` view.
+    static func hyperCheatSheetSubtitleText(
+        hyperCheatSheetEnabled: Bool,
+        hyperKeyEnabled: Bool,
+        eventTapActive: Bool
+    ) -> String {
         // Each branch is one full self-contained catalog entry (not a
         // concatenation of localized fragments) so translators see a
         // complete, naturally-ordered sentence.
-        guard preferences.hyperCheatSheetEnabled else {
+        guard hyperCheatSheetEnabled else {
             return String(localized: "Hold Caps Lock without a second key to see all shortcuts.", bundle: WinkResourceBundle.bundle)
         }
-        if !preferences.hyperKeyEnabled {
+        if !hyperKeyEnabled {
             return String(
                 localized: "Hold Caps Lock without a second key to see all shortcuts. Needs Hyper Key enabled.",
                 bundle: WinkResourceBundle.bundle
             )
         }
-        if !preferences.shortcutCaptureStatus.eventTapActive {
+        if !eventTapActive {
             return String(
                 localized: "Hold Caps Lock without a second key to see all shortcuts. Needs at least one enabled Hyper shortcut.",
                 bundle: WinkResourceBundle.bundle

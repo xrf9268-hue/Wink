@@ -64,10 +64,21 @@ final class ShortcutManager {
     private var autoPausedByException = false
     private let secureInputProbe: () -> Bool
     private var lastSecureInputState = false
-    /// Invoked from the 3s poll when observed capture-relevant state
-    /// changed (permissions, secure input) so observers can re-pull
-    /// `shortcutCaptureStatus()` without their own timers.
-    var onCaptureStatusChange: (@MainActor () -> Void)?
+    /// Last status delivered to `onCaptureStatusChange`. `AppPreferences`
+    /// snapshots `shortcutCaptureStatus()` exactly once, in its own init,
+    /// before the tap/Carbon providers ever run — without an active push
+    /// here that snapshot goes stale for the whole session (#383). Compared
+    /// against in `notifyCaptureStatusChangeIfNeeded()` to dedupe.
+    private var lastNotifiedCaptureStatus: ShortcutCaptureStatus?
+    /// Invoked whenever observed capture-relevant state changed (permission
+    /// edges, Secure Input, the tap/Carbon start-stop transition). Delivers
+    /// the exact snapshot that was just stored as the dedupe baseline —
+    /// observers must apply this value directly rather than re-pulling
+    /// `shortcutCaptureStatus()` themselves: AX/IM trust and
+    /// `IsSecureEventInputEnabled()` are volatile, so a second independent
+    /// probe can race and observe a different (even reverted) value than
+    /// the one this dedupe just latched, permanently desyncing the two.
+    var onCaptureStatusChange: (@MainActor (ShortcutCaptureStatus) -> Void)?
     /// Fires whenever the composed pause state transitions (manual pause,
     /// exception auto-pause, either direction).
     var onCapturePauseStateChange: (@MainActor (_ paused: Bool) -> Void)?
@@ -265,6 +276,11 @@ final class ShortcutManager {
         // could steer the next gesture and qualify for the relaxed
         // cycle cooldown.
         appSwitcher.invalidateWindowCycleSession(reason: "shortcut_configuration_changed")
+        // Adding/removing the first (or last) enabled Hyper shortcut starts
+        // or stops the tap synchronously inside the rebuild above; without a
+        // push here the cheat-sheet gate and General tab lag on the cached
+        // status until the next 3 s poll tick (#383).
+        notifyCaptureStatusChangeIfNeeded()
     }
 
     @discardableResult
@@ -284,6 +300,22 @@ final class ShortcutManager {
         )
     }
 
+    /// Re-pulls the live status and fires `onCaptureStatusChange` with it
+    /// only on an actual change from the last-notified snapshot. Called from
+    /// every exit of `checkPermissionChange()` and from both branches of
+    /// `attemptStartIfPermitted` so the ordinary tap start/stop transition —
+    /// not just permission/secure-input edges — reaches observers (#383).
+    /// Passes the exact `current` value it just latched as the baseline: AX/
+    /// IM trust and Secure Input are probed again by `shortcutCaptureStatus`
+    /// inside this call, and a second independent probe from the observer
+    /// could race and land on a different value than what got deduped here.
+    private func notifyCaptureStatusChangeIfNeeded() {
+        let current = shortcutCaptureStatus()
+        guard current != lastNotifiedCaptureStatus else { return }
+        lastNotifiedCaptureStatus = current
+        onCaptureStatusChange?(current)
+    }
+
     func setHyperKeyEnabled(_ enabled: Bool) {
         let inputMonitoringWasRequired = captureCoordinator.inputMonitoringRequired
         hyperKeyEnabled = enabled
@@ -291,6 +323,9 @@ final class ShortcutManager {
         handleCaptureConfigurationChange(
             inputMonitoringWasRequired: inputMonitoringWasRequired
         )
+        // The route rebuild above can start/stop the tap synchronously;
+        // same staleness window as `save(shortcuts:)` otherwise (#383).
+        notifyCaptureStatusChangeIfNeeded()
     }
 
     func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior) {
@@ -329,6 +364,13 @@ final class ShortcutManager {
     }
 
     private func applyEffectivePauseTransition() {
+        // Both pause bits are part of the composed status, and the
+        // exception auto-pause has no AppPreferences-side pull path at all
+        // — every branch below (including the paused early return) must
+        // push, or the cached status lags until the next poll tick (#383).
+        // The resume path's `attemptStartIfPermitted` also notifies; the
+        // dedupe makes the extra call free.
+        defer { notifyCaptureStatusChangeIfNeeded() }
         let paused = effectivePaused
         onCapturePauseStateChange?(paused)
         // A gesture straddling the pause transition must not resolve into a
@@ -386,6 +428,11 @@ final class ShortcutManager {
     }
 
     func checkPermissionChange() {
+        // Every early return below (and the ordinary fall-through) must
+        // still refresh observers: a tick can flip only Secure Input, or
+        // stop capture on lost Accessibility, and both are real transitions
+        // the cheat-sheet gate and General tab need to see.
+        defer { notifyCaptureStatusChangeIfNeeded() }
         let axGranted = permissionService.isAccessibilityTrusted()
         var imGranted = permissionService.isInputMonitoringTrusted()
         let secureInput = secureInputProbe()
@@ -394,7 +441,8 @@ final class ShortcutManager {
             diagnosticClient.log(secureInput
                 ? "Secure Input engaged — Hyper/event-tap shortcuts degraded until it ends"
                 : "Secure Input ended — shortcut capture back to normal")
-            onCaptureStatusChange?()
+            // `secureInputActive` is part of `ShortcutCaptureStatus`, so the
+            // function-exit defer above already notifies for this edge.
         }
         let snapshot = captureCoordinator.snapshot()
         let accessibilityChanged = axGranted != lastAccessibilityState
@@ -531,6 +579,7 @@ final class ShortcutManager {
                 "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) carbonHandler=\(snapshot.standardHandlerState.diagnosticName) carbonHandlerStatus=\(snapshot.standardHandlerState.failureStatus.map(String.init) ?? "none") eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired) paused=true"
             )
             lastCaptureBlockedMessages = []
+            notifyCaptureStatusChangeIfNeeded()
             return
         }
 
@@ -559,6 +608,10 @@ final class ShortcutManager {
             "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) carbonHandler=\(snapshot.standardHandlerState.diagnosticName) carbonHandlerStatus=\(snapshot.standardHandlerState.failureStatus.map(String.init) ?? "none") eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired)"
         )
         emitCaptureBlockedDiagnostics(snapshot: snapshot)
+        // Notify right after the real start attempt (not just the 3s poll)
+        // so the very first successful tap start reaches the cheat-sheet
+        // gate and General tab immediately (#383).
+        notifyCaptureStatusChangeIfNeeded()
     }
 
     private func handleCaptureConfigurationChange(inputMonitoringWasRequired: Bool) {

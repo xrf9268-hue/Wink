@@ -376,6 +376,182 @@ func availabilityGainForHyperShortcutRequestsInputMonitoringAndStartsEventTap() 
     #expect(context.hyperProvider.isRunning == true)
 }
 
+/// #383: the ordinary tap start/stop transition (not just permission edges)
+/// must reach `onCaptureStatusChange`, and only on an actual change — a poll
+/// tick that observes the same status must not re-fire the callback.
+@Test @MainActor
+func checkPermissionChangeNotifiesOnEventTapActivationAndSuppressesRepeatNotifications() throws {
+    let bundleLocatorState = MutableAppBundleLocatorState(entries: [:])
+    let permissionService = MutablePermissionService(ax: true, input: true)
+    let context = makeShortcutManager(
+        permissionService: permissionService,
+        appBundleLocator: AppBundleLocator { bundleIdentifier in
+            bundleLocatorState.entries[bundleIdentifier]
+        }
+    )
+    try context.manager.save(shortcuts: [hyperShortcut()])
+    context.manager.setHyperKeyEnabled(true)
+
+    var notifyCount = 0
+    var lastDelivered: ShortcutCaptureStatus?
+    context.manager.onCaptureStatusChange = { status in
+        notifyCount += 1
+        lastDelivered = status
+    }
+
+    context.manager.start()
+    let notifyCountAfterStart = notifyCount
+    #expect(context.manager.shortcutCaptureStatus().eventTapActive == false)
+
+    // Availability gain flips the hyper provider inactive -> active on the
+    // very next poll tick (`checkPermissionChange`), not a manual pause
+    // cycle or Settings visit.
+    bundleLocatorState.entries["com.apple.Safari"] = URL(fileURLWithPath: "/Applications/Safari.app")
+    context.manager.checkPermissionChange()
+
+    #expect(context.manager.shortcutCaptureStatus().eventTapActive == true)
+    #expect(notifyCount == notifyCountAfterStart + 1)
+    #expect(lastDelivered?.eventTapActive == true)
+
+    let notifyCountAfterActivation = notifyCount
+    context.manager.checkPermissionChange()
+
+    #expect(notifyCount == notifyCountAfterActivation)
+}
+
+/// #383 bot P2: configuration changes start/stop the tap synchronously
+/// inside `save(shortcuts:)` — the status push must ride that path too, not
+/// wait for the next 3 s poll tick.
+@Test @MainActor
+func savingTheFirstAndLastHyperShortcutNotifiesWithoutWaitingForThePoll() throws {
+    let permissionService = MutablePermissionService(ax: true, input: true)
+    let context = makeShortcutManager(
+        permissionService: permissionService,
+        appBundleLocator: AppBundleLocator { _ in
+            URL(fileURLWithPath: "/Applications/Safari.app")
+        }
+    )
+    context.manager.setHyperKeyEnabled(true)
+    context.manager.start()
+
+    var lastDelivered: ShortcutCaptureStatus?
+    context.manager.onCaptureStatusChange = { status in
+        lastDelivered = status
+    }
+    #expect(context.manager.shortcutCaptureStatus().eventTapActive == false)
+
+    try context.manager.save(shortcuts: [hyperShortcut()])
+    #expect(lastDelivered?.eventTapActive == true)
+
+    try context.manager.save(shortcuts: [])
+    #expect(lastDelivered?.eventTapActive == false)
+}
+
+/// Same class as the `save(shortcuts:)` case: toggling the Hyper key
+/// rebuilds provider routes synchronously and must push the resulting
+/// status itself.
+@Test @MainActor
+func togglingHyperKeyNotifiesTheResultingCaptureStatusWithoutThePoll() throws {
+    let permissionService = MutablePermissionService(ax: true, input: true)
+    let context = makeShortcutManager(
+        permissionService: permissionService,
+        appBundleLocator: AppBundleLocator { _ in
+            URL(fileURLWithPath: "/Applications/Safari.app")
+        }
+    )
+    context.manager.setHyperKeyEnabled(true)
+    try context.manager.save(shortcuts: [hyperShortcut()])
+    context.manager.start()
+    #expect(context.manager.shortcutCaptureStatus().eventTapActive == true)
+
+    var lastDelivered: ShortcutCaptureStatus?
+    context.manager.onCaptureStatusChange = { status in
+        lastDelivered = status
+    }
+
+    context.manager.setHyperKeyEnabled(false)
+    #expect(lastDelivered?.eventTapActive == false)
+
+    context.manager.setHyperKeyEnabled(true)
+    #expect(lastDelivered?.eventTapActive == true)
+}
+
+/// The exception auto-pause has no AppPreferences-side pull path at all —
+/// the pause transition itself must push the paused status.
+@Test @MainActor
+func exceptionAutoPauseNotifiesThePausedCaptureStatusWithoutThePoll() throws {
+    let permissionService = MutablePermissionService(ax: true, input: true)
+    let context = makeShortcutManager(
+        permissionService: permissionService,
+        appBundleLocator: AppBundleLocator { _ in
+            URL(fileURLWithPath: "/Applications/Safari.app")
+        }
+    )
+    context.manager.setHyperKeyEnabled(true)
+    try context.manager.save(shortcuts: [hyperShortcut()])
+    context.manager.start()
+    #expect(context.manager.shortcutCaptureStatus().eventTapActive == true)
+
+    var lastDelivered: ShortcutCaptureStatus?
+    context.manager.onCaptureStatusChange = { status in
+        lastDelivered = status
+    }
+
+    context.manager.setAutoPausedByException(true)
+    #expect(lastDelivered?.eventTapActive == false)
+    #expect(lastDelivered?.shortcutsPaused == true)
+
+    context.manager.setAutoPausedByException(false)
+    #expect(lastDelivered?.eventTapActive == true)
+    #expect(lastDelivered?.shortcutsPaused == false)
+}
+
+/// #383 P2: `onCaptureStatusChange` must deliver the exact snapshot the
+/// dedupe just latched, not leave observers to re-pull `shortcutCaptureStatus()`
+/// themselves. AX/IM trust and Secure Input are volatile external probes —
+/// this simulates a value that is true only for the single probe inside the
+/// notify path, so an observer-side re-pull immediately afterwards would
+/// silently disagree with what was actually notified.
+@Test @MainActor
+func onCaptureStatusChangeDeliversTheExactDedupedSnapshotEvenWhenTheUnderlyingProbeFlipsAgain() throws {
+    var probeCallCount = 0
+    let secureInputProbe: () -> Bool = {
+        probeCallCount += 1
+        // True only on the 2nd call — the one made from inside
+        // `notifyCaptureStatusChangeIfNeeded()`'s own `shortcutCaptureStatus()`
+        // pull during this `checkPermissionChange()` tick.
+        return probeCallCount == 2
+    }
+    let manager = ShortcutManager(
+        shortcutStore: ShortcutStore(),
+        persistenceService: TestPersistenceHarness().makePersistenceService(),
+        appSwitcher: FakeAppSwitcher(),
+        captureCoordinator: ShortcutCaptureCoordinator(
+            standardProvider: FakeCaptureProvider(),
+            hyperProvider: FakeHyperCaptureProvider()
+        ),
+        permissionService: FakePermissionService(ax: false, input: false),
+        secureInputProbe: secureInputProbe,
+        diagnosticClient: .init(log: { _ in })
+    )
+
+    var delivered: ShortcutCaptureStatus?
+    manager.onCaptureStatusChange = { status in
+        delivered = status
+    }
+
+    manager.checkPermissionChange()
+
+    let deliveredStatus = try #require(delivered)
+    #expect(deliveredStatus.secureInputActive == true)
+
+    // A hypothetical observer-side re-pull, taken immediately after the
+    // callback returns, lands on a DIFFERENT value — proving the delivered
+    // snapshot (not a re-pull) is the only value an observer can trust.
+    let repulled = manager.shortcutCaptureStatus()
+    #expect(repulled.secureInputActive == false)
+}
+
 @Test @MainActor
 func availabilityLossRemovesRegisteredShortcutsWithoutAnotherSave() throws {
     let bundleLocatorState = MutableAppBundleLocatorState(entries: [
