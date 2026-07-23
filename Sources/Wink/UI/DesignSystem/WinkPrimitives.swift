@@ -216,6 +216,10 @@ struct WinkHyperBadge: View {
         Text("HYPER")
             .font(font)
             .tracking(0.4)
+            .lineLimit(1)
+            // Same rule as the combo badge next to it: never yield to row
+            // compression — "HYPE / R" on two lines is not a badge (#409).
+            .fixedSize()
             .foregroundStyle(palette.accent)
             .padding(.horizontal, 6)
             .frame(minHeight: height)
