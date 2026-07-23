@@ -26,6 +26,15 @@ done
 # Rule the case out before launching anything: the effective "keep
 # windows on quit" setting (global, with a per-app override) must be off
 # for Terminal.
+# The brand wallpaper is part of the recording contract: without it the
+# full-screen clips capture — and the upload step publishes — whatever
+# personal wallpaper the user runs. Refuse before touching anything.
+if [ ! -x "$CHROME" ]; then
+  echo "ABORT: Google Chrome not found at $CHROME — it renders the brand wallpaper" >&2
+  echo "(a hard prerequisite: recording without it leaks the user's own desktop)." >&2
+  exit 1
+fi
+
 resume_global=$(defaults read -g NSQuitAlwaysKeepsWindows 2>/dev/null || echo 0)
 resume_term=$(defaults read com.apple.Terminal NSQuitAlwaysKeepsWindows 2>/dev/null || echo "$resume_global")
 if [ "$resume_term" = "1" ]; then
@@ -96,27 +105,32 @@ defaults write com.wink.app suggestShortcutsFromUsage -bool true
 defaults write com.wink.app menuBarIconVisible -bool true
 defaults write com.wink.app shortcutsPaused -bool false
 defaults write com.wink.app frontmostExceptionsEnabled -bool false
+# the debug log persists across sessions — remember where it ends so the
+# gate below only accepts evidence from THIS launch, not a qualifying
+# line left by an earlier (possibly staged) session
+WINKLOG="$HOME/.config/Wink/debug.log"
+log_offset=$(wc -l 2>/dev/null < "$WINKLOG" || echo 0)
 open -a /Applications/Wink.app; sleep 1.5
 
 # 3. verify the trigger index took all four entries (gotcha #2)
 "$WORK/winkkeys" chord 45 150 >/dev/null; sleep 0.5   # ⇪N — forces an attemptStart line
 "$WORK/winkkeys" chord 45 150 >/dev/null; sleep 0.3   # toggle Notes back off
-line=$(grep attemptStart "$HOME/.config/Wink/debug.log" | tail -1)
+line=$(tail -n +$((log_offset + 1)) "$WINKLOG" 2>/dev/null | grep attemptStart | tail -1)
 # Gate on BOTH the index count and a live interception tap: eventTap=false
 # (Input Monitoring missing, tap failed) records perfectly inert clips
 # while the counts still look right.
 case "$line" in
   *"shortcuts=4"*"triggerIndex=4"*"eventTap=true"*) echo "trigger index + event tap OK" ;;
-  *) echo "STAGING GATE FAILED (need shortcuts=4 triggerIndex=4 eventTap=true): $line" >&2; exit 1 ;;
+  *) echo "STAGING GATE FAILED (need shortcuts=4 triggerIndex=4 eventTap=true): ${line:-<no fresh attemptStart line from this launch>}" >&2; exit 1 ;;
 esac
 
-# 4. set dressing: brand wallpaper, no overlay apps
-if [ -x "$CHROME" ]; then
-  "$CHROME" --headless=new --disable-gpu --screenshot="$WORK/wink-wallpaper.png" \
-    --window-size=1920,1080 --hide-scrollbars "file://$HERE/wallpaper.html" 2>/dev/null
-  osascript -e "tell application \"System Events\" to set picture of every desktop to POSIX file \"$WORK/wink-wallpaper.png\""
-  killall WallpaperAgent 2>/dev/null || true
-fi
+# 4. set dressing: brand wallpaper (Chrome verified in the preflight), no
+# overlay apps
+"$CHROME" --headless=new --disable-gpu --screenshot="$WORK/wink-wallpaper.png" \
+  --window-size=1920,1080 --hide-scrollbars "file://$HERE/wallpaper.html" 2>/dev/null
+[ -s "$WORK/wink-wallpaper.png" ] || { echo "ABORT: wallpaper render produced no PNG" >&2; exit 1; }
+osascript -e "tell application \"System Events\" to set picture of every desktop to POSIX file \"$WORK/wink-wallpaper.png\""
+killall WallpaperAgent 2>/dev/null || true
 # record whether PomoFox was running before pausing it — restore.sh must
 # not hand back a session with an app the user never had open
 if pgrep -xq PomoFox; then

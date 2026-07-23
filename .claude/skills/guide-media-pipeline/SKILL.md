@@ -23,6 +23,9 @@ scripted so a UI change means re-running it, not re-doing it by hand.
   persist per host app; a first run may prompt.
 - `wrangler` OAuth able to write bucket `wink-releases` (no S3 keys
   needed) and `ffmpeg` on PATH.
+- Google Chrome at `/Applications/Google Chrome.app` — it renders the
+  brand wallpaper headlessly; staging aborts without it rather than
+  record (and upload) the user's personal wallpaper.
 - Wink installed at `/Applications/Wink.app` — record the SHIPPED build,
   never a dev build.
 
