@@ -66,7 +66,11 @@ struct InsightsTabView: View {
                 }
             }
             .scrollIndicators(.automatic, axes: .vertical)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            // The 140pt floor carries over from the pre-#393 ranking region:
+            // at compact window heights the fixed blocks above would
+            // otherwise compress this flexible region to zero, leaving the
+            // tail cards neither visible nor scrollable.
+            .frame(maxWidth: .infinity, minHeight: 140, maxHeight: .infinity, alignment: .topLeading)
         }
         .padding(.top, 18)
         .padding(.bottom, 22)
