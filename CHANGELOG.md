@@ -4,6 +4,47 @@ Newest first. One `## X.Y.Z` section per release, written by hand **before** run
 `scripts/bump-version.sh X.Y.Z`. `scripts/release-notes.sh X.Y.Z` extracts a section as the
 GitHub Release body; the release workflow fails if the tagged version has no section here.
 
+## 0.7.0
+
+The window-switching release: cycle through an app's windows, search-to-switch
+anything, and see every shortcut at a glance.
+
+- **Cycle Windows** — a new "when target is frontmost" behavior: repeat
+  presses rotate through the app's windows, minimized ones included, with a
+  small HUD showing your position ("2/5 · window title") on the window's own
+  display. Set it globally in General, or per shortcut from a row's ⋯ menu.
+  Rapid presses feel immediate; single-window apps keep plain toggling.
+- **Current App target** — a pinned entry in the app picker that acts on
+  whatever app is frontmost, so one chord cycles any app's windows without a
+  dedicated binding. A single-window frontmost app stays put — it is never
+  hidden by accident.
+- **Search to switch** — a palette summoned by its own trigger shortcut:
+  type a few letters of any app's name (localized names match too, 微信 finds
+  WeChat), hit ⏎, and Wink takes you there — launching the app if it isn't
+  running. Recent switches float to the top, and background agents or helper
+  processes never clutter the list.
+- **Hold to pick a window** — opt any shortcut into a hold action: tap to
+  toggle as always, hold the chord to get that app's window list with
+  arrow-key navigation and Enter to focus, minimized windows marked.
+- **Hyper cheat sheet** — hold Caps Lock with no second key and every bound
+  shortcut fades in on the display you're working on; release and it's gone.
+- **Per-app exception rules** — shortcuts pause themselves while a VM or
+  remote-desktop app is frontmost (the menu bar pill shows "Paused · App")
+  and resume when you leave. While paused — by rule or by hand — Caps Lock
+  reverts fully to its native behavior, light and all.
+- **Secure Input, surfaced** — when a password field engages macOS Secure
+  Input, the pill shows "Limited · Secure Input" instead of a false Ready,
+  and standard non-Fn shortcuts keep working through it.
+- **Scriptable via wink://** — `wink://toggle?bundle=…`, `wink://pause`, and
+  `wink://resume` for launchers, Raycast scripts, and automations.
+- **简体中文** — the entire app is localized, and macOS can now run Wink in
+  Chinese per app from System Settings → General → Language & Region.
+- **Insights suggests shortcuts** — apps you switch to often but never bound
+  show up with their switch counts, one click away from a new shortcut. The
+  Insights page also got a scrollable layout so no card is ever cut off.
+- **Wink amber** — a refreshed accent color and an ink-navy app icon across
+  the app.
+
 ## 0.6.2
 
 Shortcut reliability fixes, preserved usage history, and fresher stats.
