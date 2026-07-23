@@ -25,7 +25,19 @@ fi
 
 open -a /Applications/Wink.app; sleep 1
 
-osascript -e 'tell application "System Events" to set picture of every desktop to POSIX file "/System/Library/CoreServices/DefaultDesktop.heic"' || true
+# restore the wallpapers stage.sh recorded (one path per desktop line);
+# fall back to the system default only if nothing was recorded
+if [ -s "$BACKUP/wallpapers.txt" ]; then
+  i=1
+  while IFS= read -r wp; do
+    if [ -n "$wp" ] && [ -e "$wp" ]; then
+      osascript -e "tell application \"System Events\" to set picture of desktop $i to POSIX file \"$wp\"" 2>/dev/null || true
+    fi
+    i=$((i + 1))
+  done < "$BACKUP/wallpapers.txt"
+else
+  osascript -e 'tell application "System Events" to set picture of every desktop to POSIX file "/System/Library/CoreServices/DefaultDesktop.heic"' || true
+fi
 killall WallpaperAgent 2>/dev/null || true
 if [ "$(cat "$BACKUP/appearance.txt" 2>/dev/null)" = "Dark" ]; then
   osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true' || true

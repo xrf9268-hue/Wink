@@ -9,6 +9,16 @@ APPSUP="$HOME/Library/Application Support/Wink"
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 mkdir -p "$WORK" "$BACKUP"
 
+# Refuse to stage over a live user session: step 5 closes every Safari and
+# Terminal window, which must never eat real work. Quit them yourself
+# (saving your session), then re-run.
+for app in Safari Terminal; do
+  if pgrep -xq "$app"; then
+    echo "ABORT: $app is running — quit it first, then re-run stage.sh" >&2
+    exit 1
+  fi
+done
+
 # 0. tools
 if [ ! -x "$WORK/winkkeys" ]; then
   swiftc -O "$HERE/winkkeys.swift" -o "$WORK/winkkeys"
@@ -18,6 +28,16 @@ fi
 cp -a "$APPSUP/" "$BACKUP/AppSupport/"
 defaults export com.wink.app "$BACKUP/com.wink.app.plist"
 defaults read -g AppleInterfaceStyle > "$BACKUP/appearance.txt" 2>/dev/null || echo Light > "$BACKUP/appearance.txt"
+# record current wallpapers, one path per desktop line, for restore.sh
+osascript > "$BACKUP/wallpapers.txt" 2>/dev/null <<'EOS' || true
+set out to ""
+tell application "System Events"
+  repeat with d in desktops
+    set out to out & (picture of d) & linefeed
+  end repeat
+end tell
+return out
+EOS
 echo "backup: $BACKUP"
 
 # 2. demo config + synthetic usage, app in English
