@@ -408,6 +408,31 @@ import Testing
     #expect(recipeShortcut.shortcutTarget == nil)
 }
 
+@Test func acceptedImportOfGatedRecipeRowPersistsTheGate() throws {
+    // Unresolved entries ARE importable (only conflicts filter out), so a
+    // gated recipe row must reach shortcuts.json still gated — an absent
+    // key would be backfilled and armed by the next launch.
+    let json = """
+    {"schemaVersion":2,"shortcuts":[
+      {"appName":"Current App","bundleIdentifier":"wink.target.frontmost-app",
+       "keyEquivalent":"g","modifierFlags":["command"],"isEnabled":true,"target":null}
+    ]}
+    """
+    let recipe = try WinkRecipeCodec().decode(Data(json.utf8))
+    let planner = WinkRecipeImportPlanner()
+    let plan = planner.planImport(recipe: recipe, existingShortcuts: [], installedApps: [])
+    let imported = planner.applying(plan: plan, to: [], strategy: .skipConflicts)
+    let persisted = try #require(imported.first)
+    #expect(persisted.target == nil)
+    #expect(persisted.hasPersistedInvalidTarget)
+
+    let reencoded = String(decoding: try JSONEncoder().encode(persisted), as: UTF8.self)
+    #expect(reencoded.contains("\"target\":null"))
+    let nextLaunch = try JSONDecoder().decode(AppShortcut.self, from: Data(reencoded.utf8))
+    #expect(nextLaunch.target == nil)
+    #expect(!nextLaunch.isFrontmostAppTarget)
+}
+
 @Test func explicitTargetStillWinsOverBackfill() throws {
     let json = """
     [

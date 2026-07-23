@@ -88,7 +88,7 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
     /// that was meant to stay unavailable (#404). Unknown strings re-encode
     /// verbatim (a newer build's intent survives round trips); an explicit
     /// null or malformed value re-encodes as null.
-    private enum PersistedInvalidTarget: Hashable, Sendable, Codable {
+    enum PersistedInvalidTarget: Hashable, Sendable {
         case unknownString(String)
         case explicitNullOrMalformed
     }
@@ -164,7 +164,8 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         isEnabled: Bool = true,
         frontmostBehaviorOverride: FrontmostTargetBehavior? = nil,
         target: ShortcutTarget? = nil,
-        holdAction: HoldAction? = nil
+        holdAction: HoldAction? = nil,
+        persistedInvalidTarget: PersistedInvalidTarget? = nil
     ) {
         self.id = id
         self.appName = appName
@@ -175,7 +176,7 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         self.frontmostBehaviorOverride = frontmostBehaviorOverride
         self.target = target
         self.holdAction = holdAction
-        self.persistedInvalidTarget = nil
+        self.persistedInvalidTarget = persistedInvalidTarget
     }
 
     /// Explicit so `persistedInvalidTarget` never becomes its own persisted

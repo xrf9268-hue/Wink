@@ -177,4 +177,17 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
     var holdActionValue: HoldAction? {
         holdAction.flatMap(HoldAction.init(rawValue:))
     }
+
+    /// The invalid-target gate this recipe row carries, in AppShortcut's
+    /// own representation, so an accepted import persists the gate instead
+    /// of an absent key the next load would backfill and arm (#404).
+    var invalidTargetGate: AppShortcut.PersistedInvalidTarget? {
+        if let target, ShortcutTarget(rawValue: target) == nil {
+            return .unknownString(target)
+        }
+        if targetKeyPresentButInvalid {
+            return .explicitNullOrMalformed
+        }
+        return nil
+    }
 }

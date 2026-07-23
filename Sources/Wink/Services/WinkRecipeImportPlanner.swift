@@ -24,6 +24,9 @@ struct WinkRecipeImportPlanner {
         let frontmostBehaviorOverride: FrontmostTargetBehavior?
         let holdAction: HoldAction?
         let target: ShortcutTarget?
+        /// Carried through from the recipe row (#404): an accepted import
+        /// must persist the same invalid-target gate the source expressed.
+        let invalidTargetGate: AppShortcut.PersistedInvalidTarget?
         let resolution: AppResolution
 
         var isUnresolved: Bool {
@@ -55,7 +58,8 @@ struct WinkRecipeImportPlanner {
                 isEnabled: isEnabled,
                 frontmostBehaviorOverride: frontmostBehaviorOverride,
                 target: target,
-                holdAction: holdAction
+                holdAction: holdAction,
+                persistedInvalidTarget: invalidTargetGate
             )
         }
     }
@@ -214,6 +218,7 @@ struct WinkRecipeImportPlanner {
                 frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
                 holdAction: recipeShortcut.holdActionValue,
                 target: .frontmostApp,
+                invalidTargetGate: nil,
                 resolution: .matchedByBundleIdentifier
             )
         }
@@ -233,6 +238,7 @@ struct WinkRecipeImportPlanner {
                 frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
                 holdAction: recipeShortcut.holdActionValue,
                 target: recipeShortcut.shortcutTarget,
+                invalidTargetGate: recipeShortcut.invalidTargetGate,
                 resolution: .matchedByBundleIdentifier
             )
         }
@@ -257,6 +263,7 @@ struct WinkRecipeImportPlanner {
                 frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
                 holdAction: recipeShortcut.holdActionValue,
                 target: recipeShortcut.shortcutTarget,
+                invalidTargetGate: recipeShortcut.invalidTargetGate,
                 resolution: .matchedByAppName
             )
         }
@@ -273,6 +280,7 @@ struct WinkRecipeImportPlanner {
             frontmostBehaviorOverride: recipeShortcut.behaviorOverride,
                 holdAction: recipeShortcut.holdActionValue,
             target: recipeShortcut.shortcutTarget,
+            invalidTargetGate: recipeShortcut.invalidTargetGate,
             resolution: .unresolved
         )
     }
