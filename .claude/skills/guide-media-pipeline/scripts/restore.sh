@@ -8,7 +8,13 @@ APPSUP="$HOME/Library/Application Support/Wink"
 
 pkill -x Wink || true; sleep 0.6
 cp "$BACKUP/AppSupport/shortcuts.json" "$BACKUP/AppSupport/usage.db" "$APPSUP/"
-[ -f "$BACKUP/AppSupport/recent-apps.json" ] && cp "$BACKUP/AppSupport/recent-apps.json" "$APPSUP/"
+# restore recent-apps.json's absence too: if the user never had one, a
+# file the demo session created must not survive the restore
+if [ -f "$BACKUP/AppSupport/recent-apps.json" ]; then
+  cp "$BACKUP/AppSupport/recent-apps.json" "$APPSUP/"
+else
+  rm -f "$APPSUP/recent-apps.json"
+fi
 
 # restore the ENTIRE defaults domain from the backup export — the shoot
 # touches more than AppleLanguages (and future stagings may touch more

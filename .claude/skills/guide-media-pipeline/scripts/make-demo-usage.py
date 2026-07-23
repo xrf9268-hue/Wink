@@ -10,6 +10,7 @@ import datetime
 import pathlib
 import sqlite3
 import sys
+import zlib
 
 out = pathlib.Path(sys.argv[1])
 out.unlink(missing_ok=True)
@@ -52,6 +53,11 @@ def wobble(i, lo, hi):
     return lo + ((i * 7919 + 104729) % (hi - lo + 1))
 
 
+def stable_seed(text):
+    # hash() is randomized per process (PYTHONHASHSEED); crc32 is not.
+    return zlib.crc32(text.encode())
+
+
 HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
 WEIGHTS = [4, 9, 10, 7, 3, 2, 6, 8, 9, 8, 5, 3, 2, 1]
 WSUM = sum(WEIGHTS)
@@ -62,7 +68,7 @@ for i in range(30):
         continue  # one quiet day caps the streak at 16
     weekend = day.weekday() >= 5
     for sid, lo, hi in ((S, 9, 24), (T, 12, 30), (N, 3, 11)):
-        total = wobble(i + hash(sid) % 97, lo, hi)
+        total = wobble(i + stable_seed(sid) % 97, lo, hi)
         if weekend:
             total = max(1, total // 3)
         db.execute("INSERT INTO daily_usage VALUES (?,?,?)", (sid, day.isoformat(), total))
@@ -78,11 +84,27 @@ for i in range(30):
                 (left, sid, day.isoformat()),
             )
 
-# suggestion candidates: unbound (but installed) apps with foreground activity
+# suggestion candidates: unbound apps with foreground activity — but only
+# ones actually installed on THIS machine, or the Suggested card renders
+# nothing on a different host.
+CANDIDATES = [
+    ("com.googlecode.iterm2", "/Applications/iTerm.app"),
+    ("ru.keepcoder.Telegram", "/Applications/Telegram.app"),
+    ("com.tinyspeck.slackmacgap", "/Applications/Slack.app"),
+    ("com.google.Chrome", "/Applications/Google Chrome.app"),
+    ("org.mozilla.firefox", "/Applications/Firefox.app"),
+    ("com.microsoft.VSCode", "/Applications/Visual Studio Code.app"),
+]
+installed = [b for b, path in CANDIDATES if pathlib.Path(path).exists()][:2]
+if not installed:
+    print("warning: no suggestion candidates installed; Suggested card will be empty")
 for i in range(7):
     day = today - datetime.timedelta(days=i)
-    db.execute("INSERT INTO app_activations VALUES (?,?,?)", ("com.googlecode.iterm2", day.isoformat(), 3 + (i % 4)))
-    db.execute("INSERT INTO app_activations VALUES (?,?,?)", ("ru.keepcoder.Telegram", day.isoformat(), 1 + (i % 2)))
+    for rank, bundle in enumerate(installed):
+        db.execute(
+            "INSERT INTO app_activations VALUES (?,?,?)",
+            (bundle, day.isoformat(), (3 + (i % 4)) if rank == 0 else (1 + (i % 2))),
+        )
 
 db.commit()
 print("rows:", db.execute("SELECT COUNT(*) FROM usage_hourly").fetchone()[0])
