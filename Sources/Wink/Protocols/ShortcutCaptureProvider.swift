@@ -95,10 +95,18 @@ extension ShortcutCaptureProvider {
 protocol HyperShortcutCaptureProvider: ShortcutCaptureProvider {
     func setHyperKeyEnabled(_ enabled: Bool)
     func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?)
+    /// Suppresses (or restores) the F19 toggle-quirk release deferral for
+    /// the duration of an interactive panel session (#385). Declared here
+    /// so it dispatches dynamically like `setHyperHoldObserver`, not just on
+    /// the concrete event-tap provider.
+    func setHyperReleaseDeferralSuppressed(_ suppressed: Bool)
 }
 
 extension HyperShortcutCaptureProvider {
     // Sync no-op default; only the live event-tap provider surfaces
     // Hyper hold phases.
     func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {}
+    // Sync no-op default; only the live event-tap provider carries the
+    // toggle-quirk deferral state.
+    func setHyperReleaseDeferralSuppressed(_ suppressed: Bool) {}
 }

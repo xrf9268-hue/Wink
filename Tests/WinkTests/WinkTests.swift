@@ -346,6 +346,140 @@ struct EventTapManagerDeliveryTests {
         #expect(result != nil, "A should pass through — no Hyper held after disable")
     }
 
+    // MARK: - #385: session-scoped suppression of the toggle-quirk deferral
+
+    @Test
+    func suppressingReleaseDeferralBeforeF19UpKeepsThePanelsFirstKeystrokePlain() {
+        // The realistic physical ordering (the P1 gap in a prior point-in-time
+        // "clear" fix): the panel opens on the chord's keyDown and suppression
+        // engages within a few ms — well BEFORE F19's own physical release,
+        // which can still land inside the 80ms toggle-quirk window. Session
+        // suppression must stop that later release from ever arming a
+        // deferral in the first place, not just resolve one already pending.
+        let f19Down = makeKeyEvent(HyperKeyService.f19KeyCode, modifiers: [], keyDown: true)
+        let chordKeyPress = KeyPress(
+            keyCode: CGKeyCode(kVK_Space),
+            modifiers: [.command, .option, .control, .shift]
+        )
+        let chordDown = makeKeyEvent(CGKeyCode(kVK_Space), modifiers: [], keyDown: true)
+        let f19Up = makeKeyEvent(HyperKeyService.f19KeyCode, modifiers: [], keyDown: false)
+        f19Up.timestamp = f19Down.timestamp + 1_000_000  // 1ms → inside the quirk window
+
+        let box = EventTapBox()
+        box.setHyperKey(enabled: true)
+        box.registeredShortcuts = [chordKeyPress]
+
+        #expect(handleEventTapEvent(type: .keyDown, event: f19Down, box: box) == nil)
+        #expect(
+            handleEventTapEvent(type: .keyDown, event: chordDown, box: box) == nil,
+            "Hyper+Space should be swallowed to open the panel"
+        )
+
+        // Simulates ShortcutManager.setInteractivePanelSessionActive(true):
+        // the panel opens on the chord's keyDown, before F19's physical
+        // release has even arrived.
+        box.setHyperReleaseDeferralSuppressed(true)
+
+        #expect(handleEventTapEvent(type: .keyUp, event: f19Up, box: box) == nil)
+        #expect(box.isHyperHeld == false, "a suppressed release must resolve immediately, never defer")
+
+        let charEvent = makeKeyEvent(CGKeyCode(kVK_ANSI_A), modifiers: [], keyDown: true)
+        let originalFlags = charEvent.flags
+        let result = handleEventTapEvent(type: .keyDown, event: charEvent, box: box)
+
+        #expect(result != nil, "the panel's first character must pass through unswallowed")
+        #expect(charEvent.flags == originalFlags, "flags must not get the Hyper union injected")
+    }
+
+    @Test
+    func suppressingReleaseDeferralAfterItIsAlreadyArmedResolvesItImmediately() {
+        // The synthetic-harness ordering (F19's release beats the panel's
+        // suppression call): the deferral is already pending when
+        // suppression turns on. Turning suppression on must resolve an
+        // already-armed deferral too, not only prevent future ones.
+        let f19Down = makeKeyEvent(HyperKeyService.f19KeyCode, modifiers: [], keyDown: true)
+        let chordKeyPress = KeyPress(
+            keyCode: CGKeyCode(kVK_Space),
+            modifiers: [.command, .option, .control, .shift]
+        )
+        let chordDown = makeKeyEvent(CGKeyCode(kVK_Space), modifiers: [], keyDown: true)
+        let f19Up = makeKeyEvent(HyperKeyService.f19KeyCode, modifiers: [], keyDown: false)
+        f19Up.timestamp = f19Down.timestamp + 1_000_000  // 1ms → inside the quirk window
+
+        let box = EventTapBox()
+        box.setHyperKey(enabled: true)
+        box.registeredShortcuts = [chordKeyPress]
+
+        #expect(handleEventTapEvent(type: .keyDown, event: f19Down, box: box) == nil)
+        #expect(
+            handleEventTapEvent(type: .keyDown, event: chordDown, box: box) == nil,
+            "Hyper+Space should be swallowed to open the panel"
+        )
+        #expect(handleEventTapEvent(type: .keyUp, event: f19Up, box: box) == nil)
+        #expect(box.isHyperHeld == true, "instant release should be deferred, not cleared")
+
+        box.setHyperReleaseDeferralSuppressed(true)
+        #expect(box.isHyperHeld == false, "an already-armed deferral must resolve when suppression engages")
+
+        let charEvent = makeKeyEvent(CGKeyCode(kVK_ANSI_A), modifiers: [], keyDown: true)
+        let originalFlags = charEvent.flags
+        let result = handleEventTapEvent(type: .keyDown, event: charEvent, box: box)
+
+        #expect(result != nil, "the panel's first character must pass through unswallowed")
+        #expect(charEvent.flags == originalFlags, "flags must not get the Hyper union injected")
+    }
+
+    @Test
+    func suppressingReleaseDeferralLeavesAGenuinePhysicalHoldUntouched() {
+        // Scoped strictly to the release deferral: a real, ongoing F19 hold
+        // (no keyUp at all) must survive suppression being engaged mid-hold.
+        let f19Down = makeKeyEvent(HyperKeyService.f19KeyCode, modifiers: [], keyDown: true)
+        let box = EventTapBox()
+        box.setHyperKey(enabled: true)
+        box.setHyperReleaseDeferralSuppressed(true)
+
+        #expect(handleEventTapEvent(type: .keyDown, event: f19Down, box: box) == nil)
+        #expect(box.isHyperHeld == true, "F19 down must still set held state while suppressed")
+
+        let hyperShortcut = KeyPress(
+            keyCode: CGKeyCode(kVK_ANSI_A),
+            modifiers: [.command, .option, .control, .shift]
+        )
+        box.registeredShortcuts = [hyperShortcut]
+        let aEvent = makeKeyEvent(CGKeyCode(kVK_ANSI_A), modifiers: [], keyDown: true)
+        let result = handleEventTapEvent(type: .keyDown, event: aEvent, box: box)
+        #expect(result == nil, "Hyper+A should still be swallowed — the hold is still live")
+    }
+
+    @Test
+    func liftingSuppressionRestoresTheToggleQuirkDeferral() {
+        // Once the panel session ends, ordinary toggle-quirk behavior (a
+        // quick Caps Lock tap acts as Hyper for exactly the next keystroke)
+        // must return.
+        let box = EventTapBox()
+        box.setHyperKey(enabled: true)
+        box.setHyperReleaseDeferralSuppressed(true)
+        box.setHyperReleaseDeferralSuppressed(false)
+
+        let f19Down = makeKeyEvent(HyperKeyService.f19KeyCode, modifiers: [], keyDown: true)
+        let f19Up = makeKeyEvent(HyperKeyService.f19KeyCode, modifiers: [], keyDown: false)
+        f19Up.timestamp = f19Down.timestamp + 1_000_000  // 1ms → inside the quirk window
+
+        #expect(handleEventTapEvent(type: .keyDown, event: f19Down, box: box) == nil)
+        #expect(handleEventTapEvent(type: .keyUp, event: f19Up, box: box) == nil)
+        #expect(box.isHyperHeld == true, "instant release should defer again once suppression is lifted")
+
+        let hyperA = KeyPress(
+            keyCode: CGKeyCode(kVK_ANSI_A),
+            modifiers: [.command, .option, .control, .shift]
+        )
+        box.registeredShortcuts = [hyperA]
+        let aEvent = makeKeyEvent(CGKeyCode(kVK_ANSI_A), modifiers: [], keyDown: true)
+        let result = handleEventTapEvent(type: .keyDown, event: aEvent, box: box)
+        #expect(result == nil, "Hyper+A should be swallowed — the deferred union still injects once")
+        #expect(box.isHyperHeld == false, "the deferred keyUp resolves after that one keyDown")
+    }
+
     @Test
     func flagsChangedSkippedWhenKeyDownPathActive() {
         // When F19 keyDown has been received (keyDown path active),

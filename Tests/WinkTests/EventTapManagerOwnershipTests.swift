@@ -239,6 +239,14 @@ struct EventTapManagerOwnedSessionTests {
 
         #expect(manager.start { _ in true } == .started)
         manager.setHyperKeyEnabled(true)
+        // #385: a full stop/start cycle allocates a brand-new EventTapBox
+        // (unlike recreateEventTap's in-place tap/source swap on the SAME
+        // box — see the lifecycle note on
+        // EventTapManager.setHyperReleaseDeferralSuppressed). If a panel
+        // session is still active across such a restart, the fresh box must
+        // start pre-suppressed rather than silently reverting to ordinary
+        // toggle-quirk behavior mid-session.
+        manager.setHyperReleaseDeferralSuppressed(true)
         let firstThread = runtime.threads[0]
         let firstBox = runtime.boxes[0]
         firstThread.simulateUnexpectedExit()
@@ -259,6 +267,7 @@ struct EventTapManagerOwnedSessionTests {
         #expect(restarted.boxOwned == 1)
         #expect(restarted.threadOwned == 1)
         #expect(runtime.boxes[1].value?.hyperKeyEnabled == true)
+        #expect(runtime.boxes[1].value?.hyperReleaseDeferralSuppressed == true)
 
         manager.stop()
     }

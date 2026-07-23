@@ -129,6 +129,11 @@ final class ShortcutCaptureCoordinator {
         hyperProvider.setHyperHoldObserver(observer)
     }
 
+    /// See `HyperShortcutCaptureProvider.setHyperReleaseDeferralSuppressed(_:)` (#385).
+    func setHyperReleaseDeferralSuppressed(_ suppressed: Bool) {
+        hyperProvider.setHyperReleaseDeferralSuppressed(suppressed)
+    }
+
     /// Single consumer for both routes' phased (down/up) deliveries.
     /// Providers store the observer independently of their running state, so
     /// setting it once at wiring time survives provider stop/start cycles.
