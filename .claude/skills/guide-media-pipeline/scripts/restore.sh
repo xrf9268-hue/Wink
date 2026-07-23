@@ -10,18 +10,11 @@ pkill -x Wink || true; sleep 0.6
 cp "$BACKUP/AppSupport/shortcuts.json" "$BACKUP/AppSupport/usage.db" "$APPSUP/"
 [ -f "$BACKUP/AppSupport/recent-apps.json" ] && cp "$BACKUP/AppSupport/recent-apps.json" "$APPSUP/"
 
-# language back to what the backup recorded
-langs=$(python3 - "$BACKUP/com.wink.app.plist" <<'EOF'
-import plistlib, sys
-with open(sys.argv[1], "rb") as f:
-    print(" ".join(plistlib.load(f).get("AppleLanguages", [])))
-EOF
-)
-if [ -n "$langs" ]; then
-  defaults write com.wink.app AppleLanguages -array ${(z)langs}
-else
-  defaults delete com.wink.app AppleLanguages 2>/dev/null || true
-fi
+# restore the ENTIRE defaults domain from the backup export — the shoot
+# touches more than AppleLanguages (and future stagings may touch more
+# still); delete-then-import puts back exactly what stage.sh saved
+defaults delete com.wink.app 2>/dev/null || true
+defaults import com.wink.app "$BACKUP/com.wink.app.plist"
 
 open -a /Applications/Wink.app; sleep 1
 

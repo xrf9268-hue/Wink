@@ -15,7 +15,8 @@
     "id": "AAAAAAA2-0000-4000-8000-000000000002",
     "isEnabled": true,
     "keyEquivalent": "t",
-    "modifierFlags": ["control", "option", "shift", "command"]
+    "modifierFlags": ["control", "option", "shift", "command"],
+    "frontmostBehaviorOverride": "cycleWindows"
   },
   {
     "appName": "Notes",
