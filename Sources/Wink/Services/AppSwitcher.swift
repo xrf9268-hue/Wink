@@ -158,16 +158,25 @@ final class AppSwitcher: AppSwitching {
         let focusedWindowID: (pid_t) -> CGWindowID?
         /// Cycle eligibility: `kAXWindows` also surfaces auxiliary elements
         /// with valid window IDs — most visibly the native Split View
-        /// divider (role AXUnknown, ~13px wide, untitled, transient ID).
-        /// Raising one moves the divider and resizes both panes (#376), so
-        /// rotation must only ever contain real content windows.
+        /// divider. On-device (#389) Firefox exposes it as a genuine
+        /// `AXWindow` (role=AXWindow subrole=AXUnknown title="" size=13x1080),
+        /// so role alone does not distinguish it from a real window. Subrole
+        /// alone is not enough either: mpv run `--fs --no-native-fs` exposes
+        /// a genuinely titled fullscreen `AXWindow` that also reports
+        /// subrole AXUnknown, and that window must stay cyclable. The
+        /// divider's actual signature is two-factor — AXUnknown subrole AND
+        /// no title — so rotation must only ever contain real content
+        /// windows by that combined test.
         ///
-        /// Tri-state: `false` = the role read succeeded and the element is
-        /// definitively not a content window (excluded); `nil` = the role
-        /// read itself failed. The distinction matters mid-gesture: a
-        /// transient read failure must swallow the press like the
-        /// windows-read-failure path (never fall through to the hide lanes),
-        /// while a definitive auxiliary role is simply filtered out.
+        /// Tri-state: `false` = the role/subrole/title read succeeded and
+        /// the element is definitively not a content window (excluded);
+        /// `nil` = the role read itself failed. The distinction matters
+        /// mid-gesture: a transient read failure must swallow the press
+        /// like the windows-read-failure path (never fall through to the
+        /// hide lanes), while a definitive auxiliary shape is simply
+        /// filtered out. See
+        /// `AppSwitcher.contentWindowDecision(role:subrole:title:)` for the
+        /// pure classification behind the live closure.
         let isContentWindow: (AXUIElement) -> Bool?
         let raiseWindow: (AXUIElement) -> Void
         let unminimizeWindow: (AXUIElement) -> Void
@@ -177,6 +186,34 @@ final class AppSwitcher: AppSwitching {
         /// AX kAXTitle read for HUD feedback (Accessibility-covered; never
         /// CGWindowList titles, which would require Screen Recording).
         let windowTitle: (AXUIElement) -> String?
+    }
+
+    /// Pure decision behind `isContentWindow` (#389): a role-only check lets
+    /// the Split View divider through, because Firefox reports it as a
+    /// genuine `AXWindow` (role=AXWindow subrole=AXUnknown title="" size=
+    /// 13x1080) — #377's fixture (Finder's desktop `AXScrollArea`) never
+    /// exercised this because its role already fails the check. A blanket
+    /// reject-on-`AXUnknown`-subrole is *also* wrong: Apple permits genuine
+    /// windows with no matching predefined subrole to report `AXUnknown`
+    /// too — mpv run `--fs --no-native-fs` exposes a TITLED fullscreen
+    /// `AXWindow` with subrole AXUnknown, and rejecting on subrole alone
+    /// would drop it from both cycling and the window picker. The divider's
+    /// actual signature is two-factor: `AXUnknown` subrole AND no title. An
+    /// element with neither a meaningful subrole nor a title could never be
+    /// labeled in the HUD/picker anyway, so excluding that combination
+    /// costs nothing real. `title` follows the `windowTitle` client's own
+    /// convention — nil and empty both mean "no title" and are treated
+    /// identically here, regardless of which one a caller passes.
+    /// `nonisolated` because this is pure classification logic, not UI
+    /// state (see AGENTS.md actor-boundary guidance).
+    nonisolated static func contentWindowDecision(role: String?, subrole: String?, title: String?) -> Bool? {
+        guard let role else { return nil }
+        guard role == kAXWindowRole else { return false }
+        let isUntitled = title?.isEmpty ?? true
+        if subrole == kAXUnknownSubrole, isUntitled {
+            return false
+        }
+        return true
     }
 
     struct CycleHUDClient {
@@ -2437,9 +2474,21 @@ extension AppSwitcher.WindowCycleClient {
         },
         isContentWindow: { element in
             var roleRef: CFTypeRef?
-            let result = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
-            guard result == .success, let role = roleRef as? String else { return nil }
-            return role == kAXWindowRole
+            let roleResult = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
+            guard roleResult == .success, let role = roleRef as? String else { return nil }
+            var subroleRef: CFTypeRef?
+            let subroleResult = AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleRef)
+            let subrole = subroleResult == .success ? subroleRef as? String : nil
+            // Third AX read, gated to the rare AXUnknown branch: every
+            // ordinary window (the common case) resolves off role+subrole
+            // alone, so it must not pay for a title read it doesn't need.
+            var title: String?
+            if subrole == kAXUnknownSubrole {
+                var titleRef: CFTypeRef?
+                let titleResult = AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleRef)
+                title = titleResult == .success ? titleRef as? String : nil
+            }
+            return AppSwitcher.contentWindowDecision(role: role, subrole: subrole, title: title)
         },
         raiseWindow: { element in
             AXUIElementPerformAction(element, kAXRaiseAction as CFString)
