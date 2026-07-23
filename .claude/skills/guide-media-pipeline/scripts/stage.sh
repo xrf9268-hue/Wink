@@ -9,9 +9,11 @@ APPSUP="$HOME/Library/Application Support/Wink"
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 mkdir -p "$WORK" "$BACKUP"
 
-# Refuse to stage over a live user session: step 5 closes every Safari and
-# Terminal window, which must never eat real work. Quit them yourself
-# (saving your session), then re-run.
+# Refuse to stage over a live user session: step 5 creates and closes
+# Safari and Terminal windows, which must never eat real work. Quit them
+# yourself, then re-run. (Step 5 additionally aborts — windows untouched —
+# if Resume hands the launch a saved session; running is not the only way
+# real windows can be present.)
 for app in Safari Terminal; do
   if pgrep -xq "$app"; then
     echo "ABORT: $app is running — quit it first, then re-run stage.sh" >&2
@@ -99,11 +101,24 @@ if pgrep -xq PomoFox; then
   echo "PomoFox paused for the shoot"
 fi
 
-# 5. stage Safari (3 windows, one minimized) and Terminal (3, one minimized)
-osascript <<'EOF'
+# 5. stage Safari (3 windows, one minimized) and Terminal (3, one minimized).
+# The preflight only proves neither app is RUNNING — Resume (or Safari's
+# "opens with: All windows from last session") can hand `launch` the
+# user's saved session as live windows. Never close a window carrying
+# real content: quit the app untouched instead (quit re-saves the session
+# losslessly) and abort.
+if ! osascript <<'EOF'
 tell application "Safari"
   launch
-  delay 1
+  delay 1.5
+  repeat with w in (get every window)
+    repeat with t in (get every tab of w)
+      set u to URL of t
+      if u is not missing value and u is not "" and u is not "favorites://" then
+        error "session window restored at launch"
+      end if
+    end repeat
+  end repeat
   close every window
   make new document with properties {URL:"https://wink.aixie.de"}
   delay 1
@@ -116,9 +131,21 @@ tell application "Safari"
   set bounds of window 1 to {400, 200, 1680, 1040}
   set miniaturized of window 3 to true
 end tell
+EOF
+then
+  osascript -e 'tell application "Safari" to quit' 2>/dev/null || true
+  echo "ABORT: Safari restored a saved session at launch — staging would destroy it." >&2
+  echo "Safari was quit with those windows intact. Close them in Safari yourself (or" >&2
+  echo "set Safari opens with 'A new window'), quit it again, then re-run stage.sh." >&2
+  exit 1
+fi
+# Terminal opens at most one fresh shell window on a plain launch; more
+# than one window at this point means Resume brought saved sessions back.
+if ! osascript <<'EOF'
 tell application "Terminal"
   launch
   delay 1
+  if (count of windows) > 1 then error "saved windows restored at launch"
   close every window
   delay 0.5
   do script ""
@@ -136,4 +163,11 @@ tell application "Terminal"
   set miniaturized of window 3 to true
 end tell
 EOF
+then
+  osascript -e 'tell application "Terminal" to quit' 2>/dev/null || true
+  echo "ABORT: Terminal restored saved windows at launch — staging would destroy" >&2
+  echo "their scrollback. Terminal was quit with them intact. Close them yourself," >&2
+  echo "quit it again, then re-run stage.sh." >&2
+  exit 1
+fi
 echo "STAGED — record with record-clips.sh, restore with restore.sh $BACKUP"

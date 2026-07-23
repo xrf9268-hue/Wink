@@ -38,7 +38,9 @@ All scripts live in `scripts/` next to this file. Work dir defaults to
    relaunches Wink, sets the brand wallpaper, pauses PomoFox (noting
    whether it was running), and stages Safari (3 windows, one
    minimized) + Terminal (3 windows, one minimized) on the stage
-   display. **Verifies `shortcuts=4
+   display. Refuses to start while Safari/Terminal are running, and
+   aborts — restored windows untouched — if Resume hands either launch
+   a saved session. **Verifies `shortcuts=4
    triggerIndex=4` in `~/.config/Wink/debug.log` before returning.**
 2. `record-clips.sh` — records the five clips (~2 min hands-off).
 3. Screenshot matrix — for each locale × theme, relaunch/switch then
@@ -62,7 +64,8 @@ All scripts live in `scripts/` next to this file. Work dir defaults to
 6. `restore.sh <backup-dir>` — restores config, defaults, language,
    wallpaper, PomoFox (only if it was running before staging), quits
    staged apps, relaunches Wink. **Never skip
-   this.** Verify the user's shortcut count afterwards (it prints it).
+   this.** Verify the user's shortcut count afterwards (it prints it;
+   a profile that had no shortcuts.json gets its absence back too).
 7. Wire any new media into `docs/design/landing/guide.html` and
    `guide-zh.html` (`.fig` figures; videos 1480×1000, screenshots
    860×816 — keep the width/height attributes truthful), run

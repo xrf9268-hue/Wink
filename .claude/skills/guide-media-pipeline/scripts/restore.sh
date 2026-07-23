@@ -7,14 +7,19 @@ APPSUP="$HOME/Library/Application Support/Wink"
 [ -d "$BACKUP/AppSupport" ] || { echo "not a stage.sh backup: $BACKUP" >&2; exit 1; }
 
 pkill -x Wink || true; sleep 0.6
-cp "$BACKUP/AppSupport/shortcuts.json" "$BACKUP/AppSupport/usage.db" "$APPSUP/"
-# restore recent-apps.json's absence too: if the user never had one, a
-# file the demo session created must not survive the restore
-if [ -f "$BACKUP/AppSupport/recent-apps.json" ]; then
-  cp "$BACKUP/AppSupport/recent-apps.json" "$APPSUP/"
-else
-  rm -f "$APPSUP/recent-apps.json"
-fi
+# put back exactly what stage.sh backed up: a file absent from the
+# backup must be absent after the restore too. A fresh profile
+# legitimately lacks shortcuts.json (PersistenceService.load() treats a
+# missing file as an empty configuration) — the demo copy must not
+# outlive the shoot, and an unconditional cp would abort the whole
+# restore under set -e before defaults/wallpaper are put back
+for f in shortcuts.json usage.db recent-apps.json; do
+  if [ -f "$BACKUP/AppSupport/$f" ]; then
+    cp "$BACKUP/AppSupport/$f" "$APPSUP/"
+  else
+    rm -f "$APPSUP/$f"
+  fi
+done
 
 # restore the ENTIRE defaults domain from the backup export — the shoot
 # touches more than AppleLanguages (and future stagings may touch more
@@ -57,5 +62,9 @@ if [ ! -f "$BACKUP/notes-was-running" ]; then
   osascript -e 'tell application "Notes" to quit' 2>/dev/null || true
 fi
 
-count=$(python3 -c "import json;print(len(json.load(open('$APPSUP/shortcuts.json'))))")
-echo "RESTORED — $count user shortcuts back in place (verify this matches expectations)"
+if [ -f "$APPSUP/shortcuts.json" ]; then
+  count=$(python3 -c "import json;print(len(json.load(open('$APPSUP/shortcuts.json'))))")
+  echo "RESTORED — $count user shortcuts back in place (verify this matches expectations)"
+else
+  echo "RESTORED — shortcutless profile preserved (no shortcuts.json, same as before staging)"
+fi
