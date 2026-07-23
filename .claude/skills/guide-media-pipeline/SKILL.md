@@ -38,9 +38,11 @@ All scripts live in `scripts/` next to this file. Work dir defaults to
    relaunches Wink, sets the brand wallpaper, pauses PomoFox (noting
    whether it was running), and stages Safari (3 windows, one
    minimized) + Terminal (3 windows, one minimized) on the stage
-   display. Refuses to start while Safari/Terminal are running, and
-   aborts — restored windows untouched — if Resume hands either launch
-   a saved session. **Verifies `shortcuts=4
+   display. Refuses to start while Safari/Terminal are running or while
+   Resume ("keep windows on quit") is enabled for Terminal, and aborts
+   — restored windows untouched — if a Safari launch brings back a
+   saved session. Works on a never-launched install (the config dir is
+   initialized before backup). **Verifies `shortcuts=4
    triggerIndex=4` in `~/.config/Wink/debug.log` before returning.**
 2. `record-clips.sh` — records the five clips (~2 min hands-off).
 3. Screenshot matrix — for each locale × theme, relaunch/switch then

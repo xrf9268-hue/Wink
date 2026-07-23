@@ -21,12 +21,31 @@ for app in Safari Terminal; do
   fi
 done
 
+# A single Resume-restored Terminal window is indistinguishable from the
+# fresh window a plain launch creates, and step 5 closes that window.
+# Rule the case out before launching anything: the effective "keep
+# windows on quit" setting (global, with a per-app override) must be off
+# for Terminal.
+resume_global=$(defaults read -g NSQuitAlwaysKeepsWindows 2>/dev/null || echo 0)
+resume_term=$(defaults read com.apple.Terminal NSQuitAlwaysKeepsWindows 2>/dev/null || echo "$resume_global")
+if [ "$resume_term" = "1" ]; then
+  echo "ABORT: Resume is enabled for Terminal (NSQuitAlwaysKeepsWindows) — a restored" >&2
+  echo "window would be indistinguishable from the fresh launch window and staging" >&2
+  echo "would close it. Turn ON 'Close windows when quitting an application' in" >&2
+  echo "System Settings > Desktop & Dock, then re-run stage.sh." >&2
+  exit 1
+fi
+
 # 0. tools
 if [ ! -x "$WORK/winkkeys" ]; then
   swiftc -O "$HERE/winkkeys.swift" -o "$WORK/winkkeys"
 fi
 
 # 1. backup (config dir + defaults). restore.sh needs this directory.
+# A never-launched install has no Application Support dir yet (the app
+# creates it lazily); an empty one is behaviorally identical for Wink,
+# so initialize it rather than letting the copy abort the run.
+mkdir -p "$APPSUP"
 cp -a "$APPSUP/" "$BACKUP/AppSupport/"
 defaults export com.wink.app "$BACKUP/com.wink.app.plist"
 defaults read -g AppleInterfaceStyle > "$BACKUP/appearance.txt" 2>/dev/null || echo Light > "$BACKUP/appearance.txt"
@@ -139,8 +158,9 @@ then
   echo "set Safari opens with 'A new window'), quit it again, then re-run stage.sh." >&2
   exit 1
 fi
-# Terminal opens at most one fresh shell window on a plain launch; more
-# than one window at this point means Resume brought saved sessions back.
+# The resume preflight up top rules out a Resume-restored single window,
+# so one window here is Terminal's own fresh launch window; more than one
+# means something restored anyway — abort without touching them.
 if ! osascript <<'EOF'
 tell application "Terminal"
   launch
