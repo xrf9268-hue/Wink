@@ -39,7 +39,9 @@ func initSnapshotsShortcutAndLaunchAtLoginState() {
 /// a hand-set bool. This test drives the real snapshot-then-start lifecycle
 /// end to end, wired exactly like `AppController.start()`
 /// (`shortcutManager.onCaptureStatusChange` set before `shortcutManager.start()`,
-/// verified at AppController.swift:336-338/387-403).
+/// verified at AppController.swift:336-338/387-403) — including applying the
+/// DELIVERED snapshot via `applyCaptureStatus`, never an independent re-pull
+/// (AX/IM/Secure-Input are volatile probes that can race one; see #383 P2).
 @Test @MainActor
 func coldStartPropagatesLiveEventTapActivationIntoObservedCaptureStatus() throws {
     let suiteName = "AppPreferencesTests.coldStartPropagatesLiveEventTapActivationIntoObservedCaptureStatus"
@@ -81,8 +83,10 @@ func coldStartPropagatesLiveEventTapActivationIntoObservedCaptureStatus() throws
 
     // AppController wires this before `runStartupSequence` (which is what
     // calls `shortcutManager.setHyperKeyEnabled` then `shortcutManager.start()`).
-    manager.onCaptureStatusChange = { [weak preferences] in
-        preferences?.refreshPermissions()
+    // Applies the delivered snapshot directly — never `refreshPermissions()`'s
+    // independent re-pull.
+    manager.onCaptureStatusChange = { [weak preferences] status in
+        preferences?.applyCaptureStatus(status)
     }
 
     // AppController.runStartupSequence sets the manager's own Hyper routing

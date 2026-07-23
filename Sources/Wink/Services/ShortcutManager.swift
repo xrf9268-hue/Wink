@@ -70,10 +70,15 @@ final class ShortcutManager {
     /// here that snapshot goes stale for the whole session (#383). Compared
     /// against in `notifyCaptureStatusChangeIfNeeded()` to dedupe.
     private var lastNotifiedCaptureStatus: ShortcutCaptureStatus?
-    /// Invoked from the 3s poll when observed capture-relevant state
-    /// changed (permissions, secure input) so observers can re-pull
-    /// `shortcutCaptureStatus()` without their own timers.
-    var onCaptureStatusChange: (@MainActor () -> Void)?
+    /// Invoked whenever observed capture-relevant state changed (permission
+    /// edges, Secure Input, the tap/Carbon start-stop transition). Delivers
+    /// the exact snapshot that was just stored as the dedupe baseline —
+    /// observers must apply this value directly rather than re-pulling
+    /// `shortcutCaptureStatus()` themselves: AX/IM trust and
+    /// `IsSecureEventInputEnabled()` are volatile, so a second independent
+    /// probe can race and observe a different (even reverted) value than
+    /// the one this dedupe just latched, permanently desyncing the two.
+    var onCaptureStatusChange: (@MainActor (ShortcutCaptureStatus) -> Void)?
     /// Fires whenever the composed pause state transitions (manual pause,
     /// exception auto-pause, either direction).
     var onCapturePauseStateChange: (@MainActor (_ paused: Bool) -> Void)?
@@ -281,16 +286,20 @@ final class ShortcutManager {
         )
     }
 
-    /// Re-pulls the live status and fires `onCaptureStatusChange` only on an
-    /// actual change from the last-notified snapshot. Called from every exit
-    /// of `checkPermissionChange()` and from both branches of
+    /// Re-pulls the live status and fires `onCaptureStatusChange` with it
+    /// only on an actual change from the last-notified snapshot. Called from
+    /// every exit of `checkPermissionChange()` and from both branches of
     /// `attemptStartIfPermitted` so the ordinary tap start/stop transition —
     /// not just permission/secure-input edges — reaches observers (#383).
+    /// Passes the exact `current` value it just latched as the baseline: AX/
+    /// IM trust and Secure Input are probed again by `shortcutCaptureStatus`
+    /// inside this call, and a second independent probe from the observer
+    /// could race and land on a different value than what got deduped here.
     private func notifyCaptureStatusChangeIfNeeded() {
         let current = shortcutCaptureStatus()
         guard current != lastNotifiedCaptureStatus else { return }
         lastNotifiedCaptureStatus = current
-        onCaptureStatusChange?()
+        onCaptureStatusChange?(current)
     }
 
     func setHyperKeyEnabled(_ enabled: Bool) {

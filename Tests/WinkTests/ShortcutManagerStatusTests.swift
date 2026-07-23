@@ -393,7 +393,11 @@ func checkPermissionChangeNotifiesOnEventTapActivationAndSuppressesRepeatNotific
     context.manager.setHyperKeyEnabled(true)
 
     var notifyCount = 0
-    context.manager.onCaptureStatusChange = { notifyCount += 1 }
+    var lastDelivered: ShortcutCaptureStatus?
+    context.manager.onCaptureStatusChange = { status in
+        notifyCount += 1
+        lastDelivered = status
+    }
 
     context.manager.start()
     let notifyCountAfterStart = notifyCount
@@ -407,11 +411,58 @@ func checkPermissionChangeNotifiesOnEventTapActivationAndSuppressesRepeatNotific
 
     #expect(context.manager.shortcutCaptureStatus().eventTapActive == true)
     #expect(notifyCount == notifyCountAfterStart + 1)
+    #expect(lastDelivered?.eventTapActive == true)
 
     let notifyCountAfterActivation = notifyCount
     context.manager.checkPermissionChange()
 
     #expect(notifyCount == notifyCountAfterActivation)
+}
+
+/// #383 P2: `onCaptureStatusChange` must deliver the exact snapshot the
+/// dedupe just latched, not leave observers to re-pull `shortcutCaptureStatus()`
+/// themselves. AX/IM trust and Secure Input are volatile external probes —
+/// this simulates a value that is true only for the single probe inside the
+/// notify path, so an observer-side re-pull immediately afterwards would
+/// silently disagree with what was actually notified.
+@Test @MainActor
+func onCaptureStatusChangeDeliversTheExactDedupedSnapshotEvenWhenTheUnderlyingProbeFlipsAgain() throws {
+    var probeCallCount = 0
+    let secureInputProbe: () -> Bool = {
+        probeCallCount += 1
+        // True only on the 2nd call — the one made from inside
+        // `notifyCaptureStatusChangeIfNeeded()`'s own `shortcutCaptureStatus()`
+        // pull during this `checkPermissionChange()` tick.
+        return probeCallCount == 2
+    }
+    let manager = ShortcutManager(
+        shortcutStore: ShortcutStore(),
+        persistenceService: TestPersistenceHarness().makePersistenceService(),
+        appSwitcher: FakeAppSwitcher(),
+        captureCoordinator: ShortcutCaptureCoordinator(
+            standardProvider: FakeCaptureProvider(),
+            hyperProvider: FakeHyperCaptureProvider()
+        ),
+        permissionService: FakePermissionService(ax: false, input: false),
+        secureInputProbe: secureInputProbe,
+        diagnosticClient: .init(log: { _ in })
+    )
+
+    var delivered: ShortcutCaptureStatus?
+    manager.onCaptureStatusChange = { status in
+        delivered = status
+    }
+
+    manager.checkPermissionChange()
+
+    let deliveredStatus = try #require(delivered)
+    #expect(deliveredStatus.secureInputActive == true)
+
+    // A hypothetical observer-side re-pull, taken immediately after the
+    // callback returns, lands on a DIFFERENT value — proving the delivered
+    // snapshot (not a re-pull) is the only value an observer can trust.
+    let repulled = manager.shortcutCaptureStatus()
+    #expect(repulled.secureInputActive == false)
 }
 
 @Test @MainActor
