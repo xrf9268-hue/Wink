@@ -444,6 +444,7 @@ const html = `<!doctype html>
     font-family: var(--mono); font-size: 15px;
     border-bottom: 1px solid var(--hairline);
   }
+  .pal-q .pal-glass { flex: none; color: var(--muted); }
   .pal-q .caret { width: 8px; height: 18px; background: var(--accent); animation: caret 1.1s steps(1) infinite; }
   @keyframes caret { 50% { opacity: 0; } }
   .pal-r { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; font-size: 14px; }
@@ -646,7 +647,7 @@ const html = `<!doctype html>
         <h1>One chord.<br><span class="dest">One destination.</span></h1>
         <p class="sub">Wink gives every app on your Mac its own keystroke. <strong>Caps&nbsp;Lock becomes a Hyper key</strong>, and 26 letters become 26 destinations. Press to summon. Press again to dismiss.</p>
         <div class="hero-ctas">
-          <a class="btn btn-primary btn-2l" href="https://github.com/xrf9268-hue/Wink/releases/latest" rel="noopener"><span>Download for macOS</span><span class="btn-sub">free · signed &amp; notarized DMG</span></a>
+          <a class="btn btn-primary btn-2l" href="https://github.com/xrf9268-hue/Wink/releases/latest" rel="noopener"><span>Download for macOS</span><span class="btn-sub">free · open source · direct DMG</span></a>
           <a class="btn btn-ghost btn-2l" href="https://github.com/xrf9268-hue/Wink" rel="noopener"><span>View on GitHub</span><span class="btn-sub">open source · Swift 6</span></a>
         </div>
         <div class="hstats">
@@ -784,7 +785,7 @@ const html = `<!doctype html>
             <div class="pick-row" data-pick="0"><span class="app-dot" style="background:#3D7FC4">S</span>Docs — Swift.org<span class="ret">⏎</span></div>
             <div class="pick-row" data-pick="1"><span class="app-dot" style="background:#3D7FC4">S</span>Pull Requests — GitHub<span class="ret">⏎</span></div>
             <div class="pick-row" data-pick="2"><span class="app-dot" style="background:#3D7FC4">S</span>Release notes<span class="ret">⏎</span></div>
-            <p class="pick-cap">holding ⇪S — release to switch</p>
+            <p class="pick-cap">holding ⇪S — ↑↓ choose · ⏎ switches</p>
           </div>
         </div>
       </div>
@@ -797,7 +798,7 @@ const html = `<!doctype html>
         </div>
         <div class="show-mock">
           <div class="pal" aria-hidden="true">
-            <div class="pal-q">⌕&nbsp;<span id="pal-q"></span><span class="caret"></span></div>
+            <div class="pal-q"><svg class="pal-glass" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.6" stroke="currentColor" stroke-width="1.6"/><path d="M10.4 10.4 L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span id="pal-q"></span><span class="caret"></span></div>
             <div id="pal-rs"></div>
           </div>
         </div>
@@ -824,8 +825,8 @@ const html = `<!doctype html>
             </div>
             <div class="toast">
               <span class="app-dot" style="background:#8A63D2">F</span>
-              <span class="msg"><b>Figma — 47 switches this week</b><span>Give it a key?</span></span>
-              <span class="acts"><span class="mini-btn pri">Bind ⇪F</span><span class="mini-btn">Later</span></span>
+              <span class="msg"><b>Figma — 47 switches this week</b><span>No shortcut yet — give it a key?</span></span>
+              <span class="acts"><span class="mini-btn pri">Suggested</span></span>
             </div>
           </div>
         </div>
@@ -835,13 +836,13 @@ const html = `<!doctype html>
         <div class="show-copy">
           <p class="eyebrow">05 · quiet by design</p>
           <h3>It knows when to stay quiet.</h3>
-          <p>A password field grabs Secure Input? The menu bar says so — and names the app holding the lock. Working inside a VM or remote desktop? Per-app rules pause your chords automatically. And scripts can drive everything through <kbd>wink://</kbd> or the CLI.</p>
+          <p>A password field grabs Secure Input? The menu bar says so, and your standard-layer chords keep firing while the Hyper layer waits it out. Working inside a VM or remote desktop? Per-app rules pause your chords automatically. And scripts can drive everything through the <kbd>wink://</kbd> scheme.</p>
         </div>
         <div class="show-mock">
           <div class="quiet-stack" aria-hidden="true">
-            <div class="sec-banner"><span class="sig">!</span>Shortcuts paused — Terminal holds Secure&nbsp;Input</div>
+            <div class="sec-banner"><span class="sig">!</span>Limited · Secure&nbsp;Input — Hyper resumes when it ends</div>
             <div class="rule-row"><span class="app-dot" style="background:#C24B4B">P</span>Parallels Desktop<span class="chip-state">auto-pause · on</span></div>
-            <div class="cli"><div><span class="ps">$</span> wink toggle figma</div><div class="dim">open "wink://toggle/figma"</div></div>
+            <div class="cli"><div><span class="ps">$</span> open -g "wink://toggle?bundle=com.figma.Desktop"</div><div class="dim">wink://pause · wink://resume — same idea</div></div>
           </div>
         </div>
       </div>
@@ -912,8 +913,8 @@ const html = `<!doctype html>
         <a class="btn btn-primary btn-2l" href="https://github.com/xrf9268-hue/Wink/releases/latest" rel="noopener"><span>Download for macOS</span><span class="btn-sub">free · macOS 15 (Sequoia) or later</span></a>
         <a class="btn btn-ghost btn-2l" href="https://github.com/xrf9268-hue/Wink/blob/main/CHANGELOG.md" rel="noopener"><span>Changelog</span><span class="btn-sub">what's new</span></a>
       </div>
-      <p class="meta">signed &amp; notarized DMG · keeps itself updated · delete one file and it never existed</p>
-      <p class="fine">Needs Accessibility to route shortcuts. Input Monitoring is requested only if you turn on the Hyper layer or Fn-row bindings.</p>
+      <p class="meta">keeps itself updated · signed update feed · delete one file and it never existed</p>
+      <p class="fine">Needs Accessibility to route shortcuts. Input Monitoring is requested only if you turn on the Hyper layer or Fn-row bindings. First launch: right-click the app → Open — notarization is on the way.</p>
     </div>
   </section>
 
