@@ -2512,3 +2512,92 @@ private final class ManualConfirmationScheduler {
         }
     }
 }
+
+// MARK: - Activation window ordering (#403)
+
+@MainActor
+private func makeOrderFrontSwitcher(
+    activationResult: AppSwitcher.FrontProcessActivationResult,
+    madeKeyWindowIDs: @escaping (CGWindowID) -> Void,
+    raisedWindows: @escaping (AXUIElement) -> Void
+) -> AppSwitcher {
+    AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        activationClient: .init(activateFrontProcess: { _, _ in
+            activationResult
+        }),
+        windowCycleClient: .init(
+            windowID: { _ in nil },
+            focusedWindowID: { _ in nil },
+            isContentWindow: { _ in true },
+            raiseWindow: { raisedWindows($0) },
+            unminimizeWindow: { _ in },
+            makeKeyWindow: { _, windowID in madeKeyWindowIDs(windowID) },
+            windowTitle: { _ in nil }
+        )
+    )
+}
+
+@Test @MainActor
+func activateAndOrderFrontPairsSkyLightSuccessWithKeyOrderAndRaise() {
+    var orderedWindowIDs: [CGWindowID] = []
+    var raisedWindows: [AXUIElement] = []
+    let switcher = makeOrderFrontSwitcher(
+        activationResult: .success(ProcessSerialNumber(highLongOfPSN: 0, lowLongOfPSN: 7)),
+        madeKeyWindowIDs: { orderedWindowIDs.append($0) },
+        raisedWindows: { raisedWindows.append($0) }
+    )
+    let window = AXUIElementCreateApplication(90_042)
+
+    let activated = switcher.activateAndOrderFront(pid: 42, windowID: 11, firstWindow: window) {
+        Issue.record("Fallback must not run on SkyLight success")
+        return false
+    }
+
+    #expect(activated == true)
+    #expect(orderedWindowIDs == [11])
+    #expect(raisedWindows == [window])
+}
+
+@Test @MainActor
+func activateAndOrderFrontSkipsOrderingWithoutWindowHandles() {
+    var orderedWindowIDs: [CGWindowID] = []
+    var raisedWindows: [AXUIElement] = []
+    let switcher = makeOrderFrontSwitcher(
+        activationResult: .success(ProcessSerialNumber(highLongOfPSN: 0, lowLongOfPSN: 7)),
+        madeKeyWindowIDs: { orderedWindowIDs.append($0) },
+        raisedWindows: { raisedWindows.append($0) }
+    )
+
+    let activated = switcher.activateAndOrderFront(pid: 42, windowID: nil, firstWindow: nil) { false }
+
+    #expect(activated == true)
+    #expect(orderedWindowIDs.isEmpty)
+    #expect(raisedWindows.isEmpty)
+}
+
+@Test @MainActor
+func activateAndOrderFrontFallbackNeverOrdersOrRaises() {
+    var orderedWindowIDs: [CGWindowID] = []
+    var raisedWindows: [AXUIElement] = []
+    let switcher = makeOrderFrontSwitcher(
+        activationResult: .activationFailed(.failure),
+        madeKeyWindowIDs: { orderedWindowIDs.append($0) },
+        raisedWindows: { raisedWindows.append($0) }
+    )
+
+    var fallbackCallCount = 0
+    let activated = switcher.activateAndOrderFront(
+        pid: 42,
+        windowID: 11,
+        firstWindow: AXUIElementCreateApplication(90_042)
+    ) {
+        fallbackCallCount += 1
+        return true
+    }
+
+    #expect(activated == true)
+    #expect(fallbackCallCount == 1)
+    #expect(orderedWindowIDs.isEmpty)
+    #expect(raisedWindows.isEmpty)
+}

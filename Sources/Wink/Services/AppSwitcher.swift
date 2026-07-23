@@ -1967,13 +1967,24 @@ final class AppSwitcher: AppSwitching {
 
     // MARK: - Activation path
 
-    /// Default activation is minimal: front-process only.
-    /// Window/key-order recovery is observation-driven and escalates separately.
+    /// SkyLight activation pairs front-process with an explicit key-window
+    /// order AND an AX raise of the first window. Front-process alone leaves
+    /// window raising to the target's own AppKit activation response, which
+    /// silently does nothing when another process' key panel (the search
+    /// palette) is closing at that instant — the app goes frontmost while
+    /// its windows stay buried (#403). The CGS key-window post alone is not
+    /// enough either: WindowServer drops it while the process is still in
+    /// flight to the foreground (the cycle path only ever issues it against
+    /// an already-frontmost process). kAXRaiseAction is what the recovery
+    /// ladder's axRaise stage already relies on, and it reorders the buried
+    /// window unconditionally — verified live against a covered, visible,
+    /// non-hidden target. Deeper key/window recovery is still
+    /// observation-driven and escalates separately.
     private func activateViaWindowServer(_ app: NSRunningApplication, windows: [AXUIElement]?) -> Bool {
-        let windowID = firstWindowID(from: windows)
-        switch activateProcess(
+        activateAndOrderFront(
             pid: app.processIdentifier,
-            windowID: windowID,
+            windowID: firstWindowID(from: windows),
+            firstWindow: windows?.first,
             fallbackActivate: {
                 self.requestFallbackActivation(
                     bundleURL: app.bundleURL,
@@ -1983,8 +1994,25 @@ final class AppSwitcher: AppSwitching {
                     }
                 )
             }
-        ) {
-        case .skyLight:
+        )
+    }
+
+    /// SkyLight success additionally orders the target window key and front.
+    /// Internal (not private) for direct unit coverage of the pairing.
+    func activateAndOrderFront(
+        pid: pid_t,
+        windowID: CGWindowID?,
+        firstWindow: AXUIElement?,
+        fallbackActivate: () -> Bool
+    ) -> Bool {
+        switch activateProcess(pid: pid, windowID: windowID, fallbackActivate: fallbackActivate) {
+        case .skyLight(let psn):
+            if let windowID {
+                windowCycleClient.makeKeyWindow(psn, windowID)
+            }
+            if let firstWindow {
+                windowCycleClient.raiseWindow(firstWindow)
+            }
             return true
         case .fallback(let activated):
             return activated
