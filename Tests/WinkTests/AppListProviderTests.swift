@@ -272,13 +272,16 @@ func recentsSeedingExcludesNonRegularActivationPolicyApps() async {
 }
 
 @Test @MainActor
-func recentsSanitizationDropsCurrentlyRunningNonRegularIDsButKeepsNotRunningOnes() async {
+func recentsSanitizationDropsSystemAgentsButKeepsNotRunningOnes() async {
     let recorder = AppListProviderRecorder(now: Date(timeIntervalSinceReferenceDate: 650))
     let loginwindowURL = URL(fileURLWithPath: "/System/Library/CoreServices/loginwindow.app")
     let provider = AppListProvider(client: .init(
         now: { recorder.now },
         scanInstalledApps: {
             recorder.scanCallCount += 1
+            // loginwindow is outside every scan root, so it resolves in
+            // neither the scan nor allAppsByID — the second prong of the
+            // sanitization condition.
             return []
         },
         runningApplications: {
@@ -299,6 +302,43 @@ func recentsSanitizationDropsCurrentlyRunningNonRegularIDsButKeepsNotRunningOnes
     await provider.waitForRefreshForTesting()
 
     #expect(provider.recentBundleIDs == ["com.example.notRunning"])
+}
+
+@Test @MainActor
+func recentsSanitizationKeepsInstalledAccessoryAppEvenWhileCurrentlyRunning() async {
+    // Regression for a false positive found in review: a legitimate
+    // menu-bar-only app installed under a scan root (so it resolves in
+    // allAppsByID) must survive sanitization even though it currently runs
+    // as .accessory — Wink's toggle engine explicitly supports windowless
+    // .accessory targets (docs/architecture.md:405), and this is exactly
+    // the kind of app the Settings picker could have put into recents.
+    let recorder = AppListProviderRecorder(now: Date(timeIntervalSinceReferenceDate: 700))
+    let menuBarAppURL = URL(fileURLWithPath: "/Applications/MenuBarApp.app")
+    let provider = AppListProvider(client: .init(
+        now: { recorder.now },
+        scanInstalledApps: {
+            recorder.scanCallCount += 1
+            return [
+                AppEntry(id: "com.example.menubarapp", name: "MenuBarApp", url: menuBarAppURL),
+            ]
+        },
+        runningApplications: {
+            [
+                .init(bundleIdentifier: "com.example.menubarapp", localizedName: "MenuBarApp", bundleURL: menuBarAppURL, activationPolicy: .accessory),
+            ]
+        },
+        loadRecents: {
+            ["com.example.menubarapp"]
+        },
+        saveRecents: { _ in },
+        mainBundleIdentifier: { nil }
+    ))
+
+    provider.refreshIfNeeded()
+    await provider.waitForRefreshForTesting()
+
+    #expect(provider.recentBundleIDs == ["com.example.menubarapp"])
+    #expect(provider.recentApps.map(\.bundleIdentifier) == ["com.example.menubarapp"])
 }
 
 private final class AppListProviderRecorder: @unchecked Sendable {

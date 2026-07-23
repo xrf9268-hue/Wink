@@ -185,6 +185,10 @@ final class AppListProvider {
             // helpers (loginwindow, WindowManager, an app's own auxiliary
             // process) — never user-facing switch targets, and some share a
             // localizedName with their .regular parent (#384's WeChat case).
+            // Trade-off: a legitimate .accessory app running from outside
+            // every scan root (e.g. launched from Downloads or an external
+            // volume) is knowingly excluded here too — the installed scan
+            // above already covers the legitimate standard-location case.
             guard app.activationPolicy == .regular,
                   let bid = app.bundleIdentifier,
                   !seen.contains(bid),
@@ -260,17 +264,30 @@ final class AppListProvider {
             return
         }
         // Conservative sanitation, not a general filter: only drop an id when
-        // the CURRENT running snapshot proves it's a non-.regular agent
-        // (loginwindow, WindowManager, ...). An id absent from the current
-        // snapshot is left alone — it may be a valid recent for an app that
-        // simply isn't running right now — so this can't wipe legitimate
-        // history, only evict the always-running agents #384 reported.
+        // BOTH (a) the CURRENT running snapshot proves it's a non-.regular
+        // process AND (b) it's absent from `allAppsByID` — i.e. it resolves
+        // to no installed app on any scan root. This targets exactly the
+        // #384 system agents (loginwindow, WindowManager, ...), which live
+        // under /System/Library/CoreServices outside every scan root and are
+        // no longer merged into `allApps`/`allAppsByID` by the filter above.
+        // A currently-.accessory id that DOES resolve in `allAppsByID` is a
+        // legitimate installed menu-bar-only app (Wink's toggle engine
+        // supports windowless .accessory targets, see
+        // docs/architecture.md:405) that a user could have picked from
+        // Settings — pruning it would wrongly evict a real recent. An id
+        // absent from the running snapshot entirely is left alone too — it
+        // may be a valid recent for an app that simply isn't running right
+        // now. `allAppsByID` is rebuilt just above (this method runs at the
+        // end of `applyRefresh`, after the `allApps`/`allAppsByID` assignment),
+        // so this check always sees the current-refresh installed set.
         let nonRegularRunningIDs = Set(
             runningApplications
                 .filter { $0.activationPolicy != .regular }
                 .compactMap(\.bundleIdentifier)
         )
-        recentBundleIDs = ids.filter { !nonRegularRunningIDs.contains($0) }
+        recentBundleIDs = ids.filter { id in
+            !nonRegularRunningIDs.contains(id) || allAppsByID[id] != nil
+        }
     }
 
     private func saveRecents() {
