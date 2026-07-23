@@ -419,6 +419,93 @@ func checkPermissionChangeNotifiesOnEventTapActivationAndSuppressesRepeatNotific
     #expect(notifyCount == notifyCountAfterActivation)
 }
 
+/// #383 bot P2: configuration changes start/stop the tap synchronously
+/// inside `save(shortcuts:)` — the status push must ride that path too, not
+/// wait for the next 3 s poll tick.
+@Test @MainActor
+func savingTheFirstAndLastHyperShortcutNotifiesWithoutWaitingForThePoll() throws {
+    let permissionService = MutablePermissionService(ax: true, input: true)
+    let context = makeShortcutManager(
+        permissionService: permissionService,
+        appBundleLocator: AppBundleLocator { _ in
+            URL(fileURLWithPath: "/Applications/Safari.app")
+        }
+    )
+    context.manager.setHyperKeyEnabled(true)
+    context.manager.start()
+
+    var lastDelivered: ShortcutCaptureStatus?
+    context.manager.onCaptureStatusChange = { status in
+        lastDelivered = status
+    }
+    #expect(context.manager.shortcutCaptureStatus().eventTapActive == false)
+
+    try context.manager.save(shortcuts: [hyperShortcut()])
+    #expect(lastDelivered?.eventTapActive == true)
+
+    try context.manager.save(shortcuts: [])
+    #expect(lastDelivered?.eventTapActive == false)
+}
+
+/// Same class as the `save(shortcuts:)` case: toggling the Hyper key
+/// rebuilds provider routes synchronously and must push the resulting
+/// status itself.
+@Test @MainActor
+func togglingHyperKeyNotifiesTheResultingCaptureStatusWithoutThePoll() throws {
+    let permissionService = MutablePermissionService(ax: true, input: true)
+    let context = makeShortcutManager(
+        permissionService: permissionService,
+        appBundleLocator: AppBundleLocator { _ in
+            URL(fileURLWithPath: "/Applications/Safari.app")
+        }
+    )
+    context.manager.setHyperKeyEnabled(true)
+    try context.manager.save(shortcuts: [hyperShortcut()])
+    context.manager.start()
+    #expect(context.manager.shortcutCaptureStatus().eventTapActive == true)
+
+    var lastDelivered: ShortcutCaptureStatus?
+    context.manager.onCaptureStatusChange = { status in
+        lastDelivered = status
+    }
+
+    context.manager.setHyperKeyEnabled(false)
+    #expect(lastDelivered?.eventTapActive == false)
+
+    context.manager.setHyperKeyEnabled(true)
+    #expect(lastDelivered?.eventTapActive == true)
+}
+
+/// The exception auto-pause has no AppPreferences-side pull path at all —
+/// the pause transition itself must push the paused status.
+@Test @MainActor
+func exceptionAutoPauseNotifiesThePausedCaptureStatusWithoutThePoll() throws {
+    let permissionService = MutablePermissionService(ax: true, input: true)
+    let context = makeShortcutManager(
+        permissionService: permissionService,
+        appBundleLocator: AppBundleLocator { _ in
+            URL(fileURLWithPath: "/Applications/Safari.app")
+        }
+    )
+    context.manager.setHyperKeyEnabled(true)
+    try context.manager.save(shortcuts: [hyperShortcut()])
+    context.manager.start()
+    #expect(context.manager.shortcutCaptureStatus().eventTapActive == true)
+
+    var lastDelivered: ShortcutCaptureStatus?
+    context.manager.onCaptureStatusChange = { status in
+        lastDelivered = status
+    }
+
+    context.manager.setAutoPausedByException(true)
+    #expect(lastDelivered?.eventTapActive == false)
+    #expect(lastDelivered?.shortcutsPaused == true)
+
+    context.manager.setAutoPausedByException(false)
+    #expect(lastDelivered?.eventTapActive == true)
+    #expect(lastDelivered?.shortcutsPaused == false)
+}
+
 /// #383 P2: `onCaptureStatusChange` must deliver the exact snapshot the
 /// dedupe just latched, not leave observers to re-pull `shortcutCaptureStatus()`
 /// themselves. AX/IM trust and Secure Input are volatile external probes —

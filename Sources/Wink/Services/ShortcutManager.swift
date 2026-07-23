@@ -267,6 +267,11 @@ final class ShortcutManager {
         // could steer the next gesture and qualify for the relaxed
         // cycle cooldown.
         appSwitcher.invalidateWindowCycleSession(reason: "shortcut_configuration_changed")
+        // Adding/removing the first (or last) enabled Hyper shortcut starts
+        // or stops the tap synchronously inside the rebuild above; without a
+        // push here the cheat-sheet gate and General tab lag on the cached
+        // status until the next 3 s poll tick (#383).
+        notifyCaptureStatusChangeIfNeeded()
     }
 
     @discardableResult
@@ -309,6 +314,9 @@ final class ShortcutManager {
         handleCaptureConfigurationChange(
             inputMonitoringWasRequired: inputMonitoringWasRequired
         )
+        // The route rebuild above can start/stop the tap synchronously;
+        // same staleness window as `save(shortcuts:)` otherwise (#383).
+        notifyCaptureStatusChangeIfNeeded()
     }
 
     func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior) {
@@ -347,6 +355,13 @@ final class ShortcutManager {
     }
 
     private func applyEffectivePauseTransition() {
+        // Both pause bits are part of the composed status, and the
+        // exception auto-pause has no AppPreferences-side pull path at all
+        // — every branch below (including the paused early return) must
+        // push, or the cached status lags until the next poll tick (#383).
+        // The resume path's `attemptStartIfPermitted` also notifies; the
+        // dedupe makes the extra call free.
+        defer { notifyCaptureStatusChangeIfNeeded() }
         let paused = effectivePaused
         onCapturePauseStateChange?(paused)
         // A gesture straddling the pause transition must not resolve into a
