@@ -32,6 +32,73 @@ func initSnapshotsShortcutAndLaunchAtLoginState() {
     #expect(preferences.hyperKeyEnabled == true)
 }
 
+/// #383 regression: `AppPreferences.init()` snapshots `shortcutCaptureStatus`
+/// exactly once, before the event tap ever runs, so the cheat-sheet gate
+/// (`hyperCheatSheetEnabled && hyperKeyEnabled && eventTapActive`) must be
+/// driven live by `ShortcutManager.onCaptureStatusChange`, not by re-reading
+/// a hand-set bool. This test drives the real snapshot-then-start lifecycle
+/// end to end, wired exactly like `AppController.start()`
+/// (`shortcutManager.onCaptureStatusChange` set before `shortcutManager.start()`,
+/// verified at AppController.swift:336-338/387-403).
+@Test @MainActor
+func coldStartPropagatesLiveEventTapActivationIntoObservedCaptureStatus() throws {
+    let suiteName = "AppPreferencesTests.coldStartPropagatesLiveEventTapActivationIntoObservedCaptureStatus"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defaults.removePersistentDomain(forName: suiteName)
+    defaults.set(true, forKey: "hyperKeyEnabled")
+
+    // Mirrors AppController's `replaceShortcuts(try loadShortcuts())`: the
+    // store is populated directly, bypassing `ShortcutManager.save()`, so
+    // the manager only learns about it once `start()` calls `rebuildIndex()`.
+    let shortcutStore = ShortcutStore()
+    shortcutStore.replaceAll(with: [
+        AppShortcut(
+            appName: "Safari",
+            bundleIdentifier: "com.apple.Safari",
+            keyEquivalent: "s",
+            modifierFlags: ["command", "option", "control", "shift"]
+        )
+    ])
+    let manager = ShortcutManager(
+        shortcutStore: shortcutStore,
+        persistenceService: TestPersistenceHarness().makePersistenceService(),
+        appSwitcher: FakeAppSwitcher(),
+        captureCoordinator: makeCaptureCoordinator(),
+        permissionService: FakePermissionService(ax: true, input: true),
+        diagnosticClient: .live
+    )
+
+    // AppPreferences.init() runs — and snapshots — before the event tap has
+    // ever started, exactly like AppController's lazy-var force at line 301.
+    let preferences = AppPreferences(
+        shortcutManager: manager,
+        hyperKeyService: HyperKeyService(runner: { _ in true }, defaults: defaults),
+        userDefaults: defaults
+    )
+    #expect(preferences.hyperKeyEnabled == true)
+    #expect(preferences.hyperCheatSheetEnabled == true)
+    #expect(preferences.shortcutCaptureStatus.eventTapActive == false)
+
+    // AppController wires this before `runStartupSequence` (which is what
+    // calls `shortcutManager.setHyperKeyEnabled` then `shortcutManager.start()`).
+    manager.onCaptureStatusChange = { [weak preferences] in
+        preferences?.refreshPermissions()
+    }
+
+    // AppController.runStartupSequence sets the manager's own Hyper routing
+    // flag directly (not through `AppPreferences.setHyperKeyEnabled`, which
+    // would additionally touch `HyperKeyService`) before starting capture.
+    manager.setHyperKeyEnabled(true)
+    manager.start()
+
+    #expect(preferences.shortcutCaptureStatus.eventTapActive == true)
+    #expect(
+        preferences.hyperCheatSheetEnabled
+            && preferences.hyperKeyEnabled
+            && preferences.shortcutCaptureStatus.eventTapActive
+    )
+}
+
 @Test @MainActor
 func setLaunchAtLoginDoesNotUpdateStateWhenRegistrationFails() {
     let state = MutableLaunchAtLoginState(status: .notRegistered)

@@ -376,6 +376,44 @@ func availabilityGainForHyperShortcutRequestsInputMonitoringAndStartsEventTap() 
     #expect(context.hyperProvider.isRunning == true)
 }
 
+/// #383: the ordinary tap start/stop transition (not just permission edges)
+/// must reach `onCaptureStatusChange`, and only on an actual change — a poll
+/// tick that observes the same status must not re-fire the callback.
+@Test @MainActor
+func checkPermissionChangeNotifiesOnEventTapActivationAndSuppressesRepeatNotifications() throws {
+    let bundleLocatorState = MutableAppBundleLocatorState(entries: [:])
+    let permissionService = MutablePermissionService(ax: true, input: true)
+    let context = makeShortcutManager(
+        permissionService: permissionService,
+        appBundleLocator: AppBundleLocator { bundleIdentifier in
+            bundleLocatorState.entries[bundleIdentifier]
+        }
+    )
+    try context.manager.save(shortcuts: [hyperShortcut()])
+    context.manager.setHyperKeyEnabled(true)
+
+    var notifyCount = 0
+    context.manager.onCaptureStatusChange = { notifyCount += 1 }
+
+    context.manager.start()
+    let notifyCountAfterStart = notifyCount
+    #expect(context.manager.shortcutCaptureStatus().eventTapActive == false)
+
+    // Availability gain flips the hyper provider inactive -> active on the
+    // very next poll tick (`checkPermissionChange`), not a manual pause
+    // cycle or Settings visit.
+    bundleLocatorState.entries["com.apple.Safari"] = URL(fileURLWithPath: "/Applications/Safari.app")
+    context.manager.checkPermissionChange()
+
+    #expect(context.manager.shortcutCaptureStatus().eventTapActive == true)
+    #expect(notifyCount == notifyCountAfterStart + 1)
+
+    let notifyCountAfterActivation = notifyCount
+    context.manager.checkPermissionChange()
+
+    #expect(notifyCount == notifyCountAfterActivation)
+}
+
 @Test @MainActor
 func availabilityLossRemovesRegisteredShortcutsWithoutAnotherSave() throws {
     let bundleLocatorState = MutableAppBundleLocatorState(entries: [

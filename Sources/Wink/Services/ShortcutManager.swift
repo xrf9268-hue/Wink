@@ -64,6 +64,12 @@ final class ShortcutManager {
     private var autoPausedByException = false
     private let secureInputProbe: () -> Bool
     private var lastSecureInputState = false
+    /// Last status delivered to `onCaptureStatusChange`. `AppPreferences`
+    /// snapshots `shortcutCaptureStatus()` exactly once, in its own init,
+    /// before the tap/Carbon providers ever run — without an active push
+    /// here that snapshot goes stale for the whole session (#383). Compared
+    /// against in `notifyCaptureStatusChangeIfNeeded()` to dedupe.
+    private var lastNotifiedCaptureStatus: ShortcutCaptureStatus?
     /// Invoked from the 3s poll when observed capture-relevant state
     /// changed (permissions, secure input) so observers can re-pull
     /// `shortcutCaptureStatus()` without their own timers.
@@ -275,6 +281,18 @@ final class ShortcutManager {
         )
     }
 
+    /// Re-pulls the live status and fires `onCaptureStatusChange` only on an
+    /// actual change from the last-notified snapshot. Called from every exit
+    /// of `checkPermissionChange()` and from both branches of
+    /// `attemptStartIfPermitted` so the ordinary tap start/stop transition —
+    /// not just permission/secure-input edges — reaches observers (#383).
+    private func notifyCaptureStatusChangeIfNeeded() {
+        let current = shortcutCaptureStatus()
+        guard current != lastNotifiedCaptureStatus else { return }
+        lastNotifiedCaptureStatus = current
+        onCaptureStatusChange?()
+    }
+
     func setHyperKeyEnabled(_ enabled: Bool) {
         let inputMonitoringWasRequired = captureCoordinator.inputMonitoringRequired
         hyperKeyEnabled = enabled
@@ -377,6 +395,11 @@ final class ShortcutManager {
     }
 
     func checkPermissionChange() {
+        // Every early return below (and the ordinary fall-through) must
+        // still refresh observers: a tick can flip only Secure Input, or
+        // stop capture on lost Accessibility, and both are real transitions
+        // the cheat-sheet gate and General tab need to see.
+        defer { notifyCaptureStatusChangeIfNeeded() }
         let axGranted = permissionService.isAccessibilityTrusted()
         var imGranted = permissionService.isInputMonitoringTrusted()
         let secureInput = secureInputProbe()
@@ -385,7 +408,8 @@ final class ShortcutManager {
             diagnosticClient.log(secureInput
                 ? "Secure Input engaged — Hyper/event-tap shortcuts degraded until it ends"
                 : "Secure Input ended — shortcut capture back to normal")
-            onCaptureStatusChange?()
+            // `secureInputActive` is part of `ShortcutCaptureStatus`, so the
+            // function-exit defer above already notifies for this edge.
         }
         let snapshot = captureCoordinator.snapshot()
         let accessibilityChanged = axGranted != lastAccessibilityState
@@ -522,6 +546,7 @@ final class ShortcutManager {
                 "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) carbonHandler=\(snapshot.standardHandlerState.diagnosticName) carbonHandlerStatus=\(snapshot.standardHandlerState.failureStatus.map(String.init) ?? "none") eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired) paused=true"
             )
             lastCaptureBlockedMessages = []
+            notifyCaptureStatusChangeIfNeeded()
             return
         }
 
@@ -550,6 +575,10 @@ final class ShortcutManager {
             "attemptStart: shortcuts=\(shortcutStore.shortcuts.count) triggerIndex=\(triggerIndex.count) carbon=\(snapshot.carbonHotKeysRegistered) carbonHandler=\(snapshot.standardHandlerState.diagnosticName) carbonHandlerStatus=\(snapshot.standardHandlerState.failureStatus.map(String.init) ?? "none") eventTap=\(snapshot.eventTapActive) standardFnObserverRequired=\(snapshot.standardInputMonitoringRequired)"
         )
         emitCaptureBlockedDiagnostics(snapshot: snapshot)
+        // Notify right after the real start attempt (not just the 3s poll)
+        // so the very first successful tap start reaches the cheat-sheet
+        // gate and General tab immediately (#383).
+        notifyCaptureStatusChangeIfNeeded()
     }
 
     private func handleCaptureConfigurationChange(inputMonitoringWasRequired: Bool) {
