@@ -47,7 +47,12 @@ fi
 # so initialize it rather than letting the copy abort the run.
 mkdir -p "$APPSUP"
 cp -a "$APPSUP/" "$BACKUP/AppSupport/"
-defaults export com.wink.app "$BACKUP/com.wink.app.plist"
+# On current macOS an absent com.wink.app domain exports as an empty
+# plist with exit 0 (verified on 15.6); the fallback covers versions
+# where export refuses, so restore.sh always has a file to import (an
+# empty domain and an absent one read identically to the app)
+defaults export com.wink.app "$BACKUP/com.wink.app.plist" 2>/dev/null || \
+  plutil -create binary1 "$BACKUP/com.wink.app.plist"
 defaults read -g AppleInterfaceStyle > "$BACKUP/appearance.txt" 2>/dev/null || echo Light > "$BACKUP/appearance.txt"
 # record current wallpapers, one path per desktop line, for restore.sh
 osascript > "$BACKUP/wallpapers.txt" 2>/dev/null <<'EOS' || true
