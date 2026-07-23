@@ -81,12 +81,18 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
     /// key-up-or-deadline dispatch: tap = the usual toggle, hold past the
     /// threshold = this action.
     var holdAction: HoldAction?
-    /// Raw persisted `target` string when it names a kind this build does
-    /// not know. Preserved and re-encoded verbatim so a save by this build
-    /// cannot erase a newer build's intent — without it, "unknown value →
-    /// nil → key omitted on save → backfilled as a live trigger on the next
-    /// load" silently arms a row the newer build meant to gate (#404).
-    private var unknownTargetRawValue: String?
+    /// A persisted `target` value that did not resolve to a known kind.
+    /// Preserved and re-encoded so a save by this build cannot erase the
+    /// gating — without it, "invalid value → nil → key omitted on save →
+    /// backfilled as a live trigger on the next load" silently arms a row
+    /// that was meant to stay unavailable (#404). Unknown strings re-encode
+    /// verbatim (a newer build's intent survives round trips); an explicit
+    /// null or malformed value re-encodes as null.
+    private enum PersistedInvalidTarget: Hashable, Sendable, Codable {
+        case unknownString(String)
+        case explicitNullOrMalformed
+    }
+    private var persistedInvalidTarget: PersistedInvalidTarget?
 
     /// The target a KNOWN sentinel bundle identifier unambiguously implies,
     /// used to backfill files whose `target` field is absent (#404).
@@ -150,10 +156,10 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         self.frontmostBehaviorOverride = frontmostBehaviorOverride
         self.target = target
         self.holdAction = holdAction
-        self.unknownTargetRawValue = nil
+        self.persistedInvalidTarget = nil
     }
 
-    /// Explicit so `unknownTargetRawValue` never becomes its own persisted
+    /// Explicit so `persistedInvalidTarget` never becomes its own persisted
     /// key — it re-encodes INTO `.target` (see `encode(to:)`).
     private enum CodingKeys: String, CodingKey {
         case id
@@ -181,15 +187,19 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         frontmostBehaviorOverride = (try? container.decodeIfPresent(String.self, forKey: .frontmostBehaviorOverride))
             .flatMap { FrontmostTargetBehavior(rawValue: $0) }
         if container.contains(.target) {
-            // Present: a known string arms the kind. An unknown string is a
-            // newer build's gate — degrade to nil = .app but PRESERVE the
-            // raw value so a save by this build re-encodes it verbatim and
-            // can never convert it into an absent key (#404). A present
-            // null / non-string is corrupt, not newer-format: nil, nothing
-            // preserved, and no backfill on this load.
-            let rawTarget = try? container.decode(String.self, forKey: .target)
-            target = rawTarget.flatMap { ShortcutTarget(rawValue: $0) }
-            unknownTargetRawValue = (target == nil) ? rawTarget : nil
+            // Present: a known string arms the kind. Anything else is a
+            // gate that must hold across saves (#404): an unknown string is
+            // a newer build's intent and re-encodes verbatim; an explicit
+            // null or malformed value re-encodes as null. Either way the
+            // key can never silently become absent and get backfilled by a
+            // later load.
+            if let rawTarget = try? container.decode(String.self, forKey: .target) {
+                target = ShortcutTarget(rawValue: rawTarget)
+                persistedInvalidTarget = (target == nil) ? .unknownString(rawTarget) : nil
+            } else {
+                target = nil
+                persistedInvalidTarget = .explicitNullOrMalformed
+            }
         } else {
             // Absent key: a hand-authored or third-party file that names a
             // KNOWN sentinel bundle and omits "target" means exactly that
@@ -197,7 +207,7 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
             // everywhere and fires nowhere (#404). Unknown future sentinels
             // keep nil = .app and stay unavailable.
             target = Self.impliedTarget(forSentinelBundleIdentifier: bundleIdentifier)
-            unknownTargetRawValue = nil
+            persistedInvalidTarget = nil
         }
         // Same leniency: an unknown hold action from a newer build degrades
         // to plain key-down dispatch instead of quarantining the file.
@@ -207,7 +217,8 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
 
     // Custom encoding mirrors the synthesized shape (nil omits the key,
     // keeping files readable by older builds) with one addition: a
-    // preserved unknown target string re-encodes verbatim under `.target`.
+    // preserved invalid target re-encodes under `.target` — unknown strings
+    // verbatim, explicit null / malformed values as null.
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
@@ -220,7 +231,14 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         if let target {
             try container.encode(target, forKey: .target)
         } else {
-            try container.encodeIfPresent(unknownTargetRawValue, forKey: .target)
+            switch persistedInvalidTarget {
+            case .unknownString(let raw):
+                try container.encode(raw, forKey: .target)
+            case .explicitNullOrMalformed:
+                try container.encodeNil(forKey: .target)
+            case nil:
+                break
+            }
         }
         try container.encodeIfPresent(holdAction, forKey: .holdAction)
     }

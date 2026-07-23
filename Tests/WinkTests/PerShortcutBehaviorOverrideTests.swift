@@ -329,7 +329,7 @@ import Testing
     #expect(!secondLoad.isSearchPaletteTarget)
 }
 
-@Test func presentNullTargetOnSentinelDoesNotArm() throws {
+@Test func presentNullTargetOnSentinelStaysDisarmedAcrossSaves() throws {
     let json = """
     {"id":"11111111-1111-1111-1111-111111111111","appName":"Search Palette",
      "bundleIdentifier":"wink.target.search-palette","keyEquivalent":"space",
@@ -338,6 +338,15 @@ import Testing
     let decoded = try JSONDecoder().decode(AppShortcut.self, from: Data(json.utf8))
     #expect(decoded.target == nil)
     #expect(!decoded.isSearchPaletteTarget)
+
+    // The null must survive re-encoding — an omitted key would be
+    // backfilled (armed) by the next load.
+    let reencoded = String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self)
+    #expect(reencoded.contains("\"target\":null"))
+
+    let secondLoad = try JSONDecoder().decode(AppShortcut.self, from: Data(reencoded.utf8))
+    #expect(secondLoad.target == nil)
+    #expect(!secondLoad.isSearchPaletteTarget)
 }
 
 @Test func recipeSentinelWithoutTargetResolvesAndStaysExcludedFromImport() throws {
