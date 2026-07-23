@@ -179,8 +179,11 @@ final class AppController {
     private lazy var cheatSheetHUD = CheatSheetHUDController(
         rowsProvider: { [weak self] in
             guard let self else { return [] }
+            // Exactly the rows the CURRENT trigger index was built from: one
+            // the index dropped (uninstalled app, unrecognized sentinel)
+            // must not render as an armed chord (#404).
             return self.shortcutStore.shortcuts
-                .filter(\.isEnabled)
+                .filter { self.shortcutManager.isShortcutInTriggerIndex($0) }
                 .map { shortcut in
                     CheatSheetRow(
                         id: shortcut.id,

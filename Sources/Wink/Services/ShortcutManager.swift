@@ -657,19 +657,33 @@ final class ShortcutManager {
         )
     }
 
+    /// The availability predicate the trigger index is built from.
+    /// Frontmost-app pseudo-targets and the search-palette trigger have no
+    /// app URL by design (their sentinel bundles name no installed app) and
+    /// are always available: skipping the locator check is what makes them
+    /// register with Carbon and enter the trigger index.
+    func isShortcutCurrentlyAvailable(_ shortcut: AppShortcut) -> Bool {
+        shortcut.isFrontmostAppTarget
+            || shortcut.isSearchPaletteTarget
+            || appBundleLocator.applicationURL(for: shortcut.bundleIdentifier) != nil
+    }
+
+    /// Whether a shortcut survived the availability filter the CURRENT
+    /// trigger index was built from. Display surfaces (the cheat sheet) use
+    /// this — not a live locator probe — so a row can never render as armed
+    /// while the index dropped it, nor appear seconds before the periodic
+    /// rebuild actually arms its chord (#404).
+    func isShortcutInTriggerIndex(_ shortcut: AppShortcut) -> Bool {
+        shortcut.isEnabled
+            && lastAvailableShortcutBundleIdentifiers.contains(shortcut.bundleIdentifier)
+    }
+
     private func availabilitySnapshot() -> (activeShortcuts: [AppShortcut], availableBundleIdentifiers: Set<String>) {
         var activeShortcuts: [AppShortcut] = []
         var availableBundleIdentifiers = Set<String>()
 
         for shortcut in shortcutStore.shortcuts where shortcut.isEnabled {
-            // Frontmost-app pseudo-targets and the search-palette trigger
-            // have no app URL by design (their sentinel bundles name no
-            // installed app) and are always available: skipping the locator
-            // check here is what makes them register with Carbon and enter
-            // the trigger index.
-            guard shortcut.isFrontmostAppTarget
-                    || shortcut.isSearchPaletteTarget
-                    || appBundleLocator.applicationURL(for: shortcut.bundleIdentifier) != nil else {
+            guard isShortcutCurrentlyAvailable(shortcut) else {
                 continue
             }
 

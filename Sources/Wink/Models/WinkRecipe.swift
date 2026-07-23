@@ -106,9 +106,17 @@ struct WinkRecipeShortcut: Codable, Equatable, Sendable {
         frontmostBehaviorOverride.flatMap(FrontmostTargetBehavior.init(rawValue:))
     }
 
-    /// Lenient enum mapping: absent or unknown raw values mean `.app`.
+    /// Lenient enum mapping with the same absent-key backfill as
+    /// `AppShortcut.init(from:)`: an ABSENT target on a KNOWN sentinel
+    /// bundle means exactly that kind (#404) — which also keeps the import
+    /// planner's search-palette exclusion airtight for hand-authored
+    /// recipes that name the sentinel without the field. Unknown VALUES
+    /// still mean `.app` (unavailable), never a guess.
     var shortcutTarget: ShortcutTarget? {
-        target.flatMap(ShortcutTarget.init(rawValue:))
+        guard let target else {
+            return AppShortcut.impliedTarget(forSentinelBundleIdentifier: bundleIdentifier)
+        }
+        return ShortcutTarget(rawValue: target)
     }
 
     /// Lenient enum mapping: absent or unknown raw values mean no hold action.

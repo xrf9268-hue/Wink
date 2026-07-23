@@ -81,6 +81,25 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
     /// key-up-or-deadline dispatch: tap = the usual toggle, hold past the
     /// threshold = this action.
     var holdAction: HoldAction?
+    /// Raw persisted `target` string when it names a kind this build does
+    /// not know. Preserved and re-encoded verbatim so a save by this build
+    /// cannot erase a newer build's intent — without it, "unknown value →
+    /// nil → key omitted on save → backfilled as a live trigger on the next
+    /// load" silently arms a row the newer build meant to gate (#404).
+    private var unknownTargetRawValue: String?
+
+    /// The target a KNOWN sentinel bundle identifier unambiguously implies,
+    /// used to backfill files whose `target` field is absent (#404).
+    static func impliedTarget(forSentinelBundleIdentifier bundleIdentifier: String) -> ShortcutTarget? {
+        switch bundleIdentifier {
+        case frontmostTargetSentinelBundleIdentifier:
+            return .frontmostApp
+        case searchPaletteTargetSentinelBundleIdentifier:
+            return .searchPalette
+        default:
+            return nil
+        }
+    }
 
     var isFrontmostAppTarget: Bool {
         target == .frontmostApp
@@ -131,13 +150,26 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         self.frontmostBehaviorOverride = frontmostBehaviorOverride
         self.target = target
         self.holdAction = holdAction
+        self.unknownTargetRawValue = nil
     }
 
-    // Custom decoding solely for the override's leniency: shortcuts.json is
-    // loaded strictly (any decode error quarantines the whole file), so an
-    // unknown behavior rawValue written by a newer build must degrade to
-    // "follow global" instead of throwing. Encoding stays synthesized
-    // (nil omits the key, keeping files readable by older builds).
+    /// Explicit so `unknownTargetRawValue` never becomes its own persisted
+    /// key — it re-encodes INTO `.target` (see `encode(to:)`).
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case appName
+        case bundleIdentifier
+        case keyEquivalent
+        case modifierFlags
+        case isEnabled
+        case frontmostBehaviorOverride
+        case target
+        case holdAction
+    }
+
+    // Custom decoding solely for leniency: shortcuts.json is loaded
+    // strictly (any decode error quarantines the whole file), so an unknown
+    // rawValue written by a newer build must degrade instead of throwing.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -148,14 +180,48 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
         frontmostBehaviorOverride = (try? container.decodeIfPresent(String.self, forKey: .frontmostBehaviorOverride))
             .flatMap { FrontmostTargetBehavior(rawValue: $0) }
-        // Unknown target values (from a newer build) decode to nil = .app;
-        // the sentinel bundle then keeps the row harmlessly unavailable
-        // rather than misfiring or failing the file.
-        target = (try? container.decodeIfPresent(String.self, forKey: .target))
-            .flatMap { ShortcutTarget(rawValue: $0) }
+        if container.contains(.target) {
+            // Present: a known string arms the kind. An unknown string is a
+            // newer build's gate — degrade to nil = .app but PRESERVE the
+            // raw value so a save by this build re-encodes it verbatim and
+            // can never convert it into an absent key (#404). A present
+            // null / non-string is corrupt, not newer-format: nil, nothing
+            // preserved, and no backfill on this load.
+            let rawTarget = try? container.decode(String.self, forKey: .target)
+            target = rawTarget.flatMap { ShortcutTarget(rawValue: $0) }
+            unknownTargetRawValue = (target == nil) ? rawTarget : nil
+        } else {
+            // Absent key: a hand-authored or third-party file that names a
+            // KNOWN sentinel bundle and omits "target" means exactly that
+            // kind — backfill it instead of shipping a row that renders
+            // everywhere and fires nowhere (#404). Unknown future sentinels
+            // keep nil = .app and stay unavailable.
+            target = Self.impliedTarget(forSentinelBundleIdentifier: bundleIdentifier)
+            unknownTargetRawValue = nil
+        }
         // Same leniency: an unknown hold action from a newer build degrades
         // to plain key-down dispatch instead of quarantining the file.
         holdAction = (try? container.decodeIfPresent(String.self, forKey: .holdAction))
             .flatMap { HoldAction(rawValue: $0) }
+    }
+
+    // Custom encoding mirrors the synthesized shape (nil omits the key,
+    // keeping files readable by older builds) with one addition: a
+    // preserved unknown target string re-encodes verbatim under `.target`.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(appName, forKey: .appName)
+        try container.encode(bundleIdentifier, forKey: .bundleIdentifier)
+        try container.encode(keyEquivalent, forKey: .keyEquivalent)
+        try container.encode(modifierFlags, forKey: .modifierFlags)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encodeIfPresent(frontmostBehaviorOverride, forKey: .frontmostBehaviorOverride)
+        if let target {
+            try container.encode(target, forKey: .target)
+        } else {
+            try container.encodeIfPresent(unknownTargetRawValue, forKey: .target)
+        }
+        try container.encodeIfPresent(holdAction, forKey: .holdAction)
     }
 }
