@@ -836,7 +836,7 @@ const html = `<!doctype html>
         <div class="show-copy">
           <p class="eyebrow">05 · quiet by design</p>
           <h3>It knows when to stay quiet.</h3>
-          <p>A password field grabs Secure Input? The menu bar says so, and your standard-layer chords keep firing while the Hyper layer waits it out. Working inside a VM or remote desktop? Per-app rules pause your chords automatically. And scripts can drive everything through the <kbd>wink://</kbd> scheme.</p>
+          <p>A password field grabs Secure Input? The menu bar says so, and your ordinary modifier chords keep firing — the Caps&nbsp;Lock layer and Fn-row keys wait it out. Working inside a VM or remote desktop? Per-app rules pause your chords automatically. And scripts can drive everything through the <kbd>wink://</kbd> scheme.</p>
         </div>
         <div class="show-mock">
           <div class="quiet-stack" aria-hidden="true">
