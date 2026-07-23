@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-Hans">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Every setting, permission, and keyboard quirk in Wink, explained plainly — from first launch to scripting it with wink://.">
+<meta name="description" content="Wink 的每一项设置、权限和键盘细节，讲得清清楚楚——从第一次打开，到用 wink:// 写脚本控制它。">
 <meta name="color-scheme" content="light dark">
-<title>Wink — The manual</title>
+<title>Wink — 使用手册</title>
 <link rel="alternate" hreflang="en" href="https://wink.aixie.de/guide">
 <link rel="alternate" hreflang="zh-Hans" href="https://wink.aixie.de/guide/zh">
 <link rel="alternate" hreflang="x-default" href="https://wink.aixie.de/guide">
@@ -399,7 +399,7 @@
 
 <header class="nav">
   <div class="wrap nav-inner">
-    <a class="brand" href="/" aria-label="Wink home">
+    <a class="brand" href="/" aria-label="Wink 首页">
       <svg class="mark" width="34" height="17" viewBox="0 0 64 32" fill="none" aria-hidden="true">
         <mask id="wm1"><rect width="64" height="32" fill="#fff"/><circle cx="13" cy="9" r="11" fill="#000"/></mask>
         <circle cx="14" cy="16" r="11" fill="currentColor" mask="url(#wm1)"/>
@@ -407,11 +407,11 @@
       </svg>
       Wink
     </a>
-    <nav class="nav-links" aria-label="Main">
-      <a href="/">Home</a>
-      <a href="/guide/zh" lang="zh-Hans">中文</a>
+    <nav class="nav-links" aria-label="主导航">
+      <a href="/">首页</a>
+      <a href="/guide" lang="en">English</a>
       <a href="https://github.com/xrf9268-hue/Wink" rel="noopener">GitHub</a>
-      <a class="btn btn-primary" href="https://github.com/xrf9268-hue/Wink/releases/latest" rel="noopener">Download</a>
+      <a class="btn btn-primary" href="https://github.com/xrf9268-hue/Wink/releases/latest" rel="noopener">下载</a>
     </nav>
   </div>
 </header>
@@ -422,14 +422,14 @@
   <section class="guide-hero">
     <div class="wrap">
       <div class="guide-hero-copy">
-        <p class="dict"><span class="word">manual</span> <span class="ipa">/ˈmanjuəl/</span> · <em>noun</em> — the book you keep next to the thing</p>
-        <h1>The manual.</h1>
-        <p class="sub">Setup, permissions, every frontmost behavior, the Hyper layer, and the <kbd>wink://</kbd> scheme — the whole thing, in the order you'll actually meet it.</p>
+        <p class="dict"><span class="word">手册</span> <span class="ipa">/shǒu cè/</span> · <em>名词</em> — 放在东西旁边的那本书</p>
+        <h1>使用手册。</h1>
+        <p class="sub">安装、权限、每一种前台行为、Hyper 层，以及 <kbd>wink://</kbd> 协议——完整讲一遍，按你真正会遇到它们的顺序。</p>
       </div>
       <div class="qf-row">
-        <div class="qf"><b>10</b><span>chapters, start to finish</span></div>
-        <div class="qf"><b>2</b><span>permissions — one of them conditional</span></div>
-        <div class="qf"><b>0</b><span>thumbnails — Screen Recording never asked</span></div>
+        <div class="qf"><b>10</b><span>章节，从头到尾</span></div>
+        <div class="qf"><b>2</b><span>项权限——其中一项视情况而定</span></div>
+        <div class="qf"><b>0</b><span>张缩略图——从不请求屏幕录制权限</span></div>
       </div>
     </div>
   </section>
@@ -438,202 +438,202 @@
   <section class="guide-body">
     <div class="wrap guide-grid">
 
-      <nav class="toc" aria-label="Chapters">
-        <a href="#install">00 · install</a>
-        <a href="#permissions">01 · permissions</a>
-        <a href="#first-chord">02 · first chord</a>
-        <a href="#frontmost">03 · frontmost</a>
-        <a href="#hyper">04 · hyper layer</a>
-        <a href="#windows">05 · windows</a>
-        <a href="#search">06 · search</a>
-        <a href="#insights">07 · insights</a>
-        <a href="#quiet">08 · quiet</a>
-        <a href="#sharing">09 · sharing</a>
-        <a href="#extras" class="toc-extra">also, briefly</a>
+      <nav class="toc" aria-label="章节">
+        <a href="#install">00 · 安装</a>
+        <a href="#permissions">01 · 权限</a>
+        <a href="#first-chord">02 · 第一个组合键</a>
+        <a href="#frontmost">03 · 前台行为</a>
+        <a href="#hyper">04 · Hyper 层</a>
+        <a href="#windows">05 · 窗口</a>
+        <a href="#search">06 · 搜索</a>
+        <a href="#insights">07 · 洞察</a>
+        <a href="#quiet">08 · 静默</a>
+        <a href="#sharing">09 · 分享</a>
+        <a href="#extras" class="toc-extra">还有，顺带一提</a>
       </nav>
 
       <div class="content">
 
         <!-- 00 -->
         <article class="chapter" id="install">
-          <p class="eyebrow">00 · install</p>
-          <h2>Drag it in. Open it once.</h2>
-          <p>Grab the DMG from <a href="https://github.com/xrf9268-hue/Wink/releases/latest" rel="noopener">GitHub Releases</a> and drag Wink into Applications. On first launch, macOS will balk at the unfamiliar signature — notarization is on the way. Right-click the app, choose <strong>Open</strong>, and macOS remembers that choice from then on.</p>
-          <p>If this is a clean install with nothing configured yet, Wink opens Settings for you the moment it launches. You're never left staring at a bare menu bar icon wondering what to do next.</p>
-          <p>Needs macOS 15 (Sequoia) or later. Nothing older is supported, and nothing more is required.</p>
+          <p class="eyebrow">00 · 安装</p>
+          <h2>拖进去，打开一次。</h2>
+          <p>从 <a href="https://github.com/xrf9268-hue/Wink/releases/latest" rel="noopener">GitHub Releases</a> 下载 DMG，把 Wink 拖进"应用程序"文件夹。首次启动时，macOS 会对这个陌生的签名有点犹豫——公证正在路上。右键点击应用，选择<strong>打开</strong>，之后 macOS 就会一直记得这个选择。</p>
+          <p>如果是全新安装、还什么都没配置，Wink 一启动就会自动帮你打开设置界面。你不会对着一个空荡荡的菜单栏图标发呆，不知道下一步该做什么。</p>
+          <p>需要 macOS 15（Sequoia）或更高版本。更早的系统不支持，更高的要求也没有。</p>
         </article>
 
         <!-- 01 -->
         <article class="chapter" id="permissions">
-          <p class="eyebrow">01 · permissions</p>
-          <h2>Two permissions. Never three.</h2>
-          <p class="lead-chips">One line of principle before the details:</p>
+          <p class="eyebrow">01 · 权限</p>
+          <h2>两项权限，绝不是三项。</h2>
+          <p class="lead-chips">先立一条原则，细节随后：</p>
           <p class="chips">
-            <span class="chip is-on">Accessibility · required</span>
-            <span class="chip">Input Monitoring · conditional</span>
-            <span class="chip">Screen Recording · never</span>
+            <span class="chip is-on">辅助功能 · 必需</span>
+            <span class="chip">输入监控 · 视情况而定</span>
+            <span class="chip">屏幕录制 · 从不</span>
           </p>
-          <p><strong>Accessibility</strong> is required — it's the API Wink uses to route every shortcut you record, standard chord or Hyper. Grant it in <strong>System Settings → Privacy &amp; Security → Accessibility</strong>, or work through the banner Wink shows at the top of <strong>Settings → Shortcuts</strong> until it clears.</p>
-          <p><strong>Input Monitoring</strong> only gets asked for once your configuration actually needs it — turn on the Hyper Key, or bind something to the Fn row, and Wink requests it; leave both alone and it never appears. The Permissions card in <strong>Settings → General</strong> marks each one Granted, Needed, or Optional against what you've actually configured, not a fixed checklist.</p>
-          <p><strong>Screen Recording</strong> isn't on that list, and it's not an oversight. Window pickers and window cycling read titles and icons through the Accessibility API alone — Wink has no use for a pixel of your screen, and it never will.</p>
+          <p><strong>辅助功能（Accessibility）</strong>是必需的——Wink 靠这套 API 路由你录制的每一个快捷键，无论是标准组合键还是 Hyper 组合。在<strong>系统设置 → 隐私与安全性 → 辅助功能</strong>中授权，或者跟着<strong>设置 → 快捷键</strong>顶部的提示条一步步操作，直到它消失。</p>
+          <p><strong>输入监控（Input Monitoring）</strong>只有在配置真正需要它时才会请求——开启 Hyper 键，或者把某个快捷键绑到 Fn 键行，Wink 才会申请这项权限；两者都不碰，它就永远不会出现。<strong>设置 → 通用</strong>里的权限卡片会依据你实际配置的内容，把每一项标为已授权、待授权或可选，而不是一份固定清单。</p>
+          <p><strong>屏幕录制（Screen Recording）</strong>不在这份清单里，这不是遗漏。窗口选择器和窗口轮换只通过辅助功能这一套 API 读取标题和图标——Wink 用不上你屏幕上的任何一个像素，以后也不会。</p>
         </article>
 
         <!-- 02 -->
         <article class="chapter" id="first-chord">
-          <p class="eyebrow">02 · your first chord</p>
-          <h2>Pick an app. Press a chord.</h2>
-          <p>Open <strong>Settings → Shortcuts</strong>. The <strong>New Shortcut</strong> card asks for two things: a target app — search by name, pull from <strong>Recently Used</strong> or <strong>All Apps</strong>, or <strong>Browse…</strong> for anything living outside the usual folders — and a chord. Click into the Shortcut field and press your combination; it needs at least one modifier (⌘⌥⌃⇧), or you can skip that requirement entirely by binding it on the Hyper layer instead (chapter 04).</p>
+          <p class="eyebrow">02 · 第一个组合键</p>
+          <h2>选一个应用，按一个组合键。</h2>
+          <p>打开<strong>设置 → 快捷键</strong>。<strong>新建快捷键</strong>卡片会问你两件事：目标应用——按名称搜索，从<strong>最近使用</strong>或<strong>所有应用</strong>里挑，或者用<strong>浏览...</strong>去找那些不在常见目录里的应用——以及一个组合键。点进快捷键输入框，按下你的组合；它至少需要一个修饰键（⌘⌥⌃⇧），或者你可以完全跳过这个要求，把它绑到 Hyper 层上（见第 04 章）。</p>
           <figure class="fig">
-            <img class="only-light" src="/media/settings-shortcuts-en-light.png" width="860" height="816" alt="Settings → Shortcuts: three Hyper shortcuts and the New Shortcut card" loading="lazy">
-            <img class="only-dark" src="/media/settings-shortcuts-en-dark.png" width="860" height="816" alt="Settings → Shortcuts: three Hyper shortcuts and the New Shortcut card" loading="lazy">
-            <figcaption>Settings → Shortcuts — three chords in, the New Shortcut card waiting for a fourth.</figcaption>
+            <img class="only-light" src="/media/settings-shortcuts-zh-light.png" width="860" height="816" alt="设置 → 快捷键：三个 Hyper 快捷键与新建快捷键卡片" loading="lazy">
+            <img class="only-dark" src="/media/settings-shortcuts-zh-dark.png" width="860" height="816" alt="设置 → 快捷键：三个 Hyper 快捷键与新建快捷键卡片" loading="lazy">
+            <figcaption>设置 → 快捷键——三个组合键已就位，新建快捷键卡片等着第四个。</figcaption>
           </figure>
-          <p>Click <strong>Add Shortcut</strong>, and the chord is live everywhere, immediately. Press it once from any app and Wink brings your target forward, launching it first if it wasn't already running. Press it again, and what happens next depends on the frontmost behavior in effect — chapter 03.</p>
+          <p>点击<strong>添加快捷键</strong>，这个组合键立刻在所有地方生效。在任意应用里按一次，Wink 就会把目标应用带到前台，如果它还没运行，就先启动它。再按一次，接下来发生什么取决于当前生效的前台行为——见第 03 章。</p>
           <figure class="fig">
-            <video autoplay muted loop playsinline src="/media/guide-first-chord.mp4" width="1480" height="1000" aria-label="Pressing Hyper+S summons Safari, pressing again dismisses it"></video>
-            <figcaption>⇪S, three times — summon, dismiss, summon. Recorded as shipped.</figcaption>
+            <video autoplay muted loop playsinline src="/media/guide-first-chord.mp4" width="1480" height="1000" aria-label="按下 Hyper+S 唤出 Safari，再按一次收起"></video>
+            <figcaption>⇪S 连按三次——唤出、收起、再唤出。照实录制，所见即所得。</figcaption>
           </figure>
-          <p>One entry in the picker is worth knowing about early: <strong>Current App</strong>, pinned at the top. Bind a chord to it, and that single chord always acts on whatever app happens to be frontmost right now — no per-app binding required.</p>
+          <p>选择器里有一项值得提前知道：置顶的<strong>当前应用</strong>。把组合键绑给它，这一个组合键就永远作用于此刻恰好在前台的那个应用——不需要为每个应用单独绑定。</p>
         </article>
 
         <!-- 03 -->
         <article class="chapter" id="frontmost">
-          <p class="eyebrow">03 · frontmost behaviors</p>
-          <h2>What the second press does.</h2>
-          <p class="lead-chips">Four answers to the same question — what happens when you press a chord for an app that's already frontmost:</p>
+          <p class="eyebrow">03 · 前台行为</p>
+          <h2>第二次按下，会发生什么。</h2>
+          <p class="lead-chips">同一个问题的四种答案——当你为一个已经在前台的应用按下组合键，会发生什么：</p>
           <p class="chips">
-            <span class="chip">Hide</span>
-            <span class="chip is-on">Toggle</span>
-            <span class="chip">Focus</span>
-            <span class="chip">Cycle</span>
+            <span class="chip">隐藏</span>
+            <span class="chip is-on">切换</span>
+            <span class="chip">聚焦</span>
+            <span class="chip">轮换</span>
           </p>
-          <p><strong>Hide</strong> is the blunt one: if the app is frontmost, it hides. No questions asked, even if Wink wasn't what brought it forward.</p>
-          <p><strong>Toggle</strong>, the default, is summon-then-dismiss with judgement — it hides the app once its activation has actually settled, so a fast double-press can't yank away a window that's still arriving.</p>
-          <p><strong>Focus</strong> never hides anything: it un-hides and un-minimizes every one of that app's windows and keeps it in front, for an app you never want to lose track of.</p>
-          <p><strong>Cycle</strong> steps through that app's windows instead of hiding anything — with one caveat for single-window apps, covered in chapter 05.</p>
-          <p>Set the default in <strong>Settings → General</strong> under <strong>“When target is frontmost”</strong>, or override it for one shortcut from that row's ⋯ menu.</p>
+          <p><strong>隐藏</strong>是最直接的一种：只要应用在前台，就隐藏它。不问理由，哪怕把它带到前台的另有其人。</p>
+          <p><strong>切换</strong>是默认行为，先唤出、再收起，还带点分寸——它会等应用真正激活、稳定下来之后才隐藏，所以手快连按两下，也不会把一扇还在赶来的窗口硬拽走。</p>
+          <p><strong>聚焦</strong>从不隐藏任何东西：它会取消隐藏、取消最小化这个应用的每一扇窗口，并让它留在前台——适合你绝不想失去踪迹的那个应用。</p>
+          <p><strong>轮换</strong>会依次切换该应用的窗口，而不是隐藏——对只有一扇窗口的应用有个例外，见第 05 章。</p>
+          <p>在<strong>设置 → 通用</strong>的<strong>「当目标已在前台时」</strong>下设置默认行为，也可以从某一行的 ⋯ 菜单里单独覆盖某个快捷键。</p>
           <figure class="fig">
-            <img class="only-light" src="/media/settings-general-en-light.png" width="860" height="816" alt="Settings → General with the When target is frontmost segmented control" loading="lazy">
-            <img class="only-dark" src="/media/settings-general-en-dark.png" width="860" height="816" alt="Settings → General with the When target is frontmost segmented control" loading="lazy">
-            <figcaption>Settings → General — the default lives under “When target is frontmost”.</figcaption>
+            <img class="only-light" src="/media/settings-general-zh-light.png" width="860" height="816" alt="设置 → 通用：包含「当目标已在前台时」分段控件" loading="lazy">
+            <img class="only-dark" src="/media/settings-general-zh-dark.png" width="860" height="816" alt="设置 → 通用：包含「当目标已在前台时」分段控件" loading="lazy">
+            <figcaption>设置 → 通用——默认行为就在「当目标已在前台时」。</figcaption>
           </figure>
         </article>
 
         <!-- 04 -->
         <article class="chapter" id="hyper">
-          <p class="eyebrow">04 · the hyper layer</p>
-          <h2>Caps Lock, promoted.</h2>
-          <p>Turn on <strong>Hyper Key</strong> in <strong>Settings → General</strong>, and Caps Lock becomes a fifth modifier: hold it down and it behaves like <kbd>⌃⌥⇧⌘</kbd> together, so a bare letter can carry a whole chord. Hold it, tap a letter, done.</p>
-          <p>While Hyper is on, the key is remapped away from Caps Lock entirely — a tap on its own does nothing: no shortcut, no capitals, no LED. Turn Hyper Key off and the key is its old self again. Quick fingers are fine, too: flick Caps Lock and let the letter land a breath late, and Wink still reads it as one chord — a release under about 80 milliseconds counts as part of the hold, not the end of it.</p>
-          <p>Forgotten a binding? Hold Caps Lock for just over half a second without touching anything else, and every enabled shortcut — Hyper-bound or not — fades in as an overlay; let go, and it's gone. It needs Hyper Key on and at least one enabled Hyper shortcut before it has anything to show; Settings says as much, right under the toggle.</p>
+          <p class="eyebrow">04 · Hyper 层</p>
+          <h2>Caps Lock，升职了。</h2>
+          <p>在<strong>设置 → 通用</strong>里打开<strong>Hyper 键（Hyper Key）</strong>，Caps Lock 就变成第五个修饰键：按住它，就相当于同时按下 <kbd>⌃⌥⇧⌘</kbd>，于是一个单独的字母也能承载一整个组合键。按住，敲一下字母，搞定。</p>
+          <p>Hyper 开启期间，这颗键彻底不再是 Caps Lock——单独按一下什么都不会发生：没有快捷键、不会变大写、指示灯也不亮。关掉 Hyper 键，它就变回原来的样子。手快也没关系：轻点 Caps Lock、字母慢半拍落下，Wink 依然会把它读成同一个组合键——只要松开发生在大约 80 毫秒以内，就算作按住的一部分，而不是按住的结束。</p>
+          <p>记不清绑了什么？不碰别的键，把 Caps Lock 按住刚过半秒，所有已启用的快捷键——不论是不是绑在 Hyper 上——都会作为浮层渐渐显现；松手就消失。它需要 Hyper 键已开启、并且至少有一个已启用的 Hyper 快捷键，才有内容可显示；设置里紧挨着开关就写着这句话。</p>
           <figure class="fig">
-            <video autoplay muted loop playsinline src="/media/guide-cheatsheet.mp4" width="1480" height="1000" aria-label="Holding Caps Lock brings up the cheat sheet overlay listing every shortcut"></video>
-            <figcaption>Hold ⇪ a beat longer than a chord — the whole map fades in.</figcaption>
+            <video autoplay muted loop playsinline src="/media/guide-cheatsheet.mp4" width="1480" height="1000" aria-label="按住 Caps Lock 后出现列出所有快捷键的速查表浮层"></video>
+            <figcaption>比组合键多按住一拍——整张映射图渐渐浮现。</figcaption>
           </figure>
         </article>
 
         <!-- 05 -->
         <article class="chapter" id="windows">
-          <p class="eyebrow">05 · windows</p>
-          <h2>Repeat the chord. Walk the windows.</h2>
-          <p>Set a shortcut's frontmost behavior to <strong>Cycle</strong> (chapter 03), then repeat the chord while its app is frontmost: each press steps to the next window, minimized ones included. A small HUD tracks your place — <kbd>2/5</kbd> · window title — on whichever display that window actually lives on.</p>
+          <p class="eyebrow">05 · 窗口</p>
+          <h2>重复按组合键，走一遍窗口。</h2>
+          <p>把某个快捷键的前台行为设为<strong>轮换</strong>（第 03 章），然后在它的应用处于前台时重复按组合键：每按一次，就切到下一扇窗口，最小化的也算在内。一个小小的 HUD 会标出你的位置——<kbd>2/5</kbd> · 窗口标题——就显示在这扇窗口实际所在的那块屏幕上。</p>
           <figure class="fig">
-            <video autoplay muted loop playsinline src="/media/guide-cycle.mp4" width="1480" height="1000" aria-label="Repeating Hyper+T steps through Terminal windows while a HUD counts along"></video>
-            <figcaption>⇪T, again and again — the HUD keeps count, minimized windows join the walk.</figcaption>
+            <video autoplay muted loop playsinline src="/media/guide-cycle.mp4" width="1480" height="1000" aria-label="重复按 Hyper+T 依次切换 Terminal 窗口，HUD 显示位置"></video>
+            <figcaption>⇪T 一路按下去——HUD 记着位置，最小化的窗口也在队列里。</figcaption>
           </figure>
-          <p>One window (or none) is nothing to walk, so Cycle degrades on purpose: a concrete shortcut falls back to Toggle — press again and the app steps aside — while a Current App chord treats the press as a no-op, because "cycle whatever I'm in" must never hide the app under your hands.</p>
-          <p>Prefer to choose instead of step through? Opt a shortcut into <strong>Hold Action → Window Picker</strong> from its row's ⋯ menu, then hold the chord instead of tapping it: a list of that app's windows appears, minimized ones marked, navigate with ↑↓ and commit with ⏎. Icons and titles only, never thumbnails — that restraint is what lets Wink run without Screen Recording, and it always will.</p>
+          <p>只有一扇窗口（或者没有），没什么可走的，所以轮换会故意退化：绑定具体应用的快捷键会退回切换——再按一次，应用就让开；而绑在当前应用上的组合键则把这次按下当作什么都没发生，因为"轮换我现在待的这个应用"绝不能在你手底下把它藏起来。</p>
+          <p>更喜欢挑选、而不是一路切过去？从某一行的 ⋯ 菜单里，把某个快捷键设为<strong>长按动作 → 窗口选择器</strong>，然后长按组合键而不是点一下：该应用的窗口列表就会出现，最小化的会做标记，用 ↑↓ 导航，⏎ 确认。只有图标和标题，从没有缩略图——正是这份克制，才让 Wink 不需要屏幕录制权限就能运行，以后也一样。</p>
           <figure class="fig">
-            <video autoplay muted loop playsinline src="/media/guide-picker.mp4" width="1480" height="1000" aria-label="Holding Hyper+S opens a window list, arrow keys choose, Return focuses"></video>
-            <figcaption>Hold ⇪S, then ↑↓ and ⏎ — titles and icons, never thumbnails.</figcaption>
+            <video autoplay muted loop playsinline src="/media/guide-picker.mp4" width="1480" height="1000" aria-label="长按 Hyper+S 打开窗口列表，方向键选择，回车聚焦"></video>
+            <figcaption>长按 ⇪S，然后 ↑↓ 与 ⏎——只有标题和图标，从没有缩略图。</figcaption>
           </figure>
         </article>
 
         <!-- 06 -->
         <article class="chapter" id="search">
-          <p class="eyebrow">06 · search to switch</p>
-          <h2>Type two letters. Land anywhere.</h2>
-          <p>Give the palette its own trigger: <strong>Settings → General → Search Palette</strong>, recorded the same way as any other chord. Press it, type a few letters of any app's name — localized names match too — and hit <kbd>⏎</kbd>. Wink switches to it, launching it first if it wasn't already running.</p>
+          <p class="eyebrow">06 · 搜索切换</p>
+          <h2>打两个字母，落到任何地方。</h2>
+          <p>给面板配一个专属触发键：<strong>设置 → 通用 → 搜索面板</strong>，录制方式和其他组合键一样。按下它，输入任意应用名字的几个字母——本地化名称也能匹配——按 <kbd>⏎</kbd>。Wink 就会切到那个应用，如果它还没运行，就先启动它。</p>
           <figure class="fig">
-            <video autoplay muted loop playsinline src="/media/guide-palette.mp4" width="1480" height="1000" aria-label="The search palette opens, safa is typed, Return switches to Safari"></video>
-            <figcaption>⇪Space → “safa” → ⏎ — Safari springs back from hidden.</figcaption>
+            <video autoplay muted loop playsinline src="/media/guide-palette.mp4" width="1480" height="1000" aria-label="搜索面板打开，输入 safa，回车切换到 Safari"></video>
+            <figcaption>⇪Space → “safa” → ⏎——Safari 从隐藏中弹回前台。</figcaption>
           </figure>
-          <p>Recent switches float to the top of the empty-query list, so the app you just left is usually one keystroke away. Background agents and helper processes never show up — the palette only ever offers apps you could plausibly want to switch to.</p>
+          <p>最近切换过的应用会浮到空查询列表的最上面，所以你刚离开的那个应用，通常只需一次按键就能回去。后台代理和辅助进程从不会出现——面板只会给出你有可能真正想切过去的那些应用。</p>
         </article>
 
         <!-- 07 -->
         <article class="chapter" id="insights">
-          <p class="eyebrow">07 · insights</p>
-          <h2>It keeps score. Quietly.</h2>
-          <p><strong>Settings → Insights</strong> totals your activations, an estimated time saved (three seconds per switch, added up), your current streak of consecutive active days, and an hour-by-hour heatmap of when you actually reach for Wink. Flip between <strong>today</strong>, <strong>7 days</strong>, and <strong>30 days</strong> with the control at the top.</p>
+          <p class="eyebrow">07 · 洞察</p>
+          <h2>它默默地记着分。</h2>
+          <p><strong>设置 → 洞察</strong>会汇总你的触发次数、估算节省的时间（每次切换按三秒累计）、当前连续活跃的天数，以及一张按小时分布的热力图，看看你到底什么时候会用到 Wink。用顶部的控件在<strong>今天</strong>、<strong>7 天</strong>、<strong>30 天</strong>之间切换。</p>
           <figure class="fig">
-            <img class="only-light" src="/media/settings-insights-en-light.png" width="860" height="816" alt="Settings → Insights: activations, time saved, streak, hourly heatmap, most-used list" loading="lazy">
-            <img class="only-dark" src="/media/settings-insights-en-dark.png" width="860" height="816" alt="Settings → Insights: activations, time saved, streak, hourly heatmap, most-used list" loading="lazy">
-            <figcaption>Insights — activations, time saved, streak, and the hours you actually work.</figcaption>
+            <img class="only-light" src="/media/settings-insights-zh-light.png" width="860" height="816" alt="设置 → 洞察：触发次数、节省时间、连续天数、每小时热力图与使用最多列表" loading="lazy">
+            <img class="only-dark" src="/media/settings-insights-zh-dark.png" width="860" height="816" alt="设置 → 洞察：触发次数、节省时间、连续天数、每小时热力图与使用最多列表" loading="lazy">
+            <figcaption>洞察——触发次数、节省的时间、连续天数，和你真正干活的那些钟点。</figcaption>
           </figure>
-          <p>All of it lives in a local SQLite file and is never uploaded — the Privacy page says so in plain terms, not fine print.</p>
-          <p>Turn on <strong>“Suggest shortcuts from app usage”</strong> in Settings → General, and Wink starts counting foreground activations locally. An app you keep switching to but never bound shows up in the <strong>Suggested shortcuts</strong> card with its count for the period, and a note to add one in Shortcuts — a nudge, not an automatic bind. Turn the toggle back off, and Wink deletes the counts it collected, not just stops collecting them.</p>
+          <p>这些数据全部存在本地的 SQLite 文件里，从不上传——隐私页面把这话说得明明白白，不是藏在细则里。</p>
+          <p>在设置 → 通用里打开<strong>「根据应用使用情况推荐快捷键」</strong>，Wink 就会开始在本地统计前台激活次数。一个你总是切过去、却从没绑定过的应用，会出现在<strong>建议的快捷键</strong>卡片里，附带这段时间内的次数，以及一句去"快捷键"里添加绑定的提示——只是个提醒，不会替你自动绑定。把开关关回去，Wink 会删除已收集的统计数据，而不只是停止收集。</p>
         </article>
 
         <!-- 08 -->
         <article class="chapter" id="quiet">
-          <p class="eyebrow">08 · quiet by design</p>
-          <h2>It knows when to go quiet.</h2>
-          <p class="lead-chips">The menu bar pill states the truth plainly:</p>
+          <p class="eyebrow">08 · 懂得安静</p>
+          <h2>它知道什么时候该安静下来。</h2>
+          <p class="lead-chips">菜单栏的状态徽标从不打马虎眼：</p>
           <p class="chips">
-            <span class="chip is-on">Ready</span>
-            <span class="chip">Limited · Secure Input</span>
-            <span class="chip">Paused</span>
-            <span class="chip">Paused · &lt;App&gt;</span>
+            <span class="chip is-on">就绪</span>
+            <span class="chip">受限 · 安全输入</span>
+            <span class="chip">已暂停</span>
+            <span class="chip">已暂停 · &lt;应用&gt;</span>
           </p>
-          <p>A password field or secure prompt grabs macOS Secure Input, and the pill switches to <strong>Limited · Secure Input</strong>. The Hyper layer and Fn-row shortcuts wait it out — they ride the same event tap Secure Input blocks — while ordinary modifier-key shortcuts keep firing straight through it. It resumes on its own the moment Secure Input ends.</p>
-          <p>Add an app under <strong>“Pause in exception apps”</strong> in Settings → General — a VM or remote-desktop client is the obvious case — and Wink pauses itself the instant that app is frontmost, the pill naming it directly (<strong>Paused · Parallels Desktop</strong>), and Caps Lock reverts fully to its native behavior for as long as that app stays in front.</p>
-          <p>And there's a master switch for all of it: <strong>“Pause all shortcuts”</strong>, one toggle away in the menu bar.</p>
+          <p>密码框或安全输入提示会抢占 macOS 的安全输入（Secure Input），这时状态徽标会切到<strong>受限 · 安全输入</strong>。Hyper 层和 Fn 键行快捷键会等它结束——它们走的是安全输入会拦截的同一条事件通道——而普通的修饰键快捷键则照常穿透触发。安全输入一结束，一切自动恢复。</p>
+          <p>在设置 → 通用的<strong>「在例外应用中暂停」</strong>下添加一个应用——虚拟机或远程桌面客户端是最典型的例子——Wink 就会在那个应用一到前台时立刻暂停自己，状态徽标会直接点名（<strong>已暂停 · Parallels Desktop</strong>），只要那个应用还在前台，Caps Lock 就完全恢复它原本的行为。</p>
+          <p>而这一切还有一个总开关：<strong>「暂停所有快捷键」</strong>，在菜单栏里一键切换。</p>
         </article>
 
         <!-- 09 -->
         <article class="chapter" id="sharing">
-          <p class="eyebrow">09 · sharing &amp; scripting</p>
-          <h2>Export it. Script it. Repeat it.</h2>
-          <p>Your whole shortcut set is one file. <strong>Export…</strong> in <strong>Settings → Shortcuts</strong> writes a <kbd>.winkrecipe</kbd>; <strong>Import…</strong> reads one back. Importing previews a plan first — what's <strong>Ready</strong>, what <strong>Conflicts</strong>, what's <strong>Unresolved</strong> — before you commit to <strong>Skip Conflicts</strong> or <strong>Replace Existing</strong>.</p>
-          <p>Everything is also reachable from outside the app, on the <kbd>wink://</kbd> scheme:</p>
+          <p class="eyebrow">09 · 分享与脚本</p>
+          <h2>导出它，写成脚本，重复用。</h2>
+          <p>你的整套快捷键就是一个文件。<strong>设置 → 快捷键</strong>里的<strong>导出…</strong>会写出一个 <kbd>.winkrecipe</kbd>；<strong>导入…</strong>再把它读回来。导入前会先给你看一份预览——哪些<strong>就绪</strong>、哪些<strong>冲突</strong>、哪些<strong>未解析</strong>——然后你再决定<strong>跳过冲突项</strong>还是<strong>替换现有项</strong>。</p>
+          <p>所有功能也能从应用外部触达，走 <kbd>wink://</kbd> 协议：</p>
           <div class="cli">
             <div><span class="ps">$</span> open -g "wink://toggle?bundle=com.google.Chrome"</div>
-            <div class="dim">wink://pause · wink://resume — same idea</div>
+            <div class="dim">wink://pause · wink://resume — 同样的用法</div>
           </div>
-          <p>Always call it with <kbd>open -g</kbd>. A plain <kbd>open</kbd> activates Wink to deliver the URL, which makes your actual target read as “not frontmost” and turns every toggle into a plain activate; <kbd>-g</kbd> keeps Wink in the background so the toggle sees the real frontmost state. Automation presses respect the same per-bundle cooldown as a real keypress, but they never count toward Insights.</p>
+          <p>始终用 <kbd>open -g</kbd> 调用它。单纯的 <kbd>open</kbd> 会先激活 Wink 来投递这个 URL，这会让你真正的目标应用被判定成"不在前台"，把每一次切换都变成单纯的激活；<kbd>-g</kbd> 能让 Wink 留在后台，这样切换看到的才是真实的前台状态。自动化触发遵守和真实按键一样的按应用冷却时间，但从不计入洞察。</p>
         </article>
 
         <!-- closing -->
         <section class="closing" id="extras">
-          <p class="eyebrow">Also, briefly</p>
-          <h2>A few more things.</h2>
+          <p class="eyebrow">还有，顺带一提</p>
+          <h2>再说几件小事。</h2>
           <div class="list">
             <div class="list-row">
-              <span class="term">updates</span>
-              <span class="desc">The in-app Sparkle panel handles checking, downloading, and installing without leaving Wink. <strong>Check for Updates…</strong> lives in the menu bar; <strong>Automatic Updates</strong> in Settings → General turns background checks and downloads on or off.</span>
+              <span class="term">更新</span>
+              <span class="desc">应用内置的 Sparkle 面板负责检查、下载和安装，全程不用离开 Wink。<strong>检查更新…</strong>在菜单栏里；<strong>自动更新</strong>在设置 → 通用里，控制后台检查和下载的开关。</span>
             </div>
             <div class="list-row">
-              <span class="term">launch &amp; menu bar</span>
-              <span class="desc"><strong>Launch at Login</strong> and <strong>Show Menu Bar Icon</strong> are both toggles in Settings → General.</span>
+              <span class="term">启动与菜单栏</span>
+              <span class="desc"><strong>登录时启动</strong>和<strong>显示菜单栏图标</strong>都是设置 → 通用里的开关。</span>
             </div>
             <div class="list-row">
-              <span class="term">languages</span>
-              <span class="desc">English and 简体中文 today, set from System Settings → General → Language &amp; Region — more are on the way.</span>
+              <span class="term">语言</span>
+              <span class="desc">目前支持英文和简体中文，在系统设置 → 通用 → 语言与地区里设置——更多语言还在路上。</span>
             </div>
             <div class="list-row">
-              <span class="term">help</span>
-              <span class="desc">Wink is open source. Read the code, file something, or just watch it get built — on GitHub.</span>
+              <span class="term">帮助</span>
+              <span class="desc">Wink 是开源的。去 GitHub 上读代码、提问题，或者单纯看着它一点点被造出来。</span>
             </div>
           </div>
         </section>
 
         <!-- final cross-link -->
         <div class="guide-cta">
-          <p class="eyebrow">Get Wink</p>
-          <h2>End of the manual.</h2>
-          <p class="sub">The rest is muscle memory. Free, open source, macOS 15 or later.</p>
-          <a class="btn btn-primary btn-2l" href="/#download"><span>Download for macOS</span><span class="btn-sub">free · open source · direct DMG</span></a>
+          <p class="eyebrow">获取 Wink</p>
+          <h2>手册到此为止。</h2>
+          <p class="sub">剩下的都是肌肉记忆了。免费、开源，macOS 15 或更高版本。</p>
+          <a class="btn btn-primary btn-2l" href="/#download"><span>下载 macOS 版</span><span class="btn-sub">免费 · 开源 · 直接下载 DMG</span></a>
         </div>
 
       </div>
@@ -652,12 +652,12 @@
       </svg>
       Wink
     </a>
-    <nav aria-label="Footer">
+    <nav aria-label="页脚">
       <a href="https://github.com/xrf9268-hue/Wink" rel="noopener">GitHub</a>
-      <a href="https://github.com/xrf9268-hue/Wink/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
-      <a href="https://github.com/xrf9268-hue/Wink/blob/main/docs/privacy.md" rel="noopener">Privacy</a>
+      <a href="https://github.com/xrf9268-hue/Wink/blob/main/CHANGELOG.md" rel="noopener">更新日志</a>
+      <a href="https://github.com/xrf9268-hue/Wink/blob/main/docs/privacy.md" rel="noopener">隐私</a>
     </nav>
-    <p class="tagline">made for people who'd rather not reach for the mouse</p>
+    <p class="tagline">做给不想伸手去够鼠标的人</p>
   </div>
 </footer>
 
