@@ -1,0 +1,41 @@
+#!/bin/zsh
+# Restore the user's environment after a shoot. Usage: restore.sh <backup-dir>
+# (the directory stage.sh printed). NEVER skip this step.
+set -eu
+BACKUP="$1"
+APPSUP="$HOME/Library/Application Support/Wink"
+[ -d "$BACKUP/AppSupport" ] || { echo "not a stage.sh backup: $BACKUP" >&2; exit 1; }
+
+pkill -x Wink || true; sleep 0.6
+cp "$BACKUP/AppSupport/shortcuts.json" "$BACKUP/AppSupport/usage.db" "$APPSUP/"
+[ -f "$BACKUP/AppSupport/recent-apps.json" ] && cp "$BACKUP/AppSupport/recent-apps.json" "$APPSUP/"
+
+# language back to what the backup recorded
+langs=$(python3 - "$BACKUP/com.wink.app.plist" <<'EOF'
+import plistlib, sys
+with open(sys.argv[1], "rb") as f:
+    print(" ".join(plistlib.load(f).get("AppleLanguages", [])))
+EOF
+)
+if [ -n "$langs" ]; then
+  defaults write com.wink.app AppleLanguages -array ${(z)langs}
+else
+  defaults delete com.wink.app AppleLanguages 2>/dev/null || true
+fi
+
+open -a /Applications/Wink.app; sleep 1
+
+osascript -e 'tell application "System Events" to set picture of every desktop to POSIX file "/System/Library/CoreServices/DefaultDesktop.heic"' || true
+killall WallpaperAgent 2>/dev/null || true
+if [ "$(cat "$BACKUP/appearance.txt" 2>/dev/null)" = "Dark" ]; then
+  osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true' || true
+else
+  osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false' || true
+fi
+open -g -a PomoFox 2>/dev/null || true
+osascript -e 'tell application "Safari" to quit' 2>/dev/null || true
+osascript -e 'tell application "Terminal" to quit' 2>/dev/null || true
+osascript -e 'tell application "Notes" to quit' 2>/dev/null || true
+
+count=$(python3 -c "import json;print(len(json.load(open('$APPSUP/shortcuts.json'))))")
+echo "RESTORED — $count user shortcuts back in place (verify this matches expectations)"

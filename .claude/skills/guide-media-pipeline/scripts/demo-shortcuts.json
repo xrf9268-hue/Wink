@@ -1,0 +1,38 @@
+[
+  {
+    "appName": "Safari",
+    "bundleIdentifier": "com.apple.Safari",
+    "id": "AAAAAAA1-0000-4000-8000-000000000001",
+    "isEnabled": true,
+    "keyEquivalent": "s",
+    "modifierFlags": ["control", "option", "shift", "command"],
+    "frontmostBehaviorOverride": "toggle",
+    "holdAction": "windowPicker"
+  },
+  {
+    "appName": "Terminal",
+    "bundleIdentifier": "com.apple.Terminal",
+    "id": "AAAAAAA2-0000-4000-8000-000000000002",
+    "isEnabled": true,
+    "keyEquivalent": "t",
+    "modifierFlags": ["control", "option", "shift", "command"]
+  },
+  {
+    "appName": "Notes",
+    "bundleIdentifier": "com.apple.Notes",
+    "id": "AAAAAAA3-0000-4000-8000-000000000003",
+    "isEnabled": true,
+    "keyEquivalent": "n",
+    "modifierFlags": ["control", "option", "shift", "command"],
+    "frontmostBehaviorOverride": "toggle"
+  },
+  {
+    "appName": "Search Palette",
+    "bundleIdentifier": "wink.target.search-palette",
+    "id": "AAAAAAA4-0000-4000-8000-000000000004",
+    "isEnabled": true,
+    "keyEquivalent": "space",
+    "modifierFlags": ["control", "option", "shift", "command"],
+    "target": "searchPalette"
+  }
+]
