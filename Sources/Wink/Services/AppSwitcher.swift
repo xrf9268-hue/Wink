@@ -124,6 +124,9 @@ final class AppSwitcher: AppSwitching {
 
     enum WindowServerActivationMode: String, Sendable {
         case frontProcessOnly = "front_process_only"
+        /// SkyLight front-process success is paired with an immediate
+        /// key-order + AX raise of the first VERIFIED content window (#403).
+        case orderedContentWindow = "ordered_content_window"
     }
 
     enum ToggleLifecycle: String {
@@ -1967,13 +1970,33 @@ final class AppSwitcher: AppSwitching {
 
     // MARK: - Activation path
 
-    /// Default activation is minimal: front-process only.
-    /// Window/key-order recovery is observation-driven and escalates separately.
+    /// SkyLight activation pairs front-process with an explicit key-window
+    /// order AND an AX raise of the first window. Front-process alone leaves
+    /// window raising to the target's own AppKit activation response, which
+    /// silently does nothing when another process' key panel (the search
+    /// palette) is closing at that instant — the app goes frontmost while
+    /// its windows stay buried (#403). The CGS key-window post alone is not
+    /// enough either: WindowServer drops it while the process is still in
+    /// flight to the foreground (the cycle path only ever issues it against
+    /// an already-frontmost process). kAXRaiseAction is what the recovery
+    /// ladder's axRaise stage already relies on, and it reorders the buried
+    /// window unconditionally — verified live against a covered, visible,
+    /// non-hidden target. Deeper key/window recovery is still
+    /// observation-driven and escalates separately.
     private func activateViaWindowServer(_ app: NSRunningApplication, windows: [AXUIElement]?) -> Bool {
-        let windowID = firstWindowID(from: windows)
-        switch activateProcess(
+        // The ordering side effects must target a VERIFIED content window:
+        // key-ordering or raising an auxiliary element — e.g. Firefox's
+        // untitled AXUnknown Split View divider — moves it and resizes both
+        // panes (#389's cycle filtering documents exactly this). Strict
+        // `== true`: an indeterminate AX read skips the element rather than
+        // gamble on it; no content window at all → activate without
+        // ordering, the pre-#403 behavior.
+        let orderingWindow = windows?.first { windowCycleClient.isContentWindow($0) == true }
+        return activateAndOrderFront(
             pid: app.processIdentifier,
-            windowID: windowID,
+            activationWindowID: firstWindowID(from: windows),
+            orderingWindow: orderingWindow,
+            orderingWindowID: orderingWindow.flatMap { windowCycleClient.windowID($0) },
             fallbackActivate: {
                 self.requestFallbackActivation(
                     bundleURL: app.bundleURL,
@@ -1983,8 +2006,28 @@ final class AppSwitcher: AppSwitching {
                     }
                 )
             }
-        ) {
-        case .skyLight:
+        )
+    }
+
+    /// SkyLight success additionally orders the target window key and front.
+    /// `activationWindowID` is the pre-existing SkyLight front-process hint
+    /// (raw first window, unchanged semantics); the ordering pair must be a
+    /// verified content window. Internal (not private) for unit coverage.
+    func activateAndOrderFront(
+        pid: pid_t,
+        activationWindowID: CGWindowID?,
+        orderingWindow: AXUIElement?,
+        orderingWindowID: CGWindowID?,
+        fallbackActivate: () -> Bool
+    ) -> Bool {
+        switch activateProcess(pid: pid, windowID: activationWindowID, fallbackActivate: fallbackActivate) {
+        case .skyLight(let psn):
+            if let orderingWindowID {
+                windowCycleClient.makeKeyWindow(psn, orderingWindowID)
+            }
+            if let orderingWindow {
+                windowCycleClient.raiseWindow(orderingWindow)
+            }
             return true
         case .fallback(let activated):
             return activated
@@ -2361,7 +2404,7 @@ final class AppSwitcher: AppSwitching {
     nonisolated static let hideTransport: HideTransport = .runningApplicationHide
     nonisolated static let hideRequestLogEvent = "HIDE_REQUEST"
     nonisolated static let hideRequestDispatchDelay: TimeInterval = 0
-    nonisolated static let windowServerActivationMode: WindowServerActivationMode = .frontProcessOnly
+    nonisolated static let windowServerActivationMode: WindowServerActivationMode = .orderedContentWindow
 }
 
 extension AppSwitcher.ActivationClient {
