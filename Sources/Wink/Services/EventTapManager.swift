@@ -239,8 +239,12 @@ func handleEventTapEvent(
                 // physical press (toggle quirk). If keyUp arrives within 80ms of
                 // keyDown, keep _isHyperHeld true — it will be cleared when the next
                 // non-F19 keyDown is processed or by a later "real" keyUp.
+                // Suppressed (#385, e.g. an interactive panel session is open):
+                // never defer, regardless of elapsed — the deferral exists so a
+                // quick tap can act as Hyper for the NEXT keystroke, which is
+                // exactly what would eat a panel's first character.
                 let elapsed = event.timestamp - box._hyperKeyDownTimestamp
-                if elapsed > hyperKeyToggleQuirkThresholdNs {
+                if box._hyperReleaseDeferralSuppressed || elapsed > hyperKeyToggleQuirkThresholdNs {
                     box._isHyperHeld = false
                     box._hyperKeyUpDeferred = false
                 } else {
@@ -489,6 +493,7 @@ final class EventTapManager: EventTapManaging {
         box.phasedChords = phasedKeyPresses
         box.setPhasedKeyObserver(wrappedPhasedObserver(generation: generation))
         box.setHyperKey(enabled: hyperKeyEnabled)
+        box.setHyperReleaseDeferralSuppressed(hyperReleaseDeferralSuppressed)
         ownershipLedger.boxCreates += 1
         let session = EventTapOwnedSession(
             generation: generation,
@@ -604,6 +609,7 @@ final class EventTapManager: EventTapManaging {
     private var phasedKeyPresses: Set<KeyPress> = []
     private var phasedKeyObserver: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?
     private var hyperKeyEnabled = false
+    private var hyperReleaseDeferralSuppressed = false
 
     func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {
         hyperHoldObserver = observer
@@ -614,6 +620,19 @@ final class EventTapManager: EventTapManaging {
     func setHyperKeyEnabled(_ enabled: Bool) {
         hyperKeyEnabled = enabled
         owner?.box.setHyperKey(enabled: enabled)
+    }
+
+    /// See `EventTapBox.setHyperReleaseDeferralSuppressed(_:)`. Rare,
+    /// main-actor initiated — never called from the tap callback itself.
+    /// Persisted at the manager level (mirrors `hyperKeyEnabled` above) and
+    /// reseeded onto every freshly created box in `start()`: a full
+    /// stop/start cycle mid-session (a fresh `EventTapBox`, not the
+    /// in-place recreation `recreateEventTap` does on the SAME box) would
+    /// otherwise silently drop back to ordinary toggle-quirk behavior while
+    /// the panel session that requested suppression is still open.
+    func setHyperReleaseDeferralSuppressed(_ suppressed: Bool) {
+        hyperReleaseDeferralSuppressed = suppressed
+        owner?.box.setHyperReleaseDeferralSuppressed(suppressed)
     }
 
     /// Called on main thread from async dispatch. Applies debounce then calls handler.
@@ -1219,6 +1238,10 @@ final class EventTapBox: @unchecked Sendable {
     /// When true, an instant F19 keyUp was ignored; the next non-F19 keyDown
     /// should clear _isHyperHeld regardless of whether the combo is registered.
     fileprivate var _hyperKeyUpDeferred: Bool = false
+    /// When true (an interactive panel session is active, #385), the F19
+    /// toggle-quirk deferral never arms — every release resolves the held
+    /// state immediately. See `setHyperReleaseDeferralSuppressed(_:)`.
+    fileprivate var _hyperReleaseDeferralSuppressed: Bool = false
     /// True once F19 has been received via keyDown; prevents the flagsChanged
     /// handler from double-toggling _isHyperHeld.
     fileprivate var _f19ReceivedViaKeyDown: Bool = false
@@ -1254,6 +1277,34 @@ final class EventTapBox: @unchecked Sendable {
     var isHyperHeld: Bool {
         get { withLock { _isHyperHeld } }
         set { withLock { _isHyperHeld = newValue } }
+    }
+
+    /// Suppresses the F19 toggle-quirk release deferral for as long as an
+    /// interactive panel session is active (#385). This is session-scoped,
+    /// not a one-shot clear: the chord that opens a panel is swallowed on
+    /// its keyDown, but F19's own physical release routinely arrives AFTER
+    /// the panel is already open and the session has started — so a
+    /// point-in-time clear at "session opened" cannot resolve a deferral
+    /// that hasn't been armed yet. Suppressing the whole window means that
+    /// late release — and any bare Caps Lock tap landing mid-session —
+    /// resolves immediately instead of arming a deferral that would eat the
+    /// panel's next keystroke. Turning suppression on also resolves any
+    /// deferral already pending; turning it off restores ordinary
+    /// toggle-quirk behavior for the next physical tap. A genuine ongoing
+    /// hold (no deferral involved) is untouched either way.
+    func setHyperReleaseDeferralSuppressed(_ suppressed: Bool) {
+        withLock {
+            _hyperReleaseDeferralSuppressed = suppressed
+            if suppressed && _hyperKeyUpDeferred {
+                _isHyperHeld = false
+                _hyperKeyUpDeferred = false
+            }
+        }
+    }
+
+    /// Test/introspection seam mirroring `hyperKeyEnabled`'s getter shape.
+    var hyperReleaseDeferralSuppressed: Bool {
+        withLock { _hyperReleaseDeferralSuppressed }
     }
 
     /// Atomically update hyperKeyEnabled and clear isHyperHeld when disabling.

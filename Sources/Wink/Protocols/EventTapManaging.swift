@@ -19,6 +19,11 @@ protocol EventTapManaging {
     func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?)
     func updatePhasedChords(_ keyPresses: Set<KeyPress>)
     func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?)
+    /// See `EventTapBox.setHyperReleaseDeferralSuppressed(_:)` (#385).
+    /// Declared here (not just on the concrete manager) so it dispatches
+    /// through the protocol witness table like the other optional
+    /// capabilities below.
+    func setHyperReleaseDeferralSuppressed(_ suppressed: Bool)
 }
 
 extension EventTapManaging {
@@ -29,4 +34,7 @@ extension EventTapManaging {
     // defaults keep pre-phase fakes compiling with dynamic dispatch intact.
     func updatePhasedChords(_ keyPresses: Set<KeyPress>) {}
     func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?) {}
+    // Sync no-op default: only the live event-tap manager carries the
+    // toggle-quirk deferral state this suppresses.
+    func setHyperReleaseDeferralSuppressed(_ suppressed: Bool) {}
 }

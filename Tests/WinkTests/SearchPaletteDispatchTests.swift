@@ -43,6 +43,9 @@ private final class FakeCaptureProvider: ShortcutCaptureProvider {
 @MainActor
 private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
     var isRunning = false
+    /// Records every `setHyperReleaseDeferralSuppressed` call in order, so
+    /// tests can assert both the values and the transition sequence.
+    private(set) var hyperReleaseDeferralSuppressionCalls: [Bool] = []
     private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
 
     var registrationState: ShortcutCaptureRegistrationState {
@@ -59,6 +62,10 @@ private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
 
     func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {}
     func setHyperKeyEnabled(_ enabled: Bool) {}
+
+    func setHyperReleaseDeferralSuppressed(_ suppressed: Bool) {
+        hyperReleaseDeferralSuppressionCalls.append(suppressed)
+    }
 }
 
 private struct FakePermissionService: PermissionServicing {
@@ -115,10 +122,16 @@ private func realAppShortcutKeyPress() -> KeyPress {
 @MainActor
 private func makeContext(
     shortcuts: [AppShortcut]
-) -> (manager: ShortcutManager, appSwitcher: RecordingAppSwitcher, standardProvider: FakeCaptureProvider) {
+) -> (
+    manager: ShortcutManager,
+    appSwitcher: RecordingAppSwitcher,
+    standardProvider: FakeCaptureProvider,
+    hyperProvider: FakeHyperCaptureProvider
+) {
     let shortcutStore = ShortcutStore()
     shortcutStore.replaceAll(with: shortcuts)
     let standardProvider = FakeCaptureProvider()
+    let hyperProvider = FakeHyperCaptureProvider()
     let appSwitcher = RecordingAppSwitcher()
     let manager = ShortcutManager(
         shortcutStore: shortcutStore,
@@ -126,7 +139,7 @@ private func makeContext(
         appSwitcher: appSwitcher,
         captureCoordinator: ShortcutCaptureCoordinator(
             standardProvider: standardProvider,
-            hyperProvider: FakeHyperCaptureProvider()
+            hyperProvider: hyperProvider
         ),
         permissionService: FakePermissionService(),
         appBundleLocator: TestAppBundleLocator(entries: [
@@ -135,7 +148,7 @@ private func makeContext(
         diagnosticClient: .init(log: { _ in })
     )
     manager.start()
-    return (manager, appSwitcher, standardProvider)
+    return (manager, appSwitcher, standardProvider, hyperProvider)
 }
 
 // MARK: - Dispatch branch
@@ -221,4 +234,33 @@ func dispatchResumesOnceTheInteractivePanelSessionEnds() throws {
     context.manager.setInteractivePanelSessionActive(false)
     context.standardProvider.emit(searchPaletteTriggerKeyPress())
     #expect(firedCount == 1)
+}
+
+// MARK: - #385: session-scoped Hyper release-deferral suppression dispatch
+
+@Test @MainActor
+func openingTheInteractivePanelSessionSuppressesTheHyperProvidersReleaseDeferral() throws {
+    let context = makeContext(shortcuts: [searchPaletteTriggerShortcut()])
+
+    // Proves the dispatch path from ShortcutManager through
+    // ShortcutCaptureCoordinator reaches the hyper provider's
+    // setHyperReleaseDeferralSuppressed(true) through the protocol type
+    // (dynamic dispatch via `any HyperShortcutCaptureProvider`), not a
+    // concrete EventTapCaptureProvider/EventTapManager reference.
+    context.manager.setInteractivePanelSessionActive(true)
+
+    #expect(context.hyperProvider.hyperReleaseDeferralSuppressionCalls == [true])
+}
+
+@Test @MainActor
+func closingTheInteractivePanelSessionLiftsTheHyperProvidersReleaseDeferralSuppression() throws {
+    let context = makeContext(shortcuts: [searchPaletteTriggerShortcut()])
+
+    // Unlike a one-shot clear, suppression must be lifted on close too —
+    // otherwise every session after the first would permanently disable the
+    // toggle-quirk deferral. Both transitions reach the provider, in order.
+    context.manager.setInteractivePanelSessionActive(true)
+    context.manager.setInteractivePanelSessionActive(false)
+
+    #expect(context.hyperProvider.hyperReleaseDeferralSuppressionCalls == [true, false])
 }

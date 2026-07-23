@@ -209,6 +209,15 @@ final class ShortcutManager {
         // gesture that slipped in around the session boundary so a stale
         // deadline cannot resurrect the picker the user just dismissed.
         holdGestureArbiter?.reset()
+        // #385: suppress (not merely clear) the F19 toggle-quirk release
+        // deferral for the whole session, on both transitions. A one-shot
+        // clear at open time cannot work — the chord that opens the panel is
+        // swallowed on its keyDown, but F19's own physical release routinely
+        // arrives AFTER the session has already started, so the deferral it
+        // would arm hasn't happened yet at open time. Session-scoped
+        // suppression catches that late release (and any bare Caps Lock tap
+        // landing mid-session) without touching a genuine ongoing hold.
+        captureCoordinator.setHyperReleaseDeferralSuppressed(active)
     }
 
     private func handleHoldGesture(_ keyPress: KeyPress) {

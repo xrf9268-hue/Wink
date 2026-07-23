@@ -4,6 +4,7 @@ import AppKit
 final class EventTapCaptureProvider: HyperShortcutCaptureProvider {
     private let manager: any EventTapManaging
     private var pendingHyperKeyEnabled = false
+    private var pendingHyperReleaseDeferralSuppressed = false
     private var registeredShortcuts: Set<KeyPress> = []
 
     init(manager: any EventTapManaging = EventTapManager()) {
@@ -31,6 +32,7 @@ final class EventTapCaptureProvider: HyperShortcutCaptureProvider {
         }
         if result == .started {
             manager.setHyperKeyEnabled(pendingHyperKeyEnabled)
+            manager.setHyperReleaseDeferralSuppressed(pendingHyperReleaseDeferralSuppressed)
         }
     }
 
@@ -50,6 +52,11 @@ final class EventTapCaptureProvider: HyperShortcutCaptureProvider {
 
     func setHyperHoldObserver(_ observer: (@Sendable (HyperHoldEvent) -> Void)?) {
         manager.setHyperHoldObserver(observer)
+    }
+
+    func setHyperReleaseDeferralSuppressed(_ suppressed: Bool) {
+        pendingHyperReleaseDeferralSuppressed = suppressed
+        manager.setHyperReleaseDeferralSuppressed(suppressed)
     }
 
     func updatePhasedChords(_ keyPresses: Set<KeyPress>) {
