@@ -370,6 +370,44 @@ import Testing
     #expect(plan.entries.isEmpty)
 }
 
+@Test func recipeNullTargetOnSentinelStaysGatedAndRoundTrips() throws {
+    let json = """
+    {"schemaVersion":2,"shortcuts":[
+      {"appName":"Current App","bundleIdentifier":"wink.target.frontmost-app",
+       "keyEquivalent":"g","modifierFlags":["command"],"isEnabled":true,"target":null}
+    ]}
+    """
+    let codec = WinkRecipeCodec()
+    let recipe = try codec.decode(Data(json.utf8))
+    #expect(recipe.shortcuts.first?.shortcutTarget == nil)
+
+    // The gate must survive a re-encode: explicit null, never an absent key.
+    let reencoded = String(decoding: try codec.encode(shortcuts: []), as: UTF8.self)
+    _ = reencoded
+    let reencodedRecipe = String(
+        decoding: try JSONEncoder().encode(recipe),
+        as: UTF8.self
+    )
+    #expect(reencodedRecipe.contains("\"target\":null"))
+    let secondLoad = try JSONDecoder().decode(WinkRecipe.self, from: Data(reencodedRecipe.utf8))
+    #expect(secondLoad.shortcuts.first?.shortcutTarget == nil)
+}
+
+@Test func exportingAGatedShortcutKeepsTheGateInTheRecipe() throws {
+    // A shortcuts.json row with an unknown target string, exported to a
+    // recipe, must carry the unknown string — importing it elsewhere may
+    // never backfill and arm the sentinel.
+    let json = """
+    {"id":"11111111-1111-1111-1111-111111111111","appName":"Search Palette",
+     "bundleIdentifier":"wink.target.search-palette","keyEquivalent":"space",
+     "modifierFlags":["command"],"isEnabled":true,"target":"someFutureTarget"}
+    """
+    let gated = try JSONDecoder().decode(AppShortcut.self, from: Data(json.utf8))
+    let recipeShortcut = WinkRecipeShortcut(gated)
+    #expect(recipeShortcut.target == "someFutureTarget")
+    #expect(recipeShortcut.shortcutTarget == nil)
+}
+
 @Test func explicitTargetStillWinsOverBackfill() throws {
     let json = """
     [

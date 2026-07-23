@@ -59,6 +59,11 @@ final class ShortcutManager {
     private var lastAccessibilityState: Bool = false
     private var lastInputMonitoringState: Bool = false
     private var lastAvailableShortcutBundleIdentifiers: Set<String> = []
+    /// IDs retained by the CURRENT `triggerIndex` — the exact set of rows
+    /// whose chords can fire. Duplicate chords collapse to one winner in
+    /// `KeyMatcher.buildIndex`, so bundle-availability alone overstates
+    /// what is armed (#404).
+    private var lastIndexedShortcutIDs: Set<UUID> = []
     private var hyperKeyEnabled = false
     private var shortcutsPaused = false
     private var autoPausedByException = false
@@ -668,14 +673,13 @@ final class ShortcutManager {
             || appBundleLocator.applicationURL(for: shortcut.bundleIdentifier) != nil
     }
 
-    /// Whether a shortcut survived the availability filter the CURRENT
-    /// trigger index was built from. Display surfaces (the cheat sheet) use
-    /// this — not a live locator probe — so a row can never render as armed
-    /// while the index dropped it, nor appear seconds before the periodic
-    /// rebuild actually arms its chord (#404).
+    /// Whether a shortcut is IN the current trigger index — availability,
+    /// enablement, and duplicate-chord resolution included. Display
+    /// surfaces (the cheat sheet) use this — not a live locator probe — so
+    /// a row can never render as armed while the index dropped it, lost its
+    /// chord to a duplicate, or is waiting on the periodic rebuild (#404).
     func isShortcutInTriggerIndex(_ shortcut: AppShortcut) -> Bool {
-        shortcut.isEnabled
-            && lastAvailableShortcutBundleIdentifiers.contains(shortcut.bundleIdentifier)
+        lastIndexedShortcutIDs.contains(shortcut.id)
     }
 
     private func availabilitySnapshot() -> (activeShortcuts: [AppShortcut], availableBundleIdentifiers: Set<String>) {
@@ -699,6 +703,10 @@ final class ShortcutManager {
     ) -> Bool {
         lastAvailableShortcutBundleIdentifiers = snapshot.availableBundleIdentifiers
         triggerIndex = keyMatcher.buildIndex(for: snapshot.activeShortcuts)
+        // The IDs that actually survived index construction — availability
+        // AND duplicate-chord resolution (buildIndex keeps one row per
+        // trigger). This is what display surfaces must mirror (#404).
+        lastIndexedShortcutIDs = Set(triggerIndex.values.map(\.id))
         return captureCoordinator.updateShortcuts(snapshot.activeShortcuts)
     }
 

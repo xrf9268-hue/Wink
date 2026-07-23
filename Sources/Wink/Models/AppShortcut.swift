@@ -107,6 +107,25 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         }
     }
 
+    /// Export-facing view of a preserved invalid target (#404): the raw
+    /// unknown string when there is one to carry, else nil. Pair with
+    /// `hasPersistedInvalidTarget` to distinguish "valid/absent" from
+    /// "explicit null or malformed".
+    var exportedInvalidTargetRawValue: String? {
+        if case .unknownString(let raw)? = persistedInvalidTarget {
+            return raw
+        }
+        return nil
+    }
+
+    /// True when this row carries a gated (invalid) persisted target that
+    /// every serialization — shortcuts.json AND .winkrecipe — must keep
+    /// expressing, or a later load re-arms the row via the absent-key
+    /// backfill (#404).
+    var hasPersistedInvalidTarget: Bool {
+        persistedInvalidTarget != nil
+    }
+
     var isFrontmostAppTarget: Bool {
         target == .frontmostApp
     }
