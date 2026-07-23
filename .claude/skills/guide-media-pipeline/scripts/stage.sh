@@ -87,7 +87,13 @@ if [ -x "$CHROME" ]; then
   osascript -e "tell application \"System Events\" to set picture of every desktop to POSIX file \"$WORK/wink-wallpaper.png\""
   killall WallpaperAgent 2>/dev/null || true
 fi
-pkill -x PomoFox 2>/dev/null && echo "PomoFox paused for the shoot" || true
+# record whether PomoFox was running before pausing it — restore.sh must
+# not hand back a session with an app the user never had open
+if pgrep -xq PomoFox; then
+  touch "$BACKUP/pomofox-was-running"
+  pkill -x PomoFox 2>/dev/null || true
+  echo "PomoFox paused for the shoot"
+fi
 
 # 5. stage Safari (3 windows, one minimized) and Terminal (3, one minimized)
 osascript <<'EOF'

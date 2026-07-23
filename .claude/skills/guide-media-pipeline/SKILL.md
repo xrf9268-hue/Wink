@@ -35,9 +35,10 @@ All scripts live in `scripts/` next to this file. Work dir defaults to
    `com.wink.app` defaults, installs the demo config (⇪S Safari
    toggle+picker · ⇪T Terminal cycle · ⇪N Notes · ⇪Space palette),
    swaps in a synthetic `usage.db`, switches the app to English,
-   relaunches Wink, sets the brand wallpaper, quits PomoFox, and stages
-   Safari (3 windows, one minimized) + Terminal (3 windows, one
-   minimized) on the stage display. **Verifies `shortcuts=4
+   relaunches Wink, sets the brand wallpaper, pauses PomoFox (noting
+   whether it was running), and stages Safari (3 windows, one
+   minimized) + Terminal (3 windows, one minimized) on the stage
+   display. **Verifies `shortcuts=4
    triggerIndex=4` in `~/.config/Wink/debug.log` before returning.**
 2. `record-clips.sh` — records the five clips (~2 min hands-off).
 3. Screenshot matrix — for each locale × theme, relaunch/switch then
@@ -59,7 +60,8 @@ All scripts live in `scripts/` next to this file. Work dir defaults to
 5. `encode-and-upload.sh` — crops/encodes the clips and uploads all
    media to `wink-releases` under `wink/guide/`.
 6. `restore.sh <backup-dir>` — restores config, defaults, language,
-   wallpaper, PomoFox, quits staged apps, relaunches Wink. **Never skip
+   wallpaper, PomoFox (only if it was running before staging), quits
+   staged apps, relaunches Wink. **Never skip
    this.** Verify the user's shortcut count afterwards (it prints it).
 7. Wire any new media into `docs/design/landing/guide.html` and
    `guide-zh.html` (`.fig` figures; videos 1480×1000, screenshots

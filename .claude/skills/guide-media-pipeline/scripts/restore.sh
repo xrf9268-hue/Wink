@@ -43,7 +43,11 @@ if [ "$(cat "$BACKUP/appearance.txt" 2>/dev/null)" = "Dark" ]; then
 else
   osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false' || true
 fi
-open -g -a PomoFox 2>/dev/null || true
+# reopen PomoFox only if stage.sh actually paused it: a full restore
+# must not add apps to a session that never had them
+if [ -f "$BACKUP/pomofox-was-running" ]; then
+  open -g -a PomoFox 2>/dev/null || true
+fi
 osascript -e 'tell application "Safari" to quit' 2>/dev/null || true
 osascript -e 'tell application "Terminal" to quit' 2>/dev/null || true
 osascript -e 'tell application "Notes" to quit' 2>/dev/null || true
