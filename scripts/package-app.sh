@@ -307,6 +307,29 @@ PLIST
     apply_validation_profile "$CONTENTS_DIR/Info.plist"
 fi
 
+# Create top-level localization markers (#390).
+# `Bundle.localizations` and Language & Region's per-app language picker
+# enumerate the app bundle's OWN Contents/Resources/<locale>.lproj
+# directories -- they do not look inside nested SPM resource bundles. Wink's
+# real compiled catalogs live only in $RESOURCE_BUNDLE_NAME, so without this
+# the app bundle declares zero localizations even though Info.plist's
+# CFBundleLocalizations lists more than one, and macOS refuses to offer a
+# per-app language for Wink. These are empty marker catalogs only: app code
+# never resolves localized strings through Bundle.main, only through the
+# nested bundle via WinkResourceBundle.bundle, so nothing here shadows the
+# runtime lookup path.
+# Locale list mirrors CFBundleLocalizations in
+# Sources/Wink/Resources/Info.plist (source of truth) -- keep both in sync.
+APP_LOCALIZATIONS=(en zh-Hans)
+for locale in "${APP_LOCALIZATIONS[@]}"; do
+    lproj_dir="$RESOURCES_DIR/${locale}.lproj"
+    mkdir -p "$lproj_dir"
+    cat > "$lproj_dir/InfoPlist.strings" <<'STRINGS'
+/* Top-level localization marker — real catalogs live in Wink_Wink.bundle; see #390 */
+STRINGS
+done
+echo "    Top-level localization markers created for: ${APP_LOCALIZATIONS[*]}"
+
 # Copy Sparkle.framework into the app bundle while preserving symlinks.
 echo "==> Embedding Sparkle.framework..."
 ditto "$SPARKLE_FRAMEWORK_SOURCE" "$FRAMEWORKS_DIR/Sparkle.framework"
