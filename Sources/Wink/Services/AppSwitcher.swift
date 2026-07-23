@@ -124,6 +124,9 @@ final class AppSwitcher: AppSwitching {
 
     enum WindowServerActivationMode: String, Sendable {
         case frontProcessOnly = "front_process_only"
+        /// SkyLight front-process success is paired with an immediate
+        /// key-order + AX raise of the first VERIFIED content window (#403).
+        case orderedContentWindow = "ordered_content_window"
     }
 
     enum ToggleLifecycle: String {
@@ -2401,7 +2404,7 @@ final class AppSwitcher: AppSwitching {
     nonisolated static let hideTransport: HideTransport = .runningApplicationHide
     nonisolated static let hideRequestLogEvent = "HIDE_REQUEST"
     nonisolated static let hideRequestDispatchDelay: TimeInterval = 0
-    nonisolated static let windowServerActivationMode: WindowServerActivationMode = .frontProcessOnly
+    nonisolated static let windowServerActivationMode: WindowServerActivationMode = .orderedContentWindow
 }
 
 extension AppSwitcher.ActivationClient {

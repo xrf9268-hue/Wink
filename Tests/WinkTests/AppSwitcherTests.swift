@@ -251,8 +251,11 @@ func toggleTraceLogMessageIncludesAttemptIdentityAndReasonWithoutPreviousBundleT
 }
 
 @Test
-func activationDefaultsToFrontProcessOnly() {
-    #expect(AppSwitcher.windowServerActivationMode == .frontProcessOnly)
+func activationDefaultsToOrderedContentWindow() {
+    // #403: SkyLight success pairs with makeKeyWindow + AXRaise of the
+    // first verified content window — front-process-only is no longer the
+    // shipped activation contract.
+    #expect(AppSwitcher.windowServerActivationMode == .orderedContentWindow)
 }
 
 @Test
