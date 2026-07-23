@@ -1,6 +1,7 @@
-// Wink landing page — generated from docs/design/landing/index.html
-// Regenerate by re-escaping that file (\ ` ${) into this template literal.
-const html = `<!doctype html>
+// Wink site — GENERATED from docs/design/landing/*.html by scripts/generate-worker-site.py.
+// Do not edit the HTML literals by hand: edit the source files and regenerate.
+
+const landingHtml = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -631,6 +632,7 @@ const html = `<!doctype html>
       <a href="#map">The map</a>
       <a href="#features">Features</a>
       <a href="#insights">Insights</a>
+      <a href="/guide">Guide</a>
       <a href="https://github.com/xrf9268-hue/Wink" rel="noopener">GitHub</a>
       <a class="btn btn-primary" href="https://github.com/xrf9268-hue/Wink/releases/latest" rel="noopener">Download</a>
     </nav>
@@ -931,6 +933,7 @@ const html = `<!doctype html>
       Wink
     </a>
     <nav aria-label="Footer">
+      <a href="/guide">Guide</a>
       <a href="https://github.com/xrf9268-hue/Wink" rel="noopener">GitHub</a>
       <a href="https://github.com/xrf9268-hue/Wink/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
       <a href="https://github.com/xrf9268-hue/Wink/blob/main/docs/privacy.md" rel="noopener">Privacy</a>
@@ -1227,8 +1230,645 @@ const html = `<!doctype html>
 </html>
 `;
 
+const guideHtml = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Every setting, permission, and keyboard quirk in Wink, explained plainly — from first launch to scripting it with wink://.">
+<meta name="color-scheme" content="light dark">
+<title>Wink — The manual</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cmask id='m'%3E%3Crect width='32' height='32' fill='white'/%3E%3Ccircle cx='15' cy='9' r='11' fill='black'/%3E%3C/mask%3E%3Ccircle cx='16' cy='16' r='11' fill='%23FFB454' mask='url(%23m)'/%3E%3C/svg%3E">
+</head>
+<body>
+<style>
+  /* ---------- tokens (verbatim from index.html) ---------- */
+  :root {
+    --bg: #F3F5F9;
+    --bg-glow: rgba(224, 138, 0, 0.06);
+    --surface: #FFFFFF;
+    --surface-2: #E9EDF4;
+    --text: #171C26;
+    --muted: #5A6478;
+    --hairline: rgba(23, 28, 38, 0.12);
+    --accent: #E08A00;
+    --accent-ink: #96590A;
+    --accent-soft: rgba(224, 138, 0, 0.14);
+    --cta-bg: #171C26;
+    --cta-text: #F6F8FC;
+    --cta-hover: #232A38;
+    --key-bg: #FFFFFF;
+    --key-edge: #D4DAE4;
+    --key-legend: #171C26;
+    --win-shadow: 0 18px 44px rgba(23, 28, 38, 0.16);
+    --panel-inner: #EDF0F6;
+    --dot: rgba(23, 28, 38, 0.10);
+    --term-bg: #10141E;
+    --term-text: #C9D2E4;
+    --ok: #4CAF6E;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0A0D14;
+      --bg-glow: rgba(255, 180, 84, 0.05);
+      --surface: #131826;
+      --surface-2: #1A2132;
+      --text: #E9EDF6;
+      --muted: #98A3BD;
+      --hairline: rgba(152, 163, 189, 0.16);
+      --accent: #FFB454;
+      --accent-ink: #FFB454;
+      --accent-soft: rgba(255, 180, 84, 0.13);
+      --cta-bg: #FFB454;
+      --cta-text: #1A1206;
+      --cta-hover: #FFC377;
+      --key-bg: #1A2132;
+      --key-edge: #0A0D14;
+      --key-legend: #E9EDF6;
+      --win-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+      --panel-inner: #0D1120;
+      --dot: rgba(152, 163, 189, 0.10);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #F3F5F9;
+    --bg-glow: rgba(224, 138, 0, 0.06);
+    --surface: #FFFFFF;
+    --surface-2: #E9EDF4;
+    --text: #171C26;
+    --muted: #5A6478;
+    --hairline: rgba(23, 28, 38, 0.12);
+    --accent: #E08A00;
+    --accent-ink: #96590A;
+    --accent-soft: rgba(224, 138, 0, 0.14);
+    --cta-bg: #171C26;
+    --cta-text: #F6F8FC;
+    --cta-hover: #232A38;
+    --key-bg: #FFFFFF;
+    --key-edge: #D4DAE4;
+    --key-legend: #171C26;
+    --win-shadow: 0 18px 44px rgba(23, 28, 38, 0.16);
+    --panel-inner: #EDF0F6;
+    --dot: rgba(23, 28, 38, 0.10);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0A0D14;
+    --bg-glow: rgba(255, 180, 84, 0.05);
+    --surface: #131826;
+    --surface-2: #1A2132;
+    --text: #E9EDF6;
+    --muted: #98A3BD;
+    --hairline: rgba(152, 163, 189, 0.16);
+    --accent: #FFB454;
+    --accent-ink: #FFB454;
+    --accent-soft: rgba(255, 180, 84, 0.13);
+    --cta-bg: #FFB454;
+    --cta-text: #1A1206;
+    --cta-hover: #FFC377;
+    --key-bg: #1A2132;
+    --key-edge: #0A0D14;
+    --key-legend: #E9EDF6;
+    --win-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+    --panel-inner: #0D1120;
+    --dot: rgba(152, 163, 189, 0.10);
+  }
+
+  /* ---------- base (verbatim from index.html) ---------- */
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image: radial-gradient(1100px 460px at 50% -120px, var(--bg-glow), transparent 70%);
+    background-repeat: no-repeat;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent-ink); text-decoration: none; }
+  a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  p { margin: 0; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+  }
+
+  /* ---------- nav (verbatim from index.html) ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    background: color-mix(in srgb, var(--bg) 84%, transparent);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .nav-inner { display: flex; align-items: center; gap: 28px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-family: var(--mono); font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
+  .brand:hover { text-decoration: none; }
+  .nav-links { display: flex; gap: 24px; margin-left: auto; align-items: center; }
+  .nav-links a:not(.btn) { color: var(--muted); font-size: 14px; font-weight: 500; }
+  .nav-links a:not(.btn):hover { color: var(--text); text-decoration: none; }
+  .nav .btn { height: 34px; padding: 0 14px; font-size: 13px; }
+  @media (max-width: 720px) { .nav-links a:not(.btn) { display: none; } }
+
+  /* logo mark (verbatim) */
+  .mark .eye-open { transform-origin: 46px 16px; animation: blink 5.6s infinite; }
+  @keyframes blink {
+    0%, 91%, 100% { transform: scaleY(1); }
+    94%, 96% { transform: scaleY(0.1); }
+  }
+
+  /* ---------- buttons (verbatim) ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    height: 46px; padding: 0 22px; border-radius: 10px;
+    font-family: var(--sans); font-size: 15px; font-weight: 600;
+    border: 1px solid transparent; cursor: pointer; white-space: nowrap;
+  }
+  .btn:hover { text-decoration: none; }
+  .btn-primary, .btn-primary:hover, .btn-primary:visited { color: var(--cta-text); }
+  .btn-primary { background: var(--cta-bg); }
+  .btn-primary:hover { background: var(--cta-hover); }
+  .btn-ghost { border-color: var(--hairline); color: var(--text); background: transparent; }
+  .btn-ghost:hover { border-color: var(--muted); }
+  .btn-2l { height: 58px; flex-direction: column; gap: 2px; padding: 0 24px; }
+  .btn-sub { font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: 0.05em; opacity: 0.8; }
+
+  /* dictionary-entry eyebrow (verbatim) */
+  .dict { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .dict .word { color: var(--text); font-weight: 700; }
+  .dict .ipa { color: var(--accent-ink); }
+
+  kbd {
+    font-family: var(--mono); font-size: 0.86em;
+    background: var(--surface-2); border: 1px solid var(--hairline);
+    border-radius: 5px; padding: 1px 6px;
+  }
+
+  /* terminal block (verbatim) */
+  .cli {
+    background: var(--term-bg); color: var(--term-text);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 11px;
+    font-family: var(--mono); font-size: 12.5px; line-height: 2.1;
+    padding: 14px 17px;
+    overflow-x: auto;
+  }
+  .cli .ps { color: #FFB454; }
+  .cli .dim { opacity: 0.55; }
+
+  /* chips (verbatim) */
+  .chips { display: inline-flex; gap: 6px; flex-wrap: wrap; vertical-align: middle; }
+  .chip { font-family: var(--mono); font-size: 11.5px; padding: 2px 9px; border-radius: 6px; border: 1px solid var(--hairline); color: var(--muted); }
+  .chip.is-on { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
+
+  /* list rows (verbatim) */
+  .list { border-top: 1px solid var(--hairline); }
+  .list-row {
+    display: grid; grid-template-columns: 220px 1fr; gap: 24px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+  @media (max-width: 640px) { .list-row { grid-template-columns: 1fr; gap: 6px; } }
+  .list-row .term { font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--accent-ink); }
+  .list-row .desc { color: var(--muted); font-size: 15px; }
+  .list-row .desc kbd { font-size: 0.82em; }
+
+  /* dotted panel background (verbatim pattern) */
+  .dotted-panel {
+    background-color: var(--panel-inner);
+    background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+    background-size: 18px 18px;
+    border: 1px solid var(--hairline);
+    border-radius: 16px;
+  }
+
+  /* ---------- footer (verbatim) ---------- */
+  .footer { border-top: 1px solid var(--hairline); padding: 30px 0 44px; }
+  .footer-inner { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+  .footer .brand { font-size: 15px; }
+  .footer nav { display: flex; gap: 20px; margin-left: auto; }
+  .footer a { color: var(--muted); font-size: 13.5px; }
+  .footer .tagline { width: 100%; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .mark .eye-open { animation: none; }
+  }
+
+  /* =====================================================================
+     Guide-specific CSS — same tokens, same idiom as index.html
+     ===================================================================== */
+
+  /* ---------- header block ---------- */
+  .guide-hero { padding: 56px 0 28px; }
+  .guide-hero-copy { display: flex; flex-direction: column; gap: 16px; max-width: 60ch; }
+  .guide-hero h1 {
+    font-family: var(--mono);
+    font-size: clamp(36px, 6vw, 60px);
+    font-weight: 700;
+    letter-spacing: -0.045em;
+    line-height: 1.04;
+  }
+  .guide-hero .sub { color: var(--muted); font-size: 17px; max-width: 56ch; }
+
+  /* quick facts strip */
+  .qf-row {
+    display: flex; gap: 0;
+    margin-top: 34px;
+    padding: 4px 0;
+  }
+  .qf {
+    flex: 1;
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 14px 22px;
+    border-left: 1px solid var(--hairline);
+  }
+  .qf:first-child { border-left: none; padding-left: 0; }
+  .qf b { font-family: var(--mono); font-size: 26px; font-weight: 700; letter-spacing: -0.03em; color: var(--text); font-variant-numeric: tabular-nums; }
+  .qf span { font-family: var(--mono); font-size: 11.5px; color: var(--muted); letter-spacing: 0.02em; line-height: 1.5; }
+  @media (max-width: 640px) {
+    .qf-row { flex-wrap: wrap; }
+    .qf { flex: 1 1 45%; border-left: none; padding: 10px 0; }
+  }
+
+  /* ---------- two-column body ---------- */
+  .guide-body { padding: 40px 0 0; }
+  .guide-grid {
+    display: grid;
+    grid-template-columns: 176px minmax(0, 1fr);
+    gap: 56px;
+    align-items: start;
+  }
+
+  /* left rail TOC */
+  .toc {
+    position: sticky;
+    top: 84px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    padding-bottom: 24px;
+  }
+  .toc a {
+    color: var(--muted);
+    padding: 7px 0 7px 13px;
+    border-left: 2px solid transparent;
+    letter-spacing: 0.01em;
+  }
+  .toc a:hover { color: var(--accent-ink); text-decoration: none; border-left-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .toc a.is-current { color: var(--accent-ink); border-left-color: var(--accent); font-weight: 600; }
+  .toc a.toc-extra { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--hairline); color: var(--muted); }
+
+  @media (max-width: 880px) {
+    .guide-grid { grid-template-columns: 1fr; gap: 8px; }
+    .toc {
+      position: static;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 4px 4px;
+      padding: 0 0 20px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--hairline);
+    }
+    .toc a {
+      padding: 4px 9px;
+      border-left: none;
+      border-radius: 99px;
+      border: 1px solid transparent;
+    }
+    .toc a:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+    .toc a.is-current { border-color: var(--accent); background: var(--accent-soft); }
+    .toc a.toc-extra { margin-top: 0; padding-top: 4px; border-top: none; }
+  }
+
+  /* content column — min-width: 0 so .cli scrollers can't widen the grid track */
+  .content { max-width: 70ch; min-width: 0; }
+
+  .chapter { padding: 52px 0; border-top: 1px solid var(--hairline); }
+  .chapter:first-of-type { padding-top: 0; border-top: none; }
+  .chapter .eyebrow { display: block; margin-bottom: 16px; }
+  .chapter h2 {
+    font-family: var(--mono);
+    font-size: clamp(21px, 2.6vw, 28px);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+    margin-bottom: 18px;
+  }
+  .chapter p { font-size: 16px; color: var(--text); margin-bottom: 15px; }
+  .chapter p:last-child { margin-bottom: 0; }
+  .chapter p.lead-chips { margin-bottom: 10px; color: var(--muted); }
+  .chapter .chips { margin-bottom: 16px; }
+  .chapter strong { font-weight: 600; }
+  .chapter .cli { margin: 4px 0 16px; }
+
+  /* closing "also, briefly" section */
+  .closing { padding: 52px 0; border-top: 1px solid var(--hairline); }
+  .closing .eyebrow { display: block; margin-bottom: 14px; }
+  .closing h2 {
+    font-family: var(--mono);
+    font-size: clamp(21px, 2.6vw, 28px);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    margin-bottom: 22px;
+  }
+
+  /* final cross-link */
+  .guide-cta {
+    padding: 52px 0 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .guide-cta h2 {
+    font-family: var(--mono);
+    font-size: clamp(24px, 3.2vw, 34px);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+  }
+  .guide-cta .sub { color: var(--muted); font-size: 15px; }
+</style>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/" aria-label="Wink home">
+      <svg class="mark" width="34" height="17" viewBox="0 0 64 32" fill="none" aria-hidden="true">
+        <mask id="wm1"><rect width="64" height="32" fill="#fff"/><circle cx="13" cy="9" r="11" fill="#000"/></mask>
+        <circle cx="14" cy="16" r="11" fill="currentColor" mask="url(#wm1)"/>
+        <circle class="eye-open" cx="46" cy="16" r="9" fill="currentColor"/>
+      </svg>
+      Wink
+    </a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="/">Home</a>
+      <a href="https://github.com/xrf9268-hue/Wink" rel="noopener">GitHub</a>
+      <a class="btn btn-primary" href="https://github.com/xrf9268-hue/Wink/releases/latest" rel="noopener">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ================= header ================= -->
+  <section class="guide-hero">
+    <div class="wrap">
+      <div class="guide-hero-copy">
+        <p class="dict"><span class="word">manual</span> <span class="ipa">/ˈmanjuəl/</span> · <em>noun</em> — the book you keep next to the thing</p>
+        <h1>The manual.</h1>
+        <p class="sub">Setup, permissions, every frontmost behavior, the Hyper layer, and the <kbd>wink://</kbd> scheme — the whole thing, in the order you'll actually meet it.</p>
+      </div>
+      <div class="qf-row">
+        <div class="qf"><b>10</b><span>chapters, start to finish</span></div>
+        <div class="qf"><b>2</b><span>permissions — one of them conditional</span></div>
+        <div class="qf"><b>0</b><span>thumbnails — Screen Recording never asked</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= two-column body ================= -->
+  <section class="guide-body">
+    <div class="wrap guide-grid">
+
+      <nav class="toc" aria-label="Chapters">
+        <a href="#install">00 · install</a>
+        <a href="#permissions">01 · permissions</a>
+        <a href="#first-chord">02 · first chord</a>
+        <a href="#frontmost">03 · frontmost</a>
+        <a href="#hyper">04 · hyper layer</a>
+        <a href="#windows">05 · windows</a>
+        <a href="#search">06 · search</a>
+        <a href="#insights">07 · insights</a>
+        <a href="#quiet">08 · quiet</a>
+        <a href="#sharing">09 · sharing</a>
+        <a href="#extras" class="toc-extra">also, briefly</a>
+      </nav>
+
+      <div class="content">
+
+        <!-- 00 -->
+        <article class="chapter" id="install">
+          <p class="eyebrow">00 · install</p>
+          <h2>Drag it in. Open it once.</h2>
+          <p>Grab the DMG from <a href="https://github.com/xrf9268-hue/Wink/releases/latest" rel="noopener">GitHub Releases</a> and drag Wink into Applications. On first launch, macOS will balk at the unfamiliar signature — notarization is on the way. Right-click the app, choose <strong>Open</strong>, and macOS remembers that choice from then on.</p>
+          <p>If this is a clean install with nothing configured yet, Wink opens Settings for you the moment it launches. You're never left staring at a bare menu bar icon wondering what to do next.</p>
+          <p>Needs macOS 15 (Sequoia) or later. Nothing older is supported, and nothing more is required.</p>
+        </article>
+
+        <!-- 01 -->
+        <article class="chapter" id="permissions">
+          <p class="eyebrow">01 · permissions</p>
+          <h2>Two permissions. Never three.</h2>
+          <p class="lead-chips">One line of principle before the details:</p>
+          <p class="chips">
+            <span class="chip is-on">Accessibility · required</span>
+            <span class="chip">Input Monitoring · conditional</span>
+            <span class="chip">Screen Recording · never</span>
+          </p>
+          <p><strong>Accessibility</strong> is required — it's the API Wink uses to route every shortcut you record, standard chord or Hyper. Grant it in <strong>System Settings → Privacy &amp; Security → Accessibility</strong>, or work through the banner Wink shows at the top of <strong>Settings → Shortcuts</strong> until it clears.</p>
+          <p><strong>Input Monitoring</strong> only gets asked for once your configuration actually needs it — turn on the Hyper Key, or bind something to the Fn row, and Wink requests it; leave both alone and it never appears. The Permissions card in <strong>Settings → General</strong> marks each one Granted, Needed, or Optional against what you've actually configured, not a fixed checklist.</p>
+          <p><strong>Screen Recording</strong> isn't on that list, and it's not an oversight. Window pickers and window cycling read titles and icons through the Accessibility API alone — Wink has no use for a pixel of your screen, and it never will.</p>
+        </article>
+
+        <!-- 02 -->
+        <article class="chapter" id="first-chord">
+          <p class="eyebrow">02 · your first chord</p>
+          <h2>Pick an app. Press a chord.</h2>
+          <p>Open <strong>Settings → Shortcuts</strong>. The <strong>New Shortcut</strong> card asks for two things: a target app — search by name, pull from <strong>Recently Used</strong> or <strong>All Apps</strong>, or <strong>Browse…</strong> for anything living outside the usual folders — and a chord. Click into the Shortcut field and press your combination; it needs at least one modifier (⌘⌥⌃⇧), or you can skip that requirement entirely by binding it on the Hyper layer instead (chapter 04).</p>
+          <p>Click <strong>Add Shortcut</strong>, and the chord is live everywhere, immediately. Press it once from any app and Wink brings your target forward, launching it first if it wasn't already running. Press it again, and what happens next depends on the frontmost behavior in effect — chapter 03.</p>
+          <p>One entry in the picker is worth knowing about early: <strong>Current App</strong>, pinned at the top. Bind a chord to it, and that single chord always acts on whatever app happens to be frontmost right now — no per-app binding required.</p>
+        </article>
+
+        <!-- 03 -->
+        <article class="chapter" id="frontmost">
+          <p class="eyebrow">03 · frontmost behaviors</p>
+          <h2>What the second press does.</h2>
+          <p class="lead-chips">Four answers to the same question — what happens when you press a chord for an app that's already frontmost:</p>
+          <p class="chips">
+            <span class="chip">Hide</span>
+            <span class="chip is-on">Toggle</span>
+            <span class="chip">Focus</span>
+            <span class="chip">Cycle</span>
+          </p>
+          <p><strong>Hide</strong> is the blunt one: if the app is frontmost, it hides. No questions asked, even if Wink wasn't what brought it forward.</p>
+          <p><strong>Toggle</strong>, the default, is summon-then-dismiss with judgement — it hides the app once its activation has actually settled, so a fast double-press can't yank away a window that's still arriving.</p>
+          <p><strong>Focus</strong> never hides anything: it un-hides and un-minimizes every one of that app's windows and keeps it in front, for an app you never want to lose track of.</p>
+          <p><strong>Cycle</strong> steps through that app's windows instead of hiding anything — with one caveat for single-window apps, covered in chapter 05.</p>
+          <p>Set the default in <strong>Settings → General</strong> under <strong>“When target is frontmost”</strong>, or override it for one shortcut from that row's ⋯ menu.</p>
+        </article>
+
+        <!-- 04 -->
+        <article class="chapter" id="hyper">
+          <p class="eyebrow">04 · the hyper layer</p>
+          <h2>Caps Lock, promoted.</h2>
+          <p>Turn on <strong>Hyper Key</strong> in <strong>Settings → General</strong>, and Caps Lock becomes a fifth modifier: hold it down and it behaves like <kbd>⌃⌥⇧⌘</kbd> together, so a bare letter can carry a whole chord. Hold it, tap a letter, done.</p>
+          <p>While Hyper is on, the key is remapped away from Caps Lock entirely — a tap on its own does nothing: no shortcut, no capitals, no LED. Turn Hyper Key off and the key is its old self again. Quick fingers are fine, too: flick Caps Lock and let the letter land a breath late, and Wink still reads it as one chord — a release under about 80 milliseconds counts as part of the hold, not the end of it.</p>
+          <p>Forgotten a binding? Hold Caps Lock for just over half a second without touching anything else, and every enabled shortcut — Hyper-bound or not — fades in as an overlay; let go, and it's gone. It needs Hyper Key on and at least one enabled Hyper shortcut before it has anything to show; Settings says as much, right under the toggle.</p>
+        </article>
+
+        <!-- 05 -->
+        <article class="chapter" id="windows">
+          <p class="eyebrow">05 · windows</p>
+          <h2>Repeat the chord. Walk the windows.</h2>
+          <p>Set a shortcut's frontmost behavior to <strong>Cycle</strong> (chapter 03), then repeat the chord while its app is frontmost: each press steps to the next window, minimized ones included. A small HUD tracks your place — <kbd>2/5</kbd> · window title — on whichever display that window actually lives on.</p>
+          <p>One window (or none) is nothing to walk, so Cycle degrades on purpose: a concrete shortcut falls back to Toggle — press again and the app steps aside — while a Current App chord treats the press as a no-op, because "cycle whatever I'm in" must never hide the app under your hands.</p>
+          <p>Prefer to choose instead of step through? Opt a shortcut into <strong>Hold Action → Window Picker</strong> from its row's ⋯ menu, then hold the chord instead of tapping it: a list of that app's windows appears, minimized ones marked, navigate with ↑↓ and commit with ⏎. Icons and titles only, never thumbnails — that restraint is what lets Wink run without Screen Recording, and it always will.</p>
+        </article>
+
+        <!-- 06 -->
+        <article class="chapter" id="search">
+          <p class="eyebrow">06 · search to switch</p>
+          <h2>Type two letters. Land anywhere.</h2>
+          <p>Give the palette its own trigger: <strong>Settings → General → Search Palette</strong>, recorded the same way as any other chord. Press it, type a few letters of any app's name — localized names match too — and hit <kbd>⏎</kbd>. Wink switches to it, launching it first if it wasn't already running.</p>
+          <p>Recent switches float to the top of the empty-query list, so the app you just left is usually one keystroke away. Background agents and helper processes never show up — the palette only ever offers apps you could plausibly want to switch to.</p>
+        </article>
+
+        <!-- 07 -->
+        <article class="chapter" id="insights">
+          <p class="eyebrow">07 · insights</p>
+          <h2>It keeps score. Quietly.</h2>
+          <p><strong>Settings → Insights</strong> totals your activations, an estimated time saved (three seconds per switch, added up), your current streak of consecutive active days, and an hour-by-hour heatmap of when you actually reach for Wink. Flip between <strong>today</strong>, <strong>7 days</strong>, and <strong>30 days</strong> with the control at the top.</p>
+          <p>All of it lives in a local SQLite file and is never uploaded — the Privacy page says so in plain terms, not fine print.</p>
+          <p>Turn on <strong>“Suggest shortcuts from app usage”</strong> in Settings → General, and Wink starts counting foreground activations locally. An app you keep switching to but never bound shows up in the <strong>Suggested shortcuts</strong> card with its count for the period, and a note to add one in Shortcuts — a nudge, not an automatic bind. Turn the toggle back off, and Wink deletes the counts it collected, not just stops collecting them.</p>
+        </article>
+
+        <!-- 08 -->
+        <article class="chapter" id="quiet">
+          <p class="eyebrow">08 · quiet by design</p>
+          <h2>It knows when to go quiet.</h2>
+          <p class="lead-chips">The menu bar pill states the truth plainly:</p>
+          <p class="chips">
+            <span class="chip is-on">Ready</span>
+            <span class="chip">Limited · Secure Input</span>
+            <span class="chip">Paused</span>
+            <span class="chip">Paused · &lt;App&gt;</span>
+          </p>
+          <p>A password field or secure prompt grabs macOS Secure Input, and the pill switches to <strong>Limited · Secure Input</strong>. The Hyper layer and Fn-row shortcuts wait it out — they ride the same event tap Secure Input blocks — while ordinary modifier-key shortcuts keep firing straight through it. It resumes on its own the moment Secure Input ends.</p>
+          <p>Add an app under <strong>“Pause in exception apps”</strong> in Settings → General — a VM or remote-desktop client is the obvious case — and Wink pauses itself the instant that app is frontmost, the pill naming it directly (<strong>Paused · Parallels Desktop</strong>), and Caps Lock reverts fully to its native behavior for as long as that app stays in front.</p>
+          <p>And there's a master switch for all of it: <strong>“Pause all shortcuts”</strong>, one toggle away in the menu bar.</p>
+        </article>
+
+        <!-- 09 -->
+        <article class="chapter" id="sharing">
+          <p class="eyebrow">09 · sharing &amp; scripting</p>
+          <h2>Export it. Script it. Repeat it.</h2>
+          <p>Your whole shortcut set is one file. <strong>Export…</strong> in <strong>Settings → Shortcuts</strong> writes a <kbd>.winkrecipe</kbd>; <strong>Import…</strong> reads one back. Importing previews a plan first — what's <strong>Ready</strong>, what <strong>Conflicts</strong>, what's <strong>Unresolved</strong> — before you commit to <strong>Skip Conflicts</strong> or <strong>Replace Existing</strong>.</p>
+          <p>Everything is also reachable from outside the app, on the <kbd>wink://</kbd> scheme:</p>
+          <div class="cli">
+            <div><span class="ps">$</span> open -g "wink://toggle?bundle=com.google.Chrome"</div>
+            <div class="dim">wink://pause · wink://resume — same idea</div>
+          </div>
+          <p>Always call it with <kbd>open -g</kbd>. A plain <kbd>open</kbd> activates Wink to deliver the URL, which makes your actual target read as “not frontmost” and turns every toggle into a plain activate; <kbd>-g</kbd> keeps Wink in the background so the toggle sees the real frontmost state. Automation presses respect the same per-bundle cooldown as a real keypress, but they never count toward Insights.</p>
+        </article>
+
+        <!-- closing -->
+        <section class="closing" id="extras">
+          <p class="eyebrow">Also, briefly</p>
+          <h2>A few more things.</h2>
+          <div class="list">
+            <div class="list-row">
+              <span class="term">updates</span>
+              <span class="desc">The in-app Sparkle panel handles checking, downloading, and installing without leaving Wink. <strong>Check for Updates…</strong> lives in the menu bar; <strong>Automatic Updates</strong> in Settings → General turns background checks and downloads on or off.</span>
+            </div>
+            <div class="list-row">
+              <span class="term">launch &amp; menu bar</span>
+              <span class="desc"><strong>Launch at Login</strong> and <strong>Show Menu Bar Icon</strong> are both toggles in Settings → General.</span>
+            </div>
+            <div class="list-row">
+              <span class="term">languages</span>
+              <span class="desc">English and 简体中文 today, set from System Settings → General → Language &amp; Region — more are on the way.</span>
+            </div>
+            <div class="list-row">
+              <span class="term">help</span>
+              <span class="desc">Wink is open source. Read the code, file something, or just watch it get built — on GitHub.</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- final cross-link -->
+        <div class="guide-cta">
+          <p class="eyebrow">Get Wink</p>
+          <h2>End of the manual.</h2>
+          <p class="sub">The rest is muscle memory. Free, open source, macOS 15 or later.</p>
+          <a class="btn btn-primary btn-2l" href="/#download"><span>Download for macOS</span><span class="btn-sub">free · open source · direct DMG</span></a>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <a class="brand" href="/">
+      <svg class="mark" width="30" height="15" viewBox="0 0 64 32" fill="none" aria-hidden="true">
+        <mask id="wm4"><rect width="64" height="32" fill="#fff"/><circle cx="13" cy="9" r="11" fill="#000"/></mask>
+        <circle cx="14" cy="16" r="11" fill="currentColor" mask="url(#wm4)"/>
+        <circle class="eye-open" cx="46" cy="16" r="9" fill="currentColor"/>
+      </svg>
+      Wink
+    </a>
+    <nav aria-label="Footer">
+      <a href="https://github.com/xrf9268-hue/Wink" rel="noopener">GitHub</a>
+      <a href="https://github.com/xrf9268-hue/Wink/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+      <a href="https://github.com/xrf9268-hue/Wink/blob/main/docs/privacy.md" rel="noopener">Privacy</a>
+    </nav>
+    <p class="tagline">made for people who'd rather not reach for the mouse</p>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    "use strict";
+    var links = Array.prototype.slice.call(document.querySelectorAll(".toc a[href^='#']"));
+    if (!links.length || !("IntersectionObserver" in window)) return;
+
+    var map = {};
+    links.forEach(function (a) { map[a.getAttribute("href").slice(1)] = a; });
+
+    var sections = Object.keys(map)
+      .map(function (id) { return document.getElementById(id); })
+      .filter(Boolean);
+
+    var current = links[0];
+    current.classList.add("is-current");
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var next = map[entry.target.id];
+        if (!next || next === current) return;
+        if (current) current.classList.remove("is-current");
+        current = next;
+        current.classList.add("is-current");
+      });
+    }, { rootMargin: "-15% 0px -70% 0px", threshold: 0 });
+
+    sections.forEach(function (s) { observer.observe(s); });
+  })();
+</script>
+</body>
+</html>
+`;
+
 export default {
-  async fetch(): Promise<Response> {
+  async fetch(request: Request): Promise<Response> {
+    const { pathname } = new URL(request.url);
+    const html = pathname === "/guide" || pathname === "/guide/" ? guideHtml : landingHtml;
     return new Response(html, {
       headers: {
         "content-type": "text/html;charset=UTF-8",
