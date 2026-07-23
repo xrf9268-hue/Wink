@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Record the five guide demo clips on the stage display (0,0,1920x1080).
 # Requires stage.sh to have run. ~2 minutes; the machine must be hands-off.
-set -u
+set -eu
 WORK="${WINK_MEDIA_WORK:-$HOME/.cache/wink-guide-media}"
 K="$WORK/winkkeys"
 R="$WORK/rec"
@@ -23,7 +23,17 @@ record() { # $1=name $2=seconds — screencapture never overwrites (gotcha #1)
   sleep 2.0
 }
 
-finish() { wait $CAP 2>/dev/null; echo "clip done: $1"; }
+# wait propagates screencapture's exit status, so a failed recording
+# (Screen Recording revoked, disk full) aborts here under set -e instead
+# of silently reporting ALL_CLIPS_DONE; the size check catches an exit-0
+# capture that still wrote nothing
+finish() {
+  if ! wait $CAP 2>/dev/null; then
+    echo "CAPTURE FAILED (screencapture exit nonzero): $1" >&2; exit 1
+  fi
+  [ -s "$R/$1.mov" ] || { echo "CAPTURE FAILED (empty/missing): $1" >&2; exit 1; }
+  echo "clip done: $1"
+}
 
 # ---------- A: first chord (Safari summon / dismiss / summon) ----------
 front Terminal; sleep 1.2; park_mouse

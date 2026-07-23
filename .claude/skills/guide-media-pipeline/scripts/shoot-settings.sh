@@ -5,7 +5,7 @@
 #   osascript -e 'tell app "System Events" to tell appearance preferences to set dark mode to false'
 # Tabs are clicked by COORDINATES (window pinned at 530,130) because AX
 # name-matching is unreliable for zh and row indices shift (gotcha #5).
-set -u
+set -eu
 SUF="$1"
 WORK="${WINK_MEDIA_WORK:-$HOME/.cache/wink-guide-media}"
 OUT="$WORK/shots"
@@ -40,8 +40,17 @@ ev(Quartz.kCGEventLeftMouseUp, p)"
   sleep 0.9
 }
 
-click_row 256; screencapture -x -o -l"$winid" "$OUT/settings-general-$SUF.png"
-click_row 200; screencapture -x -o -l"$winid" "$OUT/settings-shortcuts-$SUF.png"
-click_row 228; screencapture -x -o -l"$winid" "$OUT/settings-insights-$SUF.png"
+shot() { # $1 = row y, $2 = output png. Delete the old file first so a
+  # failed capture can never leave a stale same-named PNG for
+  # encode-and-upload.sh to ship as if it were fresh.
+  click_row "$1"
+  rm -f "$2"
+  screencapture -x -o -l"$winid" "$2"
+  [ -s "$2" ] || { echo "CAPTURE FAILED (empty/missing): $2" >&2; exit 1; }
+}
+
+shot 256 "$OUT/settings-general-$SUF.png"
+shot 200 "$OUT/settings-shortcuts-$SUF.png"
+shot 228 "$OUT/settings-insights-$SUF.png"
 
 echo "SHOTS_DONE_$SUF"
