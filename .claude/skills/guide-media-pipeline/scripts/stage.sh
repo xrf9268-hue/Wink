@@ -46,12 +46,26 @@ cp "$HERE/demo-shortcuts.json" "$APPSUP/shortcuts.json"
 python3 "$HERE/make-demo-usage.py" "$WORK/demo-usage.db"
 cp "$WORK/demo-usage.db" "$APPSUP/usage.db"
 defaults write com.wink.app AppleLanguages -array en
-# The demo shortcuts live on the Hyper layer and winkkeys drives them as
-# F19 chords through the interception tap. A profile with Hyper off would
-# route them via Carbon, every injected chord would be inert, and the
-# count gate below would still pass — so force it on for the shoot; the
-# defaults backup restores the user's real setting.
+# Pin EVERY setting the shoot depends on instead of inheriting the user's
+# profile — the whole-domain defaults backup restores their real values:
+# - hyperKeyEnabled: the demo chords are F19-driven through the
+#   interception tap; a Hyper-off profile routes them via Carbon and every
+#   injected chord is inert while the count gate still passes.
+# - hyperCheatSheetEnabled: the cheat-sheet clip records nothing if the
+#   user turned the sheet off.
+# - suggestShortcutsFromUsage: the Insights screenshot's Suggested card
+#   renders only when the toggle is on (and seeding app_activations is
+#   pointless otherwise).
+# - menuBarIconVisible: shoot-settings.sh opens Settings through the menu
+#   bar item; a hidden icon breaks the whole screenshot matrix.
+# - shortcutsPaused / frontmostExceptionsEnabled: a paused profile or an
+#   exception rule matching a staged app would silently disarm the demos.
 defaults write com.wink.app hyperKeyEnabled -bool true
+defaults write com.wink.app hyperCheatSheetEnabled -bool true
+defaults write com.wink.app suggestShortcutsFromUsage -bool true
+defaults write com.wink.app menuBarIconVisible -bool true
+defaults write com.wink.app shortcutsPaused -bool false
+defaults write com.wink.app frontmostExceptionsEnabled -bool false
 open -a /Applications/Wink.app; sleep 1.5
 
 # 3. verify the trigger index took all four entries (gotcha #2)
