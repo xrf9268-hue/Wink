@@ -32,6 +32,7 @@ struct RunningApplicationSnapshot: Sendable {
     let bundleIdentifier: String?
     let localizedName: String?
     let bundleURL: URL?
+    let activationPolicy: NSApplication.ActivationPolicy
 }
 
 @MainActor
@@ -180,7 +181,12 @@ final class AppListProvider {
         var seen = Set(entries.map(\.id))
 
         for app in runningApplications {
-            guard let bid = app.bundleIdentifier,
+            // .accessory/.prohibited apps are background agents and embedded
+            // helpers (loginwindow, WindowManager, an app's own auxiliary
+            // process) — never user-facing switch targets, and some share a
+            // localizedName with their .regular parent (#384's WeChat case).
+            guard app.activationPolicy == .regular,
+                  let bid = app.bundleIdentifier,
                   !seen.contains(bid),
                   let url = app.bundleURL else { continue }
             let name = app.localizedName ?? url.deletingPathExtension().lastPathComponent
@@ -246,13 +252,25 @@ final class AppListProvider {
         guard let ids = client.loadRecents() else {
             // Seed from running apps if no recents file exists
             recentBundleIDs = runningApplications
+                .filter { $0.activationPolicy == .regular }
                 .compactMap(\.bundleIdentifier)
                 .filter { $0 != client.mainBundleIdentifier() }
                 .prefix(10)
                 .map { $0 }
             return
         }
-        recentBundleIDs = ids
+        // Conservative sanitation, not a general filter: only drop an id when
+        // the CURRENT running snapshot proves it's a non-.regular agent
+        // (loginwindow, WindowManager, ...). An id absent from the current
+        // snapshot is left alone — it may be a valid recent for an app that
+        // simply isn't running right now — so this can't wipe legitimate
+        // history, only evict the always-running agents #384 reported.
+        let nonRegularRunningIDs = Set(
+            runningApplications
+                .filter { $0.activationPolicy != .regular }
+                .compactMap(\.bundleIdentifier)
+        )
+        recentBundleIDs = ids.filter { !nonRegularRunningIDs.contains($0) }
     }
 
     private func saveRecents() {
@@ -275,7 +293,8 @@ extension AppListProvider.Client {
                 RunningApplicationSnapshot(
                     bundleIdentifier: app.bundleIdentifier,
                     localizedName: app.localizedName,
-                    bundleURL: app.bundleURL
+                    bundleURL: app.bundleURL,
+                    activationPolicy: app.activationPolicy
                 )
             }
         },
