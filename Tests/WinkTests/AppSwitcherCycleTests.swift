@@ -63,6 +63,15 @@ private struct CycleTestWindows {
         var ids: Set<CGWindowID> = []
     }
     let roleReadFailures = RoleFailureBox()
+    /// IDs (drawn from `titledUnknownSubroleIDs`) whose TITLE read
+    /// specifically fails transiently on the next press — unlike
+    /// `roleReadFailures`, role and subrole both succeed here; only the
+    /// lazy third read is flaky (#389 P2). Same mutable-box shape as
+    /// `roleReadFailures` for the same mid-session-injection reason.
+    final class TitleTransientFailureBox {
+        var ids: Set<CGWindowID> = []
+    }
+    let titleTransientFailures = TitleTransientFailureBox()
 
     init(
         ids: [CGWindowID],
@@ -93,10 +102,13 @@ private struct CycleTestWindows {
         guard let id = windowID(for: element) else { return false }
         if roleReadFailures.ids.contains(id) { return nil }
         if unknownSubroleIDs.contains(id) {
-            return AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: kAXUnknownSubrole, title: nil)
+            return AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXUnknownSubrole), title: .value(nil))
         }
         if titledUnknownSubroleIDs.contains(id) {
-            return AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: kAXUnknownSubrole, title: "mpv")
+            let title: AppSwitcher.AXStringReadOutcome = titleTransientFailures.ids.contains(id)
+                ? .transientFailure
+                : .value("mpv")
+            return AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXUnknownSubrole), title: title)
         }
         return !ineligibleIDs.contains(id)
     }
@@ -1219,15 +1231,15 @@ func cycleIncludesTitledAXUnknownSubroleWindowLikeMpv() {
 func contentWindowDecisionReturnsNilWhenRoleReadFailed() {
     // Preserves the roleReadFailed contract exactly: a nil role (the read
     // itself failed) must stay nil regardless of subrole or title.
-    #expect(AppSwitcher.contentWindowDecision(role: nil, subrole: nil, title: nil) == nil)
-    #expect(AppSwitcher.contentWindowDecision(role: nil, subrole: kAXUnknownSubrole, title: nil) == nil)
+    #expect(AppSwitcher.contentWindowDecision(role: nil, subrole: .value(nil), title: .value(nil)) == nil)
+    #expect(AppSwitcher.contentWindowDecision(role: nil, subrole: .value(kAXUnknownSubrole), title: .value(nil)) == nil)
 }
 
 @Test @MainActor
 func contentWindowDecisionExcludesNonWindowRoleUnchanged() {
     // Unchanged #377 behavior: any role other than AXWindow is excluded,
     // independent of subrole/title (Finder's desktop AXScrollArea shape).
-    #expect(AppSwitcher.contentWindowDecision(role: kAXScrollAreaRole, subrole: nil, title: nil) == false)
+    #expect(AppSwitcher.contentWindowDecision(role: kAXScrollAreaRole, subrole: .value(nil), title: .value(nil)) == false)
 }
 
 @Test @MainActor
@@ -1236,8 +1248,8 @@ func contentWindowDecisionExcludesTheSplitViewDividerShape() {
     // reports role=AXWindow subrole=AXUnknown title="" size=13x1080. Both
     // the unreadable (nil) and empty-string title spellings of "no title"
     // must exclude it — the pure function treats them identically.
-    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: kAXUnknownSubrole, title: nil) == false)
-    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: kAXUnknownSubrole, title: "") == false)
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXUnknownSubrole), title: .value(nil)) == false)
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXUnknownSubrole), title: .value("")) == false)
 }
 
 @Test @MainActor
@@ -1245,15 +1257,16 @@ func contentWindowDecisionIncludesTitledAXUnknownSubroleWindowLikeMpv() {
     // The #389 P2 regression case: mpv run `--fs --no-native-fs` reports
     // role=AXWindow subrole=AXUnknown but IS titled. A blanket
     // reject-on-subrole would wrongly drop it from cycling and the picker.
-    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: kAXUnknownSubrole, title: "mpv") == true)
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXUnknownSubrole), title: .value("mpv")) == true)
 }
 
 @Test @MainActor
-func contentWindowDecisionIncludesAWindowWithUnreadableSubrole() {
-    // A real window whose subrole cannot be read must NOT be dropped: a
-    // false exclusion of a real window is worse than letting a phantom
-    // through.
-    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: nil, title: nil) == true)
+func contentWindowDecisionIncludesAWindowWithDefinitivelyUnreadableSubrole() {
+    // A real window whose subrole read definitively found nothing (e.g.
+    // .attributeUnsupported/.invalidUIElement, not a transient failure)
+    // must NOT be dropped: a false exclusion of a real window is worse
+    // than letting a phantom through.
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(nil), title: .value(nil)) == true)
 }
 
 @Test @MainActor
@@ -1261,9 +1274,40 @@ func contentWindowDecisionIncludesOtherSubrolesRegardlessOfTitle() {
     // Dialogs, standard windows, and everything else currently included
     // stays included — this is not a subrole allowlist, and title must not
     // affect non-AXUnknown windows either way (titled or untitled).
-    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: kAXStandardWindowSubrole, title: "Notes") == true)
-    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: kAXStandardWindowSubrole, title: nil) == true)
-    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: kAXDialogSubrole, title: "Save") == true)
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXStandardWindowSubrole), title: .value("Notes")) == true)
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXStandardWindowSubrole), title: .value(nil)) == true)
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXDialogSubrole), title: .value("Save")) == true)
+}
+
+// MARK: - Transient AX read failures (#389 P2)
+
+@Test @MainActor
+func contentWindowDecisionSubroleTransientFailureReturnsNilRegardlessOfTitle() {
+    // A transient subrole read failure (.cannotComplete/.apiDisabled) must
+    // route into the protective nil — the same swallow-the-press contract
+    // a role-read failure already gets — never be treated as a definitive
+    // "not the divider" or "is the divider" answer.
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .transientFailure, title: .value(nil)) == nil)
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .transientFailure, title: .value("mpv")) == nil)
+}
+
+@Test @MainActor
+func contentWindowDecisionTitleTransientFailureOnAXUnknownReturnsNil() {
+    // THE P2 regression: a titled AXUnknown window (mpv-shaped) whose
+    // TITLE read is transiently busy must NOT be misclassified as the
+    // untitled divider (which would silently drop a real window from
+    // rotation/the picker) — it must swallow the press like any other
+    // transient AX failure.
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXUnknownSubrole), title: .transientFailure) == nil)
+}
+
+@Test @MainActor
+func contentWindowDecisionTitleTransientFailureIsIgnoredWhenSubroleIsNotAXUnknown() {
+    // Title is only consulted on the AXUnknown branch — an ordinary
+    // window's spurious .transientFailure title outcome (should never
+    // happen in practice, since the live closure only reads title lazily
+    // on that branch) must not leak into the decision.
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXStandardWindowSubrole), title: .transientFailure) == true)
 }
 
 @Test @MainActor
@@ -1350,6 +1394,61 @@ func transientRoleReadFailureMidGestureSwallowsThePress() {
 
     // Failure clears → the gesture continues from the preserved cursor.
     windows.roleReadFailures.ids = []
+    clock.time += 0.2
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102, 101])
+    #expect(recorder.hideCalls == 0)
+}
+
+@Test @MainActor
+func cycleTitleTransientFailureMidGestureSwallowsThePress() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for title-failure test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    // 102 is mpv-shaped (role AXWindow, subrole AXUnknown, normally
+    // titled) — role and subrole both read fine; only its TITLE read goes
+    // transiently flaky (#389 P2), unlike roleReadFailures above.
+    let windows = CycleTestWindows(ids: [101, 102], titledUnknownSubroleIDs: [102])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: bundleIdentifier
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    // Establish a live session (102 reads as titled and cycles normally),
+    // then make its title read fail transiently on the next press.
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102])
+    windows.titleTransientFailures.ids = [102]
+    clock.time += 0.2
+
+    // The press must be swallowed exactly like a transient role-read
+    // failure — NOT a hide fall-through, and critically NOT a silent
+    // exclusion of 102 from rotation (the P2 bug: misreading the transient
+    // failure as "untitled" would have raised 101 here instead).
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.hideCalls == 0)
+    #expect(recorder.raisedWindowIDs == [102])
+
+    // Failure clears → the gesture continues from the preserved cursor.
+    windows.titleTransientFailures.ids = []
     clock.time += 0.2
     #expect(switcher.toggleApplication(for: shortcut) == true)
     #expect(recorder.raisedWindowIDs == [102, 101])
