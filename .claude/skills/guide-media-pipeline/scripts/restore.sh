@@ -50,7 +50,12 @@ if [ -f "$BACKUP/pomofox-was-running" ]; then
 fi
 osascript -e 'tell application "Safari" to quit' 2>/dev/null || true
 osascript -e 'tell application "Terminal" to quit' 2>/dev/null || true
-osascript -e 'tell application "Notes" to quit' 2>/dev/null || true
+# Notes was only launched by the ⇪N demo chord — quit it unless the
+# user already had it running before staging (Safari/Terminal need no
+# marker: stage.sh refuses to run while they are open)
+if [ ! -f "$BACKUP/notes-was-running" ]; then
+  osascript -e 'tell application "Notes" to quit' 2>/dev/null || true
+fi
 
 count=$(python3 -c "import json;print(len(json.load(open('$APPSUP/shortcuts.json'))))")
 echo "RESTORED — $count user shortcuts back in place (verify this matches expectations)"

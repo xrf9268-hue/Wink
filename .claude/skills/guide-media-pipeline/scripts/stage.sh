@@ -38,6 +38,10 @@ tell application "System Events"
 end tell
 return out
 EOS
+# Notes is launched mid-recording by the ⇪N demo chord; record whether
+# it was already running so restore.sh can tell demo cleanup from
+# session damage when it quits Notes
+pgrep -xq Notes && touch "$BACKUP/notes-was-running" || true
 echo "backup: $BACKUP"
 
 # 2. demo config + synthetic usage, app in English
