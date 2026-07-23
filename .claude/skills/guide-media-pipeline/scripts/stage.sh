@@ -46,15 +46,24 @@ cp "$HERE/demo-shortcuts.json" "$APPSUP/shortcuts.json"
 python3 "$HERE/make-demo-usage.py" "$WORK/demo-usage.db"
 cp "$WORK/demo-usage.db" "$APPSUP/usage.db"
 defaults write com.wink.app AppleLanguages -array en
+# The demo shortcuts live on the Hyper layer and winkkeys drives them as
+# F19 chords through the interception tap. A profile with Hyper off would
+# route them via Carbon, every injected chord would be inert, and the
+# count gate below would still pass — so force it on for the shoot; the
+# defaults backup restores the user's real setting.
+defaults write com.wink.app hyperKeyEnabled -bool true
 open -a /Applications/Wink.app; sleep 1.5
 
 # 3. verify the trigger index took all four entries (gotcha #2)
 "$WORK/winkkeys" chord 45 150 >/dev/null; sleep 0.5   # ⇪N — forces an attemptStart line
 "$WORK/winkkeys" chord 45 150 >/dev/null; sleep 0.3   # toggle Notes back off
 line=$(grep attemptStart "$HOME/.config/Wink/debug.log" | tail -1)
+# Gate on BOTH the index count and a live interception tap: eventTap=false
+# (Input Monitoring missing, tap failed) records perfectly inert clips
+# while the counts still look right.
 case "$line" in
-  *"shortcuts=4"*"triggerIndex=4"*) echo "trigger index OK" ;;
-  *) echo "TRIGGER INDEX MISMATCH: $line" >&2; exit 1 ;;
+  *"shortcuts=4"*"triggerIndex=4"*"eventTap=true"*) echo "trigger index + event tap OK" ;;
+  *) echo "STAGING GATE FAILED (need shortcuts=4 triggerIndex=4 eventTap=true): $line" >&2; exit 1 ;;
 esac
 
 # 4. set dressing: brand wallpaper, no overlay apps
