@@ -158,16 +158,32 @@ final class AppSwitcher: AppSwitching {
         let focusedWindowID: (pid_t) -> CGWindowID?
         /// Cycle eligibility: `kAXWindows` also surfaces auxiliary elements
         /// with valid window IDs — most visibly the native Split View
-        /// divider (role AXUnknown, ~13px wide, untitled, transient ID).
-        /// Raising one moves the divider and resizes both panes (#376), so
-        /// rotation must only ever contain real content windows.
+        /// divider. On-device (#389) Firefox exposes it as a genuine
+        /// `AXWindow` (role=AXWindow subrole=AXUnknown title="" size=13x1080),
+        /// so role alone does not distinguish it from a real window. Subrole
+        /// alone is not enough either: mpv run `--fs --no-native-fs` exposes
+        /// a genuinely titled fullscreen `AXWindow` that also reports
+        /// subrole AXUnknown, and that window must stay cyclable. The
+        /// divider's actual signature is two-factor — AXUnknown subrole AND
+        /// no title — so rotation must only ever contain real content
+        /// windows by that combined test.
         ///
-        /// Tri-state: `false` = the role read succeeded and the element is
-        /// definitively not a content window (excluded); `nil` = the role
-        /// read itself failed. The distinction matters mid-gesture: a
-        /// transient read failure must swallow the press like the
-        /// windows-read-failure path (never fall through to the hide lanes),
-        /// while a definitive auxiliary role is simply filtered out.
+        /// Tri-state: `false` = the role/subrole/title reads succeeded (or
+        /// definitively found nothing) and the element is definitively not
+        /// a content window (excluded); `nil` = a read that matters to the
+        /// decision failed TRANSIENTLY (busy/unresponsive target, or
+        /// Accessibility revoked mid-read) rather than telling us the
+        /// attribute genuinely has no value. The distinction applies to all
+        /// three reads, not just role: a transient failure on any of them
+        /// must swallow the press like the windows-read-failure path
+        /// (never fall through to the hide lanes and never silently drop a
+        /// real window from rotation/the picker), while a definitive
+        /// auxiliary shape — or a definitive absence, like an unreadable
+        /// subrole on a real window — is simply filtered out or included
+        /// per the existing rules. See
+        /// `AppSwitcher.contentWindowDecision(role:subrole:title:)` and
+        /// `AppSwitcher.AXStringReadOutcome` for the pure classification
+        /// behind the live closure.
         let isContentWindow: (AXUIElement) -> Bool?
         let raiseWindow: (AXUIElement) -> Void
         let unminimizeWindow: (AXUIElement) -> Void
@@ -177,6 +193,74 @@ final class AppSwitcher: AppSwitching {
         /// AX kAXTitle read for HUD feedback (Accessibility-covered; never
         /// CGWindowList titles, which would require Screen Recording).
         let windowTitle: (AXUIElement) -> String?
+    }
+
+    /// Read outcome for an AX string attribute where the failure mode
+    /// matters to classification (#389): `.transientFailure` means the read
+    /// itself failed for a reason unrelated to the attribute's actual value
+    /// — a busy/unresponsive target (`AXError.cannotComplete`) or
+    /// Accessibility revoked mid-read (`.apiDisabled`) — and must route
+    /// into the protective `nil` path, the same swallow-the-press contract
+    /// a role-read failure already gets (see the windows-read-failure
+    /// handling above `performFrontmostWindowCycle`). `.value(nil)` means
+    /// either the read succeeded and found nothing, or it failed for a
+    /// reason that IS a definitive "no value" (`.noValue`,
+    /// `.attributeUnsupported`, `.invalidUIElement`, …). Conflating the two
+    /// in either direction is a bug: mapping a transient failure to
+    /// `.value(nil)` silently drops a real window (a titled `AXUnknown`
+    /// window, e.g. mpv, whose title read is momentarily busy, gets
+    /// misread as the untitled divider); mapping a definitive absence to
+    /// `.transientFailure` would swallow every cycle press in a Split View,
+    /// because the divider's own title read commonly reports a definitive
+    /// non-success code, not `.cannotComplete`.
+    enum AXStringReadOutcome: Equatable {
+        case value(String?)
+        case transientFailure
+    }
+
+    /// Pure decision behind `isContentWindow` (#389): a role-only check lets
+    /// the Split View divider through, because Firefox reports it as a
+    /// genuine `AXWindow` (role=AXWindow subrole=AXUnknown title="" size=
+    /// 13x1080) — #377's fixture (Finder's desktop `AXScrollArea`) never
+    /// exercised this because its role already fails the check. A blanket
+    /// reject-on-`AXUnknown`-subrole is *also* wrong: Apple permits genuine
+    /// windows with no matching predefined subrole to report `AXUnknown`
+    /// too — mpv run `--fs --no-native-fs` exposes a TITLED fullscreen
+    /// `AXWindow` with subrole AXUnknown, and rejecting on subrole alone
+    /// would drop it from both cycling and the window picker. The divider's
+    /// actual signature is two-factor: `AXUnknown` subrole AND no title. An
+    /// element with neither a meaningful subrole nor a title could never be
+    /// labeled in the HUD/picker anyway, so excluding that combination
+    /// costs nothing real.
+    ///
+    /// `subrole`/`title` are `AXStringReadOutcome`, not plain `String?`,
+    /// specifically so a transient read failure can be told apart from a
+    /// definitive absence — see that type's doc comment for why collapsing
+    /// them either direction is wrong. `title` is only consulted when
+    /// `subrole` resolves to `AXUnknown`; callers may pass any
+    /// `AXStringReadOutcome` for `title` otherwise (the live closure reads
+    /// it lazily and passes `.value(nil)` as a "not applicable" default).
+    /// `nonisolated` because this is pure classification logic, not UI
+    /// state (see AGENTS.md actor-boundary guidance).
+    nonisolated static func contentWindowDecision(
+        role: String?,
+        subrole: AXStringReadOutcome,
+        title: AXStringReadOutcome
+    ) -> Bool? {
+        guard let role else { return nil }
+        guard role == kAXWindowRole else { return false }
+        switch subrole {
+        case .transientFailure:
+            return nil
+        case .value(let subroleValue):
+            guard subroleValue == kAXUnknownSubrole else { return true }
+            switch title {
+            case .transientFailure:
+                return nil
+            case .value(let titleValue):
+                return !(titleValue?.isEmpty ?? true)
+            }
+        }
     }
 
     struct CycleHUDClient {
@@ -2406,6 +2490,29 @@ private func postMakeKeyWindowEventRecord(psn: ProcessSerialNumber, windowID: CG
     }
 }
 
+/// Reads a string AX attribute and classifies the result into
+/// `AppSwitcher.AXStringReadOutcome` (#389): `.cannotComplete` (busy/
+/// unresponsive target) and `.apiDisabled` (Accessibility revoked
+/// mid-read) are transient — they say nothing about the attribute's actual
+/// value — so they map to `.transientFailure`, the protective path.
+/// Every other non-success code (`.noValue`, `.attributeUnsupported`,
+/// `.invalidUIElement`, …) is a definitive "this attribute has no value",
+/// so it maps to `.value(nil)` exactly like a successful-but-empty read.
+/// File-scope, not an AppSwitcher member, for the same reason as
+/// `postMakeKeyWindowEventRecord` above.
+private func readAXStringOutcome(_ element: AXUIElement, attribute: CFString) -> AppSwitcher.AXStringReadOutcome {
+    var ref: CFTypeRef?
+    let result = AXUIElementCopyAttributeValue(element, attribute, &ref)
+    switch result {
+    case .success:
+        return .value(ref as? String)
+    case .cannotComplete, .apiDisabled:
+        return .transientFailure
+    default:
+        return .value(nil)
+    }
+}
+
 extension AppSwitcher.WindowCycleClient {
     @MainActor
     static let live = AppSwitcher.WindowCycleClient(
@@ -2437,9 +2544,19 @@ extension AppSwitcher.WindowCycleClient {
         },
         isContentWindow: { element in
             var roleRef: CFTypeRef?
-            let result = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
-            guard result == .success, let role = roleRef as? String else { return nil }
-            return role == kAXWindowRole
+            let roleResult = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
+            guard roleResult == .success, let role = roleRef as? String else { return nil }
+            let subroleOutcome = readAXStringOutcome(element, attribute: kAXSubroleAttribute as CFString)
+            // Third AX read, gated to the rare AXUnknown branch: every
+            // ordinary window (the common case) resolves off role+subrole
+            // alone, so it must not pay for a title read it doesn't need.
+            // `.value(nil)` here is "not applicable" — contentWindowDecision
+            // never consults title unless subrole is exactly AXUnknown.
+            var titleOutcome: AppSwitcher.AXStringReadOutcome = .value(nil)
+            if case .value(let subroleValue) = subroleOutcome, subroleValue == kAXUnknownSubrole {
+                titleOutcome = readAXStringOutcome(element, attribute: kAXTitleAttribute as CFString)
+            }
+            return AppSwitcher.contentWindowDecision(role: role, subrole: subroleOutcome, title: titleOutcome)
         },
         raiseWindow: { element in
             AXUIElementPerformAction(element, kAXRaiseAction as CFString)

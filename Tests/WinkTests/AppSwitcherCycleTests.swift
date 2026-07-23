@@ -39,10 +39,22 @@ private final class CycleActionRecorder {
 private struct CycleTestWindows {
     let elements: [AXUIElement]
     let idsByIndex: [CGWindowID]
-    /// IDs modeling auxiliary `kAXWindows` elements (Split View divider
-    /// class: non-AXWindow role, valid window ID) that the eligibility
-    /// filter must exclude from rotation (#376).
+    /// IDs modeling auxiliary `kAXWindows` elements (non-AXWindow role,
+    /// valid window ID — e.g. Finder's desktop `AXScrollArea`, #377's
+    /// fixture) that the eligibility filter must exclude from rotation
+    /// (#376).
     let ineligibleIDs: Set<CGWindowID>
+    /// IDs modeling the Split View divider's actual on-device shape (role
+    /// AXWindow, subrole AXUnknown, no title, #389) — routed through the
+    /// real `AppSwitcher.contentWindowDecision` rather than a boolean
+    /// stand-in, so the fixture exercises the production classification
+    /// directly.
+    let unknownSubroleIDs: Set<CGWindowID>
+    /// IDs modeling a genuine TITLED AXUnknown-subrole window — mpv run
+    /// `--fs --no-native-fs` (#389 P2 regression case). Same subrole as the
+    /// divider but titled, so `contentWindowDecision` must still include
+    /// it; also routed through the real production function.
+    let titledUnknownSubroleIDs: Set<CGWindowID>
     /// IDs whose role read transiently fails (nil eligibility). A reference
     /// box, not a struct field: the fixture closures capture this struct by
     /// value, and a test must be able to establish a session first and THEN
@@ -51,10 +63,26 @@ private struct CycleTestWindows {
         var ids: Set<CGWindowID> = []
     }
     let roleReadFailures = RoleFailureBox()
+    /// IDs (drawn from `titledUnknownSubroleIDs`) whose TITLE read
+    /// specifically fails transiently on the next press — unlike
+    /// `roleReadFailures`, role and subrole both succeed here; only the
+    /// lazy third read is flaky (#389 P2). Same mutable-box shape as
+    /// `roleReadFailures` for the same mid-session-injection reason.
+    final class TitleTransientFailureBox {
+        var ids: Set<CGWindowID> = []
+    }
+    let titleTransientFailures = TitleTransientFailureBox()
 
-    init(ids: [CGWindowID], ineligibleIDs: Set<CGWindowID> = []) {
+    init(
+        ids: [CGWindowID],
+        ineligibleIDs: Set<CGWindowID> = [],
+        unknownSubroleIDs: Set<CGWindowID> = [],
+        titledUnknownSubroleIDs: Set<CGWindowID> = []
+    ) {
         self.idsByIndex = ids
         self.ineligibleIDs = ineligibleIDs
+        self.unknownSubroleIDs = unknownSubroleIDs
+        self.titledUnknownSubroleIDs = titledUnknownSubroleIDs
         self.elements = (0..<ids.count).map { AXUIElementCreateApplication(pid_t(90_000 + $0)) }
     }
 
@@ -73,6 +101,15 @@ private struct CycleTestWindows {
     func isContentWindow(_ element: AXUIElement) -> Bool? {
         guard let id = windowID(for: element) else { return false }
         if roleReadFailures.ids.contains(id) { return nil }
+        if unknownSubroleIDs.contains(id) {
+            return AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXUnknownSubrole), title: .value(nil))
+        }
+        if titledUnknownSubroleIDs.contains(id) {
+            let title: AppSwitcher.AXStringReadOutcome = titleTransientFailures.ids.contains(id)
+                ? .transientFailure
+                : .value("mpv")
+            return AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXUnknownSubrole), title: title)
+        }
         return !ineligibleIDs.contains(id)
     }
 }
@@ -1083,7 +1120,7 @@ func hudAppearsFromSecondConsecutivePressWithPositionAndTitle() {
     #expect(recorder.hudPresentations.last?.windowTitle == "Window 101")
 }
 
-// MARK: - Auxiliary-window eligibility (#376)
+// MARK: - Auxiliary-window eligibility (#376, #389)
 
 @Test @MainActor
 func cycleExcludesAuxiliaryWindowsFromRotationAndHUD() {
@@ -1095,10 +1132,15 @@ func cycleExcludesAuxiliaryWindowsFromRotationAndHUD() {
 
     let clock = CycleTestClock(time: 100)
     let recorder = CycleActionRecorder()
-    // 103 models the Split View divider: a kAXWindows element with a valid
-    // window ID but a non-AXWindow role. Raising it resizes the panes, so
-    // it must never enter rotation, receive activation, or reach the HUD.
-    let windows = CycleTestWindows(ids: [101, 102, 103], ineligibleIDs: [103])
+    // 103 models the Split View divider's actual on-device shape (#389): a
+    // kAXWindows element with a valid window ID, role AXWindow, and subrole
+    // AXUnknown — indistinguishable from a real window by role alone, which
+    // is why #377's role-only fixture (Finder's AXScrollArea) missed this
+    // class. Routed through the real production decision function, not a
+    // boolean stand-in. Raising it moves the divider and resizes both
+    // panes, so it must never enter rotation, receive activation, or reach
+    // the HUD.
+    let windows = CycleTestWindows(ids: [101, 102, 103], unknownSubroleIDs: [103])
     let switcher = makeCycleSwitcher(
         frontmostApp: frontmostApp,
         bundleIdentifier: bundleIdentifier,
@@ -1130,9 +1172,142 @@ func cycleExcludesAuxiliaryWindowsFromRotationAndHUD() {
     #expect(recorder.raisedWindowIDs == [102, 101, 102])
     #expect(!recorder.activatedWindowIDs.contains(103))
     #expect(!recorder.raisedWindowIDs.contains(103))
-    #expect(recorder.hudPresentations.allSatisfy { $0.windowCount == 2 })
-    #expect(recorder.hudPresentations.allSatisfy { $0.targetWindowID != 103 })
+    // Exact count first: allSatisfy on an empty array is vacuously true, so
+    // pin the presentation count before asserting per-presentation shape.
+    #expect(recorder.hudPresentations.count == 2)
+    #expect(recorder.hudPresentations.map(\.windowCount) == [2, 2])
+    #expect(recorder.hudPresentations.map(\.targetWindowID) == [101, 102])
     #expect(recorder.hideCalls == 0)
+}
+
+@Test @MainActor
+func cycleIncludesTitledAXUnknownSubroleWindowLikeMpv() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for mpv-shaped eligibility test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    // 103 models mpv run with `--fs --no-native-fs` (#389 P2 regression): a
+    // genuine AXWindow that reports subrole AXUnknown but IS titled. Subrole
+    // alone must not exclude it — only the divider's combined
+    // AXUnknown-and-untitled shape does.
+    let windows = CycleTestWindows(ids: [101, 102, 103], titledUnknownSubroleIDs: [103])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: bundleIdentifier
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    clock.time += 0.2
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    clock.time += 0.2
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+
+    // All three windows take part in rotation — the titled AXUnknown window
+    // is a full member, not filtered like the divider.
+    #expect(recorder.raisedWindowIDs == [102, 103, 101])
+    #expect(recorder.hideCalls == 0)
+}
+
+// MARK: - contentWindowDecision pure classification (#389)
+
+@Test @MainActor
+func contentWindowDecisionReturnsNilWhenRoleReadFailed() {
+    // Preserves the roleReadFailed contract exactly: a nil role (the read
+    // itself failed) must stay nil regardless of subrole or title.
+    #expect(AppSwitcher.contentWindowDecision(role: nil, subrole: .value(nil), title: .value(nil)) == nil)
+    #expect(AppSwitcher.contentWindowDecision(role: nil, subrole: .value(kAXUnknownSubrole), title: .value(nil)) == nil)
+}
+
+@Test @MainActor
+func contentWindowDecisionExcludesNonWindowRoleUnchanged() {
+    // Unchanged #377 behavior: any role other than AXWindow is excluded,
+    // independent of subrole/title (Finder's desktop AXScrollArea shape).
+    #expect(AppSwitcher.contentWindowDecision(role: kAXScrollAreaRole, subrole: .value(nil), title: .value(nil)) == false)
+}
+
+@Test @MainActor
+func contentWindowDecisionExcludesTheSplitViewDividerShape() {
+    // The exact on-device tuple from #389: Firefox's Split View divider
+    // reports role=AXWindow subrole=AXUnknown title="" size=13x1080. Both
+    // the unreadable (nil) and empty-string title spellings of "no title"
+    // must exclude it — the pure function treats them identically.
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXUnknownSubrole), title: .value(nil)) == false)
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXUnknownSubrole), title: .value("")) == false)
+}
+
+@Test @MainActor
+func contentWindowDecisionIncludesTitledAXUnknownSubroleWindowLikeMpv() {
+    // The #389 P2 regression case: mpv run `--fs --no-native-fs` reports
+    // role=AXWindow subrole=AXUnknown but IS titled. A blanket
+    // reject-on-subrole would wrongly drop it from cycling and the picker.
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXUnknownSubrole), title: .value("mpv")) == true)
+}
+
+@Test @MainActor
+func contentWindowDecisionIncludesAWindowWithDefinitivelyUnreadableSubrole() {
+    // A real window whose subrole read definitively found nothing (e.g.
+    // .attributeUnsupported/.invalidUIElement, not a transient failure)
+    // must NOT be dropped: a false exclusion of a real window is worse
+    // than letting a phantom through.
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(nil), title: .value(nil)) == true)
+}
+
+@Test @MainActor
+func contentWindowDecisionIncludesOtherSubrolesRegardlessOfTitle() {
+    // Dialogs, standard windows, and everything else currently included
+    // stays included — this is not a subrole allowlist, and title must not
+    // affect non-AXUnknown windows either way (titled or untitled).
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXStandardWindowSubrole), title: .value("Notes")) == true)
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXStandardWindowSubrole), title: .value(nil)) == true)
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXDialogSubrole), title: .value("Save")) == true)
+}
+
+// MARK: - Transient AX read failures (#389 P2)
+
+@Test @MainActor
+func contentWindowDecisionSubroleTransientFailureReturnsNilRegardlessOfTitle() {
+    // A transient subrole read failure (.cannotComplete/.apiDisabled) must
+    // route into the protective nil — the same swallow-the-press contract
+    // a role-read failure already gets — never be treated as a definitive
+    // "not the divider" or "is the divider" answer.
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .transientFailure, title: .value(nil)) == nil)
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .transientFailure, title: .value("mpv")) == nil)
+}
+
+@Test @MainActor
+func contentWindowDecisionTitleTransientFailureOnAXUnknownReturnsNil() {
+    // THE P2 regression: a titled AXUnknown window (mpv-shaped) whose
+    // TITLE read is transiently busy must NOT be misclassified as the
+    // untitled divider (which would silently drop a real window from
+    // rotation/the picker) — it must swallow the press like any other
+    // transient AX failure.
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXUnknownSubrole), title: .transientFailure) == nil)
+}
+
+@Test @MainActor
+func contentWindowDecisionTitleTransientFailureIsIgnoredWhenSubroleIsNotAXUnknown() {
+    // Title is only consulted on the AXUnknown branch — an ordinary
+    // window's spurious .transientFailure title outcome (should never
+    // happen in practice, since the live closure only reads title lazily
+    // on that branch) must not leak into the decision.
+    #expect(AppSwitcher.contentWindowDecision(role: kAXWindowRole, subrole: .value(kAXStandardWindowSubrole), title: .transientFailure) == true)
 }
 
 @Test @MainActor
@@ -1226,6 +1401,61 @@ func transientRoleReadFailureMidGestureSwallowsThePress() {
 }
 
 @Test @MainActor
+func cycleTitleTransientFailureMidGestureSwallowsThePress() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for title-failure test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    // 102 is mpv-shaped (role AXWindow, subrole AXUnknown, normally
+    // titled) — role and subrole both read fine; only its TITLE read goes
+    // transiently flaky (#389 P2), unlike roleReadFailures above.
+    let windows = CycleTestWindows(ids: [101, 102], titledUnknownSubroleIDs: [102])
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 101 },
+        recorder: recorder,
+        clock: clock,
+        trackerBundle: bundleIdentifier
+    )
+    switcher.setFrontmostTargetBehavior(.cycleWindows)
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"]
+    )
+
+    // Establish a live session (102 reads as titled and cycles normally),
+    // then make its title read fail transiently on the next press.
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102])
+    windows.titleTransientFailures.ids = [102]
+    clock.time += 0.2
+
+    // The press must be swallowed exactly like a transient role-read
+    // failure — NOT a hide fall-through, and critically NOT a silent
+    // exclusion of 102 from rotation (the P2 bug: misreading the transient
+    // failure as "untitled" would have raised 101 here instead).
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.hideCalls == 0)
+    #expect(recorder.raisedWindowIDs == [102])
+
+    // Failure clears → the gesture continues from the preserved cursor.
+    windows.titleTransientFailures.ids = []
+    clock.time += 0.2
+    #expect(switcher.toggleApplication(for: shortcut) == true)
+    #expect(recorder.raisedWindowIDs == [102, 101])
+    #expect(recorder.hideCalls == 0)
+}
+
+@Test @MainActor
 func firstPressRoleReadFailureBelowTwoWindowsSwallowsInsteadOfHiding() {
     guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
           let bundleIdentifier = frontmostApp.bundleIdentifier else {
@@ -1282,9 +1512,10 @@ func windowPickerSessionListsEligibleWindowsSortedAndExcludesAuxiliary() {
 
     let clock = CycleTestClock(time: 100)
     let recorder = CycleActionRecorder()
-    // Deliberately unsorted ids + one auxiliary (divider-class) element +
-    // one minimized window.
-    let windows = CycleTestWindows(ids: [203, 201, 202], ineligibleIDs: [202])
+    // Deliberately unsorted ids + one auxiliary (the divider's real
+    // AXUnknown/untitled shape, #389 — routed through the production
+    // decision function, not a boolean stand-in) + one minimized window.
+    let windows = CycleTestWindows(ids: [203, 201, 202], unknownSubroleIDs: [202])
     let switcher = makeCycleSwitcher(
         frontmostApp: frontmostApp,
         bundleIdentifier: bundleIdentifier,
