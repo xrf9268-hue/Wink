@@ -47,12 +47,42 @@ struct InsightsTabView: View {
 
             InsightsHourlyHeatmap(buckets: viewModel.heatmapBuckets)
 
-            mostUsedCard
+            // The tab keeps the repo's one-scroller-per-surface contract
+            // (see LayoutRegressionTests' scroller tests), but the region
+            // now spans ranking + nudge + suggestions instead of the ranking
+            // card alone: with the nudge AND a populated suggestions card,
+            // the fixed blocks' natural heights exceeded the window and the
+            // tail cards were silently clipped at the window edge (#393 —
+            // the suggestions card showed 1.5 of its 3 rows). Header, KPIs,
+            // and heatmap stay fixed; everything below shares the scroller,
+            // so every card is always reachable at any window height.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    mostUsedCard
 
-            InsightsUnusedNudge(appNames: viewModel.unusedShortcutNames)
+                    InsightsUnusedNudge(appNames: viewModel.unusedShortcutNames)
 
-            if !viewModel.suggestedApps.isEmpty {
-                WinkCard(title: { Text("Suggested shortcuts", bundle: WinkResourceBundle.bundle) }) {
+                    suggestedShortcutsCard
+                }
+            }
+            .scrollIndicators(.automatic, axes: .vertical)
+            // The 140pt floor carries over from the pre-#393 ranking region:
+            // at compact window heights the fixed blocks above would
+            // otherwise compress this flexible region to zero, leaving the
+            // tail cards neither visible nor scrollable.
+            .frame(maxWidth: .infinity, minHeight: 140, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .padding(.top, 18)
+        .padding(.bottom, 22)
+        .padding(.horizontal, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(palette.windowBg)
+    }
+
+    @ViewBuilder
+    private var suggestedShortcutsCard: some View {
+        if !viewModel.suggestedApps.isEmpty {
+            WinkCard(title: { Text("Suggested shortcuts", bundle: WinkResourceBundle.bundle) }) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Apps you switch to often that have no shortcut yet. Add one in Shortcuts.", bundle: WinkResourceBundle.bundle)
                             .font(WinkType.labelSmall)
@@ -70,14 +100,14 @@ struct InsightsTabView: View {
                             }
                         }
                     }
-                }
+                    // WinkCard pads only its title row; content insets are
+                    // each caller's job (cf. the ranking card's empty state)
+                    // — omitting them here is what glued the subtitle to the
+                    // divider and the count labels to the card edge (#393).
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
             }
         }
-        .padding(.top, 18)
-        .padding(.bottom, 22)
-        .padding(.horizontal, 22)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(palette.windowBg)
     }
 
     private var header: some View {
@@ -117,29 +147,24 @@ struct InsightsTabView: View {
                     .font(WinkType.bodyText)
                     .foregroundStyle(palette.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(maxHeight: .infinity, alignment: .topLeading)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 18)
             } else {
-                GeometryReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(viewModel.appRows.enumerated()), id: \.element.id) { index, item in
-                                InsightsAppRow(
-                                    item: item,
-                                    showsDivider: index < viewModel.appRows.count - 1
-                                )
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .frame(minHeight: proxy.size.height, alignment: .top)
+                // Full-flow rows, no internal ScrollView: the surrounding
+                // region scroller in `body` is the tab's single scroller
+                // (LayoutRegressionTests pins that contract), and the row
+                // count is bounded by the shortcut count. Plain VStack, not
+                // Lazy — every row participates in the region's layout.
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.appRows.enumerated()), id: \.element.id) { index, item in
+                        InsightsAppRow(
+                            item: item,
+                            showsDivider: index < viewModel.appRows.count - 1
+                        )
                     }
-                    .scrollIndicators(.automatic, axes: .vertical)
                 }
-                .frame(minHeight: 140, maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .frame(maxHeight: .infinity, alignment: .topLeading)
-        .layoutPriority(1)
     }
 }
