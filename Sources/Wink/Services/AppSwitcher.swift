@@ -1981,10 +1981,19 @@ final class AppSwitcher: AppSwitching {
     /// non-hidden target. Deeper key/window recovery is still
     /// observation-driven and escalates separately.
     private func activateViaWindowServer(_ app: NSRunningApplication, windows: [AXUIElement]?) -> Bool {
-        activateAndOrderFront(
+        // The ordering side effects must target a VERIFIED content window:
+        // key-ordering or raising an auxiliary element — e.g. Firefox's
+        // untitled AXUnknown Split View divider — moves it and resizes both
+        // panes (#389's cycle filtering documents exactly this). Strict
+        // `== true`: an indeterminate AX read skips the element rather than
+        // gamble on it; no content window at all → activate without
+        // ordering, the pre-#403 behavior.
+        let orderingWindow = windows?.first { windowCycleClient.isContentWindow($0) == true }
+        return activateAndOrderFront(
             pid: app.processIdentifier,
-            windowID: firstWindowID(from: windows),
-            firstWindow: windows?.first,
+            activationWindowID: firstWindowID(from: windows),
+            orderingWindow: orderingWindow,
+            orderingWindowID: orderingWindow.flatMap { windowCycleClient.windowID($0) },
             fallbackActivate: {
                 self.requestFallbackActivation(
                     bundleURL: app.bundleURL,
@@ -1998,20 +2007,23 @@ final class AppSwitcher: AppSwitching {
     }
 
     /// SkyLight success additionally orders the target window key and front.
-    /// Internal (not private) for direct unit coverage of the pairing.
+    /// `activationWindowID` is the pre-existing SkyLight front-process hint
+    /// (raw first window, unchanged semantics); the ordering pair must be a
+    /// verified content window. Internal (not private) for unit coverage.
     func activateAndOrderFront(
         pid: pid_t,
-        windowID: CGWindowID?,
-        firstWindow: AXUIElement?,
+        activationWindowID: CGWindowID?,
+        orderingWindow: AXUIElement?,
+        orderingWindowID: CGWindowID?,
         fallbackActivate: () -> Bool
     ) -> Bool {
-        switch activateProcess(pid: pid, windowID: windowID, fallbackActivate: fallbackActivate) {
+        switch activateProcess(pid: pid, windowID: activationWindowID, fallbackActivate: fallbackActivate) {
         case .skyLight(let psn):
-            if let windowID {
-                windowCycleClient.makeKeyWindow(psn, windowID)
+            if let orderingWindowID {
+                windowCycleClient.makeKeyWindow(psn, orderingWindowID)
             }
-            if let firstWindow {
-                windowCycleClient.raiseWindow(firstWindow)
+            if let orderingWindow {
+                windowCycleClient.raiseWindow(orderingWindow)
             }
             return true
         case .fallback(let activated):

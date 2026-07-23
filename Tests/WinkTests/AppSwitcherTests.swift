@@ -2549,7 +2549,12 @@ func activateAndOrderFrontPairsSkyLightSuccessWithKeyOrderAndRaise() {
     )
     let window = AXUIElementCreateApplication(90_042)
 
-    let activated = switcher.activateAndOrderFront(pid: 42, windowID: 11, firstWindow: window) {
+    let activated = switcher.activateAndOrderFront(
+        pid: 42,
+        activationWindowID: 11,
+        orderingWindow: window,
+        orderingWindowID: 11
+    ) {
         Issue.record("Fallback must not run on SkyLight success")
         return false
     }
@@ -2569,7 +2574,12 @@ func activateAndOrderFrontSkipsOrderingWithoutWindowHandles() {
         raisedWindows: { raisedWindows.append($0) }
     )
 
-    let activated = switcher.activateAndOrderFront(pid: 42, windowID: nil, firstWindow: nil) { false }
+    let activated = switcher.activateAndOrderFront(
+        pid: 42,
+        activationWindowID: 11,
+        orderingWindow: nil,
+        orderingWindowID: nil
+    ) { false }
 
     #expect(activated == true)
     #expect(orderedWindowIDs.isEmpty)
@@ -2589,8 +2599,9 @@ func activateAndOrderFrontFallbackNeverOrdersOrRaises() {
     var fallbackCallCount = 0
     let activated = switcher.activateAndOrderFront(
         pid: 42,
-        windowID: 11,
-        firstWindow: AXUIElementCreateApplication(90_042)
+        activationWindowID: 11,
+        orderingWindow: AXUIElementCreateApplication(90_042),
+        orderingWindowID: 11
     ) {
         fallbackCallCount += 1
         return true
