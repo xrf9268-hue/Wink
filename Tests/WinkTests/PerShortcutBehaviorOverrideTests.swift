@@ -253,3 +253,195 @@ import Testing
     #expect(recipe.shortcuts.first?.behaviorOverride == nil)
     #expect(recipe.shortcuts.first?.appName == "Safari")
 }
+
+// MARK: - Sentinel target backfill (#404)
+
+@Test func missingTargetBackfillsFromKnownSentinelBundles() throws {
+    // Hand-authored or third-party files may name a sentinel bundle without
+    // the explicit "target" field. Known sentinels are unambiguous — the
+    // row must decode into a working trigger, not a silently dead one.
+    let json = """
+    [
+      {"id":"11111111-1111-1111-1111-111111111111","appName":"Search Palette",
+       "bundleIdentifier":"wink.target.search-palette","keyEquivalent":"space",
+       "modifierFlags":["control","option","shift","command"],"isEnabled":true},
+      {"id":"22222222-2222-2222-2222-222222222222","appName":"Current App",
+       "bundleIdentifier":"wink.target.frontmost-app","keyEquivalent":"g",
+       "modifierFlags":["control","option","shift","command"],"isEnabled":true}
+    ]
+    """
+    let decoded = try JSONDecoder().decode([AppShortcut].self, from: Data(json.utf8))
+    #expect(decoded[0].target == .searchPalette)
+    #expect(decoded[0].isSearchPaletteTarget)
+    #expect(decoded[1].target == .frontmostApp)
+    #expect(decoded[1].isFrontmostAppTarget)
+}
+
+@Test func missingTargetStaysNilForOrdinaryBundles() throws {
+    let json = """
+    [
+      {"id":"11111111-1111-1111-1111-111111111111","appName":"Safari",
+       "bundleIdentifier":"com.apple.Safari","keyEquivalent":"s",
+       "modifierFlags":["command"],"isEnabled":true}
+    ]
+    """
+    let decoded = try JSONDecoder().decode([AppShortcut].self, from: Data(json.utf8))
+    #expect(decoded[0].target == nil)
+    #expect(!decoded[0].isSearchPaletteTarget)
+    #expect(!decoded[0].isFrontmostAppTarget)
+}
+
+@Test func unknownFutureSentinelStaysUnavailableNotMisfired() throws {
+    // A future build's sentinel this build doesn't know must keep the
+    // pre-existing degrade-to-unavailable behavior, never guess a kind.
+    let json = """
+    [
+      {"id":"11111111-1111-1111-1111-111111111111","appName":"Window Switcher",
+       "bundleIdentifier":"wink.target.window-switcher","keyEquivalent":"w",
+       "modifierFlags":["control","option","shift","command"],"isEnabled":true,
+       "target":"windowSwitcher"}
+    ]
+    """
+    let decoded = try JSONDecoder().decode([AppShortcut].self, from: Data(json.utf8))
+    #expect(decoded[0].target == nil)
+    #expect(!decoded[0].isSearchPaletteTarget)
+    #expect(!decoded[0].isFrontmostAppTarget)
+}
+
+@Test func unknownTargetValueSurvivesReencodeWithoutArming() throws {
+    // The round-trip hole: unknown value → nil → key omitted on save →
+    // backfilled as a LIVE trigger on the next load. The raw string must
+    // re-encode verbatim so the row stays gated forever.
+    let json = """
+    {"id":"11111111-1111-1111-1111-111111111111","appName":"Search Palette",
+     "bundleIdentifier":"wink.target.search-palette","keyEquivalent":"space",
+     "modifierFlags":["command"],"isEnabled":true,"target":"someFutureTarget"}
+    """
+    let decoded = try JSONDecoder().decode(AppShortcut.self, from: Data(json.utf8))
+    #expect(decoded.target == nil)
+    #expect(!decoded.isSearchPaletteTarget)
+
+    let reencoded = String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self)
+    #expect(reencoded.contains("someFutureTarget"))
+
+    let secondLoad = try JSONDecoder().decode(AppShortcut.self, from: Data(reencoded.utf8))
+    #expect(secondLoad.target == nil)
+    #expect(!secondLoad.isSearchPaletteTarget)
+}
+
+@Test func presentNullTargetOnSentinelStaysDisarmedAcrossSaves() throws {
+    let json = """
+    {"id":"11111111-1111-1111-1111-111111111111","appName":"Search Palette",
+     "bundleIdentifier":"wink.target.search-palette","keyEquivalent":"space",
+     "modifierFlags":["command"],"isEnabled":true,"target":null}
+    """
+    let decoded = try JSONDecoder().decode(AppShortcut.self, from: Data(json.utf8))
+    #expect(decoded.target == nil)
+    #expect(!decoded.isSearchPaletteTarget)
+
+    // The null must survive re-encoding — an omitted key would be
+    // backfilled (armed) by the next load.
+    let reencoded = String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self)
+    #expect(reencoded.contains("\"target\":null"))
+
+    let secondLoad = try JSONDecoder().decode(AppShortcut.self, from: Data(reencoded.utf8))
+    #expect(secondLoad.target == nil)
+    #expect(!secondLoad.isSearchPaletteTarget)
+}
+
+@Test func recipeSentinelWithoutTargetResolvesAndStaysExcludedFromImport() throws {
+    // A hand-authored recipe naming the palette sentinel without "target"
+    // must resolve to .searchPalette so the planner's device-local
+    // exclusion still catches it — never import as a hidden armed trigger.
+    let json = """
+    {"schemaVersion":2,"shortcuts":[
+      {"appName":"Search Palette","bundleIdentifier":"wink.target.search-palette",
+       "keyEquivalent":"space","modifierFlags":["command","option"],"isEnabled":true}
+    ]}
+    """
+    let recipe = try WinkRecipeCodec().decode(Data(json.utf8))
+    #expect(recipe.shortcuts.first?.shortcutTarget == .searchPalette)
+
+    let plan = WinkRecipeImportPlanner().planImport(
+        recipe: recipe,
+        existingShortcuts: [],
+        installedApps: []
+    )
+    #expect(plan.entries.isEmpty)
+}
+
+@Test func recipeNullTargetOnSentinelStaysGatedAndRoundTrips() throws {
+    let json = """
+    {"schemaVersion":2,"shortcuts":[
+      {"appName":"Current App","bundleIdentifier":"wink.target.frontmost-app",
+       "keyEquivalent":"g","modifierFlags":["command"],"isEnabled":true,"target":null}
+    ]}
+    """
+    let codec = WinkRecipeCodec()
+    let recipe = try codec.decode(Data(json.utf8))
+    #expect(recipe.shortcuts.first?.shortcutTarget == nil)
+
+    // The gate must survive a re-encode: explicit null, never an absent key.
+    let reencoded = String(decoding: try codec.encode(shortcuts: []), as: UTF8.self)
+    _ = reencoded
+    let reencodedRecipe = String(
+        decoding: try JSONEncoder().encode(recipe),
+        as: UTF8.self
+    )
+    #expect(reencodedRecipe.contains("\"target\":null"))
+    let secondLoad = try JSONDecoder().decode(WinkRecipe.self, from: Data(reencodedRecipe.utf8))
+    #expect(secondLoad.shortcuts.first?.shortcutTarget == nil)
+}
+
+@Test func exportingAGatedShortcutKeepsTheGateInTheRecipe() throws {
+    // A shortcuts.json row with an unknown target string, exported to a
+    // recipe, must carry the unknown string — importing it elsewhere may
+    // never backfill and arm the sentinel.
+    let json = """
+    {"id":"11111111-1111-1111-1111-111111111111","appName":"Search Palette",
+     "bundleIdentifier":"wink.target.search-palette","keyEquivalent":"space",
+     "modifierFlags":["command"],"isEnabled":true,"target":"someFutureTarget"}
+    """
+    let gated = try JSONDecoder().decode(AppShortcut.self, from: Data(json.utf8))
+    let recipeShortcut = WinkRecipeShortcut(gated)
+    #expect(recipeShortcut.target == "someFutureTarget")
+    #expect(recipeShortcut.shortcutTarget == nil)
+}
+
+@Test func acceptedImportOfGatedRecipeRowPersistsTheGate() throws {
+    // Unresolved entries ARE importable (only conflicts filter out), so a
+    // gated recipe row must reach shortcuts.json still gated — an absent
+    // key would be backfilled and armed by the next launch.
+    let json = """
+    {"schemaVersion":2,"shortcuts":[
+      {"appName":"Current App","bundleIdentifier":"wink.target.frontmost-app",
+       "keyEquivalent":"g","modifierFlags":["command"],"isEnabled":true,"target":null}
+    ]}
+    """
+    let recipe = try WinkRecipeCodec().decode(Data(json.utf8))
+    let planner = WinkRecipeImportPlanner()
+    let plan = planner.planImport(recipe: recipe, existingShortcuts: [], installedApps: [])
+    let imported = planner.applying(plan: plan, to: [], strategy: .skipConflicts)
+    let persisted = try #require(imported.first)
+    #expect(persisted.target == nil)
+    #expect(persisted.hasPersistedInvalidTarget)
+
+    let reencoded = String(decoding: try JSONEncoder().encode(persisted), as: UTF8.self)
+    #expect(reencoded.contains("\"target\":null"))
+    let nextLaunch = try JSONDecoder().decode(AppShortcut.self, from: Data(reencoded.utf8))
+    #expect(nextLaunch.target == nil)
+    #expect(!nextLaunch.isFrontmostAppTarget)
+}
+
+@Test func explicitTargetStillWinsOverBackfill() throws {
+    let json = """
+    [
+      {"id":"11111111-1111-1111-1111-111111111111","appName":"Search Palette",
+       "bundleIdentifier":"wink.target.search-palette","keyEquivalent":"space",
+       "modifierFlags":["control","option","shift","command"],"isEnabled":true,
+       "target":"searchPalette"}
+    ]
+    """
+    let decoded = try JSONDecoder().decode([AppShortcut].self, from: Data(json.utf8))
+    #expect(decoded[0].target == .searchPalette)
+}

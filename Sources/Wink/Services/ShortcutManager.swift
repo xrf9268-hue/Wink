@@ -59,6 +59,11 @@ final class ShortcutManager {
     private var lastAccessibilityState: Bool = false
     private var lastInputMonitoringState: Bool = false
     private var lastAvailableShortcutBundleIdentifiers: Set<String> = []
+    /// IDs retained by the CURRENT `triggerIndex` — the exact set of rows
+    /// whose chords can fire. Duplicate chords collapse to one winner in
+    /// `KeyMatcher.buildIndex`, so bundle-availability alone overstates
+    /// what is armed (#404).
+    private var lastIndexedShortcutIDs: Set<UUID> = []
     private var hyperKeyEnabled = false
     private var shortcutsPaused = false
     private var autoPausedByException = false
@@ -657,19 +662,32 @@ final class ShortcutManager {
         )
     }
 
+    /// The availability predicate the trigger index is built from.
+    /// Frontmost-app pseudo-targets and the search-palette trigger have no
+    /// app URL by design (their sentinel bundles name no installed app) and
+    /// are always available: skipping the locator check is what makes them
+    /// register with Carbon and enter the trigger index.
+    func isShortcutCurrentlyAvailable(_ shortcut: AppShortcut) -> Bool {
+        shortcut.isFrontmostAppTarget
+            || shortcut.isSearchPaletteTarget
+            || appBundleLocator.applicationURL(for: shortcut.bundleIdentifier) != nil
+    }
+
+    /// Whether a shortcut is IN the current trigger index — availability,
+    /// enablement, and duplicate-chord resolution included. Display
+    /// surfaces (the cheat sheet) use this — not a live locator probe — so
+    /// a row can never render as armed while the index dropped it, lost its
+    /// chord to a duplicate, or is waiting on the periodic rebuild (#404).
+    func isShortcutInTriggerIndex(_ shortcut: AppShortcut) -> Bool {
+        lastIndexedShortcutIDs.contains(shortcut.id)
+    }
+
     private func availabilitySnapshot() -> (activeShortcuts: [AppShortcut], availableBundleIdentifiers: Set<String>) {
         var activeShortcuts: [AppShortcut] = []
         var availableBundleIdentifiers = Set<String>()
 
         for shortcut in shortcutStore.shortcuts where shortcut.isEnabled {
-            // Frontmost-app pseudo-targets and the search-palette trigger
-            // have no app URL by design (their sentinel bundles name no
-            // installed app) and are always available: skipping the locator
-            // check here is what makes them register with Carbon and enter
-            // the trigger index.
-            guard shortcut.isFrontmostAppTarget
-                    || shortcut.isSearchPaletteTarget
-                    || appBundleLocator.applicationURL(for: shortcut.bundleIdentifier) != nil else {
+            guard isShortcutCurrentlyAvailable(shortcut) else {
                 continue
             }
 
@@ -685,6 +703,10 @@ final class ShortcutManager {
     ) -> Bool {
         lastAvailableShortcutBundleIdentifiers = snapshot.availableBundleIdentifiers
         triggerIndex = keyMatcher.buildIndex(for: snapshot.activeShortcuts)
+        // The IDs that actually survived index construction — availability
+        // AND duplicate-chord resolution (buildIndex keeps one row per
+        // trigger). This is what display surfaces must mirror (#404).
+        lastIndexedShortcutIDs = Set(triggerIndex.values.map(\.id))
         return captureCoordinator.updateShortcuts(snapshot.activeShortcuts)
     }
 
