@@ -73,7 +73,9 @@ final class ShortcutEditorState {
     var selectedAppName: String = ""
     var selectedBundleIdentifier: String = ""
     var recordedShortcut: RecordedShortcut?
-    var isRecordingShortcut: Bool = false
+    var isRecordingShortcut: Bool = false {
+        didSet { syncRecordingSessionGate() }
+    }
     var conflictMessage: String?
     var saveErrorMessage: String?
     /// Recording state for the #356 search-palette trigger's dedicated
@@ -81,7 +83,9 @@ final class ShortcutEditorState {
     /// `isRecordingShortcut` above so recording one control never clobbers
     /// an in-progress draft in the other.
     var recordedSearchPaletteShortcut: RecordedShortcut?
-    var isRecordingSearchPaletteShortcut: Bool = false
+    var isRecordingSearchPaletteShortcut: Bool = false {
+        didSet { syncRecordingSessionGate() }
+    }
     var searchPaletteConflictMessage: String?
     /// Palette-scoped mirror of `saveErrorMessage` — the General tab's card
     /// shows this instead of the shared property so a persistence failure
@@ -227,6 +231,17 @@ final class ShortcutEditorState {
         // removeShortcut(id:) is shared with the per-app list and calls
         // persist() itself; mirror its outcome the same way as above.
         searchPaletteSaveErrorMessage = saveErrorMessage
+    }
+
+    /// #417: while either recorder is live, matched chords are consumed but
+    /// not dispatched (`ShortcutManager.setRecordingSessionActive`) so an
+    /// already-bound chord pressed mid-recording cannot toggle its target
+    /// over the Settings window. The manager ignores same-value calls, so
+    /// SwiftUI re-writing a binding with an unchanged value is a no-op.
+    private func syncRecordingSessionGate() {
+        shortcutManager.setRecordingSessionActive(
+            isRecordingShortcut || isRecordingSearchPaletteShortcut
+        )
     }
 
     func removeShortcut(id: UUID) {
