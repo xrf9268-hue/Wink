@@ -279,4 +279,66 @@ struct ShortcutRecorderFieldTests {
         harness.field.updateRecordingState(isRecording: false)
         #expect(!harness.field.isMonitoringForTesting)
     }
+
+    @Test @MainActor
+    func staleTeardownCancelIsSuppressedWhenASuccessorSessionStarts() async {
+        // #420: the teardown cancel is queued a tick out and writes the
+        // shared lane flag unconditionally. If a successor session starts
+        // in the same lane before the block drains (generation bump), the
+        // stale cancel must not end it on arrival.
+        var cancelCount = 0
+        var generation: UInt64 = 1
+        let field = RecorderField()
+        field.onCancel = { cancelCount += 1 }
+        field.sessionGenerationProvider = { generation }
+        field.updateRecordingState(isRecording: true)
+
+        field.endSessionForTeardown()
+        // Successor session starts before the deferred cancel drains.
+        generation = 2
+
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        #expect(cancelCount == 0)
+    }
+
+    @Test @MainActor
+    func teardownCancelStillFiresWhenNoSuccessorStarts() async {
+        // The #418 contract stands: with no successor session, the deferred
+        // cancel must land — a skipped cancel here leaves the #417 dispatch
+        // gate latched with no live recorder.
+        var cancelCount = 0
+        let generation: UInt64 = 7
+        let field = RecorderField()
+        field.onCancel = { cancelCount += 1 }
+        field.sessionGenerationProvider = { generation }
+        field.updateRecordingState(isRecording: true)
+
+        field.endSessionForTeardown()
+
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        #expect(cancelCount == 1)
+    }
+
+    @Test @MainActor
+    func liveCancelIgnoresGenerationMismatch() {
+        // Only the deferred teardown path is generation-guarded. A live
+        // cancel (escape here; outside click and key-window resignation
+        // share the same direct onCancel call) reflects a real user action
+        // against the CURRENT session and must never be suppressed.
+        var cancelCount = 0
+        var generation: UInt64 = 1
+        let field = RecorderField()
+        field.onCancel = { cancelCount += 1 }
+        field.sessionGenerationProvider = { generation }
+        field.updateRecordingState(isRecording: true)
+        generation = 99
+
+        _ = field.handleMonitoredEvent(Self.keyEvent(keyCode: 53))
+
+        #expect(cancelCount == 1)
+    }
 }

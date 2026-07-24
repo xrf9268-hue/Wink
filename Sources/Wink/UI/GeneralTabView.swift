@@ -388,7 +388,8 @@ struct GeneralTabView: View {
                         }
                     }
                 ),
-                isRecording: $editor.isRecordingSearchPaletteShortcut
+                isRecording: $editor.isRecordingSearchPaletteShortcut,
+                sessionGeneration: { editor.searchPaletteRecordingGeneration }
             )
             .frame(height: 28)
         } else {

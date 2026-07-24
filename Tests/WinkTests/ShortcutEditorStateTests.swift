@@ -1346,3 +1346,29 @@ func captureStatusReflectsSecureInputProbeAndPollNotifiesOnChange() {
     manager.checkPermissionChange()
     #expect(statusChangeNotifications == 2)
 }
+
+@Test @MainActor
+func recordingGenerationsBumpPerLaneOnlyOnStartTransitions() {
+    // #420: the generations identify recording sessions for the recorder's
+    // teardown-deferred cancel guard. Only a false→true transition is a new
+    // session; redundant true writes and stops must not advance them, and
+    // the two lanes must stay independent (a shared counter would let a
+    // palette session suppress the composer lane's still-needed cancel).
+    let (editor, _, _, _, _) = makeEditorContext()
+
+    #expect(editor.shortcutRecordingGeneration == 0)
+    #expect(editor.searchPaletteRecordingGeneration == 0)
+
+    editor.isRecordingShortcut = true
+    #expect(editor.shortcutRecordingGeneration == 1)
+    editor.isRecordingShortcut = true
+    #expect(editor.shortcutRecordingGeneration == 1)
+    editor.isRecordingShortcut = false
+    #expect(editor.shortcutRecordingGeneration == 1)
+    editor.isRecordingShortcut = true
+    #expect(editor.shortcutRecordingGeneration == 2)
+
+    editor.isRecordingSearchPaletteShortcut = true
+    #expect(editor.searchPaletteRecordingGeneration == 1)
+    #expect(editor.shortcutRecordingGeneration == 2)
+}

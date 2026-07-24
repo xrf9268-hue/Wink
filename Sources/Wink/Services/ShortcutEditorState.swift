@@ -74,8 +74,20 @@ final class ShortcutEditorState {
     var selectedBundleIdentifier: String = ""
     var recordedShortcut: RecordedShortcut?
     var isRecordingShortcut: Bool = false {
-        didSet { syncRecordingSessionGate() }
+        didSet {
+            if isRecordingShortcut, !oldValue { shortcutRecordingGeneration &+= 1 }
+            syncRecordingSessionGate()
+        }
     }
+    /// #420: identifies each composer recording session. The recorder's
+    /// teardown-deferred cancel snapshots this at teardown and skips its
+    /// flag write when a successor session bumped it before the deferred
+    /// block drained — an unconditional stale cancel would end the new
+    /// session on arrival ("clicked record, instantly back to idle").
+    /// Per-lane on purpose: a single shared counter would let a session
+    /// starting in the OTHER lane suppress this lane's still-needed cancel
+    /// and leave the #417 dispatch gate latched.
+    @ObservationIgnored private(set) var shortcutRecordingGeneration: UInt64 = 0
     var conflictMessage: String?
     var saveErrorMessage: String?
     /// Recording state for the #356 search-palette trigger's dedicated
@@ -84,8 +96,14 @@ final class ShortcutEditorState {
     /// an in-progress draft in the other.
     var recordedSearchPaletteShortcut: RecordedShortcut?
     var isRecordingSearchPaletteShortcut: Bool = false {
-        didSet { syncRecordingSessionGate() }
+        didSet {
+            if isRecordingSearchPaletteShortcut, !oldValue { searchPaletteRecordingGeneration &+= 1 }
+            syncRecordingSessionGate()
+        }
     }
+    /// #420: the search-palette lane's counterpart to
+    /// `shortcutRecordingGeneration` — see that property for the contract.
+    @ObservationIgnored private(set) var searchPaletteRecordingGeneration: UInt64 = 0
     var searchPaletteConflictMessage: String?
     /// Palette-scoped mirror of `saveErrorMessage` — the General tab's card
     /// shows this instead of the shared property so a persistence failure

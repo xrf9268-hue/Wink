@@ -10,6 +10,10 @@ struct ShortcutRecorderView: View {
 
     @Binding var recordedShortcut: RecordedShortcut?
     @Binding var isRecording: Bool
+    /// #420: reports the current recording-session generation for this
+    /// recorder's lane (see ShortcutEditorState). nil (previews, tests)
+    /// keeps the teardown cancel unconditional.
+    var sessionGeneration: (() -> UInt64)? = nil
 
     @State private var liveModifierLabels: [String] = []
     @State private var errorMessage: String?
@@ -66,7 +70,8 @@ struct ShortcutRecorderView: View {
                 },
                 onErrorChange: { message in
                     errorMessage = message
-                }
+                },
+                sessionGeneration: sessionGeneration
             )
         )
     }
@@ -79,6 +84,7 @@ private struct RecorderKeyCaptureRepresentable: NSViewRepresentable {
     let onCancel: () -> Void
     let onLiveModifiersChange: ([String]) -> Void
     let onErrorChange: (String?) -> Void
+    let sessionGeneration: (() -> UInt64)?
 
     func makeNSView(context: Context) -> RecorderField {
         let field = RecorderField()
@@ -106,6 +112,7 @@ private struct RecorderKeyCaptureRepresentable: NSViewRepresentable {
         field.onCancel = onCancel
         field.onLiveModifiersChange = onLiveModifiersChange
         field.onErrorChange = onErrorChange
+        field.sessionGenerationProvider = sessionGeneration
     }
 }
 
@@ -126,6 +133,11 @@ final class RecorderField: NSView {
     var onCancel: (() -> Void)?
     var onLiveModifiersChange: (([String]) -> Void)?
     var onErrorChange: ((String?) -> Void)?
+    /// #420: current session generation for this field's lane. The
+    /// teardown-deferred cancel snapshots it and skips its write when a
+    /// successor session bumped it before the deferred block drained.
+    /// nil keeps the cancel unconditional.
+    var sessionGenerationProvider: (() -> UInt64)?
 
     private let keySymbolMapper = KeySymbolMapper()
     private var isRecording = false
@@ -184,7 +196,19 @@ final class RecorderField: NSView {
         // flips synchronously so no late observer double-cancels.
         isRecording = false
         let cancel = onCancel
+        let generationProvider = sessionGenerationProvider
+        let generationAtTeardown = generationProvider?()
         DispatchQueue.main.async {
+            // #420: if a successor session started in this lane before this
+            // block drained (flag back to true bumps the generation), the
+            // stale cancel must not clobber it. Runloop ordering between an
+            // already-queued NSEvent and this block is not contractual, so
+            // "a re-click can't get in first" is not a safe assumption.
+            // Only this deferred path is guarded — live cancels (escape,
+            // outside click, key-window resignation) stay unconditional.
+            if let generationProvider, generationProvider() != generationAtTeardown {
+                return
+            }
             cancel?()
         }
     }

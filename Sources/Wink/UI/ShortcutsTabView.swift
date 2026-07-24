@@ -420,7 +420,8 @@ struct ShortcutsTabView: View {
                             if editor.isRecordingShortcut {
                                 ShortcutRecorderView(
                                     recordedShortcut: $editor.recordedShortcut,
-                                    isRecording: $editor.isRecordingShortcut
+                                    isRecording: $editor.isRecordingShortcut,
+                                    sessionGeneration: { editor.shortcutRecordingGeneration }
                                 )
                                 .frame(height: 28)
                             } else {
