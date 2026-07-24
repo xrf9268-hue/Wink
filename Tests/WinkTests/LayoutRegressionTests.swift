@@ -794,6 +794,79 @@ struct LayoutRegressionTests {
         #expect(minimizeButton.frame.origin.isWithinHalfPoint(of: appKitOwnedOrigins[minimizeButton]))
         #expect(zoomButton.frame.origin.isWithinHalfPoint(of: appKitOwnedOrigins[zoomButton]))
     }
+
+    @Test @MainActor
+    func composerRecorderFieldIsWiredToTheComposerLaneGeneration() {
+        // #420: the teardown-cancel generation guard is only as good as the
+        // lane wiring in the PRODUCTION view body — a composer recorder
+        // reading the palette counter would revive the stale-cancel clobber
+        // while every unit test (which injects its own getter) stays green.
+        // Rendered through the real ShortcutsTabView to pin the pairing.
+        let context = ShortcutsTabLayoutContext(shortcutCount: 1)
+        defer { context.harness.cleanup() }
+        context.editor.isRecordingShortcut = true
+
+        let hostingView = makeHostingView(
+            ShortcutsTabView(
+                editor: context.editor,
+                preferences: context.preferences,
+                appListProvider: context.appListProvider,
+                shortcutStatusProvider: context.shortcutStatusProvider
+            ),
+            size: NSSize(width: 700, height: 430)
+        )
+        let field = descendants(in: hostingView).compactMap { $0 as? RecorderField }.first
+        // Synchronous monitor uninstall — no deferred cancel left behind.
+        defer { field?.updateRecordingState(isRecording: false) }
+
+        let provider = field?.sessionGenerationProvider
+        let baseline = provider?()
+        #expect(baseline != nil)
+        #expect(baseline == context.editor.shortcutRecordingGeneration)
+
+        // The OTHER lane's session must not advance this recorder's lane…
+        context.editor.isRecordingSearchPaletteShortcut = true
+        #expect(provider?() == baseline)
+        context.editor.isRecordingSearchPaletteShortcut = false
+
+        // …while a same-lane successor session must.
+        context.editor.isRecordingShortcut = false
+        context.editor.isRecordingShortcut = true
+        #expect(provider?() == baseline.map { $0 &+ 1 })
+        context.editor.isRecordingShortcut = false
+    }
+
+    @Test @MainActor
+    func paletteRecorderFieldIsWiredToThePaletteLaneGeneration() {
+        // Symmetric wiring pin for the General tab's palette recorder.
+        let context = SettingsViewLayoutContext()
+        defer { context.harness.cleanup() }
+        context.editor.isRecordingSearchPaletteShortcut = true
+
+        // 900pt viewport: the palette card sits below keyboardCard in a
+        // LazyVStack that only materializes rows near the viewport (see
+        // generalKeyboardCardMatchesDesignRowDensity).
+        let hostingView = makeHostingView(
+            GeneralTabView(preferences: context.preferences, editor: context.editor),
+            size: NSSize(width: 700, height: 900)
+        )
+        let field = descendants(in: hostingView).compactMap { $0 as? RecorderField }.first
+        defer { field?.updateRecordingState(isRecording: false) }
+
+        let provider = field?.sessionGenerationProvider
+        let baseline = provider?()
+        #expect(baseline != nil)
+        #expect(baseline == context.editor.searchPaletteRecordingGeneration)
+
+        context.editor.isRecordingShortcut = true
+        #expect(provider?() == baseline)
+        context.editor.isRecordingShortcut = false
+
+        context.editor.isRecordingSearchPaletteShortcut = false
+        context.editor.isRecordingSearchPaletteShortcut = true
+        #expect(provider?() == baseline.map { $0 &+ 1 })
+        context.editor.isRecordingSearchPaletteShortcut = false
+    }
 }
 
 private extension NSPoint {
