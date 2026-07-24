@@ -134,6 +134,38 @@ struct ShortcutRecorderFieldTests {
     }
 
     @Test @MainActor
+    func keyWindowResignationCancelsTheSession() {
+        // #418 P2: the local monitor never sees events delivered to other
+        // apps, so Cmd-Tab (or a click into another app) must end the
+        // session through the resign-key observer — otherwise the dispatch
+        // gate stays latched and swallows every matched chord globally.
+        let harness = Harness()
+
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: nil)
+
+        #expect(harness.cancelCount == 1)
+    }
+
+    @Test @MainActor
+    func keyWindowResignationIsIgnoredWhenNotRecording() {
+        let harness = Harness(recording: false)
+
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: nil)
+
+        #expect(harness.cancelCount == 0)
+    }
+
+    @Test @MainActor
+    func keyWindowResignationIsIgnoredAfterRecordingEnds() {
+        let harness = Harness()
+        harness.field.updateRecordingState(isRecording: false)
+
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: nil)
+
+        #expect(harness.cancelCount == 0)
+    }
+
+    @Test @MainActor
     func sessionMonitorFollowsRecordingStateAndWindowDetach() {
         let harness = Harness(recording: false)
         #expect(!harness.field.isMonitoringForTesting)

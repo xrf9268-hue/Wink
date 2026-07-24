@@ -121,6 +121,7 @@ final class RecorderField: NSView {
     private let keySymbolMapper = KeySymbolMapper()
     private var isRecording = false
     private var sessionMonitor: Any?
+    private var resignKeyObserver: (any NSObjectProtocol)?
 
     var isMonitoringForTesting: Bool { sessionMonitor != nil }
 
@@ -202,12 +203,34 @@ final class RecorderField: NSView {
             guard let self else { return event }
             return self.handleMonitoredEvent(event)
         }
+        // The local monitor only sees events delivered to Wink — Cmd-Tab or
+        // a click into another app would leave the session (and the #417
+        // dispatch gate, which swallows every matched chord while latched)
+        // stuck with nothing left to cancel it. Recording only ever starts
+        // in the key Settings window, so ANY key-window resignation while
+        // recording means focus left the recording context: end the
+        // session. Unscoped on purpose (object: nil) — the observer can be
+        // installed before the field is attached to its window.
+        resignKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isRecording else { return }
+                self.onCancel?()
+            }
+        }
     }
 
     private func removeSessionMonitorIfNeeded() {
         if let sessionMonitor {
             NSEvent.removeMonitor(sessionMonitor)
             self.sessionMonitor = nil
+        }
+        if let resignKeyObserver {
+            NotificationCenter.default.removeObserver(resignKeyObserver)
+            self.resignKeyObserver = nil
         }
     }
 
