@@ -101,9 +101,16 @@ private struct RecorderKeyCaptureRepresentable: NSViewRepresentable {
 }
 
 /// Invisible key-capture surface for the recording composer. Owns no visible
-/// chrome — `ShortcutRecorderView` draws the designed dashed control on top —
-/// but still needs real `NSView` first-responder status to receive
-/// `keyDown`/`flagsChanged` events.
+/// chrome — `ShortcutRecorderView` draws the designed dashed control on top.
+///
+/// Capture is monitor-based, not responder-based (#417): SwiftUI never
+/// routes first-responder status to a `.background` NSView (the settings
+/// sidebar keeps `AXFocusedUIElement` throughout), and the SwiftUI content
+/// drawn on top swallows clicks before they reach `mouseDown` here. So while
+/// recording, a local `NSEvent` monitor owns the session: it captures chords
+/// and swallows key-downs wherever keyboard focus sits, and cancels on a
+/// click outside the field. The responder overrides remain as a harmless
+/// fallback for the case where the field does end up first responder.
 final class RecorderField: NSView {
     var onCapture: ((RecordedShortcut) -> Void)?
     var onRecordingChange: ((Bool) -> Void)?
@@ -113,14 +120,34 @@ final class RecorderField: NSView {
 
     private let keySymbolMapper = KeySymbolMapper()
     private var isRecording = false
+    private var sessionMonitor: Any?
+
+    var isMonitoringForTesting: Bool { sessionMonitor != nil }
 
     override var acceptsFirstResponder: Bool { true }
 
     func updateRecordingState(isRecording: Bool) {
         self.isRecording = isRecording
-        if !isRecording {
+        if isRecording {
+            installSessionMonitorIfNeeded()
+        } else {
+            removeSessionMonitorIfNeeded()
             onLiveModifiersChange?([])
             onErrorChange?(nil)
+        }
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        // SwiftUI dismantles this view by detaching it from the window; the
+        // monitor must not outlive it (its closure only holds `self` weakly,
+        // but a leaked monitor would keep swallowing key-downs app-wide).
+        if newWindow == nil {
+            removeSessionMonitorIfNeeded()
+        } else if isRecording {
+            // Recording started before the view was attached (makeNSView →
+            // updateNSView precedes window insertion on first swap-in).
+            installSessionMonitorIfNeeded()
         }
     }
 
@@ -130,8 +157,81 @@ final class RecorderField: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
+        // Normally unreachable while recording — the session monitor swallows
+        // key-downs before dispatch — but kept as a fallback if the field is
+        // first responder and the monitor is somehow absent.
         guard isRecording else { return }
+        handleRecordingKeyDown(event)
+    }
 
+    override func flagsChanged(with event: NSEvent) {
+        guard isRecording else {
+            super.flagsChanged(with: event)
+            return
+        }
+        onLiveModifiersChange?(normalizedModifiers(from: event.modifierFlags))
+        super.flagsChanged(with: event)
+    }
+
+    override func resignFirstResponder() -> Bool {
+        if isRecording {
+            onCancel?()
+        }
+        return super.resignFirstResponder()
+    }
+
+    // MARK: - Session monitor
+
+    private func installSessionMonitorIfNeeded() {
+        guard sessionMonitor == nil else { return }
+        sessionMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.keyDown, .flagsChanged, .leftMouseDown, .rightMouseDown]
+        ) { [weak self] event in
+            guard let self else { return event }
+            return self.handleMonitoredEvent(event)
+        }
+    }
+
+    private func removeSessionMonitorIfNeeded() {
+        if let sessionMonitor {
+            NSEvent.removeMonitor(sessionMonitor)
+            self.sessionMonitor = nil
+        }
+    }
+
+    /// Routes one monitored event through the recording session. Returning
+    /// `nil` swallows the event; returning it lets dispatch continue.
+    /// Internal (not private) so tests can drive capture with synthesized
+    /// `NSEvent`s — the monitor itself needs a running event loop.
+    func handleMonitoredEvent(_ event: NSEvent) -> NSEvent? {
+        guard isRecording else { return event }
+
+        switch event.type {
+        case .keyDown:
+            // Swallow every key-down during recording: it is either the
+            // captured chord or feedback about an invalid one. Letting it
+            // through would double-dispatch into whatever holds focus
+            // (typing into the filter field, moving the sidebar selection).
+            handleRecordingKeyDown(event)
+            return nil
+        case .flagsChanged:
+            onLiveModifiersChange?(normalizedModifiers(from: event.modifierFlags))
+            return event
+        case .leftMouseDown, .rightMouseDown:
+            // A click anywhere outside the field ends the session — the
+            // responder-based cancel (`resignFirstResponder`) never fires
+            // when the field was never first responder. The click itself
+            // passes through so the control the user aimed at still works.
+            if !isInsideRecorder(event) {
+                onCancel?()
+            }
+            return event
+        default:
+            return event
+        }
+    }
+
+    private func handleRecordingKeyDown(_ event: NSEvent) {
         // Escape cancels recording
         if event.keyCode == 53 {
             onCancel?()
@@ -155,20 +255,10 @@ final class RecorderField: NSView {
         onCapture?(RecordedShortcut(keyEquivalent: keyEquivalent, modifierFlags: modifiers))
     }
 
-    override func flagsChanged(with event: NSEvent) {
-        guard isRecording else {
-            super.flagsChanged(with: event)
-            return
-        }
-        onLiveModifiersChange?(normalizedModifiers(from: event.modifierFlags))
-        super.flagsChanged(with: event)
-    }
-
-    override func resignFirstResponder() -> Bool {
-        if isRecording {
-            onCancel?()
-        }
-        return super.resignFirstResponder()
+    private func isInsideRecorder(_ event: NSEvent) -> Bool {
+        guard let window, event.window === window else { return false }
+        let point = convert(event.locationInWindow, from: nil)
+        return bounds.contains(point)
     }
 
     private func normalizedModifiers(from flags: NSEvent.ModifierFlags) -> [String] {
