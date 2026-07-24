@@ -45,6 +45,28 @@ struct StandardApplicationDirectoriesTests {
     }
 
     @Test
+    func acceptsFilesystemSpellingsOfTheSameDirectory() throws {
+        // APFS firmlink alias — the same directory as /Applications, but
+        // not a symlink, so no URL API collapses it.
+        #expect(StandardApplicationDirectories.contains(
+            URL(fileURLWithPath: "/System/Volumes/Data/Applications/Firmlinked.app")))
+        // Case variant on the default case-insensitive volume.
+        #expect(StandardApplicationDirectories.contains(
+            URL(fileURLWithPath: "/applications/CaseVariant.app")))
+        // A symlink whose target lives in a standard root resolves through
+        // resolvingSymlinksInPath before comparison.
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("wink-symlink-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let link = root.appendingPathComponent("CalcLink.app")
+        try FileManager.default.createSymbolicLink(
+            at: link,
+            withDestinationURL: URL(fileURLWithPath: "/System/Applications/Calculator.app")
+        )
+        #expect(StandardApplicationDirectories.contains(link))
+    }
+
+    @Test
     func rejectsLookalikePrefixesNestedHelpersAndSystemPaths() {
         // String-prefix lookalike, not the real root.
         #expect(!StandardApplicationDirectories.contains(

@@ -437,6 +437,7 @@ func suggestionsDropIneligibleAppsAndBackfillFreedSlots() async throws {
         "com.example.third": URL(fileURLWithPath: "/Applications/Third.app"),
         "com.example.fourth": URL(fileURLWithPath: "/Applications/Fourth.app"),
     ]
+    var resolvedBundleIDs: [String] = []
     let viewModel = InsightsViewModel(
         usageTracker: ActivationTotalsUsageTracker(totals: [
             (bundleIdentifier: "com.example.bound", count: 40),
@@ -448,7 +449,10 @@ func suggestionsDropIneligibleAppsAndBackfillFreedSlots() async throws {
             (bundleIdentifier: "com.example.fourth", count: 2),
         ]),
         shortcutStore: store,
-        appURLResolver: { urls[$0] }
+        appURLResolver: { bundleIdentifier in
+            resolvedBundleIDs.append(bundleIdentifier)
+            return urls[bundleIdentifier]
+        }
     )
     await viewModel.refresh(for: .week)
 
@@ -461,4 +465,16 @@ func suggestionsDropIneligibleAppsAndBackfillFreedSlots() async throws {
     ])
     #expect(viewModel.suggestedApps.map(\.name) == ["First", "Second", "Third"])
     #expect(viewModel.suggestedApps.map(\.count) == [30, 10, 5])
+
+    // The lazy pipeline stops at the third eligible suggestion: the bound
+    // entry is filtered without resolving, ineligible rows are visited on
+    // the way, and everything past "third" is never touched — the table has
+    // no age-out, so a long history must not be resolved wholesale.
+    #expect(resolvedBundleIDs == [
+        "com.example.first",
+        "com.example.dialog",
+        "com.example.uninstalled",
+        "com.example.second",
+        "com.example.third",
+    ])
 }

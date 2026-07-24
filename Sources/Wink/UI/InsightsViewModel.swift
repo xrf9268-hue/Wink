@@ -164,29 +164,38 @@ final class InsightsViewModel {
 
         let boundBundles = Set(shortcutStore.shortcuts.map(\.bundleIdentifier))
         let activationTotals = await usageTracker.appActivationTotals(days: days, relativeTo: now)
-        // Resolve BEFORE limiting: an uninstalled app in the top three must
-        // yield its slot to the next resolvable one, not shrink the card.
-        let suggestions: [SuggestedApp] = Array(activationTotals
-            .filter { !boundBundles.contains($0.bundleIdentifier) }
-            .compactMap { entry -> SuggestedApp? in
-                guard let url = appURLResolver(entry.bundleIdentifier) else {
-                    // Uninstalled or un-resolvable apps make poor suggestions.
-                    return nil
-                }
-                guard AppSuggestionEligibility.isSuggestable(appURL: url) else {
-                    // Rows recorded before the record-time policy gate (or
-                    // by an older build) can name system dialogs like
-                    // universalAccessAuthWarn; app_activations has no
-                    // age-out, so they must be dropped here.
-                    return nil
-                }
-                return SuggestedApp(
-                    bundleIdentifier: entry.bundleIdentifier,
-                    name: url.deletingPathExtension().lastPathComponent,
-                    count: entry.count
-                )
+        // A superseded refresh resuming from the await above must not grind
+        // through resolution on the main actor before its late-guard exit.
+        guard !Task.isCancelled, generation == refreshGeneration else { return }
+
+        // Resolve BEFORE limiting: an uninstalled or ineligible app in the
+        // top three must yield its slot to the next resolvable one, not
+        // shrink the card. An explicit loop (not a lazy chain — lazy
+        // collections re-run their closures during index math) so
+        // resolution and Info.plist reads run exactly once per visited row
+        // and stop at the third eligible suggestion instead of visiting
+        // every historical row (app_activations has no age-out).
+        var suggestions: [SuggestedApp] = []
+        for entry in activationTotals {
+            if suggestions.count == 3 { break }
+            guard !boundBundles.contains(entry.bundleIdentifier) else { continue }
+            guard let url = appURLResolver(entry.bundleIdentifier) else {
+                // Uninstalled or un-resolvable apps make poor suggestions.
+                continue
             }
-            .prefix(3))
+            guard AppSuggestionEligibility.isSuggestable(appURL: url) else {
+                // Rows recorded before the record-time policy gate (or by
+                // an older build) can name system dialogs like
+                // universalAccessAuthWarn; app_activations has no age-out,
+                // so they must be dropped here.
+                continue
+            }
+            suggestions.append(SuggestedApp(
+                bundleIdentifier: entry.bundleIdentifier,
+                name: url.deletingPathExtension().lastPathComponent,
+                count: entry.count
+            ))
+        }
 
         let reportingTimeZone = snapshot.timeZone
         let dailyCounts = snapshot.dailyCounts

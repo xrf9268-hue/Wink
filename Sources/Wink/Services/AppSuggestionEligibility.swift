@@ -17,17 +17,47 @@ enum StandardApplicationDirectories {
     /// inside another .app: an embedded helper at
     /// /Applications/X.app/Contents/.../Helper.app is not an installed app,
     /// and the AppListProvider scan never descends into .app bundles either.
+    ///
+    /// Both sides are normalized the way LaunchAtLoginService's
+    /// installed-in-Applications check normalizes (standardize + resolve
+    /// symlinks), plus two spellings symlink resolution cannot collapse:
+    /// the APFS firmlink alias /System/Volumes/Data/Applications, and
+    /// case variants on the default case-insensitive volume. The candidate
+    /// is tried both WITH and WITHOUT symlink resolution — resolution alone
+    /// would evict cryptex-backed apps (/Applications/Safari.app is a
+    /// symlink into /System/Cryptexes and must still count as installed),
+    /// while no resolution would miss a symlink that points INTO a root.
     static func contains(_ url: URL) -> Bool {
-        let components = url.standardizedFileURL.pathComponents
-        guard let bundleName = components.last, bundleName.hasSuffix(".app"),
-              components.dropLast().allSatisfy({ !$0.hasSuffix(".app") }) else {
-            return false
+        let standardized = url.standardizedFileURL
+        var candidates = [normalizedComponents(of: standardized)]
+        let resolved = normalizedComponents(of: standardized.resolvingSymlinksInPath())
+        if resolved != candidates[0] { candidates.append(resolved) }
+        return candidates.contains { components in
+            guard let bundleName = components.last, bundleName.lowercased().hasSuffix(".app"),
+                  components.dropLast().allSatisfy({ !$0.lowercased().hasSuffix(".app") }) else {
+                return false
+            }
+            return normalizedRoots.contains { root in
+                components.count > root.count
+                    && zip(root, components).allSatisfy { $0.caseInsensitiveCompare($1) == .orderedSame }
+            }
         }
-        return roots.contains { root in
-            let rootComponents = root.standardizedFileURL.pathComponents
-            return components.count > rootComponents.count
-                && Array(components.prefix(rootComponents.count)) == rootComponents
+    }
+
+    private static let normalizedRoots: [[String]] = roots.map {
+        normalizedComponents(of: $0.standardizedFileURL.resolvingSymlinksInPath())
+    }
+
+    private static func normalizedComponents(of url: URL) -> [String] {
+        var components = url.pathComponents
+        // /System/Volumes/Data/Applications is the same directory as
+        // /Applications through an APFS firmlink, which is not a symlink —
+        // no URL API collapses it, so strip the alias prefix by hand.
+        if components.count > 4, components[0] == "/",
+           components[1] == "System", components[2] == "Volumes", components[3] == "Data" {
+            components = ["/"] + components.dropFirst(4)
         }
+        return components
     }
 }
 
