@@ -18,10 +18,13 @@ struct ShortcutRecorderFieldTests {
         var errorMessages: [String?] = []
 
         init(recording: Bool = true) {
-            field.onCapture = { [unowned self] in captured.append($0) }
-            field.onCancel = { [unowned self] in cancelCount += 1 }
-            field.onLiveModifiersChange = { [unowned self] in liveModifiers.append($0) }
-            field.onErrorChange = { [unowned self] in errorMessages.append($0) }
+            // weak, not unowned: the window-detach cancel retains the
+            // callback beyond the field's lifetime and may run it after a
+            // test's harness has been released.
+            field.onCapture = { [weak self] in self?.captured.append($0) }
+            field.onCancel = { [weak self] in self?.cancelCount += 1 }
+            field.onLiveModifiersChange = { [weak self] in self?.liveModifiers.append($0) }
+            field.onErrorChange = { [weak self] in self?.errorMessages.append($0) }
             field.updateRecordingState(isRecording: recording)
         }
     }
@@ -180,6 +183,78 @@ struct ShortcutRecorderFieldTests {
         NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: Self.makeResigningWindow())
 
         #expect(harness.cancelCount == 0)
+    }
+
+    @Test @MainActor
+    func windowDetachCancelSurvivesFieldRelease() async {
+        // #418 round-4 P1: SwiftUI can release the detached field before the
+        // deferred cancel runs. The callback must be retained independently
+        // of self — a weak-self guard would silently drop the cancel and
+        // leave the dispatch gate latched with no live recorder.
+        var cancelCount = 0
+        var field: RecorderField? = RecorderField()
+        field?.onCancel = { cancelCount += 1 }
+        field?.updateRecordingState(isRecording: true)
+
+        field?.viewWillMove(toWindow: nil)
+        field = nil
+
+        // Queue behind the deferred cancel so it has run when we assert.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        #expect(cancelCount == 1)
+    }
+
+    @Test @MainActor
+    func failedMonitorRegistrationEndsTheSessionInsteadOfLatchingTheGate() async {
+        // Codex pre-push review (medium): NSEvent.addLocalMonitorForEvents
+        // is nullable. A nil token with isRecording left true would keep
+        // the dispatch gate latched with no way to capture or cancel from
+        // inside the app.
+        var cancelCount = 0
+        let field = RecorderField()
+        field.installMonitorImpl = { _, _ in nil }
+        field.onCancel = { cancelCount += 1 }
+
+        field.updateRecordingState(isRecording: true)
+
+        #expect(!field.isMonitoringForTesting)
+        // The resign observer must not install on the failure path either —
+        // an unguarded retry used to stack a second unscoped observer and
+        // orphan the first for the process lifetime.
+        #expect(!field.isObservingResignKeyForTesting)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        #expect(cancelCount == 1)
+    }
+
+    @Test @MainActor
+    func dismantleTeardownEndsTheSessionWithoutAnyWindowCallback() async {
+        // A field discarded before it was ever attached to a window gets no
+        // viewWillMove(toWindow:) at all — dismantleNSView must end the
+        // session on its own or the monitor leaks and the gate stays latched.
+        var cancelCount = 0
+        let field = RecorderField()
+        field.onCancel = { cancelCount += 1 }
+        field.updateRecordingState(isRecording: true)
+        #expect(field.isMonitoringForTesting)
+
+        field.endSessionForTeardown()
+
+        #expect(!field.isMonitoringForTesting)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        #expect(cancelCount == 1)
+
+        // Idempotent: the window-detach path may fire after dismantle.
+        field.endSessionForTeardown()
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        #expect(cancelCount == 1)
     }
 
     @Test @MainActor

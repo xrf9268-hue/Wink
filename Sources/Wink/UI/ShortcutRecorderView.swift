@@ -91,6 +91,15 @@ private struct RecorderKeyCaptureRepresentable: NSViewRepresentable {
         nsView.updateRecordingState(isRecording: isRecording)
     }
 
+    static func dismantleNSView(_ nsView: RecorderField, coordinator: ()) {
+        // Belt over the viewWillMove(toWindow: nil) path: a field discarded
+        // before it was ever attached to a window gets no window callbacks
+        // at all, which would leak the session monitor and leave the #417
+        // dispatch gate latched. Teardown is idempotent, so covering both
+        // hooks costs nothing.
+        nsView.endSessionForTeardown()
+    }
+
     private func updateCallbacks(on field: RecorderField) {
         field.onCapture = onCapture
         field.onRecordingChange = onRecordingChange
@@ -123,7 +132,14 @@ final class RecorderField: NSView {
     private var sessionMonitor: Any?
     private var resignKeyObserver: (any NSObjectProtocol)?
 
+    /// Injection seam for the nullable AppKit registration — tests drive the
+    /// nil-return path, which cannot be forced through the real API.
+    var installMonitorImpl: (_ mask: NSEvent.EventTypeMask, _ handler: @escaping (NSEvent) -> NSEvent?) -> Any? = { mask, handler in
+        NSEvent.addLocalMonitorForEvents(matching: mask, handler: handler)
+    }
+
     var isMonitoringForTesting: Bool { sessionMonitor != nil }
+    var isObservingResignKeyForTesting: Bool { resignKeyObserver != nil }
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -144,23 +160,32 @@ final class RecorderField: NSView {
         // monitor must not outlive it (its closure only holds `self` weakly,
         // but a leaked monitor would keep swallowing key-downs app-wide).
         if newWindow == nil {
-            removeSessionMonitorIfNeeded()
-            if isRecording {
-                // Closing Settings (or switching tabs) mid-recording must
-                // end the session: the editor's recording flag drives the
-                // #417 dispatch gate in ShortcutManager, and a latched gate
-                // with no live recorder would silently kill every shortcut.
-                // Deferred a tick — this fires during view dismantling, and
-                // the cancel writes SwiftUI state.
-                DispatchQueue.main.async { [weak self] in
-                    guard let self, self.isRecording else { return }
-                    self.onCancel?()
-                }
-            }
+            endSessionForTeardown()
         } else if isRecording {
             // Recording started before the view was attached (makeNSView →
             // updateNSView precedes window insertion on first swap-in).
             installSessionMonitorIfNeeded()
+        }
+    }
+
+    /// Ends a live session on the way out of the hierarchy — window detach
+    /// or representable dismantle, whichever comes first (idempotent).
+    /// The session must not outlive the field: the editor's recording flag
+    /// drives the #417 dispatch gate in ShortcutManager, and a latched gate
+    /// with no live recorder would silently kill every shortcut.
+    func endSessionForTeardown() {
+        removeSessionMonitorIfNeeded()
+        guard isRecording else { return }
+        // Deferred a tick — teardown fires during view dismantling, and the
+        // cancel writes SwiftUI state. The callback is captured strongly,
+        // independent of self: SwiftUI can release the detached field
+        // before the next main-queue turn, and a weak-self guard would
+        // silently drop the cancel and leave the gate latched. Local state
+        // flips synchronously so no late observer double-cancels.
+        isRecording = false
+        let cancel = onCancel
+        DispatchQueue.main.async {
+            cancel?()
         }
     }
 
@@ -197,12 +222,22 @@ final class RecorderField: NSView {
 
     private func installSessionMonitorIfNeeded() {
         guard sessionMonitor == nil else { return }
-        sessionMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.keyDown, .flagsChanged, .leftMouseDown, .rightMouseDown]
-        ) { [weak self] event in
-            guard let self else { return event }
-            return self.handleMonitoredEvent(event)
+        // The registration is nullable. A "recording" session without a
+        // monitor could neither capture nor cancel from inside the app —
+        // only the dispatch gate would be live, silently consuming every
+        // matched chord. Treat nil as session-start failure and end the
+        // session immediately rather than latching that state.
+        guard let monitor = installMonitorImpl(
+            [.keyDown, .flagsChanged, .leftMouseDown, .rightMouseDown],
+            { [weak self] event in
+                guard let self else { return event }
+                return self.handleMonitoredEvent(event)
+            }
+        ) else {
+            endSessionForTeardown()
+            return
         }
+        sessionMonitor = monitor
         // The local monitor only sees events delivered to Wink — Cmd-Tab or
         // a click into another app would leave the session (and the #417
         // dispatch gate, which swallows every matched chord while latched)
@@ -210,7 +245,10 @@ final class RecorderField: NSView {
         // in the key Settings window, so ANY key-window resignation while
         // recording means focus left the recording context: end the
         // session. Unscoped on purpose (object: nil) — the observer can be
-        // installed before the field is attached to its window.
+        // installed before the field is attached to its window. Installed
+        // only after the monitor succeeded, and guarded, so a retry can
+        // never stack a second unscoped observer and orphan the first.
+        guard resignKeyObserver == nil else { return }
         resignKeyObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification,
             object: nil,
