@@ -144,6 +144,18 @@ final class RecorderField: NSView {
         // but a leaked monitor would keep swallowing key-downs app-wide).
         if newWindow == nil {
             removeSessionMonitorIfNeeded()
+            if isRecording {
+                // Closing Settings (or switching tabs) mid-recording must
+                // end the session: the editor's recording flag drives the
+                // #417 dispatch gate in ShortcutManager, and a latched gate
+                // with no live recorder would silently kill every shortcut.
+                // Deferred a tick — this fires during view dismantling, and
+                // the cancel writes SwiftUI state.
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.isRecording else { return }
+                    self.onCancel?()
+                }
+            }
         } else if isRecording {
             // Recording started before the view was attached (makeNSView →
             // updateNSView precedes window insertion on first swap-in).

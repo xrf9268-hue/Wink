@@ -107,6 +107,15 @@ final class ShortcutManager {
     /// no toggleApplication re-entry while the panel is up — holds because
     /// dispatch, not capture, is what's gated.
     private var interactivePanelSessionActive = false
+    /// #417: while a Settings recorder session is live, matched chords must
+    /// not dispatch — pressing an already-bound chord mid-recording would
+    /// toggle its target (or open the palette) over the Settings window.
+    /// Same dispatch-not-capture shape as `interactivePanelSessionActive`,
+    /// but a separate flag: recording starts from a mouse click, so none of
+    /// the panel session's chord-straddling side effects (#385 release-
+    /// deferral suppression) apply, and sharing the panels' bool would let
+    /// closing a panel silently unlatch an active recording gate.
+    private var recordingSessionActive = false
 
     private var effectivePaused: Bool {
         shortcutsPaused || autoPausedByException
@@ -211,7 +220,8 @@ final class ShortcutManager {
             // already key: a gesture started mid-session would survive the
             // session's dismissal and its deadline would resurrect the
             // picker the user just closed.
-            guard let self, !self.effectivePaused, !self.interactivePanelSessionActive else {
+            guard let self, !self.effectivePaused, !self.interactivePanelSessionActive,
+                  !self.recordingSessionActive else {
                 return
             }
             arbiter?.handle(keyPress, phase)
@@ -236,6 +246,18 @@ final class ShortcutManager {
         captureCoordinator.setHyperReleaseDeferralSuppressed(active)
     }
 
+    func setRecordingSessionActive(_ active: Bool) {
+        guard recordingSessionActive != active else { return }
+        recordingSessionActive = active
+        // Drop a gesture straddling the session boundary, mirroring the
+        // panel seam: a hold whose deadline fires mid-recording must not
+        // dispatch, and one armed just before recording ends must not
+        // resurrect after it. No release-deferral suppression here — the
+        // recorder needs Caps Lock to keep behaving as Hyper so Hyper
+        // chords remain recordable.
+        holdGestureArbiter?.reset()
+    }
+
     private func handleHoldGesture(_ keyPress: KeyPress) {
         // Second layer of the late-delivery guard: an arbiter deadline
         // scheduled before a pause can still fire after it.
@@ -245,6 +267,10 @@ final class ShortcutManager {
         }
         guard !interactivePanelSessionActive else {
             diagnosticClient.log("HOLD_GESTURE_IGNORED: interactive panel session active")
+            return
+        }
+        guard !recordingSessionActive else {
+            diagnosticClient.log("HOLD_GESTURE_IGNORED: recording session active")
             return
         }
         let key = keyMatcher.trigger(for: keyPress)
@@ -717,6 +743,14 @@ final class ShortcutManager {
             // gated, so a press can never re-enter toggleApplication under
             // an open picker.
             diagnosticClient.log("KEYPRESS_IGNORED: interactive panel session active")
+            return true
+        }
+        guard !recordingSessionActive else {
+            // Consumed, not dispatched: an already-bound chord pressed while
+            // a recorder is live must not toggle its target. (It cannot be
+            // captured either — both providers consume it upstream of
+            // AppKit — surfacing it as a conflict is #419.)
+            diagnosticClient.log("KEYPRESS_IGNORED: recording session active")
             return true
         }
         let key = keyMatcher.trigger(for: keyPress)
