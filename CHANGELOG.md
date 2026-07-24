@@ -4,6 +4,27 @@ Newest first. One `## X.Y.Z` section per release, written by hand **before** run
 `scripts/bump-version.sh X.Y.Z`. `scripts/release-notes.sh X.Y.Z` extracts a section as the
 GitHub Release body; the release workflow fails if the tagged version has no section here.
 
+## 0.7.2
+
+The recorder actually records.
+
+- **Shortcut recording works** — clicking Record in Settings captured
+  nothing: the invisible capture field never received keyboard focus, on
+  either the Search Palette card or the New Shortcut composer. Capture no
+  longer depends on focus at all — click Record, press your chord, done.
+  Escape cancels, clicking elsewhere cancels, and leaving Settings in any
+  way (tab switch, window close, Cmd-Tab, lock screen) ends the session
+  cleanly instead of leaving it stuck.
+- **Recording can't misfire your shortcuts** — pressing an already-bound
+  chord while recording used to trigger it: the bound app switched in
+  front of the Settings window mid-recording. Bound chords are now
+  consumed for the whole recording session and shown in the recorder
+  instead — the Search Palette card surfaces its conflict immediately
+  ("Finder already uses …"), the composer captures the chord and reports
+  the conflict on Add. Re-recording the palette's own trigger still
+  commits cleanly, and a bound ⌘⎋-style chord still cancels like plain
+  Escape.
+
 ## 0.7.1
 
 Three sharp edges off the window-switching release.
