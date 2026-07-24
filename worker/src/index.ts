@@ -595,21 +595,6 @@ const landingHtml = `<!doctype html>
   .principle h3 { font-family: var(--mono); font-size: 19px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; }
   .principle p { font-size: 14px; color: var(--muted); }
 
-  /* ---------- as shipped (real footage) ---------- */
-  .reel {
-    margin: 0;
-    border: 1px solid var(--hairline);
-    border-radius: 16px;
-    overflow: hidden;
-    background: var(--panel-inner);
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.10);
-  }
-  .reel video { display: block; width: 100%; height: auto; }
-  .reel-caption {
-    font-family: var(--mono); font-size: 12px; color: var(--muted);
-    letter-spacing: 0.03em; margin-top: 14px; text-align: center;
-  }
-
   /* ---------- download ---------- */
   .download { padding: 108px 0 96px; text-align: center; }
   .download-inner { display: flex; flex-direction: column; align-items: center; gap: 20px; }
@@ -916,21 +901,6 @@ const landingHtml = `<!doctype html>
       </div>
     </div>
   </div>
-
-  <!-- ================= as shipped ================= -->
-  <section class="section" id="real">
-    <div class="wrap">
-      <div class="section-head">
-        <p class="eyebrow">As shipped</p>
-        <h2>The mocks above are drawings.<br>This is the app.</h2>
-        <p class="lede">Fifty-five seconds of 0.7.0, recorded straight off the screen — the first chord, the window walk, the picker, the palette, the cheat sheet. Every one of them has a chapter in <a href="/guide">the guide</a>.</p>
-      </div>
-      <figure class="reel">
-        <video autoplay muted loop playsinline src="/media/guide-reel.mp4" width="1480" height="1000" aria-label="Fifty-five seconds of real Wink footage: first chord, window cycling, window picker, search palette, cheat sheet"></video>
-      </figure>
-      <p class="reel-caption">five clips, back to back · no retouching · macOS 15</p>
-    </div>
-  </section>
 
   <!-- ================= download ================= -->
   <section class="download" id="download">
@@ -1255,14 +1225,6 @@ const landingHtml = `<!doctype html>
       });
     }
 
-    /* ----- as-shipped reel ----- */
-    if (reduceMotion) {
-      document.querySelectorAll("video[autoplay]").forEach(function (v) {
-        v.removeAttribute("autoplay");
-        v.pause();
-        v.setAttribute("controls", "");
-      });
-    }
   })();
 </script>
 </body>
@@ -1631,7 +1593,7 @@ const guideHtml = `<!doctype html>
 
   /* final cross-link */
   .guide-cta {
-    padding: 52px 0 0;
+    padding: 52px 0 64px;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -2335,7 +2297,7 @@ const guideZhHtml = `<!doctype html>
 
   /* final cross-link */
   .guide-cta {
-    padding: 52px 0 0;
+    padding: 52px 0 64px;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
