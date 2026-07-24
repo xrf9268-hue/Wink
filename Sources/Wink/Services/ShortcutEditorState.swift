@@ -233,6 +233,40 @@ final class ShortcutEditorState {
         searchPaletteSaveErrorMessage = saveErrorMessage
     }
 
+    /// #419: an already-bound chord pressed while a recorder is live is
+    /// consumed by its capture route upstream of AppKit, so the recorder's
+    /// NSEvent monitor never sees it. `ShortcutManager` reroutes it here:
+    /// the press becomes the live recorder's captured value and runs the
+    /// exact path a monitor-captured chord would have run — the palette
+    /// commits (surfacing its conflict message immediately), the composer
+    /// fills its draft (conflicts surface on Add, as always). A key with no
+    /// recorder mapping is dropped and the session stays live, mirroring
+    /// the monitor's unsupported-key behavior.
+    func handleRecordingSessionKeyPress(_ keyPress: KeyPress) {
+        // Escape cancels — checked before any mapping and regardless of
+        // modifiers, mirroring `RecorderField.handleRecordingKeyDown`'s
+        // ordering. A persisted/imported ⌘⎋-style binding arrives here as a
+        // bound chord, and it must cancel exactly like the unbound ⎋ the
+        // monitor path would have seen.
+        if keyPress.keyCode == 53 {
+            if isRecordingSearchPaletteShortcut {
+                isRecordingSearchPaletteShortcut = false
+            } else if isRecordingShortcut {
+                isRecordingShortcut = false
+            }
+            return
+        }
+        guard let recorded = RecordedShortcut(keyPress: keyPress) else { return }
+        if isRecordingSearchPaletteShortcut {
+            isRecordingSearchPaletteShortcut = false
+            recordedSearchPaletteShortcut = recorded
+            commitSearchPaletteShortcut(recorded)
+        } else if isRecordingShortcut {
+            recordedShortcut = recorded
+            isRecordingShortcut = false
+        }
+    }
+
     /// #417: while either recorder is live, matched chords are consumed but
     /// not dispatched (`ShortcutManager.setRecordingSessionActive`) so an
     /// already-bound chord pressed mid-recording cannot toggle its target
