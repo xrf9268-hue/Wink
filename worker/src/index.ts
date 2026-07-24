@@ -1593,7 +1593,7 @@ const guideHtml = `<!doctype html>
 
   /* final cross-link */
   .guide-cta {
-    padding: 52px 0 0;
+    padding: 52px 0 64px;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -2297,7 +2297,7 @@ const guideZhHtml = `<!doctype html>
 
   /* final cross-link */
   .guide-cta {
-    padding: 52px 0 0;
+    padding: 52px 0 64px;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
