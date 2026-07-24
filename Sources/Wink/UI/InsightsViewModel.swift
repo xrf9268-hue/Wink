@@ -89,17 +89,24 @@ final class InsightsViewModel {
     private let usageTracker: (any UsageTracking)?
     private let shortcutStore: ShortcutStore
     private let nowProvider: @Sendable () -> Date
+    private let appURLResolver: (String) -> URL?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshGeneration: UInt64 = 0
 
+    // appURLResolver defaults to nil and resolves in the body — CI's Swift
+    // 6.1.2 SILGen crashes on non-trivial init default arguments.
     init(
         usageTracker: (any UsageTracking)?,
         shortcutStore: ShortcutStore,
-        nowProvider: @escaping @Sendable () -> Date = Date.init
+        nowProvider: @escaping @Sendable () -> Date = Date.init,
+        appURLResolver: ((String) -> URL?)? = nil
     ) {
         self.usageTracker = usageTracker
         self.shortcutStore = shortcutStore
         self.nowProvider = nowProvider
+        self.appURLResolver = appURLResolver ?? { bundleIdentifier in
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
+        }
     }
 
     func scheduleRefresh() {
@@ -162,8 +169,15 @@ final class InsightsViewModel {
         let suggestions: [SuggestedApp] = Array(activationTotals
             .filter { !boundBundles.contains($0.bundleIdentifier) }
             .compactMap { entry -> SuggestedApp? in
-                guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: entry.bundleIdentifier) else {
+                guard let url = appURLResolver(entry.bundleIdentifier) else {
                     // Uninstalled or un-resolvable apps make poor suggestions.
+                    return nil
+                }
+                guard AppSuggestionEligibility.isSuggestable(appURL: url) else {
+                    // Rows recorded before the record-time policy gate (or
+                    // by an older build) can name system dialogs like
+                    // universalAccessAuthWarn; app_activations has no
+                    // age-out, so they must be dropped here.
                     return nil
                 }
                 return SuggestedApp(

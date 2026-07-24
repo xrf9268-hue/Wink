@@ -155,11 +155,9 @@ final class AppListProvider {
     }
 
     nonisolated private static func scanInstalledApps() -> [AppEntry] {
-        let searchDirs = [
-            URL(fileURLWithPath: "/Applications"),
-            URL(fileURLWithPath: "/System/Applications"),
-            URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Applications"),
-        ]
+        // Shared with AppSuggestionEligibility: the suggestion policy's
+        // "installed app" exception must mean the same roots this scan uses.
+        let searchDirs = StandardApplicationDirectories.roots
 
         var seen = Set<String>()
         var entries: [AppEntry] = []
