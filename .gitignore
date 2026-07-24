@@ -17,3 +17,4 @@ worker/.wrangler/
 .env
 .env.*
 !.env.example
+.wrangler/
