@@ -390,6 +390,9 @@ final class AppController {
         shortcutManager.onSearchPaletteTriggered = { [weak self] in
             self?.searchPaletteHUD.present()
         }
+        shortcutManager.onRecordingSessionKeyPress = { [weak self] keyPress in
+            self?.shortcutEditor.handleRecordingSessionKeyPress(keyPress)
+        }
 
         Self.runStartupSequence(
             startUpdateService: { _ = updateService },

@@ -97,6 +97,13 @@ final class ShortcutManager {
     /// `AppSwitcher.toggleApplication`. The consumer (AppController) owns
     /// presenting the palette.
     var onSearchPaletteTriggered: (@MainActor () -> Void)?
+    /// #419: while a Settings recorder session is live, a matched chord is
+    /// consumed but cannot reach the recorder's AppKit monitor (both
+    /// capture routes swallow it upstream). Instead of dropping the press,
+    /// the recording gate reroutes it here so the live recorder can render
+    /// it and run the standard conflict path. The consumer (AppController)
+    /// forwards to `ShortcutEditorState.handleRecordingSessionKeyPress`.
+    var onRecordingSessionKeyPress: (@MainActor (KeyPress) -> Void)?
     private var holdGestureArbiter: HoldGestureArbiter?
     /// True while an interactive Wink panel (the hold-to-show window picker)
     /// is key. Matched shortcut dispatch is gated on it instead of the full
@@ -220,8 +227,17 @@ final class ShortcutManager {
             // already key: a gesture started mid-session would survive the
             // session's dismissal and its deadline would resurrect the
             // picker the user just closed.
-            guard let self, !self.effectivePaused, !self.interactivePanelSessionActive,
-                  !self.recordingSessionActive else {
+            guard let self, !self.effectivePaused, !self.interactivePanelSessionActive else {
+                return
+            }
+            if self.recordingSessionActive {
+                // #419: phased chords bypass handleKeyPress entirely, so
+                // the reroute lives here too. Down edge only — the up edge
+                // carries no chord the recorder could capture, and a
+                // gesture must not enter the arbiter mid-recording.
+                if phase == .down {
+                    self.onRecordingSessionKeyPress?(keyPress)
+                }
                 return
             }
             arbiter?.handle(keyPress, phase)
@@ -747,10 +763,12 @@ final class ShortcutManager {
         }
         guard !recordingSessionActive else {
             // Consumed, not dispatched: an already-bound chord pressed while
-            // a recorder is live must not toggle its target. (It cannot be
-            // captured either — both providers consume it upstream of
-            // AppKit — surfacing it as a conflict is #419.)
-            diagnosticClient.log("KEYPRESS_IGNORED: recording session active")
+            // a recorder is live must not toggle its target. Rerouted to
+            // the live recorder instead (#419) — both providers consume the
+            // press upstream of AppKit, so this is the only path on which
+            // the recorder can ever see it.
+            diagnosticClient.log("KEYPRESS_REROUTED: recording session active")
+            onRecordingSessionKeyPress?(keyPress)
             return true
         }
         let key = keyMatcher.trigger(for: keyPress)
