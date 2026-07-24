@@ -378,3 +378,103 @@ private func timeZoneDistinctFromCurrent(relativeTo now: Date) -> TimeZone {
     }) ?? TimeZone(secondsFromGMT: 0)!
 }
 
+
+// MARK: - Suggested shortcuts
+
+/// Serves a fixed activation-totals list; every other tracking read is inert.
+private actor ActivationTotalsUsageTracker: UsageTracking {
+    let totals: [(bundleIdentifier: String, count: Int)]
+
+    init(totals: [(bundleIdentifier: String, count: Int)]) {
+        self.totals = totals
+    }
+
+    func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
+        totals
+    }
+    func deleteUsage(shortcutId: UUID) {}
+    func usageCounts(days: Int, relativeTo now: Date) async -> [UUID: Int] { [:] }
+    func dailyCounts(days: Int, relativeTo now: Date) async -> [String: [(date: String, count: Int)]] { [:] }
+    func totalSwitches(days: Int, relativeTo now: Date) async -> Int { 0 }
+    func hourlyCounts(days: Int, relativeTo now: Date) async -> [HourlyUsageBucket] { [] }
+    func previousPeriodTotal(days: Int, relativeTo now: Date) async -> Int { 0 }
+    func streakDays(relativeTo now: Date) async -> Int { 0 }
+    func usageTimeZone() async -> TimeZone { .current }
+}
+
+/// Historical `app_activations` rows can name background-only system
+/// processes recorded before the record-time gate existed (the reported
+/// case: universalAccessAuthWarn, the Accessibility auth-warning dialog).
+/// The query side must drop them AND let the next resolvable app take the
+/// freed suggestion slot, alongside the existing bound/unresolvable drops.
+@Test @MainActor
+func suggestionsDropIneligibleAppsAndBackfillFreedSlots() async throws {
+    let boundShortcut = AppShortcut(
+        appName: "Bound",
+        bundleIdentifier: "com.example.bound",
+        keyEquivalent: "b",
+        modifierFlags: ["command"]
+    )
+    let store = ShortcutStore()
+    store.replaceAll(with: [boundShortcut])
+
+    let dialogFixtureRoot = FileManager.default.temporaryDirectory
+        .appendingPathComponent("wink-insights-\(UUID().uuidString)")
+    let dialogApp = dialogFixtureRoot.appendingPathComponent("authWarnFixture.app")
+    let contents = dialogApp.appendingPathComponent("Contents")
+    try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+    try PropertyListSerialization.data(
+        fromPropertyList: ["LSUIElement": 1],
+        format: .xml,
+        options: 0
+    ).write(to: contents.appendingPathComponent("Info.plist"))
+
+    let urls: [String: URL] = [
+        "com.example.bound": URL(fileURLWithPath: "/Applications/Bound.app"),
+        "com.example.first": URL(fileURLWithPath: "/Applications/First.app"),
+        "com.example.dialog": dialogApp,
+        "com.example.second": URL(fileURLWithPath: "/Applications/Second.app"),
+        "com.example.third": URL(fileURLWithPath: "/Applications/Third.app"),
+        "com.example.fourth": URL(fileURLWithPath: "/Applications/Fourth.app"),
+    ]
+    var resolvedBundleIDs: [String] = []
+    let viewModel = InsightsViewModel(
+        usageTracker: ActivationTotalsUsageTracker(totals: [
+            (bundleIdentifier: "com.example.bound", count: 40),
+            (bundleIdentifier: "com.example.first", count: 30),
+            (bundleIdentifier: "com.example.dialog", count: 20),
+            (bundleIdentifier: "com.example.uninstalled", count: 15),
+            (bundleIdentifier: "com.example.second", count: 10),
+            (bundleIdentifier: "com.example.third", count: 5),
+            (bundleIdentifier: "com.example.fourth", count: 2),
+        ]),
+        shortcutStore: store,
+        appURLResolver: { bundleIdentifier in
+            resolvedBundleIDs.append(bundleIdentifier)
+            return urls[bundleIdentifier]
+        }
+    )
+    await viewModel.refresh(for: .week)
+
+    // bound → already has a shortcut; dialog → LSUIElement fixture;
+    // uninstalled → unresolvable. Each freed slot backfills in count order.
+    #expect(viewModel.suggestedApps.map(\.bundleIdentifier) == [
+        "com.example.first",
+        "com.example.second",
+        "com.example.third",
+    ])
+    #expect(viewModel.suggestedApps.map(\.name) == ["First", "Second", "Third"])
+    #expect(viewModel.suggestedApps.map(\.count) == [30, 10, 5])
+
+    // The lazy pipeline stops at the third eligible suggestion: the bound
+    // entry is filtered without resolving, ineligible rows are visited on
+    // the way, and everything past "third" is never touched — the table has
+    // no age-out, so a long history must not be resolved wholesale.
+    #expect(resolvedBundleIDs == [
+        "com.example.first",
+        "com.example.dialog",
+        "com.example.uninstalled",
+        "com.example.second",
+        "com.example.third",
+    ])
+}
