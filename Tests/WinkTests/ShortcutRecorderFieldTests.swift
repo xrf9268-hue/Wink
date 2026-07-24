@@ -47,6 +47,23 @@ struct ShortcutRecorderFieldTests {
         )!
     }
 
+    /// A real window for resign-key notification posts: broadcasting the
+    /// notification with `object: nil` trips an `NSRemoteView` assertion
+    /// (`[window isKindOfClass:NSWindow.class]`) in CI test processes that
+    /// host ViewBridge listeners — the production observer is unscoped, so
+    /// any window object reaches it just the same.
+    @MainActor
+    private static func makeResigningWindow() -> NSWindow {
+        let window = NSWindow(
+            contentRect: .zero,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: true
+        )
+        window.isReleasedWhenClosed = false
+        return window
+    }
+
     @MainActor
     private static func mouseEvent(type: NSEvent.EventType = .leftMouseDown) -> NSEvent {
         NSEvent.mouseEvent(
@@ -141,7 +158,7 @@ struct ShortcutRecorderFieldTests {
         // gate stays latched and swallows every matched chord globally.
         let harness = Harness()
 
-        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: nil)
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: Self.makeResigningWindow())
 
         #expect(harness.cancelCount == 1)
     }
@@ -150,7 +167,7 @@ struct ShortcutRecorderFieldTests {
     func keyWindowResignationIsIgnoredWhenNotRecording() {
         let harness = Harness(recording: false)
 
-        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: nil)
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: Self.makeResigningWindow())
 
         #expect(harness.cancelCount == 0)
     }
@@ -160,7 +177,7 @@ struct ShortcutRecorderFieldTests {
         let harness = Harness()
         harness.field.updateRecordingState(isRecording: false)
 
-        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: nil)
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: Self.makeResigningWindow())
 
         #expect(harness.cancelCount == 0)
     }
