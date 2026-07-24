@@ -4,6 +4,22 @@ Newest first. One `## X.Y.Z` section per release, written by hand **before** run
 `scripts/bump-version.sh X.Y.Z`. `scripts/release-notes.sh X.Y.Z` extracts a section as the
 GitHub Release body; the release workflow fails if the tagged version has no section here.
 
+## 0.7.3
+
+Suggestions worth suggesting.
+
+- **No more phantom suggestions** — the Insights "Suggested shortcuts"
+  card could offer background system processes (like the Accessibility
+  permission dialog) as if they were apps you switch to. Suggestions now
+  only ever name real, installed apps: menu-bar-only apps you genuinely
+  use still count, and stale entries recorded by earlier versions are
+  filtered out as well.
+- **Recorder cleanup can't clip a new session** — dismissing a recording
+  session (closing Settings, switching tabs) queues a deferred cleanup;
+  in a narrow window it could have cancelled a brand-new recording
+  started in the same instant. Cleanup now recognizes the successor
+  session and leaves it alone.
+
 ## 0.7.2
 
 The recorder actually records.
