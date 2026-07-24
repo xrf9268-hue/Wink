@@ -1,21 +1,30 @@
 # Wink
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Wink settings showing shortcut capture ready" width="720">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+    <img src="docs/screenshot-light.png" alt="Wink settings showing shortcut capture ready and three Hyper shortcuts" width="720">
+  </picture>
 </p>
 
 Wink is a macOS menu bar app for opening, focusing, and hiding apps with global shortcuts. It keeps the interaction deliberately small: press a shortcut once to bring an app forward, press it again to get it out of the way.
+
+Website: [wink.aixie.de](https://wink.aixie.de) · User guide: [English](https://wink.aixie.de/guide) / [中文](https://wink.aixie.de/guide/zh)
 
 ## Why "Wink"?
 Wink suggests a quick, subtle signal: something that happens almost instantly and then gets out of the way. That is the feeling Wink aims for when switching apps.
 
 ## Highlights
-- Bind letters, function keys, arrows, or Space to target apps.
-- Use normal modifier shortcuts or a Hyper shortcut path based on Caps Lock.
+- Bind letters, function keys, arrows, or Space to target apps, with normal modifier shortcuts or a Hyper shortcut path based on Caps Lock.
 - Launch missing apps, focus running apps, or hide the frontmost target with Thor-like toggle semantics.
-- Review shortcuts, readiness, and recent usage from the menu bar and Settings.
+- Or set a shortcut to cycle through its target's windows on repeat presses — minimized ones included, with a HUD showing where you are — or to open a window picker on hold.
+- Target "the frontmost app" to cycle whatever you are working in, without a per-app binding.
+- Summon a search palette from its own trigger shortcut, type a few letters, and land on any installed app.
+- Hold the Hyper key to see a cheat sheet of every bound shortcut.
+- Review usage in the Insights tab — trends, a weekly heatmap, and shortcut suggestions for apps you switch to often. All of it stays on your Mac.
+- Exception rules auto-pause capture while a VM or remote desktop is frontmost, and Secure Input degradation is surfaced in the menu bar instead of failing silently.
 - Import and export `.winkrecipe` shortcut sets.
-- Launch at login and automatic updates are surfaced through native macOS controls.
+- Launch at login, in-app Sparkle updates.
 - Available in English and Simplified Chinese (zh-Hans); see [`docs/localization.md`](docs/localization.md) for how to add a locale.
 
 ## Requirements
@@ -63,6 +72,7 @@ Unknown commands and uninstalled bundles are logged and ignored. Automation pres
 - Runtime-sensitive behavior must be validated on macOS, not inferred from source inspection alone.
 
 ## Documentation
+- [User guide](https://wink.aixie.de/guide) ([中文](https://wink.aixie.de/guide/zh))
 - [`docs/README.md`](./docs/README.md)
 - [`docs/architecture.md`](./docs/architecture.md)
 - [`docs/github-automation.md`](./docs/github-automation.md)
