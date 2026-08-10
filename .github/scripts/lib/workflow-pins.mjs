@@ -42,6 +42,7 @@ const FLOW_MAPPING_USES_PATTERN = /[{[,]\s*(?:uses|"uses"|'uses')\s*:/;
 // one. Anchoring here, after quoted spans are blanked out, keeps
 // `run: echo "{ uses: x }"` from reading as a reference.
 const FLOW_MAPPING_OPENS_PATTERN = /^[{[]|:\s*[{[]/;
+const EXPLICIT_USES_KEY_PATTERN = /^\?\s+(?:uses|"uses"|'uses')\s*$/;
 const QUOTED_SPAN_PATTERN = /("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')(\s*:)?/g;
 
 // Blank quoted *values* so `run: echo "{ uses: x }"` cannot be mistaken for a
@@ -159,6 +160,10 @@ export function stripYamlComment(text) {
   return commentIndex === -1 ? text : text.slice(0, commentIndex);
 }
 
+// No real workflow keeps a flow collection open across this many lines; the
+// cap only exists so a misread brace cannot swallow the rest of the file.
+const MAX_FLOW_CONTINUATION_LINES = 200;
+
 function flowDelta(text) {
   let delta = 0;
 
@@ -182,6 +187,7 @@ export function scanUsesReferences(source) {
   // `id: checkout, uses: actions/checkout@main }`. Neither line matches on its
   // own, so track how deep we are inside braces instead.
   let flowDepth = 0;
+  let flowOpenLines = 0;
 
   lines.forEach((line, index) => {
     const { indent, keyColumn, rest } = splitIndent(line);
@@ -194,10 +200,18 @@ export function scanUsesReferences(source) {
       blockScalarKeyColumn = null;
     }
 
-    // A top-level key cannot be inside a flow collection, so it bounds any
-    // runaway depth from an unbalanced brace we misread.
-    if (indent === 0 && rest !== '') {
-      flowDepth = 0;
+    // Bound a runaway depth from an unbalanced brace the scanner misread,
+    // without using indentation to do it: a flow collection ignores
+    // indentation, so a legitimate continuation may sit at column zero and
+    // resetting there would drop an open collection before its `uses` is seen.
+    if (flowDepth > 0) {
+      flowOpenLines += 1;
+      if (flowOpenLines > MAX_FLOW_CONTINUATION_LINES) {
+        flowDepth = 0;
+        flowOpenLines = 0;
+      }
+    } else {
+      flowOpenLines = 0;
     }
 
     // Values are blanked so `run: echo "{ uses: x }"` is not a flow mapping;
@@ -218,6 +232,14 @@ export function scanUsesReferences(source) {
       }
 
       flowDepth = Math.max(0, flowDepth + flowDelta(bare));
+      return;
+    }
+
+    // YAML's explicit-key form (`? uses` then `: <value>`) parses to the same
+    // mapping as `uses: <value>`. Rather than model two-line key/value pairs,
+    // fail closed on the shape.
+    if (EXPLICIT_USES_KEY_PATTERN.test(bare)) {
+      references.push({ line: index + 1, value: rest.trim(), comment: null, explicitKey: true });
       return;
     }
 
@@ -248,8 +270,23 @@ export function scanUsesReferences(source) {
   return references;
 }
 
-export function evaluateReference({ value, comment, blockScalar = false, flowMapping = false }) {
+export function evaluateReference({
+  value,
+  comment,
+  blockScalar = false,
+  flowMapping = false,
+  explicitKey = false,
+}) {
   const problems = [];
+
+  if (explicitKey) {
+    problems.push({
+      code: 'explicit-key-reference',
+      message: `\`${value}\` uses YAML's explicit-key form; write the step as \`uses: owner/repo@<sha> # vX.Y.Z\` so the immutable-reference policy can read it.`,
+    });
+
+    return { kind: 'invalid', action: null, ref: null, version: null, problems };
+  }
 
   if (flowMapping) {
     problems.push({

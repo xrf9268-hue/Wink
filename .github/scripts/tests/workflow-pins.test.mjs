@@ -509,3 +509,26 @@ test('a trailing comment on a closed flow mapping still leaves depth at zero', (
   assert.equal(references[1].value, `actions/checkout@${CHECKOUT_SHA}`);
   assert.equal(references[1].flowMapping, undefined);
 });
+
+test("YAML's explicit-key form fails closed instead of vanishing", () => {
+  const references = scanUsesReferences(
+    ['jobs:', '  a:', '    steps:', '      - ? uses', '        : actions/cache@main'].join('\n'),
+  );
+
+  assert.equal(references.length, 1);
+  assert.equal(references[0].explicitKey, true);
+  assert.deepEqual(
+    evaluateReference(references[0]).problems.map((problem) => problem.code),
+    ['explicit-key-reference'],
+  );
+});
+
+test('a flow mapping continuing at column zero keeps its collection open', () => {
+  const references = scanUsesReferences(
+    ['jobs:', '  a:', '    steps:', '      - {', 'id: checkout, uses: actions/checkout@main }'].join('\n'),
+  );
+
+  assert.equal(references.length, 1);
+  assert.equal(references[0].flowMapping, true);
+  assert.equal(references[0].line, 5);
+});
