@@ -203,17 +203,29 @@ order that makes it total.
 launch (active profile = A_now, whose shortcuts are already loaded)
   └─ shortcuts.json absent → write it from A_now. Continue. (nothing on disk to lose)
      │
-     ├─ Q1  IS IT CURRENT?   digest(shortcuts.json) == digest(encode(A_now's shortcuts))
+     ├─ Q1  IS IT CURRENT?   digest(shortcuts.json) == digest(Profiles/<A_now>.json)
+     │   │                    ── raw file bytes on BOTH sides ──
      │   └─ yes → current. Repair mirror.json if it disagrees. Continue.
      │
      └─ no → Q2  DID WINK WRITE IT?   digest(shortcuts.json) == mirror.json's sha256
-         ├─ no mirror.json         → UNKNOWN PROVENANCE. Leave BOTH files alone and log.
-         ├─ digest matches         → STALE. Rewrite from A_now silently. No banner.
-         └─ digest does not match  → FOREIGN EDIT. Load A_now normally, surface a
-                                     non-modal banner naming P (mirror.json's profile):
-                                       [Import into "P"]   [Keep "P" and overwrite the file]
-                                     Neither side is applied without that choice.
+         ├─ no USABLE mirror.json   → UNKNOWN PROVENANCE. Leave BOTH files alone and log.
+         │    (absent, unreadable, or an unsupported schemaVersion — all three
+         │     mean the same thing here: nothing to compare against.)
+         ├─ digest matches          → STALE. Rewrite from A_now silently. No banner.
+         └─ digest does not match   → FOREIGN EDIT. Load A_now normally, surface a
+                                      non-modal banner naming P (mirror.json's profile):
+                                        [Import into "P"]   [Keep "P" and overwrite the file]
+                                      Neither side is applied without that choice.
 ```
+
+**Why Q1 compares raw bytes, not a re-encoding.** A profile data file may legitimately
+carry JSON members `AppShortcut` does not model — a newer build wrote it, or a user hand
+edited it. Those members survive the file but not a decode/re-encode round trip, so
+comparing the mirror against a re-encoded model would report a mismatch for a mirror that
+is already a perfect byte copy, and the "repair" that followed would strip the preserved
+members from the very file a downgrade reads, breaking the byte-preservation contract D3
+and D4 depend on. The same rule governs the repair itself: it copies the profile file's
+bytes and falls back to re-encoding only when that file cannot be read at all.
 
 **Why Q1 cannot be answered by the descriptor.** `mirror.json` describes the *mirror*, not
 the profile. After any crash between a data-file write and the mirror write, the mirror and
@@ -333,8 +345,9 @@ from that value.
 | --- | --- |
 | valid and names a listed profile | That profile. Continue to stage 3. |
 | valid but names an ID the list does not contain | Zero shortcuts armed + banner + explicit picker. **Never** fall through to another profile. |
-| absent, or unreadable, **and the list has exactly one profile** | Preserve a quarantine copy when there were bytes to preserve, then adopt the single profile and rewrite the pointer. This is a determination, not a fall-through: with one profile there is no *other* configuration the lost pointer could have named. Continue to stage 3. |
-| absent, or unreadable, **and the list has two or more** | Preserve a quarantine copy when applicable, then zero shortcuts armed + banner + explicit picker. The pointer's content is precisely what was lost, so any selection would be a guess. |
+| absent, or **malformed** (truncated, unparseable, missing fields), **and the list has exactly one profile** | Preserve a quarantine copy when there were bytes to preserve, then adopt the single profile and rewrite the pointer. This is a determination, not a fall-through: with one profile there is no *other* configuration the lost pointer could have named. Continue to stage 3. |
+| absent, or **malformed**, **and the list has two or more** | Preserve a quarantine copy when applicable, then zero shortcuts armed + banner + explicit picker. The pointer's content is precisely what was lost, so any selection would be a guess. |
+| well-formed but carrying a **`schemaVersion` this build does not support**, *any* profile count | Preserve a quarantine copy, then zero shortcuts armed + banner + explicit picker. **Never adopt, even with a single profile.** This is not corruption but a deliberate signal from another build, and a future pointer schema may mean more than "which of today's profiles" — "none active", for instance. Adopting would arm bindings that build left unarmed, which is exactly the guessing D2 forbids. |
 
 **Stage 3 — that profile's data file, given a resolved profile**
 
@@ -578,6 +591,8 @@ packaged-app validation.
 | V10 | Foreign-edit detection | Rewrite `shortcuts.json` out of band → relaunch → assert banner state and that nothing was written until a choice was made |
 | V10b | Stale mirror is not mistaken for a foreign edit | Fail the mirror write during a switch **and** during a same-profile save → relaunch each → assert the mirror is rewritten from the live profile with **no** banner |
 | V10c | Unknown provenance is left alone | Migrate from an unreadable legacy file → relaunch → assert no banner, and that `shortcuts.json` still holds the user's original bytes |
+| V10d | Unmodelled members survive | Profile file with an extra JSON member, mirror a byte copy → relaunch → assert no stale rewrite and that the member is still present in both files |
+| V11b | Unsupported pointer schema fails closed | Well-formed `active.json` with `schemaVersion` 99 and exactly one profile → assert zero armed, a quarantine copy, and an explicit picker |
 | V11 | Name and cap rules | Empty, 65-char, case-differing duplicate, 33rd profile — all rejected with a message |
 | V12 | Delete-active fallback | Delete active at list positions first/middle/last; assert the deterministic successor |
 | V13 | Palette per-profile | Profile A has a palette trigger, B does not; switch A→B→A; assert trigger index membership follows and no ID churn |
