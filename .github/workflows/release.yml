@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing v* tag to operate on; leave empty to rehearse the dispatched ref (forces dry run)
+        description: "Existing v* tag to publish — dispatch FROM that tag. Leave empty to rehearse; a dry run must not set this."
         required: false
         default: ""
         type: string

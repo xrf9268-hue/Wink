@@ -392,7 +392,9 @@ The release workflow lives at [release.yml](../.github/workflows/release.yml).
 ### Trigger
 
 - push a tag named `v<CFBundleShortVersionString>` (real release)
-- or run the workflow manually: provide an existing matching `release_tag` to operate on that tag, or leave it empty to rehearse the dispatched ref (forces a dry run)
+- or run the workflow manually. `release_tag` and `dry_run` are not freely combinable — the provenance preflight rejects the two mixtures that would misdescribe what was built:
+  - **publish an existing tag:** dispatch **from that tag** with `release_tag=vX.Y.Z -f dry_run=false`
+  - **rehearse:** leave `release_tag` empty and dispatch from a branch (dry run is forced)
 
 The `dry_run` input (default `true` for manual runs) builds and validates everything but publishes nothing. Tag pushes always publish.
 
@@ -444,8 +446,8 @@ Every release run starts by fetching the live `appcast.xml` from `R2_PUBLIC_BASE
 
 A manual `Release` run with `dry_run` enabled (the default) rehearses the full chain — feed gate (report-only `--mode rehearse`), notes gate, tests, signing, notarization, stapling, DMG/ZIP packaging, appcast generation, and artifact validation — then uploads everything as the `release-dry-run-<version>` workflow artifact instead of publishing. R2 and GitHub Releases are never touched.
 
-- Leave `release_tag` empty to rehearse the dispatched ref (dry run is forced).
-- Set `release_tag` to an existing tag with `dry_run` enabled to rehearse that tag.
+- Leave `release_tag` empty. A rehearsal builds the ref it was dispatched from, so to rehearse specific content, dispatch from a branch pointing at that content.
+- **Do not set `release_tag` on a dry run.** It is rejected by the provenance preflight: the run would build the tag while its attestation named the dispatching branch's commit. See the outcome matrix under [Artifact Attestations](#artifact-attestations).
 - Dry runs require the same secrets as real releases; rehearsing the signed chain is the point.
 - While no live feed exists yet, the rehearse-mode gate still fails on 404 unless the `WINK_ALLOW_FIRST_RELEASE` repository variable is set (the same opt-in a first real release needs).
 
