@@ -16,6 +16,7 @@ final class AppController {
     struct MenuBarSceneServices {
         let shortcutStore: ShortcutStore
         let preferences: AppPreferences
+        let profileState: ShortcutProfileState
         let shortcutStatusProvider: ShortcutStatusProvider
         let usageTracker: any UsageTracking
         let openSettings: @MainActor (SettingsTab?) -> Void
@@ -255,6 +256,7 @@ final class AppController {
     private lazy var menuBarSceneServicesStorage = MenuBarSceneServices(
         shortcutStore: shortcutStore,
         preferences: appPreferences,
+        profileState: profileState,
         shortcutStatusProvider: settingsShortcutStatusProvider,
         usageTracker: usageTracker,
         openSettings: { [weak self] tab in

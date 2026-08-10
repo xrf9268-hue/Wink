@@ -2,8 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>%@ (can't be read)</key>
+	<string>%@（无法读取）</string>
 	<key>%@ Last checked %@.</key>
 	<string>%@ 上次检查时间：%@。</string>
+	<key>%@ copy</key>
+	<string>%@ 副本</string>
+	<key>%@ copy %lld</key>
+	<string>%@ 副本 %lld</string>
 	<key>%@ has not been activated in the past 7 days.</key>
 	<string>%@ 在过去 7 天内未被触发。</string>
 	<key>%@ have not been activated in the past 7 days.</key>
@@ -28,6 +34,8 @@
 	<string>30 天</string>
 	<key>7 days</key>
 	<string>7 天</string>
+	<key>A copy of the unreadable file was saved to %@.</key>
+	<string>无法读取的文件已备份到 %@。</string>
 	<key>A password field or secure prompt is capturing keyboard input. Hyper and Fn-based shortcuts may not fire until it ends; other standard shortcuts keep working.</key>
 	<string>密码框或安全输入提示正在捕获键盘输入。在其结束前，Hyper 和基于 Fn 的快捷键可能无法触发；其他标准快捷键仍可正常使用。</string>
 	<key>Accessibility</key>
@@ -40,12 +48,16 @@
 	<string>触发次数</string>
 	<key>Add App…</key>
 	<string>添加应用…</string>
+	<key>Add Profile</key>
+	<string>添加配置</string>
 	<key>Add Shortcut</key>
 	<string>添加快捷键</string>
 	<key>All Apps</key>
 	<string>所有应用</string>
 	<key>All shortcuts are paused.</key>
 	<string>所有快捷键均已暂停。</string>
+	<key>Another profile already uses that name.</key>
+	<string>已有其他配置使用该名称。</string>
 	<key>App is currently running</key>
 	<string>该应用正在运行</string>
 	<key>App unavailable</key>
@@ -78,6 +90,8 @@
 	<string>正在检查更新…</string>
 	<key>Checking, download progress, and installs now happen right here — no more separate update dialogs.</key>
 	<string>检查、下载进度和安装现在都在这里完成 — 不再需要单独的更新对话框。</string>
+	<key>Choose a profile</key>
+	<string>选择一个配置</string>
 	<key>Choose an app…</key>
 	<string>选择一个应用…</string>
 	<key>Clear</key>
@@ -104,6 +118,10 @@
 	<string>找不到此应用。请重新绑定以恢复快捷键。</string>
 	<key>Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.</key>
 	<string>在本地统计应用切换次数，用于在洞察中推荐快捷键。关闭此选项也会删除已收集的统计数据。</string>
+	<key>Create, rename, duplicate, or delete profiles.</key>
+	<string>新建、重命名、复制或删除配置。</string>
+	<key>Created the profile “%@”.</key>
+	<string>已创建配置“%@”。</string>
 	<key>Current App</key>
 	<string>当前应用</string>
 	<key>Cycle</key>
@@ -112,8 +130,12 @@
 	<string>日</string>
 	<key>Default</key>
 	<string>默认</string>
+	<key>Delete Profile</key>
+	<string>删除配置</string>
 	<key>Delete Shortcut</key>
 	<string>删除快捷键</string>
+	<key>Delete “%@”?</key>
+	<string>要删除“%@”吗？</string>
 	<key>Disabled</key>
 	<string>已禁用</string>
 	<key>Download and install new versions in the background.</key>
@@ -130,8 +152,12 @@
 	<string>正在下载… %@ / %@</string>
 	<key>Drag to reorder</key>
 	<string>拖动以重新排序</string>
+	<key>Duplicate current profile</key>
+	<string>复制当前配置</string>
 	<key>Enable All Shortcuts</key>
 	<string>启用所有快捷键</string>
+	<key>Enter a profile name.</key>
+	<string>请输入配置名称。</string>
 	<key>Exported %lld shortcuts to %@</key>
 	<string>已将 %lld 个快捷键导出到 %@</string>
 	<key>Export…</key>
@@ -184,12 +210,16 @@
 	<string>导入预览</string>
 	<key>Import and export .winkrecipe files, with usage insights in Settings.</key>
 	<string>导入和导出 .winkrecipe 文件，并在设置中查看使用洞察。</string>
+	<key>Import into “%@”</key>
+	<string>导入到“%@”</string>
 	<key>Import or export shortcuts</key>
 	<string>导入或导出快捷键</string>
 	<key>Import preview ready: %lld ready, %lld conflicts, %lld unresolved</key>
 	<string>导入预览就绪：%lld 个可导入，%lld 个冲突，%lld 个未解析</string>
 	<key>Imported %lld shortcuts</key>
 	<string>已导入 %lld 个快捷键</string>
+	<key>Imported the changes made outside Wink.</key>
+	<string>已导入在 Wink 之外所做的改动。</string>
 	<key>Import…</key>
 	<string>导入…</string>
 	<key>Input Monitoring</key>
@@ -214,6 +244,10 @@
 	<string>正在安装… Wink 即将重新启动。</string>
 	<key>Installs when Wink quits. Click to install now.</key>
 	<string>将在 Wink 退出时安装。点击立即安装。</string>
+	<key>Its shortcuts are removed, along with the usage history of shortcuts that exist only in it. Shortcuts that also live in another profile keep their history.</key>
+	<string>其中的快捷键会被移除，仅存在于该配置中的快捷键的使用记录也会一并删除。同时存在于其他配置中的快捷键会保留各自的记录。</string>
+	<key>Keep this profile</key>
+	<string>保留当前配置</string>
 	<key>Last used %@</key>
 	<string>上次使用 %@</string>
 	<key>Last used —</key>
@@ -230,6 +264,8 @@
 	<string>受限 · 安全输入</string>
 	<key>M</key>
 	<string>月</string>
+	<key>Manage Profiles</key>
+	<string>管理配置</string>
 	<key>Manage…</key>
 	<string>管理…</string>
 	<key>Master switch for global shortcut routing.</key>
@@ -240,18 +276,28 @@
 	<string>待授权</string>
 	<key>Needed for the current shortcut configuration.</key>
 	<string>当前快捷键配置需要此权限。</string>
+	<key>New Profile</key>
+	<string>新配置</string>
 	<key>New Shortcut</key>
 	<string>新建快捷键</string>
 	<key>New activity</key>
 	<string>新活动</string>
 	<key>New activity versus the previous period.</key>
 	<string>相较上一时段有新的活动。</string>
+	<key>New empty profile</key>
+	<string>新建空配置</string>
 	<key>No change</key>
 	<string>无变化</string>
 	<key>No change versus the previous period.</key>
 	<string>相较上一时段无变化。</string>
 	<key>No matching apps</key>
 	<string>没有匹配的应用</string>
+	<key>No shortcuts are active and nothing can be changed until you recover.</key>
+	<string>当前没有生效的快捷键，在恢复之前也无法做任何更改。</string>
+	<key>No shortcuts are active. Choose the profile you want so Wink does not pick one for you.</key>
+	<string>当前没有生效的快捷键。请自行选择要使用的配置，Wink 不会替你决定。</string>
+	<key>No shortcuts are active. Wink did not switch to another profile on its own — choose one below.</key>
+	<string>当前没有生效的快捷键。Wink 不会自行切换到其他配置——请在下方选择一个。</string>
 	<key>No shortcuts configured</key>
 	<string>尚未配置快捷键</string>
 	<key>No shortcuts match your filter</key>
@@ -296,20 +342,32 @@
 	<string>按一次打开或聚焦目标应用，再按一次将其隐藏。</string>
 	<key>Privacy</key>
 	<string>隐私</string>
+	<key>Profile</key>
+	<string>配置</string>
+	<key>Profile name</key>
+	<string>配置名称</string>
+	<key>Profile names can be at most %lld characters.</key>
+	<string>配置名称最多 %lld 个字符。</string>
 	<key>Quit Wink</key>
 	<string>退出 Wink</string>
 	<key>Ready</key>
 	<string>就绪</string>
 	<key>Recently Used</key>
 	<string>最近使用</string>
+	<key>Recipes import into the active profile. Profiles stay on this Mac; recipes are how you share bindings.</key>
+	<string>配方会导入到当前配置中。配置只保存在这台 Mac 上；配方则用于分享绑定。</string>
 	<key>Recording…</key>
 	<string>录制中…</string>
+	<key>Recover</key>
+	<string>恢复</string>
 	<key>Refresh</key>
 	<string>刷新</string>
 	<key>Release Notes</key>
 	<string>更新日志</string>
 	<key>Remove %@</key>
 	<string>移除 %@</string>
+	<key>Rename Profile</key>
+	<string>重命名配置</string>
 	<key>Replace Existing</key>
 	<string>替换现有项</string>
 	<key>Request Access</key>
@@ -348,6 +406,8 @@
 	<string>快捷键捕获就绪</string>
 	<key>Shortcuts</key>
 	<string>快捷键</string>
+	<key>Shortcuts are not loaded and changes cannot be saved. Check that your home folder is available, then relaunch Wink.</key>
+	<string>快捷键未加载，改动也无法保存。请确认个人文件夹可用，然后重新启动 Wink。</string>
 	<key>Shortcuts paused</key>
 	<string>快捷键已暂停</string>
 	<key>Show Menu Bar Icon</key>
@@ -372,6 +432,8 @@
 	<string>标准快捷键注册失败。请查看日志以了解被阻止的组合键。</string>
 	<key>Standard shortcuts ready</key>
 	<string>标准快捷键就绪</string>
+	<key>Started a new profile list. Your unreadable file was kept alongside it.</key>
+	<string>已新建配置列表。原先无法读取的文件仍保留在旁。</string>
 	<key>Startup, keyboard behavior, and updates.</key>
 	<string>启动、键盘行为与更新。</string>
 	<key>Streak</key>
@@ -382,14 +444,28 @@
 	<string>建议的快捷键</string>
 	<key>Support</key>
 	<string>支持</string>
+	<key>Switching profiles discarded the recipe import preview, which was prepared for the previous profile.</key>
+	<string>切换配置已放弃配方导入预览——该预览是针对上一个配置生成的。</string>
+	<key>Switching profiles discarded the shortcut you were about to add.</key>
+	<string>切换配置已放弃你正准备添加的快捷键。</string>
+	<key>Switching profiles stopped the shortcut recording in progress.</key>
+	<string>切换配置已停止正在进行的快捷键录制。</string>
 	<key>System Settings &gt; Input Monitoring can lag behind live access. If the affected shortcuts work here, Wink already has the permission it needs.</key>
 	<string>系统设置中的输入监控状态可能滞后于实际授权情况。如果相关快捷键在这里可以正常工作，说明 Wink 已获得所需权限。</string>
 	<key>Target app</key>
 	<string>目标应用</string>
+	<key>That profile no longer exists.</key>
+	<string>该配置已不存在。</string>
+	<key>That profile’s shortcuts could not be read, so Wink did not switch to it. A copy of the unreadable file was kept.</key>
+	<string>该配置的快捷键无法读取，因此 Wink 没有切换过去。无法读取的文件已保留一份副本。</string>
 	<key>The Settings toggle is live: background checks and downloads, on or off.</key>
 	<string>设置中的开关即刻生效：后台检查与下载，随你开启或关闭。</string>
+	<key>The file no longer matches what Wink last wrote, and its contents could not be read. Wink has changed nothing.</key>
+	<string>该文件与 Wink 上次写入的内容不一致，且其内容无法读取。Wink 未做任何改动。</string>
 	<key>The last automatic update check failed: %@</key>
 	<string>上次自动检查更新失败：%@</string>
+	<key>This usually means an older version of Wink edited it. Wink has changed nothing yet.</key>
+	<string>这通常意味着旧版本的 Wink 修改过它。Wink 目前还未做任何改动。</string>
 	<key>Time saved</key>
 	<string>节省时间</string>
 	<key>Tip: hold</key>
@@ -404,6 +480,8 @@
 	<string>使用全局快捷键切换应用</string>
 	<key>Type an app name and press Return to switch to it.</key>
 	<string>输入应用名称，按下 Return 键即可切换到该应用。</string>
+	<key>Unknown profile</key>
+	<string>未知配置</string>
 	<key>Unresolved</key>
 	<string>未解析</string>
 	<key>Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.</key>
@@ -456,8 +534,22 @@
 	<string>Wink %@ 已是最新版本。</string>
 	<key>Wink Update</key>
 	<string>Wink 更新</string>
+	<key>Wink always keeps at least one profile.</key>
+	<string>Wink 始终保留至少一个配置。</string>
+	<key>Wink cannot reach its storage folder</key>
+	<string>Wink 无法访问其存储文件夹</string>
+	<key>Wink cannot reach its storage folder, so profiles cannot be changed.</key>
+	<string>Wink 无法访问其存储文件夹，因此无法更改配置。</string>
 	<key>Wink checks for updates automatically and asks before downloading.</key>
 	<string>Wink 会自动检查更新，并在下载前征求你的同意。</string>
+	<key>Wink could not read your profile list</key>
+	<string>Wink 无法读取你的配置列表</string>
+	<key>Wink could not read your profile list, so nothing can be changed until you recover it.</key>
+	<string>Wink 无法读取你的配置列表，在恢复之前无法进行任何更改。</string>
+	<key>Wink could not save the change to disk, so nothing was changed.</key>
+	<string>Wink 无法将更改写入磁盘，因此未做任何改动。</string>
+	<key>Wink could not tell which profile was active</key>
+	<string>Wink 无法确定哪个配置处于使用中</string>
 	<key>Wink couldn't disable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
 	<string>Wink 无法禁用登录时启动：%@。请重试，或在系统设置 › 登录项中手动管理。</string>
 	<key>Wink couldn't enable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
@@ -470,12 +562,20 @@
 	<string>Wink 需要辅助功能权限才能路由全局快捷键。</string>
 	<key>Wink: Permission Lost</key>
 	<string>Wink：权限丢失</string>
+	<key>You can have at most %lld profiles.</key>
+	<string>最多只能有 %lld 个配置。</string>
 	<key>You're Up to Date</key>
 	<string>已是最新版本</string>
 	<key>Your Shortcuts · %lld</key>
 	<string>我的快捷键 · %lld</string>
+	<key>active</key>
+	<string>使用中</string>
+	<key>can't be read</key>
+	<string>无法读取</string>
 	<key>for a Hyper shortcut.</key>
 	<string>即可触发 Hyper 快捷键。</string>
+	<key>shortcuts.json was changed outside Wink</key>
+	<string>shortcuts.json 在 Wink 之外被修改过</string>
 	<key>to act as</key>
 	<string>即可作为</string>
 	<key>today</key>
@@ -486,5 +586,7 @@
 	<string>相较上一时段</string>
 	<key>~3 seconds each</key>
 	<string>每次约 3 秒</string>
+	<key>“%@” could not be read</key>
+	<string>“%@”无法读取</string>
 </dict>
 </plist>

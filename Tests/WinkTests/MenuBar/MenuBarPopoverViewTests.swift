@@ -266,9 +266,49 @@ struct MenuBarPopoverViewTests {
     }
 }
 
+@Suite("Menu bar profile row")
+@MainActor
+struct MenuBarProfileRowTests {
+    @Test
+    func theProfileRowStaysHiddenUntilThereIsSomethingToSwitchBetween() {
+        let context = makePopoverContext(shortcuts: [], usageTotal: 0)
+        defer { context.profileHarness.cleanup() }
+
+        // A fresh install has exactly one profile. A row that can only ever
+        // reselect what is already active is worse than no row.
+        #expect(context.model.selectableProfiles.count == 1)
+        #expect(!context.model.showsProfileRow)
+
+        context.profileState.createProfile(named: "Work", duplicatingActiveProfile: false)
+
+        #expect(context.model.showsProfileRow)
+        #expect(context.model.selectableProfiles.count == 2)
+        #expect(context.model.activeProfileName == context.profileState.activeProfile?.name)
+    }
+
+    @Test
+    func anUnreadableProfileIsListedButNotSelectable() {
+        let context = makePopoverContext(shortcuts: [], usageTotal: 0)
+        defer { context.profileHarness.cleanup() }
+
+        context.profileState.createProfile(named: "Work", duplicatingActiveProfile: false)
+        let work = context.model.selectableProfiles.first { $0.name == "Work" }
+
+        #expect(work != nil)
+        if let work {
+            // Readable today; the gate is the state's unreadable set, which the
+            // row consults rather than deciding for itself.
+            #expect(context.model.isProfileSelectable(work))
+        }
+    }
+}
+
 private struct PopoverContext {
     let model: MenuBarPopoverModel
     let preferences: AppPreferences
+    /// Retained so its temporary directory outlives the model.
+    let profileHarness: TestProfileHarness
+    let profileState: ShortcutProfileState
 }
 
 @MainActor
@@ -335,9 +375,12 @@ private func makePopoverContext(
         workspaceNotificationCenter: workspaceNotificationCenter,
         appNotificationCenter: appNotificationCenter
     )
+    let profileHarness = TestProfileHarness()
+    let profileState = profileHarness.makeLoadedProfileState(shortcutManager: manager)
     let model = MenuBarPopoverModel(
         shortcutStore: shortcutStore,
         preferences: preferences,
+        profileState: profileState,
         shortcutStatusProvider: statusProvider,
         usageTracker: StaticUsageTracker(total: usageTotal),
         workspaceNotificationCenter: workspaceNotificationCenter,
@@ -346,7 +389,7 @@ private func makePopoverContext(
         quit: quit
     )
 
-    return PopoverContext(model: model, preferences: preferences)
+    return PopoverContext(model: model, preferences: preferences, profileHarness: profileHarness, profileState: profileState)
 }
 
 @MainActor

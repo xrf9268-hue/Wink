@@ -57,6 +57,17 @@ final class TestProfileHarness: @unchecked Sendable {
         )
     }
 
+    /// A loaded `ShortcutProfileState` over this harness's temporary
+    /// directory. Views that only render profile rows need nothing else; the
+    /// harness must outlive them so its directory is not removed underneath a
+    /// later write.
+    @MainActor
+    func makeLoadedProfileState(shortcutManager: ShortcutManager) -> ShortcutProfileState {
+        let state = ShortcutProfileState(store: makeStore(), shortcutManager: shortcutManager)
+        _ = state.loadAtStartup()
+        return state
+    }
+
     // MARK: - Fixture helpers
 
     func writeLegacyShortcuts(_ shortcuts: [AppShortcut]) throws {

@@ -25,6 +25,7 @@ struct WinkApp: App {
                 model: MenuBarPopoverModel(
                     shortcutStore: menuBarServices.shortcutStore,
                     preferences: menuBarServices.preferences,
+                    profileState: menuBarServices.profileState,
                     shortcutStatusProvider: menuBarServices.shortcutStatusProvider,
                     usageTracker: menuBarServices.usageTracker,
                     openSettings: menuBarServices.openSettings,

@@ -32,6 +32,59 @@ struct LocalizationTests {
         #expect(sub.localizedString(forKey: "Ready", value: "«miss»", table: nil) == "Ready")
     }
 
+    /// Profile strings are the newest surface and the easiest to get wrong:
+    /// a key that does not match the catalog falls back to the literal
+    /// English silently, so nothing fails — the UI just stops being
+    /// translated. Every interpolated key is included, because those are the
+    /// ones whose `%@`/`%lld` shape has to match what Swift generates from
+    /// the interpolation.
+    @Test
+    func zhHansResolvesEveryProfileKeyIncludingTheInterpolatedOnes() throws {
+        let sub = try subBundle(forLocalization: "zh-Hans")
+        let keys = [
+            "Profile",
+            "Manage Profiles",
+            "Duplicate current profile",
+            "New empty profile",
+            "Recover",
+            "Keep this profile",
+            "Wink could not read your profile list",
+            "shortcuts.json was changed outside Wink",
+            "Recipes import into the active profile. Profiles stay on this Mac; recipes are how you share bindings.",
+            // Interpolated keys.
+            "%@ copy",
+            "%@ copy %lld",
+            "%@ (can't be read)",
+            "“%@” could not be read",
+            "Import into “%@”",
+            "Created the profile “%@”.",
+            "Delete “%@”?",
+            "A copy of the unreadable file was saved to %@.",
+            "You can have at most %lld profiles.",
+            "Profile names can be at most %lld characters.",
+        ]
+
+        for key in keys {
+            let translated = sub.localizedString(forKey: key, value: "«miss»", table: nil)
+            #expect(translated != "«miss»", "missing zh-Hans entry for \(key)")
+            #expect(translated != key, "zh-Hans entry for \(key) is still English")
+        }
+    }
+
+    @Test
+    func profileFormatKeysKeepTheirPlaceholdersInZhHans() throws {
+        let sub = try subBundle(forLocalization: "zh-Hans")
+
+        let copyFormat = sub.localizedString(forKey: "%@ copy", value: "«miss»", table: nil)
+        #expect(String(format: copyFormat, "Work") == "Work 副本")
+
+        let numberedCopy = sub.localizedString(forKey: "%@ copy %lld", value: "«miss»", table: nil)
+        #expect(String.localizedStringWithFormat(numberedCopy, "Work", 3).contains("3"))
+
+        let limit = sub.localizedString(forKey: "You can have at most %lld profiles.", value: "«miss»", table: nil)
+        #expect(String.localizedStringWithFormat(limit, ShortcutProfileManifest.maximumProfileCount).contains("32"))
+    }
+
     @Test
     func zhHansResolvesAFormatKey() throws {
         let sub = try subBundle(forLocalization: "zh-Hans")

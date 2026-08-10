@@ -1044,6 +1044,7 @@ private func makeHeatmapBuckets() -> [HourlyUsageBucket] {
 @MainActor
 private final class MenuBarPopoverLayoutContext {
     let harness = TestPersistenceHarness()
+    let profileHarness = TestProfileHarness()
     let model: MenuBarPopoverModel
 
     init(shortcutCount: Int) {
@@ -1090,6 +1091,7 @@ private final class MenuBarPopoverLayoutContext {
         model = MenuBarPopoverModel(
             shortcutStore: shortcutStore,
             preferences: preferences,
+            profileState: profileHarness.makeLoadedProfileState(shortcutManager: manager),
             shortcutStatusProvider: statusProvider,
             usageTracker: StaticUsageTracker(shortcutId: shortcuts.first?.id ?? UUID()),
             workspaceNotificationCenter: NotificationCenter(),

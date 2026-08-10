@@ -70,6 +70,8 @@ struct MenuBarPopoverSearchTests {
 
 private struct SearchPopoverContext {
     let model: MenuBarPopoverModel
+    /// Retained so its temporary directory outlives the model.
+    let profileHarness: TestProfileHarness
 }
 
 @MainActor
@@ -124,9 +126,11 @@ private func makeSearchPopoverContext(shortcuts: [AppShortcut]) -> SearchPopover
         appNotificationCenter: NotificationCenter()
     )
 
+    let profileHarness = TestProfileHarness()
     let model = MenuBarPopoverModel(
         shortcutStore: shortcutStore,
         preferences: preferences,
+        profileState: profileHarness.makeLoadedProfileState(shortcutManager: manager),
         shortcutStatusProvider: statusProvider,
         usageTracker: SearchNoopUsageTracker(),
         workspaceNotificationCenter: NotificationCenter(),
@@ -135,7 +139,7 @@ private func makeSearchPopoverContext(shortcuts: [AppShortcut]) -> SearchPopover
         quit: {}
     )
 
-    return SearchPopoverContext(model: model)
+    return SearchPopoverContext(model: model, profileHarness: profileHarness)
 }
 
 @MainActor
