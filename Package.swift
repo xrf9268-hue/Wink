@@ -11,7 +11,10 @@ let package = Package(
         .executable(name: "Wink", targets: ["Wink"])
     ],
     dependencies: [
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.1")
+        // 2.9.5 is the floor: 2.9.1 is affected by CVE-2026-47122 and
+        // CVE-2026-47121, and 2.9.5 carries the complete fix for the latter
+        // (GHSA-gmj2-gq3j-vqmj covers `<= 2.9.4`). See issue #447.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.5")
     ],
     targets: [
         .executableTarget(
