@@ -140,9 +140,24 @@ Dependabot writes its own PR body, so it cannot include `Fixes #N` or the `Valid
 
 The validator is a line scanner, not a YAML parser (the repository has no `package.json`, so it has no YAML dependency available). It tracks block scalars, so a `uses:` written inside a `run: |` heredoc or a `path: |` list is correctly ignored — this is covered by the `noisy` fixture. It would, however, treat a literal mapping key named `uses:` nested under `with:` as a reference. No GitHub action defines such an input, and the failure mode is a false positive that a reviewer can see, not a silently accepted mutable reference.
 
-### Repository-setting evidence
+### Repository-setting state
 
-Enabling any organization- or repository-level policy that *requires* SHA pinning needs repository-admin access. The tokens available to this automation are not admin, so that state cannot be read or written from here. Until an admin records it, the repo-native validator plus branch protection is the enforcement path, and the admin setting remains an open follow-up on issue #439.
+Reading or writing GitHub's own SHA-pinning policy needs a token belonging to a repository collaborator; a contributor token gets `403 You must have repository read permissions or have the repository Actions policies fine-grained permission`, regardless of its scopes. As of 2026-08-10 the owner account reports:
+
+```console
+$ gh api /repos/xrf9268-hue/Wink/actions/permissions
+{"enabled":true,"allowed_actions":"all","sha_pinning_required":false}
+```
+
+So GitHub-side enforcement is **off**, and the repo-native validator is currently the only thing rejecting a mutable reference. To turn it on (note `enabled` is a required body field — a PUT carrying only `sha_pinning_required` is rejected, and the endpoint answers `204` with no body, so re-GET to confirm):
+
+```bash
+gh api -X PUT /repos/xrf9268-hue/Wink/actions/permissions \
+  -F enabled=true -f allowed_actions=all -F sha_pinning_required=true
+gh api /repos/xrf9268-hue/Wink/actions/permissions --jq '.sha_pinning_required'
+```
+
+`xrf9268-hue` is a user account rather than an organization, so there is no org-level layer above this; the repository setting is the only GitHub-side control point.
 
 ## Runtime Validation Boundary
 
