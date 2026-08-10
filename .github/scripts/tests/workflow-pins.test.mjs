@@ -653,3 +653,54 @@ test('the separation rule does not lose the real key forms', () => {
     assert.equal(references[0].value, expected);
   }
 });
+
+// One table for the whole `uses`-key boundary. Three rounds of review found
+// bugs on both sides of this one regex, so both directions are asserted
+// together rather than as separate cases that can drift apart.
+test('the uses-key boundary accepts exactly the real spellings', () => {
+  const hits = [
+    ['      - uses: actions/cache@main'],
+    ['      - "uses": actions/cache@main'],
+    ['      - "uses":actions/cache@main'],
+    ["      - 'uses': actions/cache@main"],
+    ['      - ? uses', '        : actions/cache@main'],
+    ['      - ? uses : actions/cache@main'],
+    ['      - ? uses: actions/cache@main'],
+    ['      - ? "uses" : actions/cache@main'],
+  ];
+
+  const misses = [
+    // `uses:foo`, `uses cache`, `usescache` are all single plain scalars
+    // naming keys that are not `uses`.
+    ['      - ? uses cache', '        : value'],
+    ['      - ? uses:foo', '        : value'],
+    ['      - ? usescache', '        : value'],
+    ['      - ? name : Checkout'],
+    ['      - name: Checkout'],
+  ];
+
+  for (const lines of hits) {
+    const references = scanUsesReferences(['jobs:', '  a:', '    steps:', ...lines].join('\n'));
+    assert.equal(references.length, 1, `expected a reference for:\n${lines.join('\n')}`);
+  }
+
+  for (const lines of misses) {
+    assert.deepEqual(
+      scanUsesReferences(['jobs:', '  a:', '    steps:', ...lines].join('\n')),
+      [],
+      `expected NO reference for:\n${lines.join('\n')}`,
+    );
+  }
+});
+
+test('the uses-key boundary behaves the same inside a flow collection', () => {
+  assert.equal(
+    scanUsesReferences(['jobs:', '  a:', '    steps: [ ? uses : actions/cache@main ]'].join('\n'))
+      .length,
+    1,
+  );
+  assert.deepEqual(
+    scanUsesReferences(['jobs:', '  a:', '    steps: [ ? uses cache : value ]'].join('\n')),
+    [],
+  );
+});
