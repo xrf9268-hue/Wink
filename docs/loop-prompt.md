@@ -6,6 +6,7 @@ Core repository state sync now lives in GitHub Actions:
 - `.github/workflows/pr-metadata.yml` enforces `Fixes #...` and `Validation Status`
 - `.github/workflows/review-gate.yml` enforces deterministic review-state blocking
 - `.github/workflows/project-sync.yml` reconciles `Wink Backlog` issue/project state
+- `.github/workflows/osv-scan.yml` (`Dependency Scan`) gates SwiftPM dependencies against OSV, and gates public releases via `workflow_call`
 
 ## Usage
 

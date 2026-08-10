@@ -77,6 +77,12 @@ jobs:
             --output=osv-results.json
             --all-packages
 
+      # The gate's own logic is only exercised by whatever the two live scans
+      # happen to hit; expiry, alias, and TOML branches would otherwise regress
+      # silently. Cheap enough to run inline rather than rely on another workflow.
+      - name: Dependency-gate policy tests
+        run: node --test .github/scripts/tests/osv-results.test.mjs
+
       - name: Assert the scan covered every pinned package
         run: node .github/scripts/assert-osv-scan.mjs
 
@@ -85,8 +91,11 @@ jobs:
       # the release gate must not publish scan history mid-release. In every mode
       # the gate above has already decided pass/fail, so skipping the upload
       # never weakens the check — it only changes where the result is displayed.
+      # `!cancelled()` rather than the implicit `success()`: a scheduled run that
+      # actually FINDS something fails the assertion above, and that is precisely
+      # the run whose results belong in code scanning.
       - name: Produce SARIF for code scanning
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        if: ${{ !cancelled() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
         continue-on-error: true
         uses: google/osv-scanner-action/osv-scanner-action@8deb546fdb875b9996d27d4950be7312dac076a1 # v2.5.0
         with:
@@ -96,7 +105,7 @@ jobs:
             --output=osv-results.sarif
 
       - name: Upload SARIF to code scanning
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        if: ${{ !cancelled() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
         uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
           sarif_file: osv-results.sarif
