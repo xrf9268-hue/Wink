@@ -80,7 +80,7 @@ The release workflow refuses to run in either configuration that would blur that
 ## Inspect what was actually attested
 
 ```bash
-gh attestation verify Wink-0.7.3.dmg --repo xrf9268-hue/Wink --format json \
+gh attestation verify Wink-X.Y.Z.dmg --repo xrf9268-hue/Wink --format json \
   | jq '.[].verificationResult.signature.certificate
         | {sourceRepositoryURI, sourceRepositoryRef, sourceRepositoryDigest,
            buildSignerURI, runnerEnvironment}'
@@ -95,7 +95,7 @@ GitHub-hosted runner. The predicate type is
 ## Check the digest by hand
 
 ```bash
-shasum -a 256 Wink-0.7.3.dmg
+shasum -a 256 Wink-X.Y.Z.dmg
 ```
 
 The release run prints the same digests in its job summary under
