@@ -126,6 +126,17 @@ struct AppShortcut: Codable, Identifiable, Hashable, Sendable {
         persistedInvalidTarget != nil
     }
 
+    /// The preserved gate in the form `init(persistedInvalidTarget:)` takes.
+    /// Copying a shortcut (profile duplication) must carry it verbatim: drop
+    /// it and the copy's `target` key goes absent, which the loader's
+    /// absent-key backfill would re-arm as a live trigger (#404).
+    var persistedInvalidTargetForCopy: PersistedInvalidTarget? {
+        if let raw = exportedInvalidTargetRawValue {
+            return .unknownString(raw)
+        }
+        return hasPersistedInvalidTarget ? .explicitNullOrMalformed : nil
+    }
+
     var isFrontmostAppTarget: Bool {
         target == .frontmostApp
     }
