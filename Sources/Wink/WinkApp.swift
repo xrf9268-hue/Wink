@@ -39,6 +39,7 @@ struct WinkApp: App {
             let services = appDelegate.settingsSceneServices
             SettingsView(
                 editor: services.editor,
+                profileState: services.profileState,
                 preferences: services.preferences,
                 insightsViewModel: services.insightsViewModel,
                 appListProvider: services.appListProvider,

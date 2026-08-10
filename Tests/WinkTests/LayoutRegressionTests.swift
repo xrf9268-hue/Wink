@@ -425,6 +425,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             ShortcutsTabView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider
@@ -449,6 +450,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             ShortcutsTabView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider
@@ -474,6 +476,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             ShortcutsTabView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider
@@ -500,6 +503,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             ShortcutsTabView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider
@@ -574,6 +578,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             ShortcutsTabView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider
@@ -596,6 +601,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             SettingsView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 insightsViewModel: context.insightsViewModel,
                 appListProvider: context.appListProvider,
@@ -809,6 +815,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             ShortcutsTabView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider
@@ -1098,6 +1105,8 @@ private final class ShortcutsTabLayoutContext {
     let harness = TestPersistenceHarness()
     let shortcutStore = ShortcutStore()
     let editor: ShortcutEditorState
+    let profileState: ShortcutProfileState
+    let profileHarness = TestProfileHarness()
     let preferences: AppPreferences
     let appListProvider: AppListProvider
     let shortcutStatusProvider: ShortcutStatusProvider
@@ -1131,6 +1140,10 @@ private final class ShortcutsTabLayoutContext {
             shortcutStore: shortcutStore,
             shortcutManager: manager
         )
+        let profileStore = profileHarness.makeStore()
+        _ = profileStore.load()
+        profileState = ShortcutProfileState(store: profileStore, shortcutManager: manager)
+        _ = profileState.loadAtStartup()
         preferences = AppPreferences(
             shortcutManager: manager,
             launchAtLoginService: LaunchAtLoginService(client: .init(
@@ -1162,8 +1175,10 @@ private final class ShortcutsTabLayoutContext {
 @MainActor
 private final class SettingsViewLayoutContext {
     let harness = TestPersistenceHarness()
+    let profileHarness = TestProfileHarness()
     let shortcutStore = ShortcutStore()
     let editor: ShortcutEditorState
+    let profileState: ShortcutProfileState
     let preferences: AppPreferences
     let insightsViewModel: InsightsViewModel
     let appListProvider: AppListProvider
@@ -1204,6 +1219,10 @@ private final class SettingsViewLayoutContext {
                 openSystemSettingsLoginItems: {}
             ))
         )
+        let profileStore = profileHarness.makeStore()
+        _ = profileStore.load()
+        profileState = ShortcutProfileState(store: profileStore, shortcutManager: manager)
+        _ = profileState.loadAtStartup()
         insightsViewModel = InsightsViewModel(
             usageTracker: StaticUsageTracker(shortcutId: shortcut.id),
             shortcutStore: shortcutStore

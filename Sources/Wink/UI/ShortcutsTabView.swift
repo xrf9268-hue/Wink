@@ -292,6 +292,7 @@ struct ShortcutsTabView: View {
     @Environment(\.winkPalette) private var palette
 
     @Bindable var editor: ShortcutEditorState
+    var profileState: ShortcutProfileState
     var preferences: AppPreferences
     var appListProvider: AppListProvider
     var shortcutStatusProvider: ShortcutStatusProvider
@@ -336,6 +337,8 @@ struct ShortcutsTabView: View {
                     preferences.requestShortcutPermissions()
                 }
             }
+
+            ProfileBar(profileState: profileState, activeShortcuts: editor.shortcuts)
 
             permissionBanner
 

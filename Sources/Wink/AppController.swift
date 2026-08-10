@@ -5,6 +5,7 @@ import ApplicationServices
 final class AppController {
     struct SettingsSceneServices {
         let editor: ShortcutEditorState
+        let profileState: ShortcutProfileState
         let preferences: AppPreferences
         let insightsViewModel: InsightsViewModel
         let appListProvider: AppListProvider
@@ -244,6 +245,7 @@ final class AppController {
     private lazy var appListProvider = AppListProvider()
     private lazy var settingsSceneServicesStorage = SettingsSceneServices(
         editor: shortcutEditor,
+        profileState: profileState,
         preferences: appPreferences,
         insightsViewModel: insightsViewModel,
         appListProvider: appListProvider,

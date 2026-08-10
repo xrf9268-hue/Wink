@@ -87,6 +87,7 @@ struct SettingsView: View {
     @Environment(\.winkPalette) private var palette
 
     @Bindable var editor: ShortcutEditorState
+    var profileState: ShortcutProfileState
     var preferences: AppPreferences
     var insightsViewModel: InsightsViewModel
     var appListProvider: AppListProvider
@@ -180,6 +181,7 @@ struct SettingsView: View {
         case .shortcuts:
             ShortcutsTabView(
                 editor: editor,
+                profileState: profileState,
                 preferences: preferences,
                 appListProvider: appListProvider,
                 shortcutStatusProvider: shortcutStatusProvider
