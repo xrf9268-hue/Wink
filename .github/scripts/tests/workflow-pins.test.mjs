@@ -667,6 +667,7 @@ test('the uses-key boundary accepts exactly the real spellings', () => {
     ['      - ? uses : actions/cache@main'],
     ['      - ? uses: actions/cache@main'],
     ['      - ? "uses" : actions/cache@main'],
+    ['      - ? uses # a real comment', '        : actions/cache@main'],
   ];
 
   const misses = [
@@ -675,6 +676,8 @@ test('the uses-key boundary accepts exactly the real spellings', () => {
     ['      - ? uses cache', '        : value'],
     ['      - ? uses:foo', '        : value'],
     ['      - ? usescache', '        : value'],
+    // `#` without whitespace ahead of it is part of the scalar, not a comment.
+    ['      - ? uses#cache', '        : value'],
     ['      - ? name : Checkout'],
     ['      - name: Checkout'],
   ];

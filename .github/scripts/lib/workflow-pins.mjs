@@ -49,12 +49,14 @@ const USES_KEY = String.raw`(?:uses|"uses"|'uses')`;
 //   `\s*:(?=[\s,\]}]|$)`  a real separator. A colon only separates when what
 //                          follows IT does too, so `uses:foo` stays one plain
 //                          scalar naming an unrelated key.
-//   `\s*(?=[,\]}#]|$)`     the key ends here, with its `:` on the next line, a
-//                          comment, a flow delimiter, or end of input.
+//   `\s*(?=[,\]}]|$)`      the key ends here, with its `:` on the next line, a
+//                          flow delimiter, or end of input.
+//   `\s+(?=#)`             a comment ends it — but only with whitespace ahead
+//                          of the hash, because `uses#cache` is one scalar.
 //
-// The second alternative must NOT accept bare whitespace with content after it:
-// `? uses cache` is the plain scalar `uses cache`, a different key again.
-const USES_KEY_END = String.raw`(?:\s*:(?=[\s,\]}]|$)|\s*(?=[,\]}#]|$))`;
+// None of them may accept bare whitespace with content after it: `? uses cache`
+// is the plain scalar `uses cache`, a different key again.
+const USES_KEY_END = String.raw`(?:\s*:(?=[\s,\]}]|$)|\s*(?=[,\]}]|$)|\s+(?=#))`;
 // `? uses` may be followed by `: <value>` on the same line or by a `:` line of
 // its own.
 const EXPLICIT_USES_KEY_PATTERN = new RegExp(String.raw`^\?\s+${USES_KEY}${USES_KEY_END}`);
