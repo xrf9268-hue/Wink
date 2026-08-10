@@ -161,6 +161,12 @@ test('evaluateReference rejects every mutable or undocumented reference shape', 
       'invalid-version-comment',
     ],
     [{ value: `actions/upload-artifact@${UPLOAD_SHA}`, comment: 'v7' }, 'invalid-version-comment'],
+    // Dependabot skips the comment rewrite when anything follows the version,
+    // so the SHA would advance while the comment silently went stale.
+    [
+      { value: `actions/upload-artifact@${UPLOAD_SHA}`, comment: 'v7.0.1 (do not change)' },
+      'invalid-version-comment',
+    ],
     [{ value: './.github/actions/summarize@main', comment: null }, 'local-reference-with-ref'],
     [{ value: 'docker://ghcr.io/example-org/scanner:latest', comment: null }, 'mutable-container-image'],
     [{ value: 'totally-bogus', comment: null }, 'unparseable-reference'],

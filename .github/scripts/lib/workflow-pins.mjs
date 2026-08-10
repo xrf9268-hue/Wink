@@ -181,17 +181,17 @@ export function evaluateReference({ value, comment, blockScalar = false }) {
     });
   }
 
-  const version = comment === null ? null : comment.split(/\s+/)[0];
+  const version = comment;
 
   if (comment === null) {
     problems.push({
       code: 'missing-version-comment',
       message: `\`${action}${path}\` has no trailing version comment; append \`# <tag>\` so reviewers and Dependabot agree on the intended upstream release.`,
     });
-  } else if (!VERSION_COMMENT_PATTERN.test(version)) {
+  } else if (!VERSION_COMMENT_PATTERN.test(comment)) {
     problems.push({
       code: 'invalid-version-comment',
-      message: `\`${action}${path}\` comment must start with a specific upstream release of at least \`MAJOR.MINOR\` (for example \`# v4.2.0\`), got \`# ${comment}\`; a bare major names a moving tag and stops being true when upstream re-points it.`,
+      message: `\`${action}${path}\` comment must be exactly one specific upstream release of at least \`MAJOR.MINOR\` (for example \`# v4.2.0\`), got \`# ${comment}\`. A bare major names a moving tag, and any trailing prose makes Dependabot skip the comment rewrite so the SHA advances while the comment goes stale.`,
     });
   }
 

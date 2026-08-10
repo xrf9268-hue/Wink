@@ -96,15 +96,31 @@ Pinning is not the whole story: a pin that never advances accumulates unpatched 
 | Remote references pin a 40-character lowercase commit SHA | `actions/checkout@v4`, `@main`, `@27d5ce7f`, `@27D5CE7F…` |
 | Reusable workflows follow the same rule at job level | `org/repo/.github/workflows/build.yml@v1` |
 | Every remote pin carries a version comment | `actions/upload-artifact@043fb46d…` with no `#` comment |
-| The comment names a specific release, at least `MAJOR.MINOR` | `# v7` — a moving tag, false as soon as upstream re-points it |
+| The comment is exactly one release, at least `MAJOR.MINOR` | `# v7` — a moving tag, false as soon as upstream re-points it |
+| Nothing follows the version in the comment | `# v7.0.1 (pinned, do not change)` |
 | Local references carry no `@ref` | `./.github/actions/summarize@main` |
 | Container references pin a digest | `docker://ghcr.io/org/scanner:latest` |
 | One repository resolves to one commit repository-wide | `actions/upload-artifact` pinned to v7.0.0 in one workflow and v7.0.1 in another |
 | One commit is documented as one release | `org/analysis/init@<sha> # v4.30.0` next to `org/analysis/analyze@<sha> # v4.29.0` |
 
-The last two rules exist because Dependabot updates an action as a single dependency across every call site. A split pin is how a stale SHA survives an update — it is exactly how `internal-package.yml` ended up on `actions/upload-artifact` v7.0.0 while `release.yml` was on v7.0.1.
+The split-pin rules exist because Dependabot updates an action as a single dependency across every call site. A split pin is how a stale SHA survives an update — it is exactly how `internal-package.yml` ended up on `actions/upload-artifact` v7.0.0 while `release.yml` was on v7.0.1.
 
 Sub-paths of one repository (`github/codeql-action/init` and `github/codeql-action/analyze`) share a repository, so they must share a SHA. The validator groups by `owner/repo` for this reason.
+
+The "nothing follows the version" rule is not style policing. Dependabot rewrites a pin comment only when the comment **ends with** the old version string; when there is trailing text it skips the rewrite for safety and bumps the SHA alone, which leaves the comment quietly lying about what is pinned.
+
+### What the validator covers that GitHub's own setting does not
+
+GitHub ships a repository policy, `Settings → Actions → General → Require actions to be pinned to a full-length commit SHA` (REST field `sha_pinning_required` on `/repos/{owner}/{repo}/actions/permissions`). It is worth enabling, but it is **not** a superset of this validator:
+
+- GitHub's docs state plainly that reusable workflows "can still be referenced by tag" under that policy. Job-level `uses:` pinning is enforced here or nowhere.
+- The policy says nothing about version comments, split pins, or comment/SHA agreement.
+- A repo setting is invisible in the diff. The validator fails on the PR that introduces the violation, with a line annotation.
+
+### Coverage gaps to keep in mind
+
+- **Dependabot does not scan `.github/actions/**/action.yml`.** For the `github-actions` ecosystem, `directory: "/"` covers the root `action.yml` plus the files directly inside `.github/workflows` — it does not recurse into repo-local composite actions. The validator checks those files, but if Wink ever adds one, its pins must be advanced by hand.
+- **SHA-pinned actions produce no Dependabot security alerts.** GitHub only alerts on actions using semantic versioning. Pinning trades alerting for immutability, which makes the weekly version-update PR the only lifecycle signal — do not let it sit unreviewed.
 
 ### Reviewing an upstream action update
 
