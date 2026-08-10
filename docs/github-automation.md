@@ -278,8 +278,16 @@ gh api '/repos/xrf9268-hue/Wink/code-scanning/alerts?ref=refs/heads/main' \
   --jq '.[] | [.number, .rule.id, .rule.security_severity_level, .most_recent_instance.location.path] | @tsv'
 ```
 
-These endpoints need an account with repository admin; a contributor token returns `403`
-regardless of its scopes, which is an identity problem and not a missing scope.
+The three differ in what they require, and conflating them sends people looking for the
+wrong permission:
+
+- **(1) default setup** reads a repository *setting* and needs repository administration.
+- **(2) analyses** and **(3) alerts** need only `Code scanning alerts: read`, which a
+  maintainer without admin can hold.
+
+What all three share is that a token belonging to a **non-collaborator** returns `403` no
+matter which scopes it carries. That is an identity problem, not a missing scope — adding
+scopes to such a token changes nothing.
 
 The number that actually proves extraction happens is in the run log of the `CodeQL Setup` /
 `Analyze (swift)` job:
