@@ -30,7 +30,8 @@ const BLOCK_SCALAR_INDICATOR_PATTERN = new RegExp(`^${BLOCK_SCALAR_INDICATOR}$`)
 // YAML permits a quoted mapping key, and GitHub accepts `"uses": owner/repo@ref`.
 // A double-quoted key may also carry escapes, so `"uses"` is the same key —
 // keys are decoded before comparison rather than matched literally.
-const USES_PATTERN = /^(?:uses|"((?:[^"\\]|\\.)*)"|'((?:[^']|'')*)')\s*:\s*(.*)$/;
+const USES_PATTERN =
+  /^(?:uses(?=\s*:(?:\s|$))|"((?:[^"\\]|\\.)*)"|'((?:[^']|'')*)')\s*:\s*(.*)$/;
 // A flow mapping (`- { name: Cache, uses: owner/repo@main }`) is valid YAML that
 // GitHub honors, but its `uses` never starts a line. Rather than grow a YAML
 // parser, detect the shape and fail closed — an unreadable reference must never
@@ -42,7 +43,33 @@ const FLOW_MAPPING_USES_PATTERN = /[{[,]\s*(?:uses|"uses"|'uses')\s*:/;
 // one. Anchoring here, after quoted spans are blanked out, keeps
 // `run: echo "{ uses: x }"` from reading as a reference.
 const FLOW_MAPPING_OPENS_PATTERN = /^[{[]|:\s*[{[]/;
-const EXPLICIT_USES_KEY_PATTERN = /^\?\s+(?:uses|"uses"|'uses')\s*$/;
+const USES_KEY = String.raw`(?:uses|"uses"|'uses')`;
+// What may follow the key `uses`, and nothing else may.
+//
+//   `\s*:(?=[\s,\]}]|$)`  a real separator. A colon only separates when what
+//                          follows IT does too, so `uses:foo` stays one plain
+//                          scalar naming an unrelated key.
+//   `\s*(?=[,\]}]|$)`      the key ends here, with its `:` on the next line, a
+//                          flow delimiter, or end of input.
+//   `\s+(?=#)`             a comment ends it — but only with whitespace ahead
+//                          of the hash, because `uses#cache` is one scalar.
+//
+// None of them may accept bare whitespace with content after it: `? uses cache`
+// is the plain scalar `uses cache`, a different key again.
+const USES_KEY_END = String.raw`(?:\s*:(?=[\s,\]}]|$)|\s*(?=[,\]}]|$)|\s+(?=#))`;
+// `? uses` may be followed by `: <value>` on the same line or by a `:` line of
+// its own.
+const EXPLICIT_USES_KEY_PATTERN = new RegExp(String.raw`^\?\s+${USES_KEY}${USES_KEY_END}`);
+// The same key on a flow CONTINUATION line has no delimiter ahead of it:
+// `steps: [` followed by `? uses : actions/cache@main`.
+const LEADING_EXPLICIT_USES_KEY_PATTERN = new RegExp(String.raw`^\?\s*${USES_KEY}${USES_KEY_END}`);
+// The same explicit-key form is legal inside a flow collection, where it never
+// starts a line: `steps: [ ? uses : actions/cache@main ]`. The `?` sits between
+// the collection delimiter and the key, so neither the flow `uses` pattern nor
+// the whole-line explicit-key pattern sees it.
+const FLOW_EXPLICIT_USES_KEY_PATTERN = new RegExp(
+  String.raw`[{[,]\s*\?\s*${USES_KEY}${USES_KEY_END}`,
+);
 const QUOTED_SPAN_PATTERN = /("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')(\s*:)?/g;
 
 // Blank quoted *values* so `run: echo "{ uses: x }"` cannot be mistaken for a
@@ -207,8 +234,19 @@ export function scanUsesReferences(source) {
     if (flowDepth > 0) {
       flowOpenLines += 1;
       if (flowOpenLines > MAX_FLOW_CONTINUATION_LINES) {
+        // Resuming here would be the same bug the cap exists to prevent: past
+        // this point a `uses` on a continuation line is read as ordinary
+        // content and ignored. The scanner has admitted it cannot follow the
+        // file, which is exactly when it must not report success.
+        references.push({
+          line: index + 1,
+          value: rest.trim(),
+          comment: null,
+          flowOverflow: true,
+        });
         flowDepth = 0;
         flowOpenLines = 0;
+        return;
       }
     } else {
       flowOpenLines = 0;
@@ -227,7 +265,12 @@ export function scanUsesReferences(source) {
     const opensFlow = FLOW_MAPPING_OPENS_PATTERN.test(bare);
 
     if (continuesFlow || opensFlow) {
-      if (FLOW_MAPPING_USES_PATTERN.test(bare) || matchUsesKey(bare) !== null) {
+      if (
+        FLOW_EXPLICIT_USES_KEY_PATTERN.test(bare) ||
+        LEADING_EXPLICIT_USES_KEY_PATTERN.test(bare)
+      ) {
+        references.push({ line: index + 1, value: rest.trim(), comment: null, explicitKey: true });
+      } else if (FLOW_MAPPING_USES_PATTERN.test(bare) || matchUsesKey(bare) !== null) {
         references.push({ line: index + 1, value: rest.trim(), comment: null, flowMapping: true });
       }
 
@@ -276,8 +319,18 @@ export function evaluateReference({
   blockScalar = false,
   flowMapping = false,
   explicitKey = false,
+  flowOverflow = false,
 }) {
   const problems = [];
+
+  if (flowOverflow) {
+    problems.push({
+      code: 'flow-tracking-overflow',
+      message: `A YAML flow collection stayed open for more than ${MAX_FLOW_CONTINUATION_LINES} lines, so the scanner can no longer tell structure from content and stopped following it here. Rewrite the step in block style.`,
+    });
+
+    return { kind: 'invalid', action: null, ref: null, version: null, problems };
+  }
 
   if (explicitKey) {
     problems.push({

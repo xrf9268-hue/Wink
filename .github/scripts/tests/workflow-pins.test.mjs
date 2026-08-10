@@ -532,3 +532,178 @@ test('a flow mapping continuing at column zero keeps its collection open', () =>
   assert.equal(references[0].flowMapping, true);
   assert.equal(references[0].line, 5);
 });
+
+test('an explicit key inside a flow collection fails closed', () => {
+  const references = scanUsesReferences(
+    ['jobs:', '  a:', '    steps: [ ? uses : actions/cache@main ]'].join('\n'),
+  );
+
+  assert.equal(references.length, 1);
+  assert.equal(references[0].explicitKey, true);
+  assert.deepEqual(
+    evaluateReference(references[0]).problems.map((problem) => problem.code),
+    ['explicit-key-reference'],
+  );
+});
+
+test('losing track of a flow collection is reported, not silently resumed', () => {
+  const lines = [
+    'jobs:',
+    '  a:',
+    '    steps: [',
+    ...Array.from({ length: 210 }, () => '      { name: filler },'),
+    '      { uses: actions/cache@main }',
+    '    ]',
+  ];
+  const references = scanUsesReferences(lines.join('\n'));
+  const overflow = references.find((reference) => reference.flowOverflow);
+
+  assert.ok(overflow, 'exceeding the continuation cap must produce a reference');
+  assert.deepEqual(
+    evaluateReference(overflow).problems.map((problem) => problem.code),
+    ['flow-tracking-overflow'],
+  );
+});
+
+test('an ordinary short flow collection never trips the overflow guard', () => {
+  const references = scanUsesReferences(
+    ['jobs:', '  a:', '    steps:', '      - { name: Cache, uses: actions/cache@main }'].join('\n'),
+  );
+
+  assert.equal(references.length, 1);
+  assert.equal(references[0].flowOverflow, undefined);
+  assert.equal(references[0].flowMapping, true);
+});
+
+test('release.yml scans the immutable commit for a no-tag dispatch', async () => {
+  const releaseWorkflow = await readFile(join(repositoryRoot, '.github/workflows/release.yml'), 'utf8');
+
+  assert.match(releaseWorkflow, /RELEASE_CHECKOUT_REF="refs\/tags\/\$\{MANUAL_RELEASE_TAG\}"/);
+  assert.match(releaseWorkflow, /RELEASE_CHECKOUT_REF="\$\{GITHUB_SHA\}"/);
+  assert.doesNotMatch(releaseWorkflow, /RELEASE_CHECKOUT_REF="\$\{GITHUB_REF\}"/);
+});
+
+test('explicit keys are caught in every flow position', () => {
+  const cases = [
+    // delimiter and key on one line
+    ['jobs:', '  a:', '    steps: [ ? uses : actions/cache@main ]'],
+    // continuation line, no delimiter ahead of the key
+    ['jobs:', '  a:', '    steps: [', '      ? uses : actions/cache@main', '    ]'],
+    // block style, value on the same line
+    ['jobs:', '  a:', '    steps:', '      - ? uses : actions/cache@main'],
+    // block style, value on its own line
+    ['jobs:', '  a:', '    steps:', '      - ? uses', '        : actions/cache@main'],
+  ];
+
+  for (const lines of cases) {
+    const references = scanUsesReferences(lines.join('\n'));
+    assert.equal(references.length, 1, `expected a reference for:\n${lines.join('\n')}`);
+    assert.equal(references[0].explicitKey, true);
+    assert.deepEqual(
+      evaluateReference(references[0]).problems.map((problem) => problem.code),
+      ['explicit-key-reference'],
+    );
+  }
+});
+
+test('a bare `?` that is not a uses key is left alone', () => {
+  assert.deepEqual(
+    scanUsesReferences(
+      ['jobs:', '  a:', '    steps: [', '      ? name : Checkout', '    ]'].join('\n'),
+    ),
+    [],
+  );
+});
+
+test('a colon only separates a key when what follows it does', () => {
+  // `uses:foo` is one plain scalar, so none of these are the `uses` key and
+  // none may be reported — a false positive here fails a valid workflow.
+  const notKeys = [
+    ['jobs:', '  a:', '    steps:', '      - ? uses:foo', '        : value'],
+    ['jobs:', '  a:', '    steps: [ ? uses:foo : value ]'],
+    ['jobs:', '  a:', '    steps: [', '      ? uses:foo : value', '    ]'],
+  ];
+
+  for (const lines of notKeys) {
+    assert.deepEqual(
+      scanUsesReferences(lines.join('\n')),
+      [],
+      `expected no reference for:\n${lines.join('\n')}`,
+    );
+  }
+
+  assert.equal(matchUsesKey('uses:foo: value'), null);
+  assert.equal(
+    matchUsesKey(`uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd`).value,
+    `actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd`,
+  );
+});
+
+test('the separation rule does not lose the real key forms', () => {
+  const kept = [
+    ['      - uses: actions/cache@main', 'actions/cache@main'],
+    ['      - "uses": actions/cache@main', 'actions/cache@main'],
+    ['      - "uses":actions/cache@main', 'actions/cache@main'],
+    ["      - 'uses': actions/cache@main", 'actions/cache@main'],
+  ];
+
+  for (const [step, expected] of kept) {
+    const references = scanUsesReferences(['jobs:', '  a:', '    steps:', step].join('\n'));
+    assert.equal(references.length, 1, `expected a reference for: ${step}`);
+    assert.equal(references[0].value, expected);
+  }
+});
+
+// One table for the whole `uses`-key boundary. Three rounds of review found
+// bugs on both sides of this one regex, so both directions are asserted
+// together rather than as separate cases that can drift apart.
+test('the uses-key boundary accepts exactly the real spellings', () => {
+  const hits = [
+    ['      - uses: actions/cache@main'],
+    ['      - "uses": actions/cache@main'],
+    ['      - "uses":actions/cache@main'],
+    ["      - 'uses': actions/cache@main"],
+    ['      - ? uses', '        : actions/cache@main'],
+    ['      - ? uses : actions/cache@main'],
+    ['      - ? uses: actions/cache@main'],
+    ['      - ? "uses" : actions/cache@main'],
+    ['      - ? uses # a real comment', '        : actions/cache@main'],
+  ];
+
+  const misses = [
+    // `uses:foo`, `uses cache`, `usescache` are all single plain scalars
+    // naming keys that are not `uses`.
+    ['      - ? uses cache', '        : value'],
+    ['      - ? uses:foo', '        : value'],
+    ['      - ? usescache', '        : value'],
+    // `#` without whitespace ahead of it is part of the scalar, not a comment.
+    ['      - ? uses#cache', '        : value'],
+    ['      - ? name : Checkout'],
+    ['      - name: Checkout'],
+  ];
+
+  for (const lines of hits) {
+    const references = scanUsesReferences(['jobs:', '  a:', '    steps:', ...lines].join('\n'));
+    assert.equal(references.length, 1, `expected a reference for:\n${lines.join('\n')}`);
+  }
+
+  for (const lines of misses) {
+    assert.deepEqual(
+      scanUsesReferences(['jobs:', '  a:', '    steps:', ...lines].join('\n')),
+      [],
+      `expected NO reference for:\n${lines.join('\n')}`,
+    );
+  }
+});
+
+test('the uses-key boundary behaves the same inside a flow collection', () => {
+  assert.equal(
+    scanUsesReferences(['jobs:', '  a:', '    steps: [ ? uses : actions/cache@main ]'].join('\n'))
+      .length,
+    1,
+  );
+  assert.deepEqual(
+    scanUsesReferences(['jobs:', '  a:', '    steps: [ ? uses cache : value ]'].join('\n')),
+    [],
+  );
+});

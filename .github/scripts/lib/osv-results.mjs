@@ -201,6 +201,12 @@ export function evaluateScanReport({
 
       findings.push({
         code: 'unsuppressed-vulnerability',
+        // The package identity travels with the finding so a caller can ask
+        // "is this advisory on the package I expected?", not merely "did any
+        // advisory appear anywhere in the report?".
+        packageName: entry.name,
+        packageVersion: entry.version,
+        ecosystem: entry.ecosystem,
         message: `${vulnerability.id} affects ${entry.name}@${entry.version} (${entry.ecosystem})${
           vulnerability.summary ? `: ${vulnerability.summary}` : ''
         }`,

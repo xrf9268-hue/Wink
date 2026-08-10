@@ -49,7 +49,11 @@ jobs:
             RELEASE_CHECKOUT_REF="refs/tags/${MANUAL_RELEASE_TAG}"
           else
             RELEASE_REF="${GITHUB_REF_NAME}"
-            RELEASE_CHECKOUT_REF="${GITHUB_REF}"
+            # The commit, not the branch. A branch ref is mutable: the
+            # dependency job resolves it when it starts, while the release job
+            # builds the immutable SHA captured when the run was created, so a
+            # push in between would validate a revision that is never built.
+            RELEASE_CHECKOUT_REF="${GITHUB_SHA}"
           fi
 
           echo "release_ref=$RELEASE_REF" >> "$GITHUB_OUTPUT"
