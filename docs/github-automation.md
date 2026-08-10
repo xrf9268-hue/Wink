@@ -44,7 +44,7 @@ Wink now uses repository-native GitHub Actions and a checked-in ruleset artifact
 7. **Static analysis** (GitHub CodeQL default setup, Swift, `default` query suite)
    - Analyzes pull requests, `main` pushes, and a weekly full scan on a macOS runner
    - Covers 100% of `Sources/Wink` with zero unresolved AST nodes; the test target and standalone scripts are not compiled by `swift build` and are therefore out of scope
-   - Configured by a repository setting, not by a workflow file, so there is nothing to SHA-pin
+   - Configured by a repository setting, not by a workflow file, so there is nothing to SHA-pin and no build step to maintain
    - **Advisory, not blocking**: alerts do not fail the check on their own; severity gating is separate branch protection an administrator has not enabled
 
 ## Required Repository Setup
@@ -247,18 +247,24 @@ a macOS runner and cannot use `build-mode: none`; default setup handles that aut
 | | Default setup (current) | Advanced workflow |
 | --- | --- | --- |
 | Configured by | repository setting, one API call | a committed `.github/workflows/*.yml` |
-| Build | autobuild (`swift build`) | manual build commands |
+| Build | autobuild (`swift build`) | **either** `github/codeql-action/autobuild` **or** manual build commands |
 | Action pinning | not applicable — no workflow file exists to pin | subject to the full-SHA policy above |
 | Query suite | `default` | any, including custom packs |
 | Changing it | Settings → Code security, or `PATCH /repos/:owner/:repo/code-scanning/default-setup` | a normal pull request |
 
-Default setup was chosen because autobuild already compiles the whole shipping target (see
-coverage below), so an advanced workflow would add a maintained build script and four more
-pinned actions for no additional coverage. **Do not run both**: two configurations analyzing
-the same language produce duplicate and stale alerts.
+Advanced setup does **not** imply hand-written build commands — it can keep autobuild via
+`github/codeql-action/autobuild`. That matters because the two reasons to move are
+independent:
 
-Move to advanced only if autobuild stops compiling the target, or if a custom query pack is
-needed. If that happens, disable default setup in the same change.
+- **A custom query pack is needed.** Keep autobuild; it already compiles the whole shipping
+  target. Writing build commands here would add divergent logic for nothing.
+- **Autobuild stops compiling the target.** Only then do manual commands become the point of
+  the move, and they must match repository reality rather than a generic template.
+
+Default setup was chosen because it needs no workflow file, no pinned actions, and no
+maintained build step, while producing the coverage measured below. **Do not run both**: two
+configurations analyzing the same language produce duplicate and stale alerts, so disable
+default setup in the same change that adds an advanced workflow.
 
 ### Inspecting scan health
 
@@ -282,12 +288,16 @@ The three differ in what they require, and conflating them sends people looking 
 wrong permission:
 
 - **(1) default setup** reads a repository *setting* and needs repository administration.
-- **(2) analyses** and **(3) alerts** need only `Code scanning alerts: read`, which a
-  maintainer without admin can hold.
+- **(2) analyses** and **(3) alerts** are code-scanning reads: `Code scanning alerts: read`
+  for a fine-grained token, or `security_events` for a classic PAT (`public_repo` also works
+  on a public repository).
 
-What all three share is that a token belonging to a **non-collaborator** returns `403` no
-matter which scopes it carries. That is an identity problem, not a missing scope — adding
-scopes to such a token changes nothing.
+When one of these returns `403`, check the account before adding scopes. Measured here on
+2026-08-10: a `gh`-issued OAuth token for an account that is **not a collaborator**, carrying
+`repo` and `workflow`, returned `403` on all three, while the owner's token read all three
+fine. Scope was not the variable. Whether a given non-collaborator token can read (2) and (3)
+also depends on the repository's alert-visibility setting, so treat "try the owner's token"
+as the first diagnostic step rather than "add a scope".
 
 The number that actually proves extraction happens is in the run log of the `CodeQL Setup` /
 `Analyze (swift)` job:
