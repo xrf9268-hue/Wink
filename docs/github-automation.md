@@ -98,14 +98,16 @@ Pinning is not the whole story: a pin that never advances accumulates unpatched 
 | Every remote pin carries a version comment | `actions/upload-artifact@043fb46d…` with no `#` comment |
 | The comment is exactly one release, at least `MAJOR.MINOR` | `# v7` — a moving tag, false as soon as upstream re-points it |
 | Nothing follows the version in the comment | `# v7.0.1 (pinned, do not change)` |
-| Local references carry no `@ref` | `./.github/actions/summarize@main` |
+| Local and `$/` self references carry no `@ref` | `./.github/actions/summarize@main`, `$/actions/summarize@v1` |
 | Container references pin a digest | `docker://ghcr.io/org/scanner:latest` |
 | One repository resolves to one commit repository-wide | `actions/upload-artifact` pinned to v7.0.0 in one workflow and v7.0.1 in another |
 | One commit is documented as one release | `org/analysis/init@<sha> # v4.30.0` next to `org/analysis/analyze@<sha> # v4.29.0` |
 
 The split-pin rules exist because Dependabot updates an action as a single dependency across every call site. A split pin is how a stale SHA survives an update — it is exactly how `internal-package.yml` ended up on `actions/upload-artifact` v7.0.0 while `release.yml` was on v7.0.1.
 
-Sub-paths of one repository (`github/codeql-action/init` and `github/codeql-action/analyze`) share a repository, so they must share a SHA. The validator groups by `owner/repo` for this reason.
+Sub-paths of one repository (`github/codeql-action/init` and `github/codeql-action/analyze`) share a repository, so they must share a SHA. The validator groups by `owner/repo` for this reason, case-insensitively — GitHub repository names are case-insensitive, so `Actions/checkout` and `actions/checkout` are one dependency.
+
+`./…` local references and `$/…` self references are exempt from the SHA rule because both already resolve to the running commit; GitHub documents that a `$/` reference "must not include an `@{ref}` suffix", and the validator enforces that too.
 
 The "nothing follows the version" rule is not style policing. Dependabot rewrites a pin comment only when the comment **ends with** the old version string; when there is trailing text it skips the rewrite for safety and bumps the SHA alone, which leaves the comment quietly lying about what is pinned.
 
@@ -138,7 +140,20 @@ Dependabot writes its own PR body, so it cannot include `Fixes #N` or the `Valid
 
 ### Known scanner limitation
 
-The validator is a line scanner, not a YAML parser (the repository has no `package.json`, so it has no YAML dependency available). It tracks block scalars, so a `uses:` written inside a `run: |` heredoc or a `path: |` list is correctly ignored — this is covered by the `noisy` fixture. It would, however, treat a literal mapping key named `uses:` nested under `with:` as a reference. No GitHub action defines such an input, and the failure mode is a false positive that a reviewer can see, not a silently accepted mutable reference.
+The validator is a line scanner, not a YAML parser (the repository has no `package.json`, so it has no YAML dependency available). Every YAML shape GitHub honors is therefore either parsed or **failed closed**, never silently skipped:
+
+| Shape | Handling |
+| --- | --- |
+| `uses:` inside `run: |` or `path: |` | ignored (block-scalar tracked) |
+| `"uses": owner/repo@sha` | parsed as a real reference |
+| `- { name: X, uses: … }` | `flow-mapping-reference` error |
+| `steps: [ { uses: … } ]` | `flow-mapping-reference` error |
+| `uses: >-` with the value on the next line | `block-scalar-reference` error |
+| `uses: *alias` | `unparseable-reference` error |
+
+Quoted *values* are blanked before flow detection while quoted *keys* are preserved, so `run: echo "{ uses: x }"` is a non-match and `{ "uses": … }` is not.
+
+One known limitation remains: a literal mapping key named `uses:` nested under `with:` would be read as a reference. No GitHub action defines such an input, and the failure mode is a false positive a reviewer can see, not a silently accepted mutable reference.
 
 ### Repository-setting state
 

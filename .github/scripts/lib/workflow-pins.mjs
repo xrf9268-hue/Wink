@@ -29,11 +29,13 @@ const BLOCK_SCALAR_INDICATOR_PATTERN = /^[|>][+-]?\d*$/;
 // GitHub honors, but its `uses` never starts a line. Rather than grow a YAML
 // parser, detect the shape and fail closed — an unreadable reference must never
 // be mistaken for an absent one.
-const FLOW_MAPPING_USES_PATTERN = /[{,]\s*(?:uses|"uses"|'uses')\s*:/;
-// A flow mapping only ever opens in value position: `- { … }` (the leading `- `
-// is already stripped) or `key: { … }`. Anchoring there, after quoted spans are
-// blanked out, keeps `run: echo "{ uses: x }"` from reading as a reference.
-const FLOW_MAPPING_OPENS_PATTERN = /^\{|:\s*\{/;
+const FLOW_MAPPING_USES_PATTERN = /[{[,]\s*(?:uses|"uses"|'uses')\s*:/;
+// A flow collection only ever opens in value position: `- { … }` / `- [ … ]`
+// (the leading `- ` is already stripped) or `key: { … }` / `key: [ … ]`. A flow
+// sequence counts because `steps: [ { uses: … } ]` reaches a mapping through
+// one. Anchoring here, after quoted spans are blanked out, keeps
+// `run: echo "{ uses: x }"` from reading as a reference.
+const FLOW_MAPPING_OPENS_PATTERN = /^[{[]|:\s*[{[]/;
 const QUOTED_SPAN_PATTERN = /("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')(\s*:)?/g;
 
 // Blank quoted *values* so `run: echo "{ uses: x }"` cannot be mistaken for a
@@ -168,6 +170,20 @@ export function evaluateReference({ value, comment, blockScalar = false, flowMap
     return { kind: 'invalid', action: null, ref: null, version: null, problems };
   }
 
+  // `$/` is GitHub's self-repository reference: it resolves to the running
+  // commit, so it is immutable by construction. The docs are explicit that it
+  // "must not include an `@{ref}` suffix".
+  if (value.startsWith('$/')) {
+    if (value.includes('@')) {
+      problems.push({
+        code: 'self-reference-with-ref',
+        message: `Self reference \`${value}\` must not carry an \`@ref\`; a \`$/\` reference always resolves to the running commit.`,
+      });
+    }
+
+    return { kind: 'self', action: value, ref: null, version: null, problems };
+  }
+
   if (value.startsWith('./') || value.startsWith('../')) {
     if (value.includes('@')) {
       problems.push({
@@ -272,9 +288,12 @@ export function evaluateConsistency(references) {
       continue;
     }
 
-    const group = byAction.get(reference.action) ?? [];
+    // GitHub repository names are case-insensitive, so `Actions/checkout` and
+    // `actions/checkout` run the same upstream code and must share a pin.
+    const key = reference.action.toLowerCase();
+    const group = byAction.get(key) ?? [];
     group.push(reference);
-    byAction.set(reference.action, group);
+    byAction.set(key, group);
   }
 
   for (const [action, group] of [...byAction.entries()].sort()) {

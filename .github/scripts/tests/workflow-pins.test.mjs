@@ -146,6 +146,45 @@ test('a `uses` inside a YAML flow mapping fails closed instead of vanishing', ()
   );
 });
 
+test('a flow mapping reached through a flow sequence is still caught', () => {
+  for (const step of [
+    '    steps: [ { uses: actions/checkout@main } ]',
+    '    steps: [ uses: actions/checkout@main ]',
+  ]) {
+    const references = scanUsesReferences(['jobs:', '  a:', step].join('\n'));
+
+    assert.equal(references.length, 1, `expected ${step} to be seen`);
+    assert.equal(references[0].flowMapping, true);
+  }
+});
+
+test('a plain flow sequence with no `uses` key is left alone', () => {
+  assert.deepEqual(
+    scanUsesReferences(['on:', '  pull_request:', '    branches: [main]'].join('\n')),
+    [],
+  );
+});
+
+test('`$/` self references are immutable by construction but reject an @ref', () => {
+  assert.deepEqual(evaluateReference({ value: '$/actions/summarize', comment: null }).problems, []);
+  assert.equal(evaluateReference({ value: '$/actions/summarize', comment: null }).kind, 'self');
+  assert.deepEqual(
+    evaluateReference({ value: '$/actions/summarize@v1', comment: null }).problems.map(
+      (problem) => problem.code,
+    ),
+    ['self-reference-with-ref'],
+  );
+});
+
+test('one repository pinned under two casings is still one dependency', () => {
+  const findings = evaluateConsistency([
+    { kind: 'action', action: 'actions/checkout', ref: CHECKOUT_SHA, version: 'v6.0.2', path: 'a.yml', line: 1 },
+    { kind: 'action', action: 'Actions/Checkout', ref: UPLOAD_SHA, version: 'v7.0.1', path: 'b.yml', line: 2 },
+  ]);
+
+  assert.deepEqual(codesFor(findings), ['inconsistent-action-pin']);
+});
+
 test('a quoted key inside a flow mapping survives value blanking', () => {
   for (const step of ['      - { "uses": actions/cache@main }', "      - { 'uses': actions/cache@main }"]) {
     const references = scanUsesReferences(['jobs:', '  a:', '    steps:', step].join('\n'));
