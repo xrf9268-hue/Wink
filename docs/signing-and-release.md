@@ -468,6 +468,43 @@ The internal package path is for trusted testers only. It does not:
 - publish a Sparkle update feed
 - upload release artifacts to R2
 
+### Artifact Attestations
+
+The release job attests the final `Wink-<version>.dmg` and `Wink-<version>.zip`
+with [`actions/attest`](https://github.com/actions/attest), producing a signed
+SLSA build-provenance record bound to the repository, commit, tag, and workflow.
+
+Placement in the job is load-bearing and must not be moved:
+
+- **After stapling.** `xcrun stapler staple` writes the notarization ticket into
+  the artifact, changing its bytes and its SHA-256. An attestation created before
+  stapling names a digest no downloader will ever see.
+- **Before every upload.** R2, the GitHub Release, and the appcast only ever
+  receive already-attested bytes, so an attestation failure stops the release
+  rather than leaving unattested artifacts published.
+- **Never re-package afterwards.** Any step that rewrites the DMG or ZIP below
+  the attestation step silently invalidates it.
+
+`appcast.xml` is deliberately not attested: it is a mutable feed rewritten on
+every release and protected by Sparkle's EdDSA signature model instead. An
+immutable digest attestation would be false the moment the feed is updated.
+
+`id-token: write` and `attestations: write` are declared on the `release` job
+only; `release-readiness` and `release-unavailable` are pinned to
+`contents: read`.
+
+A rehearsal (`dry_run: true`) creates a **real** attestation — there is no
+unpublished mode. What separates it from production provenance is the source ref
+in the certificate: a rehearsal records `refs/heads/<branch>`, a real release
+records `refs/tags/vX.Y.Z`. Consumer verification pins `--source-ref`, so
+rehearsal provenance cannot be mistaken for a release.
+
+Consumer-facing verification instructions live in
+[`VERIFYING_RELEASES.md`](../VERIFYING_RELEASES.md). Wink claims **SLSA v1.0
+Build Level 2**, which is what GitHub documents artifact attestations to provide
+on their own — not Build L3, which would require generating provenance from a
+reusable workflow.
+
 ## Manual Release Checklist
 
 1. Write the `## X.Y.Z` section in [CHANGELOG.md](../CHANGELOG.md), then run `./scripts/bump-version.sh X.Y.Z` (validates semver, requires the CHANGELOG section, and increments `CFBundleVersion`)
@@ -478,6 +515,14 @@ The internal package path is for trusted testers only. It does not:
 6. Tag the release: `git tag vX.Y.Z && git push origin vX.Y.Z`
 7. If a run failed before the final appcast upload, re-run it manually: open `Release`, keep the branch on the default branch, and set `release_tag` to the existing `vX.Y.Z`. Re-running a tag **after** its feed entry is live is blocked by the feed gate — to repair a published release, bump to a new version instead
 8. Confirm the `Release` workflow succeeds for both the DMG and the Sparkle feed upload
+9. Download the published DMG **from its publication origin** and verify its provenance end to end, so the check exercises the bytes users receive rather than the runner's local copy:
+   ```bash
+   gh attestation verify Wink-X.Y.Z.dmg \
+     --repo xrf9268-hue/Wink \
+     --signer-workflow xrf9268-hue/Wink/.github/workflows/release.yml \
+     --source-ref refs/tags/vX.Y.Z
+   ```
+   Exit `0` (and silent output) is success; `4` means you are not signed in, not that verification failed
 9. Validate the published DMG and Sparkle update path on a clean macOS machine, including the Finder background, icon layout, and drag-install affordance
 
 ## Validation Commands
