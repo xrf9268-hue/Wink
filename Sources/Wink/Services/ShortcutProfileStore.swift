@@ -879,17 +879,47 @@ final class ShortcutProfileStore {
         }
     }
 
-    /// Shortcut IDs that some profile other than `profileID` also holds. The
-    /// delete paths consult this so removing a shortcut here can never delete
-    /// usage history belonging to a shortcut that still exists elsewhere.
-    func shortcutIDsUsedByOtherProfiles(excluding profileID: UUID) -> Set<UUID> {
-        guard let layout, let manifest else { return [] }
+    /// What other profiles are known to hold. `isComplete` is false when some
+    /// sibling profile could not be read, which makes every ownership question
+    /// unanswerable rather than answered "no".
+    struct ShortcutOwnership: Equatable, Sendable {
+        var idsHeldElsewhere: Set<UUID>
+        var isComplete: Bool
+
+        /// Fail-closed. An unreadable sibling could be holding this ID, and
+        /// wrongly deleting another profile's Insights history is not
+        /// recoverable, while wrongly keeping it costs nothing but a stale row.
+        func isRetainedElsewhere(_ id: UUID) -> Bool {
+            !isComplete || idsHeldElsewhere.contains(id)
+        }
+    }
+
+    /// Shortcut IDs some profile other than `profileID` also holds. Every
+    /// usage-deletion path consults this, so removing a shortcut can never
+    /// erase history belonging to one that still exists elsewhere — including
+    /// the cross-profile duplicates `scanIntegrity` deliberately reports
+    /// rather than repairs.
+    func shortcutOwnership(excluding profileID: UUID) -> ShortcutOwnership {
+        guard let layout, let manifest else {
+            // No profile store to consult: nothing else can hold the ID.
+            return ShortcutOwnership(idsHeldElsewhere: [], isComplete: true)
+        }
         var ids = Set<UUID>()
+        var isComplete = true
         for profile in manifest.profiles where profile.id != profileID {
-            guard let shortcuts = decodeProfileLeniently(profile.id, layout: layout) else { continue }
+            guard let shortcuts = decodeProfileLeniently(profile.id, layout: layout) else {
+                isComplete = false
+                continue
+            }
             ids.formUnion(shortcuts.map(\.id))
         }
-        return ids
+        return ShortcutOwnership(idsHeldElsewhere: ids, isComplete: isComplete)
+    }
+
+    /// Convenience for the single-shortcut deletion path.
+    func isShortcutRetainedByAnotherProfile(_ shortcutID: UUID) -> Bool {
+        guard let activeProfileID = locator.currentActiveProfileID() else { return false }
+        return shortcutOwnership(excluding: activeProfileID).isRetainedElsewhere(shortcutID)
     }
 
     // MARK: - Switching
@@ -1008,8 +1038,8 @@ final class ShortcutProfileStore {
         guard current.profiles.count > 1 else { throw StoreError.cannotDeleteLastProfile }
 
         let removedShortcutIDs = (decodeProfileLeniently(profileID, layout: layout) ?? []).map(\.id)
-        let survivingIDs = shortcutIDsUsedByOtherProfiles(excluding: profileID)
-        let exclusivelyOwned = removedShortcutIDs.filter { !survivingIDs.contains($0) }
+        let ownership = shortcutOwnership(excluding: profileID)
+        let exclusivelyOwned = removedShortcutIDs.filter { !ownership.isRetainedElsewhere($0) }
 
         let wasActive = locator.currentActiveProfileID() == profileID
         var newActiveProfileID: UUID?
@@ -1033,7 +1063,21 @@ final class ShortcutProfileStore {
         }
 
         current.profiles.remove(at: index)
-        try commitManifest(current, layout: layout)
+        do {
+            try commitManifest(current, layout: layout)
+        } catch {
+            // The pointer is already committed and the locator already moved,
+            // but the caller will not apply the successor because this throws.
+            // Left as is, the runtime would keep serving the deleted profile's
+            // bindings while every subsequent save landed in the successor's
+            // file — overwriting a profile the user never switched to. Undo
+            // the half-applied switch so the failure is total.
+            if let previousActiveProfileID = wasActive ? profileID : nil {
+                try? commitActivePointer(previousActiveProfileID, layout: layout)
+                locator.setActiveProfileID(previousActiveProfileID)
+            }
+            throw error
+        }
         manifest = current
 
         if let newActiveProfileID, let newActiveShortcuts {
@@ -1110,10 +1154,20 @@ final class ShortcutProfileStore {
         }
 
         try writeProfileData(shortcuts, profileID: mirror.profileID, layout: layout)
-        writeMirrorForActiveProfile(shortcuts, profileID: mirror.profileID, layout: layout)
         log("PROFILE_TRACE_FOREIGN_MIRROR_ADOPTED profile=\(mirror.profileID.uuidString) shortcuts=\(shortcuts.count)")
 
-        return locator.currentActiveProfileID() == mirror.profileID ? shortcuts : nil
+        // The mirror always describes the ACTIVE profile. Importing into an
+        // inactive one must not leave that profile's bindings in the file the
+        // E2E harness and a downgraded build read.
+        guard let activeProfileID = locator.currentActiveProfileID() else { return nil }
+        if activeProfileID == mirror.profileID {
+            writeMirrorForActiveProfile(shortcuts, profileID: activeProfileID, layout: layout)
+            return shortcuts
+        }
+
+        let activeShortcuts = (try? self.shortcuts(in: activeProfileID)) ?? []
+        writeMirrorForActiveProfile(activeShortcuts, profileID: activeProfileID, layout: layout)
+        return nil
     }
 
     /// Keeps the profile and overwrites the externally modified file. Only the

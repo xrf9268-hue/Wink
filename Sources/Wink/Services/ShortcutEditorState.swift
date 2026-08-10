@@ -120,6 +120,10 @@ final class ShortcutEditorState {
     private let usageTracker: (any UsageTracking)?
     @ObservationIgnored private var usageRefreshGeneration: UInt64 = 0
     private let onShortcutConfigurationChange: @MainActor () -> Void
+    /// Whether some OTHER profile still holds this shortcut ID. Defaults to
+    /// "no" for the single-store case; production wires it to the profile
+    /// store, which answers fail-closed.
+    private let isShortcutRetainedByAnotherProfile: @MainActor (UUID) -> Bool
     private let shortcutValidator = ShortcutValidator()
     private let recipeCodec: WinkRecipeCodec
     private let recipeImportPlanner: WinkRecipeImportPlanner
@@ -134,6 +138,7 @@ final class ShortcutEditorState {
         recipeImportPlanner: WinkRecipeImportPlanner = WinkRecipeImportPlanner(),
         recipeTransferClient: RecipeTransferClient = .live,
         appBundleLocator: AppBundleLocator = AppBundleLocator(),
+        isShortcutRetainedByAnotherProfile: @escaping @MainActor (UUID) -> Bool = { _ in false },
         onShortcutConfigurationChange: @escaping @MainActor () -> Void = {}
     ) {
         self.shortcutStore = shortcutStore
@@ -143,6 +148,7 @@ final class ShortcutEditorState {
         self.recipeImportPlanner = recipeImportPlanner
         self.recipeTransferClient = recipeTransferClient
         self.appBundleLocator = appBundleLocator
+        self.isShortcutRetainedByAnotherProfile = isShortcutRetainedByAnotherProfile
         self.onShortcutConfigurationChange = onShortcutConfigurationChange
         self.shortcuts = shortcutStore.shortcuts
         observeShortcutStore()
@@ -346,11 +352,20 @@ final class ShortcutEditorState {
         let updated = shortcuts.filter { $0.id != id }
         guard persist(updated) else { return }
         onShortcutConfigurationChange()
-        if let usageTracker {
-            Task {
-                await usageTracker.deleteUsage(shortcutId: id)
-                await refreshUsageCounts()
-            }
+        // Usage is keyed by shortcut UUID alone, and IDs can repeat across
+        // profiles when a file was hand-copied or a backup partially restored
+        // (the store reports those rather than repairing them). Deleting here
+        // must not erase history that another profile's shortcut still owns,
+        // and the check fails closed: an unreadable sibling counts as holding
+        // the ID, because a stale usage row costs nothing and a wrongly
+        // deleted history cannot be recovered.
+        guard let usageTracker, !isShortcutRetainedByAnotherProfile(id) else {
+            Task { await refreshUsageCounts() }
+            return
+        }
+        Task {
+            await usageTracker.deleteUsage(shortcutId: id)
+            await refreshUsageCounts()
         }
     }
 

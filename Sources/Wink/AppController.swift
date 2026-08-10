@@ -170,6 +170,9 @@ final class AppController {
         shortcutStore: shortcutStore,
         shortcutManager: shortcutManager,
         usageTracker: usageTracker,
+        isShortcutRetainedByAnotherProfile: { [weak self] id in
+            self?.profileStore.isShortcutRetainedByAnotherProfile(id) ?? false
+        },
         onShortcutConfigurationChange: { [weak self] in
             self?.appPreferences.refreshPermissions()
         }

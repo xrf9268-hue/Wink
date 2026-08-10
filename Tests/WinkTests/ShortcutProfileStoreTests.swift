@@ -782,6 +782,96 @@ struct ShortcutProfileCRUDTests {
     }
 
     @Test
+    func aFailedManifestWriteDuringActiveDeletionRollsThePointerBack() throws {
+        let (harness, store, loaded) = try readyStore()
+        defer { harness.cleanup() }
+
+        let second = try store.createProfile(named: "Second", duplicating: nil)
+
+        // Commit the pointer, then fail the manifest. Left half-applied, the
+        // runtime would keep serving the deleted profile while every save
+        // landed in the successor's file and overwrote it.
+        let manifestURL = harness.layout.manifestURL
+        let failing = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                guard url != manifestURL else { throw InjectedWriteFailure() }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        _ = failing.load()
+
+        #expect(throws: (any Error).self) {
+            _ = try failing.deleteProfile(loaded.activeProfileID)
+        }
+
+        // Total failure, not a half-applied switch.
+        #expect(failing.locator.currentActiveProfileID() == loaded.activeProfileID)
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        #expect(after.activeProfileID == loaded.activeProfileID)
+        #expect(after.profiles.count == 2)
+        #expect(second.id != after.activeProfileID)
+    }
+
+    @Test
+    func ownershipFailsClosedWhenASiblingProfileCannotBeRead() throws {
+        let (harness, store, loaded) = try readyStore()
+        defer { harness.cleanup() }
+
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(work.id))
+
+        let ownership = store.shortcutOwnership(excluding: loaded.activeProfileID)
+        #expect(!ownership.isComplete)
+        // An unreadable sibling could be holding any ID, so every question
+        // answers "retained" rather than "absent".
+        #expect(ownership.isRetainedElsewhere(loaded.activeShortcuts[0].id))
+        #expect(ownership.isRetainedElsewhere(UUID()))
+    }
+
+    @Test
+    func deletingAProfileKeepsUsageWhenASiblingIsUnreadable() throws {
+        let (harness, store, loaded) = try readyStore()
+        defer { harness.cleanup() }
+
+        let work = try store.createProfile(named: "Work", duplicating: loaded.activeProfileID)
+        let unreadable = try store.createProfile(named: "Archive", duplicating: nil)
+        try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(unreadable.id))
+
+        let outcome = try store.deleteProfile(work.id)
+        // Nothing is reported as exclusively owned while an unreadable profile
+        // could still be holding those IDs.
+        #expect(outcome.exclusivelyOwnedShortcutIDs.isEmpty)
+    }
+
+    @Test
+    func adoptingAMirrorForAnInactiveProfileLeavesTheMirrorOnTheActiveOne() throws {
+        let (harness, store, loaded) = try readyStore()
+        defer { harness.cleanup() }
+
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        let foreign = [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+
+        let adopted = try store.adoptForeignMirror(
+            ShortcutProfileStore.ForeignMirror(profileID: work.id, shortcuts: foreign)
+        )
+
+        // Nothing to apply — the import went into an inactive profile.
+        #expect(adopted == nil)
+        #expect(try store.shortcuts(in: work.id) == foreign)
+        // And the compat file still describes the ACTIVE profile, so the E2E
+        // harness and a downgraded build do not read the wrong bindings.
+        #expect(
+            harness.data(at: harness.layout.mirrorURL)
+                == harness.data(at: harness.layout.profileDataURL(loaded.activeProfileID))
+        )
+    }
+
+    @Test
     func deletingAProfileRemovesItsDataFile() throws {
         let (harness, store, _) = try readyStore()
         defer { harness.cleanup() }
@@ -1206,6 +1296,25 @@ struct ShortcutProfileNameRuleTests {
     func renamingAProfileToItsOwnNameIsAllowed() {
         let existing = profile("Work")
         #expect(ShortcutProfileNameRules.violation(for: "Work", excluding: existing.id, in: [existing]) == nil)
+    }
+
+    @Test
+    func duplicateNamingOfAMaximumLengthNameStillProducesAUsableName() {
+        let longName = String(repeating: "x", count: ShortcutProfileNameRules.maximumLength)
+        let existing = ShortcutProfile(name: longName, createdAt: Date(timeIntervalSince1970: 0))
+
+        let name = ShortcutProfileNameRules.duplicateName(
+            basedOn: longName,
+            in: [existing],
+            fallbackSuffix: UUID()
+        )
+
+        // Truncating the finished candidate would hand back the source name
+        // itself, so the default Duplicate action could never succeed for a
+        // maximum-length profile.
+        #expect(name != longName)
+        #expect(name.count <= ShortcutProfileNameRules.maximumLength)
+        #expect(ShortcutProfileNameRules.violation(for: name, in: [existing]) == nil)
     }
 
     @Test

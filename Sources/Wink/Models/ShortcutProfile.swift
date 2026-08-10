@@ -95,16 +95,33 @@ enum ShortcutProfileNameRules {
         // function is total even if the cap is ever raised without revisiting
         // this code.
         for attempt in 1...(ShortcutProfileManifest.maximumProfileCount + 1) {
-            let candidate = attempt == 1
-                ? String(localized: "\(trimmedBase) copy", bundle: WinkResourceBundle.bundle)
-                : String(localized: "\(trimmedBase) copy \(attempt)", bundle: WinkResourceBundle.bundle)
-            let clamped = String(candidate.prefix(maximumLength))
-            if violation(for: clamped, in: profiles) == nil {
-                return clamped
+            // Truncate the BASE, never the finished candidate: clamping the
+            // whole string would throw the suffix away first, so a
+            // maximum-length source name would produce its own name back and
+            // every candidate would collide with it.
+            let candidate = clampedCandidate(base: trimmedBase, attempt: attempt)
+            if violation(for: candidate, in: profiles) == nil {
+                return candidate
             }
         }
 
-        return String("\(trimmedBase) \(fallbackSuffix.uuidString)".prefix(maximumLength))
+        let suffix = " \(fallbackSuffix.uuidString)"
+        let base = String(trimmedBase.prefix(max(0, maximumLength - suffix.count)))
+        return String((base + suffix).suffix(maximumLength))
+    }
+
+    /// Builds one candidate, shrinking the base until the whole name fits.
+    private static func clampedCandidate(base: String, attempt: Int) -> String {
+        var base = base
+        while true {
+            let candidate = attempt == 1
+                ? String(localized: "\(base) copy", bundle: WinkResourceBundle.bundle)
+                : String(localized: "\(base) copy \(attempt)", bundle: WinkResourceBundle.bundle)
+            if candidate.count <= maximumLength || base.isEmpty {
+                return String(candidate.prefix(maximumLength))
+            }
+            base = String(base.dropLast(candidate.count - maximumLength))
+        }
     }
 }
 
