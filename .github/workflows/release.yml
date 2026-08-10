@@ -495,11 +495,36 @@ jobs:
       # command pins the tag precisely so rehearsal bytes cannot pass as a
       # release. To repair a failed publish, re-push the tag so the release is
       # triggered by `refs/tags/<tag>` and provenance is correct by construction.
-      - name: Reject a manual publish that would mint misleading provenance
-        if: ${{ env.DRY_RUN != 'true' && github.event_name == 'workflow_dispatch' }}
+      #
+      # The test is on the ref itself, not on the event: `gh workflow run
+      # release.yml --ref vX.Y.Z` is a legitimate manual repair whose
+      # `github.ref` already IS the tag, and that must keep working.
+      #
+      # The mirror case matters just as much. A rehearsal dispatched with
+      # `--ref vX.Y.Z` would mint provenance naming `refs/tags/vX.Y.Z`, which
+      # the documented consumer check accepts — rehearsal bytes would verify as
+      # a release. Rehearsals must therefore run from a branch.
+      - name: Check that provenance will name the right ref
         run: |
-          echo "::error title=Provenance ref mismatch::A published release must be triggered by pushing its tag. This dispatch ran from ${GITHUB_REF}, so the attestation would name that ref instead of refs/tags/${RELEASE_TAG}, and documented verification would fail. Re-push the tag, or re-run with dry_run=true to rehearse." >&2
-          exit 1
+          EXPECTED_REF="refs/tags/${RELEASE_TAG_OR_PLANNED}"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            case "$GITHUB_REF" in
+              refs/tags/*)
+                echo "::error title=Rehearsal from a tag::A rehearsal dispatched from ${GITHUB_REF} would mint provenance naming that tag, so rehearsal bytes would satisfy the documented release verification. Rehearse from a branch instead." >&2
+                exit 1
+                ;;
+            esac
+            echo "Rehearsal provenance will name ${GITHUB_REF} (not ${EXPECTED_REF}), as intended."
+            exit 0
+          fi
+
+          if [ "$GITHUB_REF" != "$EXPECTED_REF" ]; then
+            echo "::error title=Provenance ref mismatch::Sigstore records the ref that triggered the run, not the ref a later step checked out. This run was triggered by ${GITHUB_REF}, so the attestation would name that instead of ${EXPECTED_REF} and documented verification would reject the release. Push the tag, or dispatch with --ref ${RELEASE_TAG_OR_PLANNED}." >&2
+            exit 1
+          fi
+
+          echo "Production provenance will name ${EXPECTED_REF}."
 
       - name: Record final artifact digests
         run: |

@@ -65,6 +65,8 @@ Dropping a constraint weakens the claim to something that may still pass:
 - **`--signer-workflow`** — without it, any workflow in this repository could have produced the artifact, including one added by a pull request.
 - **`--source-ref`** — without it, a build from a branch or a rehearsal run verifies just as happily as the tagged release. This is the flag that separates a real release from a dry run.
 
+The release workflow refuses to run in either configuration that would blur that line: it will not publish from a run whose triggering ref is not the release tag, and it will not rehearse from a tag ref. So a passing `--source-ref refs/tags/vX.Y.Z` really does mean "this came from the tagged release", not merely "someone ran the workflow".
+
 ## Inspect what was actually attested
 
 ```bash

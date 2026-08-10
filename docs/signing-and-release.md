@@ -499,15 +499,21 @@ in the certificate: a rehearsal records `refs/heads/<branch>`, a real release
 records `refs/tags/vX.Y.Z`. Consumer verification pins `--source-ref`, so
 rehearsal provenance cannot be mistaken for a release.
 
-That has a consequence for the manual repair path. Sigstore records
-`github.ref` — the ref that **triggered** the run — not whatever a later step
-checked out. Dispatching `Release` from the default branch with `release_tag`
-set builds the tag but would mint provenance naming the branch, and the
-documented verification command would then reject the release it was published
-for. The workflow therefore **fails closed** on a manual dispatch with
-`dry_run: false`. To repair a failed publish, re-push the tag so the run is
-triggered by `refs/tags/<tag>` and provenance is correct by construction;
-`dry_run: true` rehearsals from a branch are unaffected.
+That has a consequence for the manual repair path. Sigstore records `github.ref`
+— the ref that **triggered** the run — not whatever a later step checked out.
+The workflow therefore checks up front that provenance will name the right ref,
+and fails closed in both directions:
+
+| Run | Triggering ref | Result |
+| --- | --- | --- |
+| Tag push | `refs/tags/vX.Y.Z` | publishes; provenance names the tag |
+| `gh workflow run release.yml --ref vX.Y.Z -f release_tag=vX.Y.Z -f dry_run=false` | `refs/tags/vX.Y.Z` | publishes; provenance names the tag |
+| Dispatch from a branch with `dry_run: false` | `refs/heads/…` | **rejected** — would name the branch, and documented verification would reject the release |
+| Dispatch from a branch with `dry_run: true` | `refs/heads/…` | rehearses; provenance names the branch, as intended |
+| Dispatch from a tag with `dry_run: true` | `refs/tags/vX.Y.Z` | **rejected** — rehearsal bytes would satisfy the documented release verification |
+
+So repairing a failed publish means dispatching **with `--ref` set to the tag**
+(or re-pushing the tag), not dispatching from the default branch.
 
 Consumer-facing verification instructions live in
 [`VERIFYING_RELEASES.md`](../VERIFYING_RELEASES.md). Wink claims **SLSA v1.0
