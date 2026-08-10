@@ -21,10 +21,16 @@ const REMOTE_REFERENCE_PATTERN =
 // A block scalar (`run: |`, `path: |`, `script: >`) owns every following line
 // indented past its key, and those lines are opaque text. Without this the
 // scanner reports a `uses:` written inside a shell heredoc as a real reference.
-const BLOCK_SCALAR_PATTERN = /^[^\s#][^:]*:\s*[|>][+-]?\d*\s*(?:#.*)?$/;
+// YAML accepts the indentation and chomping indicators in EITHER order, so both
+// `|-2` and `|2-` are valid. Missing one order would leave a `run:` body
+// unrecognized and its shell text scanned as workflow content.
+const BLOCK_SCALAR_INDICATOR = String.raw`[|>](?:\d[+-]?|[+-]\d?)?`;
+const BLOCK_SCALAR_PATTERN = new RegExp(`^[^\\s#][^:]*:\\s*${BLOCK_SCALAR_INDICATOR}\\s*(?:#.*)?$`);
+const BLOCK_SCALAR_INDICATOR_PATTERN = new RegExp(`^${BLOCK_SCALAR_INDICATOR}$`);
 // YAML permits a quoted mapping key, and GitHub accepts `"uses": owner/repo@ref`.
-const USES_PATTERN = /^(?:uses|"uses"|'uses')\s*:\s*(.*)$/;
-const BLOCK_SCALAR_INDICATOR_PATTERN = /^[|>][+-]?\d*$/;
+// A double-quoted key may also carry escapes, so `"uses"` is the same key —
+// keys are decoded before comparison rather than matched literally.
+const USES_PATTERN = /^(?:uses|"((?:[^"\\]|\\.)*)"|'((?:[^']|'')*)')\s*:\s*(.*)$/;
 // A flow mapping (`- { name: Cache, uses: owner/repo@main }`) is valid YAML that
 // GitHub honors, but its `uses` never starts a line. Rather than grow a YAML
 // parser, detect the shape and fail closed — an unreadable reference must never
@@ -43,6 +49,61 @@ const QUOTED_SPAN_PATTERN = /("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')(\s*:)?/g;
 // reads as one. A span followed by `:` is a key; anything else is a value.
 function blankQuotedValues(text) {
   return text.replace(QUOTED_SPAN_PATTERN, (match, _span, colon) => (colon ? match : '""'));
+}
+
+const YAML_SIMPLE_ESCAPES = {
+  0: '\0',
+  a: '\x07',
+  b: '\b',
+  t: '\t',
+  n: '\n',
+  v: '\v',
+  f: '\f',
+  r: '\r',
+  e: '\x1b',
+  '"': '"',
+  '\\': '\\',
+  '/': '/',
+  ' ': ' ',
+  N: '',
+  _: ' ',
+};
+
+// A double-quoted YAML key is a scalar, so `"uses"` IS the key `uses`.
+// Matching the literal text would let an escape hide a mutable reference.
+export function decodeDoubleQuoted(text) {
+  return text.replace(
+    /\\(?:x([0-9A-Fa-f]{2})|u([0-9A-Fa-f]{4})|U([0-9A-Fa-f]{8})|(.))/g,
+    (match, hex2, hex4, hex8, simple) => {
+      const hex = hex2 ?? hex4 ?? hex8;
+      if (hex !== undefined) {
+        return String.fromCodePoint(Number.parseInt(hex, 16));
+      }
+
+      return Object.prototype.hasOwnProperty.call(YAML_SIMPLE_ESCAPES, simple)
+        ? YAML_SIMPLE_ESCAPES[simple]
+        : simple;
+    },
+  );
+}
+
+export function matchUsesKey(text) {
+  const match = USES_PATTERN.exec(text);
+  if (!match) {
+    return null;
+  }
+
+  const [, doubleQuotedKey, singleQuotedKey, value] = match;
+
+  if (doubleQuotedKey !== undefined && decodeDoubleQuoted(doubleQuotedKey) !== 'uses') {
+    return null;
+  }
+
+  if (singleQuotedKey !== undefined && singleQuotedKey.replace(/''/g, "'") !== 'uses') {
+    return null;
+  }
+
+  return { value };
 }
 
 function splitIndent(line) {
@@ -132,14 +193,17 @@ export function scanUsesReferences(source) {
       flowDepth = 0;
     }
 
-    const bare = blankQuotedValues(rest);
+    // Values are blanked so `run: echo "{ uses: x }"` is not a flow mapping;
+    // the surviving quoted spans are keys, so decoding their escapes is what
+    // makes `{ "uses": … }` readable as the `uses` key it really is.
+    const bare = decodeDoubleQuoted(blankQuotedValues(rest));
     const continuesFlow = flowDepth > 0;
     // A flow collection that opens and closes on one line still needs the
     // `uses` check; only the depth bookkeeping cares whether it stayed open.
     const opensFlow = FLOW_MAPPING_OPENS_PATTERN.test(bare);
 
     if (continuesFlow || opensFlow) {
-      if (FLOW_MAPPING_USES_PATTERN.test(bare) || USES_PATTERN.test(bare)) {
+      if (FLOW_MAPPING_USES_PATTERN.test(bare) || matchUsesKey(bare) !== null) {
         references.push({ line: index + 1, value: rest.trim(), comment: null, flowMapping: true });
       }
 
@@ -147,9 +211,9 @@ export function scanUsesReferences(source) {
       return;
     }
 
-    const match = USES_PATTERN.exec(rest);
+    const usesKey = matchUsesKey(rest);
 
-    if (!match) {
+    if (!usesKey) {
       if (BLOCK_SCALAR_PATTERN.test(rest)) {
         blockScalarKeyColumn = keyColumn;
       }
@@ -157,7 +221,7 @@ export function scanUsesReferences(source) {
       return;
     }
 
-    const { value, comment } = splitValueAndComment(match[1]);
+    const { value, comment } = splitValueAndComment(usesKey.value);
 
     // `uses: >-` with the reference on the following line is legal YAML. Skipping
     // it as an opaque block would let a mutable reference through unexamined, so

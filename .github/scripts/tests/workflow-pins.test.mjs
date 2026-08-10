@@ -10,6 +10,7 @@ import {
   evaluateConsistency,
   evaluateReference,
   evaluateRepository,
+  matchUsesKey,
   scanUsesReferences,
   splitValueAndComment,
 } from '../lib/workflow-pins.mjs';
@@ -437,4 +438,41 @@ test('Dependabot keeps the github-actions ecosystem updated on a weekly cadence'
   assert.match(config, /package-ecosystem:\s*"github-actions"/);
   assert.match(config, /interval:\s*"weekly"/);
   assert.match(config, /open-pull-requests-limit:\s*\d+/);
+});
+
+test('an escaped double-quoted key is decoded, not matched literally', () => {
+  for (const step of [
+    '      - "us\\u0065s": actions/cache@main',
+    '      - { "us\\u0065s": actions/cache@main }',
+  ]) {
+    const references = scanUsesReferences(['jobs:', '  a:', '    steps:', step].join('\n'));
+    assert.equal(references.length, 1, `expected ${step} to be seen`);
+  }
+
+  assert.equal(matchUsesKey('"uses": actions/cache@main').value, 'actions/cache@main');
+  assert.equal(matchUsesKey('"us\\u0065s": actions/cache@main').value, 'actions/cache@main');
+  assert.equal(matchUsesKey("'uses': actions/cache@main").value, 'actions/cache@main');
+  assert.equal(matchUsesKey('"used": actions/cache@main'), null);
+  assert.equal(matchUsesKey('name: Checkout'), null);
+});
+
+test('block scalars accept the indicators in either order', () => {
+  for (const indicator of ['|', '>', '|-', '|+', '|2', '|2-', '|-2', '|+2', '|2+', '>-2', '>2-']) {
+    const references = scanUsesReferences(
+      [
+        'jobs:',
+        '  a:',
+        '    steps:',
+        `      - run: ${indicator}`,
+        '          uses: actions/checkout@main',
+        '      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2',
+      ].join('\n'),
+    );
+
+    assert.deepEqual(
+      references.map((reference) => reference.value),
+      [`actions/checkout@${CHECKOUT_SHA}`],
+      `\`run: ${indicator}\` must keep its body opaque`,
+    );
+  }
 });
