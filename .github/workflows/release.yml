@@ -486,6 +486,21 @@ jobs:
       # `appcast.xml` is deliberately NOT attested. It is a mutable feed that is
       # rewritten on every release and keeps Sparkle's EdDSA signature model;
       # an immutable digest attestation would be false the moment it is updated.
+      # Sigstore's certificate records `github.ref` — the ref that TRIGGERED the
+      # run — not whatever a later step checked out. A manual dispatch from a
+      # branch with `release_tag` set builds the tag but would mint provenance
+      # naming the branch, so `gh attestation verify --source-ref refs/tags/vX.Y.Z`
+      # would reject the very release it was published for. Rehearsals are
+      # unaffected: they are expected to name a branch, and the verification
+      # command pins the tag precisely so rehearsal bytes cannot pass as a
+      # release. To repair a failed publish, re-push the tag so the release is
+      # triggered by `refs/tags/<tag>` and provenance is correct by construction.
+      - name: Reject a manual publish that would mint misleading provenance
+        if: ${{ env.DRY_RUN != 'true' && github.event_name == 'workflow_dispatch' }}
+        run: |
+          echo "::error title=Provenance ref mismatch::A published release must be triggered by pushing its tag. This dispatch ran from ${GITHUB_REF}, so the attestation would name that ref instead of refs/tags/${RELEASE_TAG}, and documented verification would fail. Re-push the tag, or re-run with dry_run=true to rehearse." >&2
+          exit 1
+
       - name: Record final artifact digests
         run: |
           shasum -a 256 "$DMG_PATH" "$ZIP_PATH" | tee "$RUNNER_TEMP/release-digests.txt"

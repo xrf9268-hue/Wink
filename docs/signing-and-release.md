@@ -499,6 +499,16 @@ in the certificate: a rehearsal records `refs/heads/<branch>`, a real release
 records `refs/tags/vX.Y.Z`. Consumer verification pins `--source-ref`, so
 rehearsal provenance cannot be mistaken for a release.
 
+That has a consequence for the manual repair path. Sigstore records
+`github.ref` — the ref that **triggered** the run — not whatever a later step
+checked out. Dispatching `Release` from the default branch with `release_tag`
+set builds the tag but would mint provenance naming the branch, and the
+documented verification command would then reject the release it was published
+for. The workflow therefore **fails closed** on a manual dispatch with
+`dry_run: false`. To repair a failed publish, re-push the tag so the run is
+triggered by `refs/tags/<tag>` and provenance is correct by construction;
+`dry_run: true` rehearsals from a branch are unaffected.
+
 Consumer-facing verification instructions live in
 [`VERIFYING_RELEASES.md`](../VERIFYING_RELEASES.md). Wink claims **SLSA v1.0
 Build Level 2**, which is what GitHub documents artifact attestations to provide

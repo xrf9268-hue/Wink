@@ -35,12 +35,27 @@ gh attestation verify Wink-0.7.3.zip \
 
 | Exit code | Meaning |
 | --- | --- |
-| `0` | Verified. In a script or CI log this prints **nothing at all** — silence is success. |
+| `0` | **Verified.** In a script or CI log this prints nothing at all — silence is success. |
 | `1` | Verification failed: tampered bytes, no attestation, wrong repository, wrong signer workflow, or wrong source ref. |
-| `4` | You are not signed in. Run `gh auth login` — this is an authentication failure, **not** a verification failure. |
+| `2` | Cancelled. |
+| `4` | You are not signed in. Run `gh auth login`. Nothing was verified. |
 
-A gate that treats "non-zero" as "tampered" will misreport a missing login. Check
-for `1` specifically.
+**Accept exactly `0`.** Only `0` means verified; every other code means the
+artifact is unverified, whether or not it is tampered. A script that rejects
+only `1` will treat a missing login (`4`) as success and pass an artifact
+nothing ever checked:
+
+```bash
+if gh attestation verify "$dmg" --repo … --signer-workflow … --source-ref …; then
+  echo "verified"
+else
+  status=$?
+  [ "$status" -eq 4 ] && echo "not signed in — run gh auth login" >&2
+  exit 1
+fi
+```
+
+Branch on `4` only to print a better diagnostic, never to continue.
 
 ### Why every flag matters
 
