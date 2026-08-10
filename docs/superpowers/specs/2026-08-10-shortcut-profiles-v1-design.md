@@ -197,20 +197,32 @@ that still holds the user's (unreadable-to-us, possibly hand-repairable) data.
 describes the file on disk.
 
 ```text
-launch
+launch (active profile = A_now)
   └─ read Profiles/mirror.json  → (profileID P, sha256 H)
+     ├─ descriptor absent/unreadable → rewrite mirror from A_now. Continue.
      └─ hash shortcuts.json     → H'
-        ├─ H' == H            → mirror is current. Continue.
-        ├─ file absent        → rewrite mirror from the active profile. Continue.
+        ├─ file absent        → rewrite mirror from A_now. Continue.
+        ├─ H' == H  and P == A_now → mirror is current. Continue.
+        ├─ H' == H  and P != A_now → STALE. Wink wrote this file, but for a
+                                     different profile: a crash between the
+                                     pointer commit and the mirror write
+                                     (F2). Rewrite from A_now silently.
         └─ H' != H            → FOREIGN EDIT. Load the active profile normally,
                                 surface a non-modal banner naming P, and offer:
                                   [Import into "P"]   [Keep "P" and overwrite the file]
                                 Neither side is applied without that choice.
 ```
 
+The digest alone is not enough, and this is the case that makes it matter: after a switch
+A → B that crashed before the mirror write, `shortcuts.json` and `mirror.json` still agree
+with each other — both describe A — so a digest-only check would call the mirror "current"
+and leave A's bindings on disk while B is active. The E2E harness and a downgraded build
+would then read A. Comparing the descriptor's profile against the *live* active profile is
+what separates that stale-but-self-consistent state from a genuine foreign edit.
+
 `P` is the profile the mirror last described — which is the profile the older build was
-actually editing — so the import lands where the user expects even if the active profile
-has since changed.
+actually editing — so an adopted import lands where the user expects even if the active
+profile has since changed.
 
 Nothing is adopted or discarded automatically. This is the concrete answer to "external
 switches must not silently overwrite an unsaved editor draft", applied to the other
@@ -288,6 +300,8 @@ read any combination.
 | absent | any | any | Migration (D4). Existing `Profiles/*.json` are orphans (D9). |
 | unreadable | any | any | Quarantine copy `manifest.load-failure-<uuid>.json`, **source untouched**. Zero shortcuts armed. Banner with the copy's path and a **Recover** action; all mutations blocked until Recover is chosen. Recover writes a fresh manifest with one empty Default profile — safe, because a byte-identical copy already exists. |
 | valid | absent, manifest has 1 profile | valid | Adopt that profile and write the pointer. Unambiguous: there is no other configuration it could be confused with. |
+| valid | **unreadable** (truncated, or a schema version this build does not support), manifest has 1 profile | valid | Quarantine copy `active.load-failure-<uuid>.json`, **source untouched**, then adopt the single profile and rewrite the pointer. This is not a fall-through: with one profile there is no *other* configuration the lost pointer could have named. |
+| valid | **unreadable**, manifest has ≥2 | any | Quarantine copy, then zero shortcuts armed + banner + explicit picker. The pointer's content is exactly what was lost, so any choice among ≥2 profiles would be a guess. |
 | valid | absent, manifest has ≥2 | any | Zero shortcuts armed + banner + explicit picker. **Never auto-select.** |
 | valid | names an ID not in the manifest | — | Same as above: banner + picker. Never fall through to another profile. |
 | valid | valid | unreadable | Quarantine copy, source untouched. Profile marked *unreadable* in the UI. Zero shortcuts armed. Banner offering to switch to a readable profile — as an explicit action. |
@@ -422,7 +436,7 @@ making **Duplicate current** the default way to create a profile.
 | # | Scenario | Behavior |
 | --- | --- | --- |
 | F1 | Crash after `active.json`, before memory apply | Next launch loads B. Consistent; the pointer led memory by design. |
-| F2 | Crash after memory apply, before mirror write | Active = B, mirror stale. `mirror.json` still matches the stale bytes → recognized as *stale*, not foreign; rewritten silently. |
+| F2 | Crash after memory apply, before mirror write | Active = B; `shortcuts.json` and `mirror.json` both still describe A. The digest matches but the descriptor's profile does not equal the live active profile → recognized as *stale*, not foreign, and rewritten silently (D5). |
 | F3 | Disk full during profile-data write | Atomic write fails → save/switch throws → in-memory state untouched → `saveErrorMessage` surfaced. Same shape as today's write-failure path. |
 | F4 | Disk full during mirror write | Logged as `PROFILE_TRACE_MIRROR_FAILED`. Switch already succeeded and stays succeeded. |
 | F5 | `manifest.json` truncated by an external tool | D8 row 2: quarantine copy, source untouched, banner + Recover, mutations blocked. |
@@ -514,12 +528,13 @@ packaged-app validation.
 | V2 | Corrupt source is not clobbered | Corrupt fixture → migrate → assert empty Default, source bytes unchanged, quarantine copy exists |
 | V3 | Switch is atomic in memory | Instrumented `ShortcutCaptureCoordinator` records `(store, index)` pairs; assert no mixed pair, and exactly one `updateShortcuts` call |
 | V4 | Exactly-once rebuild | Counting fake asserts `rebuildIndex` == 1 per successful switch, 0 per refused switch |
-| V5 | Every recovery combination | Table-driven over all 8 rows of D8; assert armed-shortcut count and that no *other* profile ever loads |
+| V5 | Every recovery combination | Table-driven over every row of D8, unreadable-pointer rows included; assert armed-shortcut count and that no *other* profile ever loads |
 | V6 | Crash points | Inject failure after each of the four writes; assert the resulting on-disk state maps to exactly one D8 row |
 | V7 | Duplicate mints IDs | Duplicate a profile; assert ID sets are disjoint and every other field is equal, including preserved invalid targets |
 | V8 | Usage is not cross-deleted | Same ID in two profiles → delete in one → assert the other's rows survive and `deleteUsage` was not issued |
 | V9 | Editor conflicts | Switch during recorder / composer draft / pending import; assert D14's row-by-row outcome |
 | V10 | Foreign-edit detection | Rewrite `shortcuts.json` out of band → relaunch → assert banner state and that nothing was written until a choice was made |
+| V10b | Stale mirror is not mistaken for a foreign edit | Fail the mirror write during a switch → relaunch → assert the mirror is rewritten for the new active profile with **no** banner |
 | V11 | Name and cap rules | Empty, 65-char, case-differing duplicate, 33rd profile — all rejected with a message |
 | V12 | Delete-active fallback | Delete active at list positions first/middle/last; assert the deterministic successor |
 | V13 | Palette per-profile | Profile A has a palette trigger, B does not; switch A→B→A; assert trigger index membership follows and no ID churn |
