@@ -99,7 +99,7 @@ Each decision is stated once, with the invariant #437 must test.
   Profiles/
     manifest.json                 # schemaVersion + profile metadata list
     active.json                   # schemaVersion + activeProfileID  ← the switch commit point
-    mirror.json                   # {profileID, sha256, previousSHA256} describing the mirror as Wink last wrote it
+    mirror.json                   # {profileID, sha256} describing the mirror as Wink last wrote it
     <profileID>.json              # [AppShortcut] — byte-compatible with today's shortcuts.json
 ```
 
@@ -164,9 +164,22 @@ Two reasons, neither of which is "downgrade":
    atomic write per save and keeps all of that working unchanged.
 2. A reinstall of an older DMG is a real user action, and Wink publishes DMGs publicly.
 
-Write order on every save and every switch: **profile data file → pointer/metadata →
-mirror → `mirror.json`.** The mirror is written last and its failure is logged but never
-fails the operation, because a stale mirror cannot affect this build's behavior.
+Write order, with the important distinction that a **switch writes no profile data at all**:
+
+| Operation | Writes, in order |
+| --- | --- |
+| Save (edit, import, toggle) | `Profiles/<active>.json` → mirror → `mirror.json` |
+| Switch | `Profiles/active.json` → mirror → `mirror.json` |
+| Create / duplicate | `Profiles/<new>.json` → `manifest.json` |
+| Rename | `manifest.json` |
+| Delete (of the active profile) | `Profiles/active.json` → `manifest.json` → unlink |
+
+A switch only moves the pointer — D1's whole reason for giving every profile its own file.
+Re-writing the target's data file during a switch would re-encode it and discard members the
+model does not carry, which is the same defect D5's raw-byte rule exists to prevent.
+
+The mirror is always written last, and its failure is logged but never fails the operation,
+because a stale mirror cannot affect this build's behavior.
 
 > **Invariant.** After any successful save or switch, `shortcuts.json` is byte-identical to
 > `Profiles/<active>.json`, or a `PROFILE_TRACE_MIRROR_FAILED` diagnostic explains why not.
@@ -220,11 +233,10 @@ launch (active profile = A_now, whose shortcuts are already loaded)
          ├─ P is not in the manifest → UNKNOWN PROVENANCE. Leave both files alone.
          │    (the import action would have no destination, and recreating P
          │     is exactly what D9 refuses to do with an orphan.)
-         ├─ digest matches EITHER    → STALE. Rewrite from A_now silently. No banner.
-         │  mirror.json's sha256 or
-         │  its previousSHA256
-         └─ neither matches          → FOREIGN EDIT. Load A_now normally, surface a
-                                      non-modal banner naming P (mirror.json's profile):
+         ├─ digest matches          → STALE. Rewrite from A_now silently. No banner.
+         └─ digest does not match    → NOT OURS. Load A_now normally, surface a
+                                      non-modal banner naming P (mirror.json's profile)
+                                      and BOTH possible causes:
                                         [Import into "P"]   [Keep "P" and overwrite the file]
                                       Neither side is applied without that choice.
 ```
@@ -254,16 +266,29 @@ E2E harness and a downgraded build read. Comparing the mirror against the **live
 profile's bytes** catches both by construction, and reduces `mirror.json` to its one real
 job: telling a file Wink wrote from a file it did not.
 
-**Why the descriptor keeps one step of history.** D7 admits that `Data.write(.atomic)`
-renames without an fsync, so under sudden power loss the descriptor's rename can reach disk
-while the mirror's own rename does not. The descriptor then advertises a digest the mirror
-never received, Q2 finds no match, and Wink's own one-behind mirror is presented to the user
-as an outside edit — whose "import" action would silently revert the profile to older
-bindings. `previousSHA256` closes that window: either digest counts as "Wink wrote this".
+**Why the descriptor keeps no history — and why the banner names two causes.** D7 admits
+that `Data.write(.atomic)` renames without an fsync, so under sudden power loss the
+descriptor's rename can reach disk while the mirror's own rename does not. The mirror is then
+one write behind, and the classification calls it "not ours".
 
-The bound is honest and stated: one step. Two consecutive lost mirror writes with landed
-descriptors still fall through to the foreign-edit path, which **asks** rather than acting,
-so the residual failure mode is a spurious question and not data loss.
+An earlier revision of this record tried to recognize that case by having the descriptor
+remember the digest it replaced. That was wrong, and the reason generalizes: a user or an
+older build deliberately restoring the immediately preceding configuration produces a file
+that is **byte-identical** to the one that crash leaves behind. No amount of stored history
+can separate two states that are identical on disk. Accepting the previous digest would
+therefore have silently overwritten a deliberate revert — precisely the guarantee this
+section exists to make.
+
+So the design does not guess. Both causes route to the same branch, which **asks**, and the
+banner names both: an older version of Wink editing the file, or an unexpected shutdown. The
+cost is a question the user may not have expected after a power loss; the alternative was
+silently discarding a change they made on purpose. When two states cannot be told apart, the
+safe wrong answer is to ask.
+
+(Enforcing real durability ordering — `fsync` on the mirror and its directory before the
+descriptor — would remove the ambiguity at the source. It is deliberately out of scope for
+v1: the mirror is derived data, and buying a barrier for it would mean replacing the atomic
+write on the save path with hand-rolled `FileHandle` work.)
 
 **Why unknown provenance is left alone rather than repaired.** Migration deliberately skips
 the mirror write when the legacy `shortcuts.json` was unreadable (D4), so that state is
@@ -377,7 +402,7 @@ from that value.
 | --- | --- |
 | valid | Normal load. |
 | unreadable (malformed, or duplicate shortcut IDs — the existing `PersistenceService` rules, unchanged) | Preserve a quarantine copy, source untouched. The profile is marked *unreadable* in the UI. Zero shortcuts armed. Banner offering to switch to a readable profile — as an explicit action. |
-| absent | As above, minus the quarantine copy. |
+| absent | As above, minus the quarantine copy. **Plus:** if a legacy `shortcuts.json` still parses, offer it as an import into this profile. Under the same no-fsync model, `manifest.json` can land while the Default profile's data file does not, and migration never re-runs once a manifest exists — without this the intact legacy file would sit on disk with nothing pointing at it. Offered, never adopted automatically. |
 
 Because the stages compose, a doubly damaged install has exactly one reading with no extra
 rule: an unreadable pointer with a single profile resolves in stage 2 (adopt), and if that
@@ -514,6 +539,8 @@ making **Duplicate current** the default way to create a profile.
 | F1 | Crash after `active.json`, before memory apply | Next launch loads B. Consistent; the pointer led memory by design. |
 | F2 | Crash after memory apply, before mirror write | Active = B; `shortcuts.json` and `mirror.json` both still describe A. Q1 fails (the mirror is not the live profile's bytes), Q2 passes (Wink wrote it) → *stale*, rewritten silently, no banner. |
 | F2b | Crash after a **same-profile** save, before mirror write | Identical shape: the mirror still describes A's previous contents while A's data file holds the new ones. Same Q1/Q2 outcome — which is why Q1 compares against the live profile rather than against the descriptor's profile. |
+| F2c | Power loss between the mirror rename and the descriptor rename | The descriptor advertises a digest the mirror never received. Indistinguishable on disk from a deliberate restore, so the banner asks and names both causes rather than repairing silently. |
+| F2d | Power loss during first-run migration, manifest landed, data did not | Stage 3 finds no data file, offers the intact legacy `shortcuts.json` as an import, and arms nothing until the user chooses. |
 | F3 | Disk full during profile-data write | Atomic write fails → save/switch throws → in-memory state untouched → `saveErrorMessage` surfaced. Same shape as today's write-failure path. |
 | F4 | Disk full during mirror write | Logged as `PROFILE_TRACE_MIRROR_FAILED`. Switch already succeeded and stays succeeded. |
 | F5 | `manifest.json` truncated by an external tool | D8 row 2: quarantine copy, source untouched, banner + Recover, mutations blocked. |
@@ -615,7 +642,8 @@ packaged-app validation.
 | V10c | Unknown provenance is left alone | Migrate from an unreadable legacy file → relaunch → assert no banner, and that `shortcuts.json` still holds the user's original bytes |
 | V10d | Unmodelled members survive | Profile file with an extra JSON member, mirror a byte copy → relaunch → assert no stale rewrite and that the member is still present in both files |
 | V11b | Unsupported pointer schema fails closed | Well-formed `active.json` with `schemaVersion` 99 and exactly one profile → assert zero armed, a quarantine copy, and an explicit picker |
-| V10e | One-behind mirror is not a foreign edit | Fail only the mirror write during a save → relaunch → assert a silent stale repair and **no** banner |
+| V10e | One-behind mirror asks rather than overwriting | Let the mirror write report success while writing nothing, so the descriptor advances alone → relaunch → assert the banner appears and the file is untouched. (Failing the write instead does *not* reproduce this: a reported failure skips the descriptor and leaves the pair consistent, which is the separate silent-repair case.) |
+| V10g | Interrupted migration is resumable | Manifest present, Default data file absent, legacy `shortcuts.json` intact → assert zero armed **and** an offered import |
 | V10f | Dangling descriptor is unknown provenance | Descriptor naming a deleted profile, mirror changed out of band → assert no banner and no import action offered |
 | V11 | Name and cap rules | Empty, 65-char, case-differing duplicate, 33rd profile — all rejected with a message |
 | V12 | Delete-active fallback | Delete active at list positions first/middle/last; assert the deterministic successor |
