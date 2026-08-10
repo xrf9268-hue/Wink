@@ -99,7 +99,7 @@ Each decision is stated once, with the invariant #437 must test.
   Profiles/
     manifest.json                 # schemaVersion + profile metadata list
     active.json                   # schemaVersion + activeProfileID  ← the switch commit point
-    mirror.json                   # {profileID, sha256} describing the mirror as Wink last wrote it
+    mirror.json                   # {profileID, sha256, previousSHA256} describing the mirror as Wink last wrote it
     <profileID>.json              # [AppShortcut] — byte-compatible with today's shortcuts.json
 ```
 
@@ -188,8 +188,14 @@ important one: an empty Default profile must **not** immediately mirror itself o
 that still holds the user's (unreadable-to-us, possibly hand-repairable) data.
 
 > **Invariant.** For every pre-migration `shortcuts.json` that loads successfully,
-> `IDs(Default profile) == IDs(shortcuts.json)` as ordered sequences, and re-encoding the
-> Default profile reproduces the source bytes under the same encoder settings.
+> `Profiles/<Default>.json` is **byte-identical to the source file**, and
+> `IDs(Default profile) == IDs(shortcuts.json)` as ordered sequences.
+>
+> Byte equality, not a re-encode round trip: `AppShortcut.CodingKeys` omits members it does
+> not model, so a migration that decoded and re-encoded would necessarily drop them — and
+> "same unknown-field bytes" in the table above is exactly the promise that would break.
+> Migration therefore **copies** the source bytes and only synthesizes a payload for the
+> fresh-install case, where there is no source to copy.
 
 ### D5 — Downgrade and foreign edits
 
@@ -211,8 +217,13 @@ launch (active profile = A_now, whose shortcuts are already loaded)
          ├─ no USABLE mirror.json   → UNKNOWN PROVENANCE. Leave BOTH files alone and log.
          │    (absent, unreadable, or an unsupported schemaVersion — all three
          │     mean the same thing here: nothing to compare against.)
-         ├─ digest matches          → STALE. Rewrite from A_now silently. No banner.
-         └─ digest does not match   → FOREIGN EDIT. Load A_now normally, surface a
+         ├─ P is not in the manifest → UNKNOWN PROVENANCE. Leave both files alone.
+         │    (the import action would have no destination, and recreating P
+         │     is exactly what D9 refuses to do with an orphan.)
+         ├─ digest matches EITHER    → STALE. Rewrite from A_now silently. No banner.
+         │  mirror.json's sha256 or
+         │  its previousSHA256
+         └─ neither matches          → FOREIGN EDIT. Load A_now normally, surface a
                                       non-modal banner naming P (mirror.json's profile):
                                         [Import into "P"]   [Keep "P" and overwrite the file]
                                       Neither side is applied without that choice.
@@ -242,6 +253,17 @@ profile, would call both of those "current" and leave the wrong bindings in the 
 E2E harness and a downgraded build read. Comparing the mirror against the **live active
 profile's bytes** catches both by construction, and reduces `mirror.json` to its one real
 job: telling a file Wink wrote from a file it did not.
+
+**Why the descriptor keeps one step of history.** D7 admits that `Data.write(.atomic)`
+renames without an fsync, so under sudden power loss the descriptor's rename can reach disk
+while the mirror's own rename does not. The descriptor then advertises a digest the mirror
+never received, Q2 finds no match, and Wink's own one-behind mirror is presented to the user
+as an outside edit — whose "import" action would silently revert the profile to older
+bindings. `previousSHA256` closes that window: either digest counts as "Wink wrote this".
+
+The bound is honest and stated: one step. Two consecutive lost mirror writes with landed
+descriptors still fall through to the foreign-edit path, which **asks** rather than acting,
+so the residual failure mode is a spurious question and not data loss.
 
 **Why unknown provenance is left alone rather than repaired.** Migration deliberately skips
 the mirror write when the legacy `shortcuts.json` was unreadable (D4), so that state is
@@ -579,7 +601,7 @@ packaged-app validation.
 
 | # | Proves | How |
 | --- | --- | --- |
-| V1 | Migration preserves IDs and order | Fixture `shortcuts.json` → migrate → assert ordered ID equality and byte-stable re-encode |
+| V1 | Migration preserves IDs, order, and bytes | Fixtures including one with an **unmodelled JSON member** → migrate → assert ordered ID equality and byte equality between the source and the migrated profile file |
 | V2 | Corrupt source is not clobbered | Corrupt fixture → migrate → assert empty Default, source bytes unchanged, quarantine copy exists |
 | V3 | Switch is atomic in memory | Instrumented `ShortcutCaptureCoordinator` records `(store, index)` pairs; assert no mixed pair, and exactly one `updateShortcuts` call |
 | V4 | Exactly-once rebuild | Counting fake asserts `rebuildIndex` == 1 per successful switch, 0 per refused switch |
@@ -593,6 +615,8 @@ packaged-app validation.
 | V10c | Unknown provenance is left alone | Migrate from an unreadable legacy file → relaunch → assert no banner, and that `shortcuts.json` still holds the user's original bytes |
 | V10d | Unmodelled members survive | Profile file with an extra JSON member, mirror a byte copy → relaunch → assert no stale rewrite and that the member is still present in both files |
 | V11b | Unsupported pointer schema fails closed | Well-formed `active.json` with `schemaVersion` 99 and exactly one profile → assert zero armed, a quarantine copy, and an explicit picker |
+| V10e | One-behind mirror is not a foreign edit | Fail only the mirror write during a save → relaunch → assert a silent stale repair and **no** banner |
+| V10f | Dangling descriptor is unknown provenance | Descriptor naming a deleted profile, mirror changed out of band → assert no banner and no import action offered |
 | V11 | Name and cap rules | Empty, 65-char, case-differing duplicate, 33rd profile — all rejected with a message |
 | V12 | Delete-active fallback | Delete active at list positions first/middle/last; assert the deterministic successor |
 | V13 | Palette per-profile | Profile A has a palette trigger, B does not; switch A→B→A; assert trigger index membership follows and no ID churn |
