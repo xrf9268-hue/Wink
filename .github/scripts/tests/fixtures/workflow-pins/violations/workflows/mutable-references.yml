@@ -1,0 +1,56 @@
+name: Mutable Reference Violations
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unpinned-reusable:
+    name: Reusable workflow on a moving tag
+    uses: example-org/shared-workflows/.github/workflows/build.yml@v1 # v1
+
+  steps:
+    name: Every rejected shape
+    runs-on: ubuntu-latest
+    steps:
+      - name: Major version tag
+        uses: actions/checkout@v4 # v4
+
+      - name: Branch reference
+        uses: actions/checkout@main # v6.0.2
+
+      - name: Shortened SHA
+        uses: actions/cache@27d5ce7f # v5.0.5
+
+      - name: Uppercase SHA
+        uses: actions/cache@27D5CE7F107FE9357F9DF03EFB73AB90386FCCAE # v5.0.5
+
+      - name: Missing version comment
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+
+      - name: Non-version comment
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # pinned by hand
+
+      - name: Moving-tag comment on an immutable pin
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+
+      - name: Local action carrying a ref
+        uses: ./.github/actions/summarize@main
+
+      - name: Tag-pinned container
+        uses: docker://ghcr.io/example-org/scanner:latest
+
+      - name: Not a reference at all
+        uses: totally-bogus
+
+      - name: Reference hidden in a block scalar
+        uses: >-
+          actions/checkout@main
+
+      - { name: Reference hidden in a flow mapping, uses: actions/checkout@main }
+
+      - { "uses": actions/checkout@main }
+
+      - "uses": actions/cache@main

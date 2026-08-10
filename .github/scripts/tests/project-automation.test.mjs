@@ -5,11 +5,20 @@ import {
   classifyRuntimeSensitivity,
   computeProjectStatus,
   extractClosingIssueNumbers,
+  isAutomatedDependencyAuthor,
   normalizePullRequestState,
   parseValidationStatus,
   resolveIssueNumbersToEnsure,
   resolveRuntimeValidationOptionName,
 } from '../lib/project-automation.mjs';
+
+test('isAutomatedDependencyAuthor recognizes only Dependabot', () => {
+  assert.equal(isAutomatedDependencyAuthor('dependabot[bot]'), true);
+  assert.equal(isAutomatedDependencyAuthor('Dependabot[bot]'), true);
+  assert.equal(isAutomatedDependencyAuthor('dependabot'), false);
+  assert.equal(isAutomatedDependencyAuthor('zjlgdx'), false);
+  assert.equal(isAutomatedDependencyAuthor(undefined), false);
+});
 
 test('extractClosingIssueNumbers finds closing keywords for local issues', () => {
   const body = `

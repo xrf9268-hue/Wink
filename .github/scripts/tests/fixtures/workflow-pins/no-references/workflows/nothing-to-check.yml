@@ -1,0 +1,15 @@
+name: Nothing To Check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inline-only:
+    name: A workflow with no action references at all
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        run: echo "no uses: references here"

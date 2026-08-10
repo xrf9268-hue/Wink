@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import {
   classifyRuntimeSensitivity,
   extractClosingIssueNumbers,
+  isAutomatedDependencyAuthor,
   parseValidationChecklist,
 } from './lib/project-automation.mjs';
 
@@ -68,33 +69,46 @@ async function main() {
   const issueNumbers = extractClosingIssueNumbers(body, { owner, repo });
   const validation = parseValidationChecklist(body);
   const runtimeSensitivity = classifyRuntimeSensitivity(files.map((file) => file.filename));
+  const authorLogin = pullRequest.user?.login ?? '';
+  const automatedDependencyUpdate = isAutomatedDependencyAuthor(authorLogin);
   const errors = [];
 
-  if (issueNumbers.length === 0) {
-    errors.push(
-      'PR body must include a closing keyword such as `Fixes #123` so merge closes the linked issue automatically.',
-    );
+  if (!automatedDependencyUpdate) {
+    if (issueNumbers.length === 0) {
+      errors.push(
+        'PR body must include a closing keyword such as `Fixes #123` so merge closes the linked issue automatically.',
+      );
+    }
+
+    if (validation.presentOptions.length !== 3) {
+      errors.push(
+        'PR body must keep all three `Validation Status` checklist options from the template.',
+      );
+    }
+
+    if (validation.checkedOptions.length !== 1) {
+      errors.push('PR body must check exactly one `Validation Status` option.');
+    }
   }
 
-  if (validation.presentOptions.length !== 3) {
-    errors.push(
-      'PR body must keep all three `Validation Status` checklist options from the template.',
-    );
-  }
-
-  if (validation.checkedOptions.length !== 1) {
-    errors.push('PR body must check exactly one `Validation Status` option.');
-  }
-
-  if (runtimeSensitivity.runtimeSensitive && validation.status === 'not-required') {
-    errors.push(
-      `Runtime-sensitive files changed (${runtimeSensitivity.matches.join(
-        ', ',
-      )}); choose \`macOS runtime validation pending\` or \`macOS runtime validation complete\`.`,
-    );
+  if (runtimeSensitivity.runtimeSensitive) {
+    if (automatedDependencyUpdate) {
+      errors.push(
+        `Automated dependency update touches runtime-sensitive files (${runtimeSensitivity.matches.join(
+          ', ',
+        )}); reopen it as a maintainer pull request that selects a \`Validation Status\` option.`,
+      );
+    } else if (validation.status === 'not-required') {
+      errors.push(
+        `Runtime-sensitive files changed (${runtimeSensitivity.matches.join(
+          ', ',
+        )}); choose \`macOS runtime validation pending\` or \`macOS runtime validation complete\`.`,
+      );
+    }
   }
 
   const summary = [
+    `Author: ${authorLogin || 'unknown'}${automatedDependencyUpdate ? ' (automated dependency update)' : ''}`,
     `Linked issues: ${issueNumbers.length > 0 ? formatIssueNumbers(issueNumbers) : 'none'}`,
     `Validation status: ${validation.status ?? 'missing'}`,
     `Runtime-sensitive paths: ${

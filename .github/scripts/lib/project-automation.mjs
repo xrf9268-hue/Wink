@@ -30,6 +30,17 @@ const runtimeSensitivePatterns = [
   /^scripts\/package-dmg\.sh$/,
 ];
 
+// Dependabot writes its own PR body from a template it fully controls, so it can
+// neither link a Wink issue nor keep the Validation Status checklist. Waiving
+// those two requirements is what lets a dependency update reach a green required
+// check; runtime sensitivity is deliberately NOT waived, because a bot PR that
+// touches a runtime-sensitive path still needs a maintainer to take it over.
+const automatedDependencyAuthors = new Set(['dependabot[bot]']);
+
+export function isAutomatedDependencyAuthor(login) {
+  return automatedDependencyAuthors.has((login ?? '').toLowerCase());
+}
+
 function normalizeLabel(text) {
   return text.trim().toLowerCase().replace(/\s+/g, ' ');
 }

@@ -1,0 +1,33 @@
+name: Compliant Reference Shapes
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reusable:
+    name: Job-level reusable workflow
+    uses: example-org/shared-workflows/.github/workflows/build.yml@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v3.2.1
+    with:
+      target: release
+
+  steps:
+    name: Step-level references
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Subdirectory action
+        uses: example-org/toolkit/setup/node@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+
+      - name: Quoted reference
+        uses: "actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae" # v5.0.5
+
+      - name: Local composite action
+        uses: ./.github/actions/summarize
+
+      - name: Digest-pinned container
+        uses: docker://ghcr.io/example-org/scanner@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef

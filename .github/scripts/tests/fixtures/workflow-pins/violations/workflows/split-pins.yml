@@ -1,0 +1,28 @@
+name: Split Pin Violations
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drifted:
+    name: One repository pinned two ways
+    runs-on: ubuntu-latest
+    steps:
+      - name: Older pin
+        uses: example-org/artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+
+      - name: Newer pin
+        uses: example-org/artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+
+  mislabelled:
+    name: One commit documented two ways
+    runs-on: ubuntu-latest
+    steps:
+      - name: Init
+        uses: example-org/analysis/init@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4.30.0
+
+      - name: Analyze
+        uses: example-org/analysis/analyze@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4.29.0
