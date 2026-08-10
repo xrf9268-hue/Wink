@@ -20,6 +20,11 @@ on:
       - ".github/workflows/osv-scan.yml"
       - ".github/scripts/assert-osv-scan.mjs"
       - ".github/scripts/lib/osv-results.mjs"
+      # The gate runs its own policy tests, so a change to those tests or their
+      # captured scanner reports has to trigger it too — otherwise the only job
+      # that executes them never runs on the pull request that changes them.
+      - ".github/scripts/tests/osv-results.test.mjs"
+      - ".github/scripts/tests/fixtures/osv/**"
       - ".github/osv-fixtures/**"
   schedule:
     # Weekly, so an advisory published after a dependency landed is still found.
