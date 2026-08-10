@@ -558,40 +558,58 @@ final class ShortcutProfileStore {
 
     // MARK: - Mirror
 
+    /// Classifies `shortcuts.json` against two independent questions, in this
+    /// order:
+    ///
+    /// 1. **Is it current?** — its bytes equal the live active profile's bytes.
+    ///    This is the only test that can answer that, because the descriptor
+    ///    describes the mirror, not the profile: after *any* crash between a
+    ///    data-file write and the mirror write — an ordinary save to the same
+    ///    profile included — the mirror and its descriptor still agree with
+    ///    each other while the profile has moved on.
+    /// 2. **Did Wink write it?** — its digest equals the descriptor's. This is
+    ///    what separates a mirror this build left behind from one another
+    ///    build rewrote.
+    ///
+    /// Current wins outright. Not-current-but-ours is stale and is repaired
+    /// silently. Not-current-and-not-ours is a foreign edit and always asks.
+    /// Not-current with no usable descriptor is of unknown provenance and is
+    /// left strictly alone: migration deliberately skips the mirror write when
+    /// the legacy file was unreadable, and rewriting it there would destroy
+    /// bytes the user may still be able to repair by hand.
     private func detectForeignMirror(
         layout: ShortcutProfileLayout,
         activeProfileID: UUID,
         activeShortcuts: [AppShortcut]
     ) -> ForeignMirror? {
-        guard
-            let descriptorData = try? Data(contentsOf: layout.mirrorDescriptorURL),
-            let descriptor = try? Self.metadataDecoder.decode(ShortcutProfileMirrorDescriptor.self, from: descriptorData),
-            descriptor.schemaVersion == ShortcutProfileMirrorDescriptor.currentSchemaVersion
-        else {
-            // No descriptor to compare against (first run after migration, or
-            // the descriptor was lost). Re-establish it from the active
-            // profile rather than accusing the mirror of being foreign.
-            rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
-            return nil
-        }
-
         guard let mirrorData = try? Data(contentsOf: layout.mirrorURL) else {
+            // Nothing on disk to lose.
             rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
             return nil
         }
 
-        if Self.digest(mirrorData) == descriptor.sha256 {
-            // Wink wrote exactly these bytes. If they describe a profile other
-            // than the one now active, this is the crash window between the
-            // pointer commit and the mirror write: the mirror and its
-            // descriptor still agree with EACH OTHER, so a digest-only check
-            // would call it current and leave the previous profile's bindings
-            // in the file the E2E harness and a downgraded build read. Stale,
-            // not foreign — repair it silently.
-            if descriptor.profileID != activeProfileID {
-                log("PROFILE_TRACE_MIRROR_STALE was=\(descriptor.profileID.uuidString) active=\(activeProfileID.uuidString)")
+        let descriptor = loadMirrorDescriptor(layout: layout)
+        let mirrorDigest = Self.digest(mirrorData)
+
+        if let activeData = try? PersistenceService.encodeShortcuts(activeShortcuts),
+           mirrorDigest == Self.digest(activeData) {
+            // Current. Keep the descriptor honest so a later comparison
+            // attributes correctly; the mirror bytes themselves are already
+            // right, so this rewrite is a no-op on content.
+            if descriptor?.profileID != activeProfileID || descriptor?.sha256 != mirrorDigest {
                 rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
             }
+            return nil
+        }
+
+        guard let descriptor else {
+            log("PROFILE_TRACE_MIRROR_UNKNOWN active=\(activeProfileID.uuidString)")
+            return nil
+        }
+
+        if descriptor.sha256 == mirrorDigest {
+            log("PROFILE_TRACE_MIRROR_STALE describedProfile=\(descriptor.profileID.uuidString) active=\(activeProfileID.uuidString)")
+            rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
             return nil
         }
 
@@ -602,10 +620,22 @@ final class ShortcutProfileStore {
         )
     }
 
+    private func loadMirrorDescriptor(layout: ShortcutProfileLayout) -> ShortcutProfileMirrorDescriptor? {
+        guard
+            let data = try? Data(contentsOf: layout.mirrorDescriptorURL),
+            let descriptor = try? Self.metadataDecoder.decode(ShortcutProfileMirrorDescriptor.self, from: data),
+            descriptor.schemaVersion == ShortcutProfileMirrorDescriptor.currentSchemaVersion
+        else {
+            return nil
+        }
+        return descriptor
+    }
+
     /// Rewrites `shortcuts.json` and its descriptor from a profile's current
     /// contents. Used to repair a mirror this build left stale (a crash
-    /// between the pointer commit and the mirror write) — never to resolve a
-    /// foreign edit, which always requires an explicit user choice.
+    /// between any data-file write and the mirror write) — never to resolve a
+    /// foreign edit or a mirror of unknown provenance, both of which require
+    /// an explicit user choice.
     func rewriteMirror(_ shortcuts: [AppShortcut], profileID: UUID, layout: ShortcutProfileLayout? = nil) {
         guard let layout = layout ?? self.layout else { return }
         writeMirrorForActiveProfile(shortcuts, profileID: profileID, layout: layout)

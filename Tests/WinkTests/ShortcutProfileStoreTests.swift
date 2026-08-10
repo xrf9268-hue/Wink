@@ -241,6 +241,53 @@ struct ShortcutProfileRecoveryTests {
     }
 
     @Test
+    func anUnreadablePointerAndUnreadableDataStillArmNothing() throws {
+        let (harness, profileID) = try migratedHarness()
+        defer { harness.cleanup() }
+
+        // Both stages damaged at once. Pointer resolution adopts the single
+        // profile (nothing else it could have named), and the data stage then
+        // reports it unreadable — the two stages compose, so no combination is
+        // left undefined.
+        try harness.writeRaw("{ truncated", to: harness.layout.activePointerURL)
+        try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(profileID))
+
+        let store = harness.makeStore()
+        guard case let .activeProfileUnreadable(profiles, activeProfileID, preservedCopyPath) = store.load() else {
+            Issue.record("expected activeProfileUnreadable")
+            return
+        }
+
+        #expect(profiles.count == 1)
+        #expect(activeProfileID == profileID)
+        #expect(preservedCopyPath != nil)
+        #expect(store.locator.currentActiveProfileID() == nil)
+        // Both damaged files are preserved, neither is replaced.
+        #expect(harness.data(at: harness.layout.profileDataURL(profileID)) == Data("[ nope".utf8))
+    }
+
+    @Test
+    func anUnreadablePointerWithSeveralProfilesIsAmbiguousAndPreservesItsBytes() throws {
+        let (harness, _) = try migratedHarness()
+        defer { harness.cleanup() }
+
+        let store = harness.makeStore()
+        _ = store.load()
+        try store.createProfile(named: "Work", duplicating: nil)
+        try harness.writeRaw("{ truncated", to: harness.layout.activePointerURL)
+
+        let reloaded = harness.makeStore()
+        guard case let .activeProfileAmbiguous(profiles, preservedCopyPath) = reloaded.load() else {
+            Issue.record("expected activeProfileAmbiguous")
+            return
+        }
+
+        #expect(profiles.count == 2)
+        #expect(preservedCopyPath != nil)
+        #expect(reloaded.locator.currentActiveProfileID() == nil)
+    }
+
+    @Test
     func unreadableActiveProfileArmsNothingAndPreservesItsBytes() throws {
         let (harness, profileID) = try migratedHarness()
         defer { harness.cleanup() }
@@ -834,6 +881,87 @@ struct ShortcutProfileMirrorTests {
         #expect(final.foreignMirror == nil)
         #expect(final.activeShortcuts == loaded.activeShortcuts)
         #expect(final.activeShortcuts == original)
+    }
+
+    @Test
+    func aSaveThatCrashedBeforeTheMirrorWriteIsRepairedSilently() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // An ordinary save to the SAME profile whose mirror write never lands.
+        // The mirror and its descriptor still agree with each other, so only a
+        // comparison against the live profile data can catch this.
+        let mirrorURL = harness.layout.mirrorURL
+        let descriptorURL = harness.layout.mirrorDescriptorURL
+        let failing = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                guard url != mirrorURL, url != descriptorURL else { throw InjectedWriteFailure() }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        _ = failing.load()
+        let updated = [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        try failing.makeActiveProfilePersistenceService().save(updated)
+
+        // Precondition for the test to mean anything: the mirror really is
+        // behind the profile now.
+        #expect(
+            harness.data(at: mirrorURL) != harness.data(at: harness.layout.profileDataURL(loaded.activeProfileID))
+        )
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // Repaired silently: no banner, and the file the E2E harness and a
+        // downgraded build read now matches the live profile.
+        #expect(after.foreignMirror == nil)
+        #expect(after.activeShortcuts == updated)
+        #expect(
+            harness.data(at: mirrorURL)
+                == harness.data(at: harness.layout.profileDataURL(loaded.activeProfileID))
+        )
+        #expect(harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_MIRROR_STALE") })
+    }
+
+    @Test
+    func aMirrorOfUnknownProvenanceIsLeftStrictlyAlone() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+
+        // Migration with an unreadable legacy file deliberately skips the
+        // mirror write, so the user's bytes survive and no descriptor exists.
+        let unreadable = "{ half a shortcuts file"
+        try harness.writeRawLegacyShortcuts(unreadable)
+
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // Not offered as a foreign edit (whose only available action would be
+        // "overwrite", destroying data the user may still repair by hand), and
+        // not silently rewritten either.
+        #expect(after.foreignMirror == nil)
+        #expect(harness.data(at: harness.layout.mirrorURL) == Data(unreadable.utf8))
+        #expect(harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_MIRROR_UNKNOWN") })
     }
 
     @Test
