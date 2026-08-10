@@ -512,8 +512,17 @@ and fails closed in both directions:
 | Dispatch from a branch with `dry_run: true` | `refs/heads/…` | rehearses; provenance names the branch, as intended |
 | Dispatch from a tag with `dry_run: true` | `refs/tags/vX.Y.Z` | **rejected** — rehearsal bytes would satisfy the documented release verification |
 
-So repairing a failed publish means dispatching **with `--ref` set to the tag**
-(or re-pushing the tag), not dispatching from the default branch.
+So repairing a failed publish means dispatching **with `--ref` set to the tag**,
+not dispatching from the default branch:
+
+```bash
+gh workflow run release.yml --ref vX.Y.Z -f release_tag=vX.Y.Z -f dry_run=false
+```
+
+Re-pushing the tag is **not** an equivalent repair. In this scenario the remote
+tag already exists at the same object, so `git push origin vX.Y.Z` reports
+`Everything up-to-date`, changes no ref, and emits no tag-push event — the
+maintainer sees a success and gets no run at all.
 
 Consumer-facing verification instructions live in
 [`VERIFYING_RELEASES.md`](../VERIFYING_RELEASES.md). Wink claims **SLSA v1.0

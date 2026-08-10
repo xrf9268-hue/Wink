@@ -303,8 +303,10 @@ jobs:
       # would reject the very release it was published for. Rehearsals are
       # unaffected: they are expected to name a branch, and the verification
       # command pins the tag precisely so rehearsal bytes cannot pass as a
-      # release. To repair a failed publish, re-push the tag so the release is
-      # triggered by `refs/tags/<tag>` and provenance is correct by construction.
+      # release. To repair a failed publish, dispatch with `--ref <tag>` so the
+      # run is triggered by `refs/tags/<tag>` and provenance is correct by
+      # construction. Re-pushing the tag does NOT work: it already points at the
+      # same object, so git reports `Everything up-to-date` and no event fires.
       #
       # The test is on the ref itself, not on the event: `gh workflow run
       # release.yml --ref vX.Y.Z` is a legitimate manual repair whose
