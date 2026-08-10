@@ -141,9 +141,9 @@ struct HoldGestureArbiterTests {
         let harness = Harness()
         harness.physicallyHeld = false
         let arbiter = harness.makeArbiter()
-        nonisolated(unsafe) var dropped: [(KeyPress, TimeInterval)] = []
+        let dropped = CallbackRecorder<(KeyPress, TimeInterval)>()
         arbiter.onDroppedAmbiguousGesture = { keyPress, elapsed in
-            dropped.append((keyPress, elapsed))
+            dropped.record((keyPress, elapsed))
         }
 
         arbiter.handle(chord, .down)
@@ -177,22 +177,25 @@ struct HoldGestureArbiterTests {
 @Suite("Phased chord autorepeat swallow")
 struct PhasedAutorepeatSwallowTests {
     @Test
-    func autorepeatDownOfPhasedChordIsSwallowedWithoutDelivery() {
+    func autorepeatDownOfPhasedChordIsSwallowedWithoutDelivery() async {
         let keyPress = KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.command])
         let box = EventTapBox()
         box.registeredShortcuts = [keyPress]
         box.phasedChords = [keyPress]
-        nonisolated(unsafe) var deliveries = 0
-        box.setPhasedKeyObserver { _, _ in deliveries += 1 }
-        nonisolated(unsafe) var legacyDeliveries = 0
-        box.onKeyPress = { _ in legacyDeliveries += 1 }
+        let deliveries = CallbackRecorder<KeyEventPhase>()
+        box.setPhasedKeyObserver { _, phase in deliveries.record(phase) }
+        let legacyDeliveries = CallbackRecorder<KeyPress>()
+        box.onKeyPress = { legacyDeliveries.record($0) }
 
         let event = makeAutorepeatKeyDown(keyPress)
         let result = handleEventTapEvent(type: .keyDown, event: event, box: box)
+        // Phased delivery hops through the main queue; without the drain this
+        // assertion would pass even if a delivery had been scheduled.
+        await drainMainQueue()
 
         #expect(result == nil, "a held hold-gesture chord must not autorepeat into the frontmost app")
-        #expect(deliveries == 0)
-        #expect(legacyDeliveries == 0)
+        #expect(deliveries.isEmpty)
+        #expect(legacyDeliveries.isEmpty)
     }
 
     @Test
