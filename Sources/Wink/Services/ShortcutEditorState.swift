@@ -296,6 +296,52 @@ final class ShortcutEditorState {
         )
     }
 
+    /// True while the user holds work that replacing the whole shortcut set
+    /// would destroy. #438's automatic (Focus-selected) profile switches must
+    /// defer on this; a manual switch may discard it, but never silently.
+    var hasUnsavedWork: Bool {
+        isRecordingShortcut
+            || isRecordingSearchPaletteShortcut
+            || pendingRecipeImport != nil
+            || recordedShortcut != nil
+            || !selectedBundleIdentifier.isEmpty
+    }
+
+    /// Clears drafts before the active profile changes, reporting what went.
+    ///
+    /// The import preview in particular *must* go: its conflict decisions and
+    /// minted IDs were computed against the outgoing profile, so applying it
+    /// to a different one would be plainly wrong. Discarding is the only
+    /// correct behavior; the requirement is that it is surfaced, not silent.
+    @discardableResult
+    func cancelDraftsForProfileSwitch() -> DiscardedProfileSwitchDrafts {
+        var discarded = DiscardedProfileSwitchDrafts()
+
+        if isRecordingShortcut || isRecordingSearchPaletteShortcut {
+            discarded.cancelledRecorder = true
+            // Clearing both flags releases the #417/#419 dispatch gate through
+            // the existing didSet, so the incoming profile's chords are live
+            // the moment the switch applies.
+            isRecordingShortcut = false
+            isRecordingSearchPaletteShortcut = false
+        }
+
+        if recordedShortcut != nil || !selectedBundleIdentifier.isEmpty || !selectedAppName.isEmpty {
+            discarded.discardedComposerDraft = true
+        }
+        resetDraft()
+        recordedSearchPaletteShortcut = nil
+
+        if pendingRecipeImport != nil {
+            discarded.discardedImportPreview = true
+            pendingRecipeImport = nil
+        }
+
+        conflictMessage = nil
+        searchPaletteConflictMessage = nil
+        return discarded
+    }
+
     func removeShortcut(id: UUID) {
         let updated = shortcuts.filter { $0.id != id }
         guard persist(updated) else { return }

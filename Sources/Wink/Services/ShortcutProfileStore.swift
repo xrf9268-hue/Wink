@@ -57,10 +57,14 @@ struct ShortcutProfileLayout: Sendable, Equatable {
 final class ActiveProfileFileLocator: @unchecked Sendable {
     private let lock = NSLock()
     private var activeProfileID: UUID?
-    private let layout: ShortcutProfileLayout?
+    /// Resolved per call, never cached: `StoragePaths.appSupportDirectory()`
+    /// creates the directory on demand, so resolving it eagerly would give
+    /// merely constructing the store a filesystem side effect, and a cached
+    /// `nil` would survive storage becoming available later.
+    private let layoutProvider: @Sendable () -> ShortcutProfileLayout?
 
-    init(layout: ShortcutProfileLayout?) {
-        self.layout = layout
+    init(layoutProvider: @escaping @Sendable () -> ShortcutProfileLayout?) {
+        self.layoutProvider = layoutProvider
     }
 
     func setActiveProfileID(_ profileID: UUID?) {
@@ -80,7 +84,7 @@ final class ActiveProfileFileLocator: @unchecked Sendable {
     /// a save during a quarantined-manifest session fails loudly instead of
     /// writing somewhere arbitrary.
     func activeProfileDataURL() -> URL? {
-        guard let layout, let profileID = currentActiveProfileID() else { return nil }
+        guard let profileID = currentActiveProfileID(), let layout = layoutProvider() else { return nil }
         return layout.profileDataURL(profileID)
     }
 }
@@ -181,7 +185,7 @@ final class ShortcutProfileStore {
         )
     }
 
-    private let layout: ShortcutProfileLayout?
+    private let directoryProvider: @Sendable () -> URL?
     private let fileManager: FileManager
     private let diagnosticClient: DiagnosticClient
     private let writeClient: WriteClient
@@ -196,7 +200,7 @@ final class ShortcutProfileStore {
     private(set) var manifest: ShortcutProfileManifest?
 
     init(
-        directoryProvider: @Sendable () -> URL? = { StoragePaths.appSupportDirectory() },
+        directoryProvider: @escaping @Sendable () -> URL? = { StoragePaths.appSupportDirectory() },
         fileManager: FileManager = .default,
         diagnosticClient: DiagnosticClient = .live,
         writeClient: WriteClient = .live,
@@ -204,15 +208,21 @@ final class ShortcutProfileStore {
         dateProvider: @escaping @Sendable () -> Date = Date.init,
         backupIDProvider: @escaping @Sendable () -> String = { UUID().uuidString.lowercased() }
     ) {
-        let resolved = directoryProvider().map { ShortcutProfileLayout(appDirectory: $0) }
-        self.layout = resolved
+        self.directoryProvider = directoryProvider
         self.fileManager = fileManager
         self.diagnosticClient = diagnosticClient
         self.writeClient = writeClient
         self.idProvider = idProvider
         self.dateProvider = dateProvider
         self.backupIDProvider = backupIDProvider
-        self.locator = ActiveProfileFileLocator(layout: resolved)
+        self.locator = ActiveProfileFileLocator(
+            layoutProvider: { directoryProvider().map { ShortcutProfileLayout(appDirectory: $0) } }
+        )
+    }
+
+    /// Resolved on demand — see `ActiveProfileFileLocator.layoutProvider`.
+    private var layout: ShortcutProfileLayout? {
+        directoryProvider().map { ShortcutProfileLayout(appDirectory: $0) }
     }
 
     // MARK: - Persistence seam for the active profile
@@ -223,7 +233,7 @@ final class ShortcutProfileStore {
     /// profile knowledge at all.
     func makeActiveProfilePersistenceService() -> PersistenceService {
         let locator = self.locator
-        let layout = self.layout
+        let directoryProvider = self.directoryProvider
         let writeClient = self.writeClient
         let diagnosticClient = self.diagnosticClient
 
@@ -232,7 +242,11 @@ final class ShortcutProfileStore {
             diagnosticClient: PersistenceService.DiagnosticClient(log: diagnosticClient.log),
             backupIDProvider: backupIDProvider,
             derivedCopyWriter: { data in
-                guard let layout, let profileID = locator.currentActiveProfileID() else { return }
+                guard
+                    let directory = directoryProvider(),
+                    let profileID = locator.currentActiveProfileID()
+                else { return }
+                let layout = ShortcutProfileLayout(appDirectory: directory)
                 Self.writeMirror(
                     data: data,
                     profileID: profileID,
@@ -566,7 +580,18 @@ final class ShortcutProfileStore {
             return nil
         }
 
-        guard Self.digest(mirrorData) != descriptor.sha256 else {
+        if Self.digest(mirrorData) == descriptor.sha256 {
+            // Wink wrote exactly these bytes. If they describe a profile other
+            // than the one now active, this is the crash window between the
+            // pointer commit and the mirror write: the mirror and its
+            // descriptor still agree with EACH OTHER, so a digest-only check
+            // would call it current and leave the previous profile's bindings
+            // in the file the E2E harness and a downgraded build read. Stale,
+            // not foreign — repair it silently.
+            if descriptor.profileID != activeProfileID {
+                log("PROFILE_TRACE_MIRROR_STALE was=\(descriptor.profileID.uuidString) active=\(activeProfileID.uuidString)")
+                rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
+            }
             return nil
         }
 

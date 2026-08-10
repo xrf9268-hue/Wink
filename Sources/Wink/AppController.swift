@@ -25,7 +25,11 @@ final class AppController {
     static let lastSeenVersionDefaultsKey = "com.wink.lastSeenVersion"
 
     private let shortcutStore = ShortcutStore()
-    private let persistenceService = PersistenceService()
+    private let profileStore = ShortcutProfileStore()
+    /// Points at the ACTIVE profile's data file and carries the compat
+    /// `shortcuts.json` mirror as a derived copy, so every existing save path
+    /// stays profile-agnostic.
+    private lazy var persistenceService = profileStore.makeActiveProfilePersistenceService()
     private let usageTracker = UsageTracker()
     private let hyperKeyService = HyperKeyService()
     private let appBundleLocator = AppBundleLocator()
@@ -166,6 +170,28 @@ final class AppController {
         usageTracker: usageTracker,
         onShortcutConfigurationChange: { [weak self] in
             self?.appPreferences.refreshPermissions()
+        }
+    )
+    private lazy var profileState = ShortcutProfileState(
+        store: profileStore,
+        shortcutManager: shortcutManager,
+        usageTracker: usageTracker,
+        prepareForSwitch: { [weak self] in
+            guard let self else { return DiscardedProfileSwitchDrafts() }
+            // Interactive panels first: their sessions are scoped to the
+            // outgoing binding set, and a picker left open across the switch
+            // would gate dispatch for chords that no longer exist.
+            self.windowPickerHUD.dismiss()
+            self.searchPaletteHUD.dismiss()
+            self.cheatSheetHUD.reset()
+            return self.shortcutEditor.cancelDraftsForProfileSwitch()
+        },
+        hasUnsavedEditorWork: { [weak self] in
+            self?.shortcutEditor.hasUnsavedWork ?? false
+        },
+        onProfileApplied: { [weak self] in
+            self?.appPreferences.refreshPermissions()
+            self?.shortcutEditor.scheduleUsageRefresh()
         }
     )
     private lazy var frontmostExceptionMonitor = FrontmostExceptionMonitor(
@@ -396,7 +422,11 @@ final class AppController {
 
         Self.runStartupSequence(
             startUpdateService: { _ = updateService },
-            loadShortcuts: { try persistenceService.load() },
+            // Profile-aware: returns the ACTIVE profile's shortcuts, and an
+            // empty set for every recovery state so an unreadable
+            // configuration can never fall through to a different profile's
+            // bindings. The failure itself is surfaced by `profileState`.
+            loadShortcuts: { profileState.loadAtStartup() },
             replaceShortcuts: { shortcutStore.replaceAll(with: $0) },
             // "Deferred by an active pause" counts as armed: the routing
             // decision below must reflect user intent, not the pause. With

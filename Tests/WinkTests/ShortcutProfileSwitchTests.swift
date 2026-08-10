@@ -1,0 +1,575 @@
+import Carbon.HIToolbox
+import Foundation
+import Testing
+@testable import Wink
+
+// MARK: - Local fakes (per-file-fakes convention)
+
+@MainActor
+private final class FakeCaptureProvider: ShortcutCaptureProvider {
+    var isRunning = false
+    var inputMonitoringRequired = false
+    private(set) var registeredShortcuts: Set<KeyPress> = []
+    /// One entry per `updateRegisteredShortcuts` call, so a test can prove a
+    /// switch reconfigures capture exactly once.
+    private(set) var registrationUpdates: [Set<KeyPress>] = []
+    private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
+    private var phasedObserver: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?
+
+    func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?) {
+        phasedObserver = observer
+    }
+
+    func emitPhased(_ keyPress: KeyPress, _ phase: KeyEventPhase) {
+        phasedObserver?(keyPress, phase)
+    }
+
+    var registrationState: ShortcutCaptureRegistrationState {
+        ShortcutCaptureRegistrationState(
+            desiredShortcutCount: registeredShortcuts.count,
+            registeredShortcutCount: registeredShortcuts.count,
+            failures: []
+        )
+    }
+
+    func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {
+        self.onKeyPress = onKeyPress
+        isRunning = true
+    }
+
+    func stop() {
+        isRunning = false
+        onKeyPress = nil
+    }
+
+    func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {
+        registeredShortcuts = keyPresses
+        registrationUpdates.append(keyPresses)
+    }
+
+    func emit(_ keyPress: KeyPress) {
+        onKeyPress?(keyPress)
+    }
+}
+
+@MainActor
+private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
+    var isRunning = false
+    private var onKeyPress: (@MainActor @Sendable (KeyPress) -> Void)?
+
+    var registrationState: ShortcutCaptureRegistrationState {
+        ShortcutCaptureRegistrationState(desiredShortcutCount: 0, registeredShortcutCount: 0, failures: [])
+    }
+
+    func start(onKeyPress: @escaping @MainActor @Sendable (KeyPress) -> Void) {
+        self.onKeyPress = onKeyPress
+    }
+
+    func stop() {
+        onKeyPress = nil
+    }
+
+    func updateRegisteredShortcuts(_ keyPresses: Set<KeyPress>) {}
+    func setHyperKeyEnabled(_ enabled: Bool) {}
+    func setHyperReleaseDeferralSuppressed(_ suppressed: Bool) {}
+}
+
+private struct FakePermissionService: PermissionServicing {
+    func isTrusted() -> Bool { true }
+    func isAccessibilityTrusted() -> Bool { true }
+    func isInputMonitoringTrusted() -> Bool { true }
+    @discardableResult
+    func requestIfNeeded(prompt: Bool, inputMonitoringRequired: Bool) -> Bool { true }
+}
+
+@MainActor
+private final class RecordingAppSwitcher: AppSwitching {
+    private(set) var toggledBundleIdentifiers: [String] = []
+    private(set) var cycleInvalidationReasons: [String] = []
+
+    @discardableResult
+    func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool {
+        toggledBundleIdentifiers.append(shortcut.bundleIdentifier)
+        return true
+    }
+
+    func invalidateWindowCycleSession(reason: String) {
+        cycleInvalidationReasons.append(reason)
+    }
+
+    func windowPickerSession(for shortcut: AppShortcut) -> WindowPickerSession? { nil }
+
+    @discardableResult
+    func focusPickedWindow(windowID: CGWindowID, session: WindowPickerSession) -> Bool { false }
+}
+
+// MARK: - Harness
+
+@MainActor
+private struct SwitchContext {
+    let harness: TestProfileHarness
+    let store: ShortcutProfileStore
+    let state: ShortcutProfileState
+    let manager: ShortcutManager
+    let shortcutStore: ShortcutStore
+    let appSwitcher: RecordingAppSwitcher
+    let standardProvider: FakeCaptureProvider
+    let prepared: CallbackRecorder<Bool>
+}
+
+private func safariShortcut(id: UUID = UUID()) -> AppShortcut {
+    AppShortcut(
+        id: id,
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "s",
+        modifierFlags: ["command", "shift"]
+    )
+}
+
+private func terminalShortcut(id: UUID = UUID()) -> AppShortcut {
+    AppShortcut(
+        id: id,
+        appName: "Terminal",
+        bundleIdentifier: "com.apple.Terminal",
+        keyEquivalent: "t",
+        modifierFlags: ["command", "shift"]
+    )
+}
+
+private func safariKeyPress() -> KeyPress {
+    KeyPress(keyCode: UInt16(kVK_ANSI_S), modifiers: [.command, .shift])
+}
+
+private func terminalKeyPress() -> KeyPress {
+    KeyPress(keyCode: UInt16(kVK_ANSI_T), modifiers: [.command, .shift])
+}
+
+@MainActor
+private func makeSwitchContext(
+    legacyShortcuts: [AppShortcut],
+    drafts: DiscardedProfileSwitchDrafts = DiscardedProfileSwitchDrafts()
+) throws -> SwitchContext {
+    let harness = TestProfileHarness()
+    try harness.writeLegacyShortcuts(legacyShortcuts)
+
+    let store = harness.makeStore()
+    let shortcutStore = ShortcutStore()
+    let standardProvider = FakeCaptureProvider()
+    let appSwitcher = RecordingAppSwitcher()
+    let manager = ShortcutManager(
+        shortcutStore: shortcutStore,
+        persistenceService: store.makeActiveProfilePersistenceService(),
+        appSwitcher: appSwitcher,
+        captureCoordinator: ShortcutCaptureCoordinator(
+            standardProvider: standardProvider,
+            hyperProvider: FakeHyperCaptureProvider()
+        ),
+        permissionService: FakePermissionService(),
+        appBundleLocator: TestAppBundleLocator(entries: [
+            "com.apple.Safari": URL(fileURLWithPath: "/Applications/Safari.app"),
+            "com.apple.Terminal": URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"),
+        ]).locator,
+        automaticPermissionPromptingEnabled: false,
+        diagnosticClient: .init(log: { _ in })
+    )
+
+    let prepared = CallbackRecorder<Bool>()
+    let state = ShortcutProfileState(
+        store: store,
+        shortcutManager: manager,
+        prepareForSwitch: {
+            prepared.record(true)
+            return drafts
+        }
+    )
+
+    let loaded = state.loadAtStartup()
+    shortcutStore.replaceAll(with: loaded)
+    manager.start()
+
+    return SwitchContext(
+        harness: harness,
+        store: store,
+        state: state,
+        manager: manager,
+        shortcutStore: shortcutStore,
+        appSwitcher: appSwitcher,
+        standardProvider: standardProvider,
+        prepared: prepared
+    )
+}
+
+// MARK: - Runtime apply contract
+
+@Suite("Shortcut profile runtime apply")
+@MainActor
+struct ShortcutProfileRuntimeApplyTests {
+    @Test
+    func switchingReplacesTheArmedSetAtomically() throws {
+        let context = try makeSwitchContext(legacyShortcuts: [safariShortcut()])
+        defer { context.harness.cleanup() }
+
+        let defaultProfileID = try #require(context.state.activeProfileID)
+        context.state.createProfile(named: "Work", duplicatingActiveProfile: false)
+        let work = try #require(context.state.profiles.first { $0.id != defaultProfileID })
+        try PersistenceService
+            .encodeShortcuts([terminalShortcut()])
+            .write(to: context.harness.layout.profileDataURL(work.id), options: .atomic)
+
+        #expect(context.standardProvider.registeredShortcuts == [safariKeyPress()])
+
+        context.state.switchToProfile(work.id)
+
+        #expect(context.state.activeProfileID == work.id)
+        #expect(context.shortcutStore.shortcuts.map(\.appName) == ["Terminal"])
+        // The armed chord set follows in the same synchronous block: the
+        // outgoing chord is gone and the incoming one is registered.
+        #expect(context.standardProvider.registeredShortcuts == [terminalKeyPress()])
+    }
+
+    @Test
+    func aSwitchReconfiguresCaptureExactlyOnce() throws {
+        let context = try makeSwitchContext(legacyShortcuts: [safariShortcut()])
+        defer { context.harness.cleanup() }
+
+        let defaultProfileID = try #require(context.state.activeProfileID)
+        context.state.createProfile(named: "Work", duplicatingActiveProfile: false)
+        let work = try #require(context.state.profiles.first { $0.id != defaultProfileID })
+        try PersistenceService
+            .encodeShortcuts([terminalShortcut()])
+            .write(to: context.harness.layout.profileDataURL(work.id), options: .atomic)
+
+        let before = context.standardProvider.registrationUpdates.count
+        context.state.switchToProfile(work.id)
+        let updates = context.standardProvider.registrationUpdates.count - before
+
+        #expect(updates == 1)
+    }
+
+    @Test
+    func aRefusedSwitchAppliesNothing() throws {
+        let context = try makeSwitchContext(legacyShortcuts: [safariShortcut()])
+        defer { context.harness.cleanup() }
+
+        let defaultProfileID = try #require(context.state.activeProfileID)
+        context.state.createProfile(named: "Work", duplicatingActiveProfile: false)
+        let work = try #require(context.state.profiles.first { $0.id != defaultProfileID })
+        // An unreadable target: the switch must refuse before any commit.
+        try context.harness.writeRaw("[ nope", to: context.harness.layout.profileDataURL(work.id))
+
+        let updatesBefore = context.standardProvider.registrationUpdates.count
+        context.state.switchToProfile(work.id)
+
+        #expect(context.state.activeProfileID == defaultProfileID)
+        #expect(context.shortcutStore.shortcuts.map(\.appName) == ["Safari"])
+        #expect(context.standardProvider.registrationUpdates.count == updatesBefore)
+        #expect(context.state.errorMessage != nil)
+    }
+
+    @Test
+    func switchingInvalidatesTheWindowCycleSessionWithItsOwnReason() throws {
+        let context = try makeSwitchContext(legacyShortcuts: [safariShortcut()])
+        defer { context.harness.cleanup() }
+
+        let defaultProfileID = try #require(context.state.activeProfileID)
+        context.state.createProfile(named: "Work", duplicatingActiveProfile: true)
+        let work = try #require(context.state.profiles.first { $0.id != defaultProfileID })
+
+        let before = context.appSwitcher.cycleInvalidationReasons.count
+        context.state.switchToProfile(work.id)
+        let added = Array(context.appSwitcher.cycleInvalidationReasons.dropFirst(before))
+
+        #expect(added == ["profile_switched"])
+    }
+
+    @Test
+    func switchingToTheActiveProfileIsANoOp() throws {
+        let context = try makeSwitchContext(legacyShortcuts: [safariShortcut()])
+        defer { context.harness.cleanup() }
+
+        let activeProfileID = try #require(context.state.activeProfileID)
+        let updatesBefore = context.standardProvider.registrationUpdates.count
+
+        context.state.switchToProfile(activeProfileID)
+
+        #expect(context.standardProvider.registrationUpdates.count == updatesBefore)
+        #expect(context.prepared.isEmpty)
+    }
+
+    @Test
+    func savingAfterASwitchWritesIntoTheNewProfileAndItsMirror() throws {
+        let context = try makeSwitchContext(legacyShortcuts: [safariShortcut()])
+        defer { context.harness.cleanup() }
+
+        let defaultProfileID = try #require(context.state.activeProfileID)
+        context.state.createProfile(named: "Work", duplicatingActiveProfile: false)
+        let work = try #require(context.state.profiles.first { $0.id != defaultProfileID })
+        context.state.switchToProfile(work.id)
+
+        try context.manager.save(shortcuts: [terminalShortcut()])
+
+        let workBytes = context.harness.decodedShortcuts(at: context.harness.layout.profileDataURL(work.id))
+        let defaultBytes = context.harness.decodedShortcuts(at: context.harness.layout.profileDataURL(defaultProfileID))
+        #expect(workBytes?.map(\.appName) == ["Terminal"])
+        // The previously active profile is untouched by a save made after the
+        // switch — the locator, not a captured URL, decides the destination.
+        #expect(defaultBytes?.map(\.appName) == ["Safari"])
+        #expect(
+            context.harness.data(at: context.harness.layout.mirrorURL)
+                == context.harness.data(at: context.harness.layout.profileDataURL(work.id))
+        )
+    }
+}
+
+// MARK: - Editor conflict semantics (design record D14)
+
+@Suite("Shortcut profile editor conflicts")
+@MainActor
+struct ShortcutProfileEditorConflictTests {
+    @Test
+    func aManualSwitchCancelsDraftsAndSaysSo() throws {
+        let context = try makeSwitchContext(
+            legacyShortcuts: [safariShortcut()],
+            drafts: DiscardedProfileSwitchDrafts(
+                cancelledRecorder: false,
+                discardedComposerDraft: false,
+                discardedImportPreview: true
+            )
+        )
+        defer { context.harness.cleanup() }
+
+        let defaultProfileID = try #require(context.state.activeProfileID)
+        context.state.createProfile(named: "Work", duplicatingActiveProfile: true)
+        let work = try #require(context.state.profiles.first { $0.id != defaultProfileID })
+
+        context.state.switchToProfile(work.id)
+
+        #expect(context.prepared.count == 1)
+        // Discarded, but never silently.
+        #expect(context.state.statusMessage != nil)
+    }
+
+    @Test
+    func aRefusedSwitchStillReportsDraftsItAlreadyDiscarded() throws {
+        let context = try makeSwitchContext(
+            legacyShortcuts: [safariShortcut()],
+            drafts: DiscardedProfileSwitchDrafts(
+                cancelledRecorder: true,
+                discardedComposerDraft: false,
+                discardedImportPreview: false
+            )
+        )
+        defer { context.harness.cleanup() }
+
+        let defaultProfileID = try #require(context.state.activeProfileID)
+        context.state.createProfile(named: "Work", duplicatingActiveProfile: false)
+        let work = try #require(context.state.profiles.first { $0.id != defaultProfileID })
+        try context.harness.writeRaw("[ nope", to: context.harness.layout.profileDataURL(work.id))
+
+        context.state.switchToProfile(work.id)
+
+        #expect(context.state.errorMessage != nil)
+        #expect(context.state.statusMessage != nil)
+    }
+
+    @Test
+    func externalSwitchesDeferWhileTheEditorHoldsUnsavedWork() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+
+        let store = harness.makeStore()
+        let shortcutStore = ShortcutStore()
+        let manager = ShortcutManager(
+            shortcutStore: shortcutStore,
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+
+        let hasUnsavedWork = CallbackRecorder<Bool>()
+        let state = ShortcutProfileState(
+            store: store,
+            shortcutManager: manager,
+            hasUnsavedEditorWork: { hasUnsavedWork.values.last ?? false }
+        )
+        _ = state.loadAtStartup()
+
+        hasUnsavedWork.record(false)
+        #expect(state.canApplyExternalSwitch)
+
+        hasUnsavedWork.record(true)
+        #expect(!state.canApplyExternalSwitch)
+    }
+
+    @Test
+    func cancellingDraftsClearsTheRecorderGateAndTheImportPreview() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+
+        let store = harness.makeStore()
+        let shortcutStore = ShortcutStore()
+        let manager = ShortcutManager(
+            shortcutStore: shortcutStore,
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let editor = ShortcutEditorState(shortcutStore: shortcutStore, shortcutManager: manager)
+
+        editor.selectedAppName = "Mail"
+        editor.selectedBundleIdentifier = "com.apple.mail"
+        editor.recordedShortcut = RecordedShortcut(keyEquivalent: "m", modifierFlags: ["command"])
+        editor.isRecordingShortcut = true
+        #expect(editor.hasUnsavedWork)
+
+        let discarded = editor.cancelDraftsForProfileSwitch()
+
+        #expect(discarded.cancelledRecorder)
+        #expect(discarded.discardedComposerDraft)
+        #expect(!editor.isRecordingShortcut)
+        #expect(!editor.isRecordingSearchPaletteShortcut)
+        #expect(editor.recordedShortcut == nil)
+        #expect(editor.selectedBundleIdentifier.isEmpty)
+        #expect(!editor.hasUnsavedWork)
+    }
+}
+
+// MARK: - Deletion
+
+@Suite("Shortcut profile deletion runtime")
+@MainActor
+struct ShortcutProfileDeletionRuntimeTests {
+    @Test
+    func deletingTheActiveProfileAppliesTheSuccessorToTheRuntime() throws {
+        let context = try makeSwitchContext(legacyShortcuts: [safariShortcut()])
+        defer { context.harness.cleanup() }
+
+        let defaultProfileID = try #require(context.state.activeProfileID)
+        context.state.createProfile(named: "Work", duplicatingActiveProfile: false)
+        let work = try #require(context.state.profiles.first { $0.id != defaultProfileID })
+        try PersistenceService
+            .encodeShortcuts([terminalShortcut()])
+            .write(to: context.harness.layout.profileDataURL(work.id), options: .atomic)
+        context.state.switchToProfile(work.id)
+        #expect(context.standardProvider.registeredShortcuts == [terminalKeyPress()])
+
+        context.state.deleteProfile(work.id)
+
+        #expect(context.state.activeProfileID == defaultProfileID)
+        #expect(context.shortcutStore.shortcuts.map(\.appName) == ["Safari"])
+        #expect(context.standardProvider.registeredShortcuts == [safariKeyPress()])
+    }
+
+    @Test
+    func deletingAnInactiveProfileLeavesTheRuntimeAlone() throws {
+        let context = try makeSwitchContext(legacyShortcuts: [safariShortcut()])
+        defer { context.harness.cleanup() }
+
+        let defaultProfileID = try #require(context.state.activeProfileID)
+        context.state.createProfile(named: "Work", duplicatingActiveProfile: false)
+        let work = try #require(context.state.profiles.first { $0.id != defaultProfileID })
+
+        let updatesBefore = context.standardProvider.registrationUpdates.count
+        context.state.deleteProfile(work.id)
+
+        #expect(context.state.activeProfileID == defaultProfileID)
+        #expect(context.standardProvider.registrationUpdates.count == updatesBefore)
+        #expect(context.prepared.isEmpty)
+    }
+}
+
+// MARK: - Recovery states arm nothing
+
+@Suite("Shortcut profile recovery arms nothing")
+@MainActor
+struct ShortcutProfileRecoveryRuntimeTests {
+    @Test
+    func aQuarantinedManifestArmsNothingAndBlocksMutation() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+
+        let firstStore = harness.makeStore()
+        _ = firstStore.load()
+        try harness.writeRaw("{ truncated", to: harness.layout.manifestURL)
+
+        let store = harness.makeStore()
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let state = ShortcutProfileState(store: store, shortcutManager: manager)
+
+        let armed = state.loadAtStartup()
+
+        #expect(armed.isEmpty)
+        #expect(!state.isMutable)
+        #expect(!state.canApplyExternalSwitch)
+
+        state.createProfile(named: "Work", duplicatingActiveProfile: false)
+        #expect(state.errorMessage != nil)
+        #expect(state.profiles.isEmpty)
+
+        state.recoverFromUnreadableManifest()
+        #expect(state.isMutable)
+        #expect(state.profiles.count == 1)
+    }
+
+    @Test
+    func anAmbiguousActivePointerArmsNothingAndNeverAutoSelects() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+
+        let firstStore = harness.makeStore()
+        _ = firstStore.load()
+        try firstStore.createProfile(named: "Work", duplicating: nil)
+        try FileManager.default.removeItem(at: harness.layout.activePointerURL)
+
+        let store = harness.makeStore()
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let state = ShortcutProfileState(store: store, shortcutManager: manager)
+
+        let armed = state.loadAtStartup()
+
+        #expect(armed.isEmpty)
+        #expect(state.activeProfileID == nil)
+        #expect(state.profiles.count == 2)
+        // The list is offered so the user can pick — but nothing is chosen.
+        #expect(state.recovery != .none)
+    }
+}
