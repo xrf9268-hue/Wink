@@ -367,3 +367,68 @@ test('the negative proof fails when it scanned something other than the fixture'
   assert.match(result.stderr, /expected-package-missing/);
   assert.match(result.stderr, /did not scan what it claims to scan/);
 });
+
+test('an unsuppressed-vulnerability finding carries the package it belongs to', () => {
+  const result = evaluateScanReport({
+    report: VULNERABLE_REPORT,
+    expectedPackages: [{ ...SPARKLE_2_9_5[0], version: '2.9.1' }],
+    now: NOW,
+  });
+
+  for (const finding of result.findings) {
+    assert.equal(finding.packageName, 'github.com/sparkle-project/Sparkle');
+    assert.equal(finding.packageVersion, '2.9.1');
+    assert.equal(finding.ecosystem, 'SwiftURL');
+  }
+});
+
+test('the negative proof rejects advisories that belong to another package', () => {
+  // The fixture package is present and clean; the advisories come from an
+  // unrelated entry in the same report. Coverage passes, so only binding the
+  // vulnerabilities to the fixture identity can catch this.
+  const merged = {
+    results: [
+      {
+        source: { path: 'Package.resolved', type: 'lockfile' },
+        packages: [
+          {
+            package: { name: 'github.com/apple/swift-nio', version: '2.29.0', ecosystem: 'SwiftURL' },
+            vulnerabilities: [],
+          },
+          ...VULNERABLE_REPORT.results[0].packages,
+        ],
+      },
+    ],
+  };
+
+  const result = evaluateScanReport({
+    report: merged,
+    expectedPackages: [
+      { name: 'github.com/apple/swift-nio', version: '2.29.0', ecosystem: 'SwiftURL' },
+    ],
+    now: NOW,
+  });
+
+  const vulnerabilities = result.findings.filter(
+    (finding) => finding.code === 'unsuppressed-vulnerability',
+  );
+
+  assert.ok(vulnerabilities.length > 0, 'the report does contain advisories');
+  assert.equal(
+    vulnerabilities.filter((finding) => finding.packageName === 'github.com/apple/swift-nio').length,
+    0,
+    'none of them belong to the fixture package',
+  );
+});
+
+test('the negative-proof entrypoint rejects a clean fixture beside unrelated advisories', () => {
+  const result = runAssert({
+    OSV_RESULTS_PATH: join(fixtureRoot, 'clean-fixture-with-unrelated-advisories.json'),
+    OSV_LOCKFILE_PATH: '.github/osv-fixtures/known-advisory/Package.resolved',
+    OSV_EXPECT_VULNERABILITIES: 'true',
+  });
+
+  assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stderr, /no vulnerabilities of its own/);
+  assert.match(result.stderr, /belong to other packages/);
+});

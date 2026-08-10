@@ -119,16 +119,35 @@ async function main() {
       return;
     }
 
-    if (vulnerabilityFindings.length === 0) {
+    // Coverage only proves the fixture package is PRESENT. An advisory on some
+    // other package in the same report would otherwise satisfy the proof while
+    // the fixture itself came back clean — and the log would claim the
+    // advisories were "on the expected fixture package".
+    const fixtureFindings = vulnerabilityFindings.filter((finding) =>
+      expectedPackages.some(
+        (expectedPackage) =>
+          expectedPackage.name === finding.packageName &&
+          expectedPackage.ecosystem === finding.ecosystem &&
+          (!expectedPackage.version || expectedPackage.version === finding.packageVersion),
+      ),
+    );
+
+    if (fixtureFindings.length === 0) {
       console.error(
-        '::error::The known-advisory fixture reported no vulnerabilities. The gate would not catch a real one — do not trust a green scan of the production lockfile.',
+        `::error::The known-advisory fixture reported no vulnerabilities of its own${
+          vulnerabilityFindings.length > 0
+            ? ` (${vulnerabilityFindings.length} advisory(ies) belong to other packages in the report)`
+            : ''
+        }. The gate would not catch a real one — do not trust a green scan of the production lockfile.`,
       );
       process.exitCode = 1;
       return;
     }
 
     console.log(
-      `Negative proof: the gate reported ${vulnerabilityFindings.length} advisory(ies) on the expected fixture package, so it can fail.`,
+      `Negative proof: the gate reported ${fixtureFindings.length} advisory(ies) on ${expectedPackages
+        .map((expectedPackage) => `${expectedPackage.name}@${expectedPackage.version}`)
+        .join(', ')}, so it can fail.`,
     );
     return;
   }

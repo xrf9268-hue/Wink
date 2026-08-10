@@ -532,3 +532,53 @@ test('a flow mapping continuing at column zero keeps its collection open', () =>
   assert.equal(references[0].flowMapping, true);
   assert.equal(references[0].line, 5);
 });
+
+test('an explicit key inside a flow collection fails closed', () => {
+  const references = scanUsesReferences(
+    ['jobs:', '  a:', '    steps: [ ? uses : actions/cache@main ]'].join('\n'),
+  );
+
+  assert.equal(references.length, 1);
+  assert.equal(references[0].explicitKey, true);
+  assert.deepEqual(
+    evaluateReference(references[0]).problems.map((problem) => problem.code),
+    ['explicit-key-reference'],
+  );
+});
+
+test('losing track of a flow collection is reported, not silently resumed', () => {
+  const lines = [
+    'jobs:',
+    '  a:',
+    '    steps: [',
+    ...Array.from({ length: 210 }, () => '      { name: filler },'),
+    '      { uses: actions/cache@main }',
+    '    ]',
+  ];
+  const references = scanUsesReferences(lines.join('\n'));
+  const overflow = references.find((reference) => reference.flowOverflow);
+
+  assert.ok(overflow, 'exceeding the continuation cap must produce a reference');
+  assert.deepEqual(
+    evaluateReference(overflow).problems.map((problem) => problem.code),
+    ['flow-tracking-overflow'],
+  );
+});
+
+test('an ordinary short flow collection never trips the overflow guard', () => {
+  const references = scanUsesReferences(
+    ['jobs:', '  a:', '    steps:', '      - { name: Cache, uses: actions/cache@main }'].join('\n'),
+  );
+
+  assert.equal(references.length, 1);
+  assert.equal(references[0].flowOverflow, undefined);
+  assert.equal(references[0].flowMapping, true);
+});
+
+test('release.yml scans the immutable commit for a no-tag dispatch', async () => {
+  const releaseWorkflow = await readFile(join(repositoryRoot, '.github/workflows/release.yml'), 'utf8');
+
+  assert.match(releaseWorkflow, /RELEASE_CHECKOUT_REF="refs\/tags\/\$\{MANUAL_RELEASE_TAG\}"/);
+  assert.match(releaseWorkflow, /RELEASE_CHECKOUT_REF="\$\{GITHUB_SHA\}"/);
+  assert.doesNotMatch(releaseWorkflow, /RELEASE_CHECKOUT_REF="\$\{GITHUB_REF\}"/);
+});

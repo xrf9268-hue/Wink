@@ -43,6 +43,11 @@ const FLOW_MAPPING_USES_PATTERN = /[{[,]\s*(?:uses|"uses"|'uses')\s*:/;
 // `run: echo "{ uses: x }"` from reading as a reference.
 const FLOW_MAPPING_OPENS_PATTERN = /^[{[]|:\s*[{[]/;
 const EXPLICIT_USES_KEY_PATTERN = /^\?\s+(?:uses|"uses"|'uses')\s*$/;
+// The same explicit-key form is legal inside a flow collection, where it never
+// starts a line: `steps: [ ? uses : actions/cache@main ]`. The `?` sits between
+// the collection delimiter and the key, so neither the flow `uses` pattern nor
+// the whole-line explicit-key pattern sees it.
+const FLOW_EXPLICIT_USES_KEY_PATTERN = /[{[,]\s*\?\s*(?:uses|"uses"|'uses')\s*[:\s]/;
 const QUOTED_SPAN_PATTERN = /("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')(\s*:)?/g;
 
 // Blank quoted *values* so `run: echo "{ uses: x }"` cannot be mistaken for a
@@ -207,8 +212,19 @@ export function scanUsesReferences(source) {
     if (flowDepth > 0) {
       flowOpenLines += 1;
       if (flowOpenLines > MAX_FLOW_CONTINUATION_LINES) {
+        // Resuming here would be the same bug the cap exists to prevent: past
+        // this point a `uses` on a continuation line is read as ordinary
+        // content and ignored. The scanner has admitted it cannot follow the
+        // file, which is exactly when it must not report success.
+        references.push({
+          line: index + 1,
+          value: rest.trim(),
+          comment: null,
+          flowOverflow: true,
+        });
         flowDepth = 0;
         flowOpenLines = 0;
+        return;
       }
     } else {
       flowOpenLines = 0;
@@ -227,7 +243,9 @@ export function scanUsesReferences(source) {
     const opensFlow = FLOW_MAPPING_OPENS_PATTERN.test(bare);
 
     if (continuesFlow || opensFlow) {
-      if (FLOW_MAPPING_USES_PATTERN.test(bare) || matchUsesKey(bare) !== null) {
+      if (FLOW_EXPLICIT_USES_KEY_PATTERN.test(bare)) {
+        references.push({ line: index + 1, value: rest.trim(), comment: null, explicitKey: true });
+      } else if (FLOW_MAPPING_USES_PATTERN.test(bare) || matchUsesKey(bare) !== null) {
         references.push({ line: index + 1, value: rest.trim(), comment: null, flowMapping: true });
       }
 
@@ -276,8 +294,18 @@ export function evaluateReference({
   blockScalar = false,
   flowMapping = false,
   explicitKey = false,
+  flowOverflow = false,
 }) {
   const problems = [];
+
+  if (flowOverflow) {
+    problems.push({
+      code: 'flow-tracking-overflow',
+      message: `A YAML flow collection stayed open for more than ${MAX_FLOW_CONTINUATION_LINES} lines, so the scanner can no longer tell structure from content and stopped following it here. Rewrite the step in block style.`,
+    });
+
+    return { kind: 'invalid', action: null, ref: null, version: null, problems };
+  }
 
   if (explicitKey) {
     problems.push({
