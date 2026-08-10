@@ -392,7 +392,9 @@ The release workflow lives at [release.yml](../.github/workflows/release.yml).
 ### Trigger
 
 - push a tag named `v<CFBundleShortVersionString>` (real release)
-- or run the workflow manually: provide an existing matching `release_tag` to operate on that tag, or leave it empty to rehearse the dispatched ref (forces a dry run)
+- or run the workflow manually. `release_tag` and `dry_run` are not freely combinable — the provenance preflight rejects the two mixtures that would misdescribe what was built:
+  - **publish an existing tag:** dispatch **from that tag** with `release_tag=vX.Y.Z -f dry_run=false`
+  - **rehearse:** leave `release_tag` empty and dispatch from a branch (dry run is forced)
 
 The `dry_run` input (default `true` for manual runs) builds and validates everything but publishes nothing. Tag pushes always publish.
 
@@ -444,8 +446,8 @@ Every release run starts by fetching the live `appcast.xml` from `R2_PUBLIC_BASE
 
 A manual `Release` run with `dry_run` enabled (the default) rehearses the full chain — feed gate (report-only `--mode rehearse`), notes gate, tests, signing, notarization, stapling, DMG/ZIP packaging, appcast generation, and artifact validation — then uploads everything as the `release-dry-run-<version>` workflow artifact instead of publishing. R2 and GitHub Releases are never touched.
 
-- Leave `release_tag` empty to rehearse the dispatched ref (dry run is forced).
-- Set `release_tag` to an existing tag with `dry_run` enabled to rehearse that tag.
+- Leave `release_tag` empty. A rehearsal builds the ref it was dispatched from, so to rehearse specific content, dispatch from a branch pointing at that content.
+- **Do not set `release_tag` on a dry run.** It is rejected by the provenance preflight: the run would build the tag while its attestation named the dispatching branch's commit. See the outcome matrix under [Artifact Attestations](#artifact-attestations).
 - Dry runs require the same secrets as real releases; rehearsing the signed chain is the point.
 - While no live feed exists yet, the rehearse-mode gate still fails on 404 unless the `WINK_ALLOW_FIRST_RELEASE` repository variable is set (the same opt-in a first real release needs).
 
@@ -468,6 +470,71 @@ The internal package path is for trusted testers only. It does not:
 - publish a Sparkle update feed
 - upload release artifacts to R2
 
+### Artifact Attestations
+
+The release job attests the final `Wink-<version>.dmg` and `Wink-<version>.zip`
+with [`actions/attest`](https://github.com/actions/attest), producing a signed
+SLSA build-provenance record bound to the repository, commit, tag, and workflow.
+
+Placement in the job is load-bearing and must not be moved:
+
+- **After stapling.** `xcrun stapler staple` writes the notarization ticket into
+  the artifact, changing its bytes and its SHA-256. An attestation created before
+  stapling names a digest no downloader will ever see.
+- **Before every upload.** R2, the GitHub Release, and the appcast only ever
+  receive already-attested bytes, so an attestation failure stops the release
+  rather than leaving unattested artifacts published.
+- **Never re-package afterwards.** Any step that rewrites the DMG or ZIP below
+  the attestation step silently invalidates it.
+
+`appcast.xml` is deliberately not attested: it is a mutable feed rewritten on
+every release and protected by Sparkle's EdDSA signature model instead. An
+immutable digest attestation would be false the moment the feed is updated.
+
+`id-token: write` and `attestations: write` are declared on the `release` job
+only; `release-readiness` and `release-unavailable` are pinned to
+`contents: read`.
+
+A rehearsal (`dry_run: true`) creates a **real** attestation — there is no
+unpublished mode. What separates it from production provenance is the source ref
+in the certificate: a rehearsal records `refs/heads/<branch>`, a real release
+records `refs/tags/vX.Y.Z`. Consumer verification pins `--source-ref`, so
+rehearsal provenance cannot be mistaken for a release.
+
+That has a consequence for the manual repair path. Sigstore records `github.ref`
+— the ref that **triggered** the run — not whatever a later step checked out.
+The workflow therefore checks up front that provenance will name the right ref,
+and fails closed in both directions:
+
+| Run | Triggering ref | Result |
+| --- | --- | --- |
+| Tag push | `refs/tags/vX.Y.Z` | publishes; provenance names the tag |
+| `gh workflow run release.yml --ref vX.Y.Z -f release_tag=vX.Y.Z -f dry_run=false` | `refs/tags/vX.Y.Z` | publishes; provenance names the tag |
+| Dispatch from a branch with `dry_run: false` | `refs/heads/…` | **rejected** — would name the branch, and documented verification would reject the release |
+| Dispatch from a branch with `dry_run: true`, no `release_tag` | `refs/heads/…` | rehearses; provenance names the branch commit, which is also what it built |
+| Dispatch from a tag with `dry_run: true` | `refs/tags/vX.Y.Z` | **rejected** — rehearsal bytes would satisfy the documented release verification |
+| Dispatch from a branch with `dry_run: true` **and** `release_tag` | `refs/heads/…` | **rejected** — it would build the tag while provenance named the branch commit |
+
+That last row is why a rehearsal takes no `release_tag`. With one set, `Checkout manual release tag` replaces the tree with the tag's content while the certificate still records the dispatching branch's commit, so `sourceRepositoryDigest` would name a commit that did not produce the artifacts — the exact-revision claim in [`VERIFYING_RELEASES.md`](../VERIFYING_RELEASES.md) would be false. To rehearse specific content, dispatch from a branch pointing at it.
+
+So repairing a failed publish means dispatching **with `--ref` set to the tag**,
+not dispatching from the default branch:
+
+```bash
+gh workflow run release.yml --ref vX.Y.Z -f release_tag=vX.Y.Z -f dry_run=false
+```
+
+Re-pushing the tag is **not** an equivalent repair. In this scenario the remote
+tag already exists at the same object, so `git push origin vX.Y.Z` reports
+`Everything up-to-date`, changes no ref, and emits no tag-push event — the
+maintainer sees a success and gets no run at all.
+
+Consumer-facing verification instructions live in
+[`VERIFYING_RELEASES.md`](../VERIFYING_RELEASES.md). Wink claims **SLSA v1.0
+Build Level 2**, which is what GitHub documents artifact attestations to provide
+on their own — not Build L3, which would require generating provenance from a
+reusable workflow.
+
 ## Manual Release Checklist
 
 1. Write the `## X.Y.Z` section in [CHANGELOG.md](../CHANGELOG.md), then run `./scripts/bump-version.sh X.Y.Z` (validates semver, requires the CHANGELOG section, and increments `CFBundleVersion`)
@@ -476,9 +543,22 @@ The internal package path is for trusted testers only. It does not:
 4. Run `bash scripts/package-update-zip.sh`
 5. Run `bash scripts/package-dmg.sh`
 6. Tag the release: `git tag vX.Y.Z && git push origin vX.Y.Z`
-7. If a run failed before the final appcast upload, re-run it manually: open `Release`, keep the branch on the default branch, and set `release_tag` to the existing `vX.Y.Z`. Re-running a tag **after** its feed entry is live is blocked by the feed gate — to repair a published release, bump to a new version instead
+7. If a run failed before the final appcast upload, re-run it manually **from the tag itself**, not from the default branch — provenance records the triggering ref, so a branch dispatch is rejected by the guard above before any upload:
+   ```bash
+   gh workflow run release.yml --ref vX.Y.Z -f release_tag=vX.Y.Z -f dry_run=false
+   ```
+   Re-running a tag **after** its feed entry is live is blocked by the feed gate — to repair a published release, bump to a new version instead
 8. Confirm the `Release` workflow succeeds for both the DMG and the Sparkle feed upload
-9. Validate the published DMG and Sparkle update path on a clean macOS machine, including the Finder background, icon layout, and drag-install affordance
+9. Download the published DMG **from its publication origin** and verify its provenance end to end, so the check exercises the bytes users receive rather than the runner's local copy:
+   ```bash
+   gh attestation verify Wink-X.Y.Z.dmg \
+     --repo xrf9268-hue/Wink \
+     --signer-workflow xrf9268-hue/Wink/.github/workflows/release.yml \
+     --source-ref refs/tags/vX.Y.Z \
+     --deny-self-hosted-runners
+   ```
+   Exit `0` (and silent output) is success; `4` means you are not signed in, not that verification failed
+10. Validate the published DMG and Sparkle update path on a clean macOS machine, including the Finder background, icon layout, and drag-install affordance
 
 ## Validation Commands
 

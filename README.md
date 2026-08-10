@@ -79,3 +79,4 @@ Unknown commands and uninstalled bundles are logged and ignored. Automation pres
 - [`docs/privacy.md`](./docs/privacy.md)
 - [`docs/localization.md`](./docs/localization.md)
 - [`docs/signing-and-release.md`](./docs/signing-and-release.md)
+- [`VERIFYING_RELEASES.md`](./VERIFYING_RELEASES.md) — check a downloaded DMG or update ZIP against its signed build provenance

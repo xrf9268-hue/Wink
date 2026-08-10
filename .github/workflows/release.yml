@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing v* tag to operate on; leave empty to rehearse the dispatched ref (forces dry run)
+        description: "Existing v* tag to publish — dispatch FROM that tag. Leave empty to rehearse; a dry run must not set this."
         required: false
         default: ""
         type: string
@@ -30,6 +30,8 @@ jobs:
   release-readiness:
     name: Check release prerequisites
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       release_ready: ${{ steps.check.outputs.release_ready }}
       missing_secrets: ${{ steps.check.outputs.missing_secrets }}
@@ -139,6 +141,8 @@ jobs:
     needs: release-readiness
     if: ${{ needs.release-readiness.outputs.release_ready != 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Summarize skipped release
         env:
@@ -192,6 +196,15 @@ jobs:
     if: ${{ needs.release-readiness.outputs.release_ready == 'true' }}
     runs-on: macos-15
     timeout-minutes: 45
+    # Scoped to this job only (issue #443). `id-token` mints the Sigstore OIDC
+    # token and `attestations` persists the result; no other job in this
+    # workflow gets either. `contents: write` stays because this job creates the
+    # GitHub Release. Declaring permissions here replaces the workflow-level
+    # default for this job, so the full set must be listed.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
       SIGNING_MODE: ${{ needs.release-readiness.outputs.signing_mode }}
     steps:
@@ -220,8 +233,19 @@ jobs:
           esac
 
           git fetch --force --tags origin
-          git rev-parse "refs/tags/$RELEASE_TAG" >/dev/null
-          git checkout --force "refs/tags/$RELEASE_TAG"
+          TAG_SHA="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+
+          # `--ref <tag>` fixes GITHUB_SHA when the run is created, but the tag
+          # itself can be force-moved before this fetch. Building the tag's new
+          # target while the attestation certificate still names the original
+          # GITHUB_SHA would publish provenance for code that did not produce
+          # the artifact — so bind the build to the commit provenance will name.
+          if [ "$TAG_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error title=Tag moved after dispatch::refs/tags/$RELEASE_TAG now resolves to $TAG_SHA, but this run was created at $GITHUB_SHA and its attestation would name that commit. Re-dispatch so the two agree." >&2
+            exit 1
+          fi
+
+          git checkout --force "$GITHUB_SHA"
 
       - name: Capture toolchain cache key
         run: echo "TOOLCHAIN_KEY=$(swift --version 2>/dev/null | head -1 | shasum -a 256 | cut -c1-12)" >> "$GITHUB_ENV"
@@ -282,6 +306,62 @@ jobs:
           echo "APP_NOTARIZATION_ZIP_PATH=$RUNNER_TEMP/Wink-${VERSION}-notarization.zip" >> "$GITHUB_ENV"
           echo "R2_PUBLIC_BASE_URL=$R2_PUBLIC_BASE_URL" >> "$GITHUB_ENV"
           echo "SPARKLE_FEED_URL=${R2_PUBLIC_BASE_URL}appcast.xml" >> "$GITHUB_ENV"
+
+      # Sigstore's certificate records `github.ref` — the ref that TRIGGERED the
+      # run — not whatever a later step checked out. A manual dispatch from a
+      # branch with `release_tag` set builds the tag but would mint provenance
+      # naming the branch, so `gh attestation verify --source-ref refs/tags/vX.Y.Z`
+      # would reject the very release it was published for. Rehearsals are
+      # unaffected: they are expected to name a branch, and the verification
+      # command pins the tag precisely so rehearsal bytes cannot pass as a
+      # release. To repair a failed publish, dispatch with `--ref <tag>` so the
+      # run is triggered by `refs/tags/<tag>` and provenance is correct by
+      # construction. Re-pushing the tag does NOT work: it already points at the
+      # same object, so git reports `Everything up-to-date` and no event fires.
+      #
+      # The test is on the ref itself, not on the event: `gh workflow run
+      # release.yml --ref vX.Y.Z` is a legitimate manual repair whose
+      # `github.ref` already IS the tag, and that must keep working.
+      #
+      # The mirror case matters just as much. A rehearsal dispatched with
+      # `--ref vX.Y.Z` would mint provenance naming `refs/tags/vX.Y.Z`, which
+      # the documented consumer check accepts — rehearsal bytes would verify as
+      # a release. Rehearsals must therefore run from a branch.
+      - name: Check that provenance will name the right ref
+        env:
+          MANUAL_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          EXPECTED_REF="refs/tags/${RELEASE_TAG_OR_PLANNED}"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            case "$GITHUB_REF" in
+              refs/tags/*)
+                echo "::error title=Rehearsal from a tag::A rehearsal dispatched from ${GITHUB_REF} would mint provenance naming that tag, so rehearsal bytes would satisfy the documented release verification. Rehearse from a branch instead." >&2
+                exit 1
+                ;;
+            esac
+
+            # A rehearsal must BUILD the ref it was dispatched from. With
+            # `release_tag` set, `Checkout manual release tag` replaces the tree
+            # with the tag's content while the certificate still records the
+            # dispatching branch's commit — so `sourceRepositoryDigest` would
+            # name a commit that did not produce these bytes, breaking the
+            # exact-revision claim the verification instructions make.
+            if [ -n "${MANUAL_RELEASE_TAG}" ]; then
+              echo "::error title=Rehearsal of a different commit::This rehearsal builds refs/tags/${MANUAL_RELEASE_TAG} but provenance would name ${GITHUB_REF} at ${GITHUB_SHA}, which is not the commit that produced the artifacts. Rehearse without release_tag, from a branch pointing at the content you want to validate." >&2
+              exit 1
+            fi
+
+            echo "Rehearsal provenance will name ${GITHUB_REF} at ${GITHUB_SHA}, which is also what it builds."
+            exit 0
+          fi
+
+          if [ "$GITHUB_REF" != "$EXPECTED_REF" ]; then
+            echo "::error title=Provenance ref mismatch::Sigstore records the ref that triggered the run, not the ref a later step checked out. This run was triggered by ${GITHUB_REF}, so the attestation would name that instead of ${EXPECTED_REF} and documented verification would reject the release. Re-run it as: gh workflow run release.yml --ref ${RELEASE_TAG_OR_PLANNED} -f release_tag=${RELEASE_TAG_OR_PLANNED} -f dry_run=false" >&2
+            exit 1
+          fi
+
+          echo "Production provenance will name ${EXPECTED_REF}."
 
       - name: Verify release feed gate
         env:
@@ -454,6 +534,60 @@ jobs:
       - name: Verify ad-hoc DMG exists
         if: ${{ env.SIGNING_MODE == 'adhoc' }}
         run: test -f "$DMG_PATH"
+
+      # Attestation placement is load-bearing (issue #443):
+      #
+      #   AFTER stapling — `xcrun stapler staple` writes the notarization ticket
+      #   into the artifact, changing its bytes and therefore its SHA-256. An
+      #   attestation created before stapling names a digest no downloader will
+      #   ever see.
+      #
+      #   BEFORE any upload — R2, the GitHub Release, and the appcast must only
+      #   ever receive bytes that are already attested, so a failure here stops
+      #   the release instead of leaving unattested artifacts published.
+      #
+      # Both DMG and Sparkle ZIP are final at this point: the ZIP is built from
+      # the app bundle after that bundle was stapled, and nothing repackages
+      # either file below.
+      #
+      # `appcast.xml` is deliberately NOT attested. It is a mutable feed that is
+      # rewritten on every release and keeps Sparkle's EdDSA signature model;
+      # an immutable digest attestation would be false the moment it is updated.
+      - name: Record final artifact digests
+        run: |
+          shasum -a 256 "$DMG_PATH" "$ZIP_PATH" | tee "$RUNNER_TEMP/release-digests.txt"
+          {
+            echo "## Attested artifacts"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/release-digests.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attest final DMG and Sparkle ZIP
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            ${{ env.DMG_PATH }}
+            ${{ env.ZIP_PATH }}
+
+      # A rehearsal signs real bytes and produces a real attestation — there is
+      # no "unpublished" attestation mode. What separates it from production
+      # provenance is the source ref recorded in the certificate: a rehearsal
+      # carries `refs/heads/<branch>`, a production release carries
+      # `refs/tags/vX.Y.Z`. The consumer command in VERIFYING_RELEASES.md pins
+      # `--source-ref` for exactly that reason.
+      - name: Summarize attestation provenance mode
+        env:
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "::notice title=Rehearsal provenance::Attestation created for rehearsal bytes at ${GITHUB_REF}. It is NOT production provenance: verification pinned to refs/tags/${RELEASE_TAG_OR_PLANNED} will reject it."
+          else
+            echo "::notice title=Production provenance::Attestation created for ${RELEASE_TAG} artifacts."
+          fi
+          echo "Attestation: ${ATTESTATION_URL:-(none)}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload dry-run artifacts
         if: ${{ env.DRY_RUN == 'true' }}
