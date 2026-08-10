@@ -146,6 +146,15 @@ test('a `uses` inside a YAML flow mapping fails closed instead of vanishing', ()
   );
 });
 
+test('a quoted key inside a flow mapping survives value blanking', () => {
+  for (const step of ['      - { "uses": actions/cache@main }', "      - { 'uses': actions/cache@main }"]) {
+    const references = scanUsesReferences(['jobs:', '  a:', '    steps:', step].join('\n'));
+
+    assert.equal(references.length, 1, `expected ${step} to be seen`);
+    assert.equal(references[0].flowMapping, true);
+  }
+});
+
 test('a brace that is not a flow-mapping `uses` key is left alone', () => {
   const references = scanUsesReferences(
     [
@@ -155,6 +164,7 @@ test('a brace that is not a flow-mapping `uses` key is left alone', () => {
       '      - name: Interpolated',
       '        if: ${{ github.event_name == "push" }}',
       '        run: echo "{ uses: not/a-reference@v1 }"',
+      '        env: { NOTE: "{ uses: not/a-reference@v1 }" }',
     ].join('\n'),
   );
 

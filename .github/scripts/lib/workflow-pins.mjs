@@ -34,10 +34,13 @@ const FLOW_MAPPING_USES_PATTERN = /[{,]\s*(?:uses|"uses"|'uses')\s*:/;
 // is already stripped) or `key: { … }`. Anchoring there, after quoted spans are
 // blanked out, keeps `run: echo "{ uses: x }"` from reading as a reference.
 const FLOW_MAPPING_OPENS_PATTERN = /^\{|:\s*\{/;
-const QUOTED_SPAN_PATTERN = /"(?:[^"\\]|\\.)*"|'(?:[^']|'')*'/g;
+const QUOTED_SPAN_PATTERN = /("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')(\s*:)?/g;
 
-function blankQuotedSpans(text) {
-  return text.replace(QUOTED_SPAN_PATTERN, '""');
+// Blank quoted *values* so `run: echo "{ uses: x }"` cannot be mistaken for a
+// flow mapping, while leaving quoted *keys* intact so `{ "uses": … }` still
+// reads as one. A span followed by `:` is a key; anything else is a value.
+function blankQuotedValues(text) {
+  return text.replace(QUOTED_SPAN_PATTERN, (match, _span, colon) => (colon ? match : '""'));
 }
 
 function splitIndent(line) {
@@ -110,7 +113,7 @@ export function scanUsesReferences(source) {
         return;
       }
 
-      const bare = blankQuotedSpans(rest);
+      const bare = blankQuotedValues(rest);
       if (FLOW_MAPPING_OPENS_PATTERN.test(bare) && FLOW_MAPPING_USES_PATTERN.test(bare)) {
         references.push({ line: index + 1, value: rest.trim(), comment: null, flowMapping: true });
       }
