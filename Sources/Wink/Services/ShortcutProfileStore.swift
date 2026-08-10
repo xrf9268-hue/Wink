@@ -453,11 +453,18 @@ final class ShortcutProfileStore {
         )
 
         var migrated: [AppShortcut] = []
+        /// The exact bytes to install as the Default profile's data file. A
+        /// re-encoding would drop any JSON member `AppShortcut` does not
+        /// model, which is precisely what D4 promises to preserve — so the
+        /// migration copies rather than round trips, and only synthesizes
+        /// bytes for the fresh-install case where there is no source.
+        var migratedBytes: Data?
         var legacySourceUnreadable = false
 
         if fileManager.fileExists(atPath: layout.mirrorURL.path) {
             do {
                 migrated = try profilePersistenceService(for: layout.mirrorURL).load()
+                migratedBytes = try? Data(contentsOf: layout.mirrorURL)
             } catch {
                 // The existing quarantine already ran and preserved a copy.
                 // An empty Default profile must not then mirror itself over a
@@ -469,7 +476,11 @@ final class ShortcutProfileStore {
         }
 
         do {
-            try writeProfileData(migrated, profileID: profileID, layout: layout)
+            if let migratedBytes {
+                try writeProfileBytes(migratedBytes, profileID: profileID, layout: layout)
+            } else {
+                try writeProfileData(migrated, profileID: profileID, layout: layout)
+            }
             try commitManifest(ShortcutProfileManifest(profiles: [profile]), layout: layout)
             try commitActivePointer(profileID, layout: layout)
         } catch {
@@ -632,13 +643,25 @@ final class ShortcutProfileStore {
         }
 
         guard let descriptor else {
-            log("PROFILE_TRACE_MIRROR_UNKNOWN active=\(activeProfileID.uuidString)")
+            log("PROFILE_TRACE_MIRROR_UNKNOWN active=\(activeProfileID.uuidString) reason=no_descriptor")
             return nil
         }
 
-        if descriptor.sha256 == mirrorDigest {
+        // Either digest counts as "Wink wrote this": the current one covers an
+        // ordinary stale mirror, and the previous one covers the reordering
+        // window where the descriptor's rename landed and the mirror's did not.
+        if descriptor.sha256 == mirrorDigest || descriptor.previousSHA256 == mirrorDigest {
             log("PROFILE_TRACE_MIRROR_STALE describedProfile=\(descriptor.profileID.uuidString) active=\(activeProfileID.uuidString)")
             rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
+            return nil
+        }
+
+        // A descriptor naming a profile that no longer exists cannot support
+        // the import side of the banner, and recreating that profile would
+        // resurrect exactly what D9 refuses to adopt. Unknown provenance:
+        // leave both files alone.
+        guard manifest?.profile(id: descriptor.profileID) != nil else {
+            log("PROFILE_TRACE_MIRROR_UNKNOWN active=\(activeProfileID.uuidString) reason=descriptor_profile_deleted")
             return nil
         }
 
@@ -705,6 +728,15 @@ final class ShortcutProfileStore {
         writeClient: WriteClient,
         diagnosticClient: DiagnosticClient
     ) {
+        // Read the digest we are about to replace, so the new descriptor can
+        // still vouch for it. `Data.write(.atomic)` renames without an fsync,
+        // so under sudden power loss the descriptor's rename can reach disk
+        // while the mirror's does not; without the previous digest, Wink's own
+        // one-step-behind mirror would then look like an outside edit and the
+        // user would be offered an "import" that silently reverts the profile.
+        let previousSHA256 = (try? Data(contentsOf: layout.mirrorDescriptorURL))
+            .flatMap { try? metadataDecoder.decode(ShortcutProfileMirrorDescriptor.self, from: $0) }
+            .map(\.sha256)
         // The mirror is derived data written last. Its failure is reported but
         // never fails the operation that produced it, because a stale mirror
         // cannot affect this build's behavior.
@@ -719,7 +751,8 @@ final class ShortcutProfileStore {
 
         let descriptor = ShortcutProfileMirrorDescriptor(
             profileID: profileID,
-            sha256: digest(data)
+            sha256: digest(data),
+            previousSHA256: previousSHA256
         )
         do {
             try writeClient.write(try metadataEncoder.encode(descriptor), layout.mirrorDescriptorURL)
@@ -765,9 +798,23 @@ final class ShortcutProfileStore {
         profileID: UUID,
         layout: ShortcutProfileLayout
     ) throws {
+        try writeProfileBytes(
+            try PersistenceService.encodeShortcuts(shortcuts),
+            profileID: profileID,
+            layout: layout
+        )
+    }
+
+    /// Writes an already-encoded payload verbatim, so a caller that has real
+    /// source bytes can preserve members the model does not carry.
+    private func writeProfileBytes(
+        _ data: Data,
+        profileID: UUID,
+        layout: ShortcutProfileLayout
+    ) throws {
         let url = layout.profileDataURL(profileID)
         do {
-            try writeClient.write(try PersistenceService.encodeShortcuts(shortcuts), url)
+            try writeClient.write(data, url)
         } catch {
             throw StoreError.writeFailed(path: url.path, reason: error.localizedDescription)
         }

@@ -55,6 +55,42 @@ struct ShortcutProfileMigrationTests {
     }
 
     @Test
+    func migrationCopiesBytesSoUnmodelledMembersSurvive() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+
+        // `AppShortcut.CodingKeys` omits unknown members, so a migration that
+        // decoded and re-encoded would necessarily drop this one — silently
+        // discarding a newer build's data on the very first launch after an
+        // upgrade-then-downgrade.
+        let source = """
+        [
+          {
+            "appName" : "Safari",
+            "bundleIdentifier" : "com.apple.Safari",
+            "futureField" : { "kind" : "something-new" },
+            "id" : "33333333-3333-3333-3333-333333333333",
+            "isEnabled" : true,
+            "keyEquivalent" : "s",
+            "modifierFlags" : [ "command" ]
+          }
+        ]
+        """
+        try harness.writeRawLegacyShortcuts(source)
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        let profileBytes = try #require(harness.data(at: harness.layout.profileDataURL(loaded.activeProfileID)))
+        #expect(profileBytes == Data(source.utf8))
+        #expect(String(decoding: profileBytes, as: UTF8.self).contains("futureField"))
+        #expect(loaded.activeShortcuts.count == 1)
+    }
+
+    @Test
     func freshInstallCreatesAnEmptyDefaultProfile() {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
@@ -1039,6 +1075,81 @@ struct ShortcutProfileMirrorTests {
         #expect(after.foreignMirror == nil)
         #expect(harness.data(at: harness.layout.mirrorURL) == Data(unreadable.utf8))
         #expect(harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_MIRROR_UNKNOWN") })
+    }
+
+    @Test
+    func aMirrorOneWriteBehindIsRecognizedAsWinkOwnRatherThanForeign() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // The reordering window D7 admits: `Data.write(.atomic)` renames
+        // without an fsync, so the descriptor's rename can reach disk while
+        // the mirror's does not. Simulate it by failing only the mirror write.
+        let mirrorURL = harness.layout.mirrorURL
+        let failing = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                guard url != mirrorURL else { throw InjectedWriteFailure() }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        _ = failing.load()
+        try failing.makeActiveProfilePersistenceService().save(
+            [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        )
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // No spurious "changed outside Wink" banner — whose Import action
+        // would have reverted the profile to the older bindings.
+        #expect(after.foreignMirror == nil)
+        #expect(harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_MIRROR_STALE") })
+    }
+
+    @Test
+    func aDescriptorNamingADeletedProfileIsUnknownProvenanceNotAForeignEdit() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        _ = try store.activateProfile(work.id)
+
+        // Hand-write a descriptor naming a profile that no longer exists, then
+        // change the mirror out of band. Offering "Import into <deleted>" has
+        // no valid destination, and recreating it would resurrect what the
+        // orphan policy refuses to adopt.
+        _ = try store.deleteProfile(loaded.activeProfileID)
+        try harness.writeRaw(
+            "{\"schemaVersion\": 1, \"profileID\": \"\(loaded.activeProfileID.uuidString)\", \"sha256\": \"deadbeef\"}",
+            to: harness.layout.mirrorDescriptorURL
+        )
+        try harness.writeLegacyShortcuts([makeTestShortcut(appName: "Mail")])
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        #expect(after.foreignMirror == nil)
+        #expect(harness.diagnostics.values.contains { $0.contains("descriptor_profile_deleted") })
     }
 
     @Test

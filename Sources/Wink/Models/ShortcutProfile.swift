@@ -154,14 +154,25 @@ struct ShortcutProfileMirrorDescriptor: Codable, Equatable, Sendable {
     var schemaVersion: Int
     var profileID: UUID
     var sha256: String
+    /// The digest this descriptor replaced. `Data.write(.atomic)` renames
+    /// without an fsync, so a power loss can land this file's rename while the
+    /// mirror's own rename is still in flight; one step of history is enough
+    /// to recognize that one-behind mirror as Wink's own rather than as an
+    /// outside edit. Two consecutive lost mirror writes with landed
+    /// descriptors would still fall through to the foreign-edit path, which
+    /// asks rather than acting — the failure mode is a spurious question, not
+    /// data loss.
+    var previousSHA256: String?
 
     init(
         schemaVersion: Int = ShortcutProfileMirrorDescriptor.currentSchemaVersion,
         profileID: UUID,
-        sha256: String
+        sha256: String,
+        previousSHA256: String? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.profileID = profileID
         self.sha256 = sha256
+        self.previousSHA256 = previousSHA256
     }
 }
