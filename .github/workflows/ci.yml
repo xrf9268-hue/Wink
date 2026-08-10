@@ -25,6 +25,14 @@ jobs:
         with:
           persist-credentials: false
 
+      # Governance checks run before the toolchain work: they cost seconds and
+      # they are the gate that keeps every `uses:` reference immutable (#439).
+      - name: Validate immutable action references
+        run: node .github/scripts/validate-workflow-pins.mjs
+
+      - name: Governance script tests
+        run: node --test '.github/scripts/tests/**/*.test.mjs'
+
       - name: Swift version
         run: swift --version
 

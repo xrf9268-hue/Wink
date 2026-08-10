@@ -1,0 +1,29 @@
+# Dependabot owns advancing the immutable action pins that
+# `.github/scripts/validate-workflow-pins.mjs` enforces (issue #439). The
+# validator only proves a reference is a full-length commit SHA carrying its
+# upstream release comment; keeping that SHA current is this file's job.
+#
+# Dependabot rewrites both the SHA and the trailing `# vX.Y.Z` comment in the
+# same commit, so the two never drift apart across an update.
+version: 2
+
+updates:
+  - package-ecosystem: "github-actions"
+    # "/" is the whole repository for this ecosystem: Dependabot scans every
+    # file under .github/workflows plus any composite action manifests.
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    # Bounded review load: at most one open batch at a time.
+    open-pull-requests-limit: 2
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "ci-ops"

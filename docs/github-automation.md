@@ -23,7 +23,18 @@ Wink now uses repository-native GitHub Actions and a checked-in ruleset artifact
    - Syncs `Runtime Validation` to `None`, `macOS pending`, or `macOS complete`
    - Re-runs every 6 hours so transient event failures do not leave the project permanently stale
 
-4. **Versioned ruleset baseline** (`.github/governance/main-ruleset.json`)
+4. **Immutable action references** (`.github/scripts/validate-workflow-pins.mjs`, run from `CI / Build and Test`)
+   - Rejects any `uses:` reference that is not pinned to a full-length 40-character lowercase commit SHA
+   - Requires a trailing `# vX.Y[.Z]` comment naming the exact upstream release the SHA came from
+   - Rejects one upstream repository pinned to two different commits, or one commit documented as two different releases
+   - Fails when it discovers zero definition files or zero references, so a bad glob cannot report a vacuous pass
+   - Runs before the Swift toolchain steps, so a policy violation fails in seconds
+
+5. **Bounded action updates** (`.github/dependabot.yml`)
+   - Weekly grouped `github-actions` update PRs, capped at two open at a time
+   - Dependabot rewrites the SHA and its `# vX.Y.Z` comment in the same commit, so the pin and its documentation never drift
+
+6. **Versioned ruleset baseline** (`.github/governance/main-ruleset.json`)
    - Captures the desired `main` merge policy in-repo
    - Requires pull requests, last-push freshness, conversation resolution, and the required deterministic checks
    - Keeps one-approval review gating for normal PR flows while allowing repository admins to bypass the pull-request rule in solo-maintainer cases
@@ -66,6 +77,56 @@ Repository admins are allowed to bypass the pull-request rule in `pull_request` 
 Do not apply the ruleset before the `Review Gate` workflow exists on `main`, or all PRs to `main` will be blocked by a missing required check.
 
 GitHub's required conversation resolution remains important even after `Review Gate` exists: it is the durable merge blocker for the specific case where a thread is resolved without any new PR/review/comment event to rerun the check automatically.
+
+## Immutable Action References And Upstream Updates
+
+### Why a full SHA
+
+GitHub resolves a tag or branch reference at run time. `actions/checkout@v6` executes whatever commit `v6` points at *today*, so an upstream owner — or anyone who compromises that account — can change what Wink's CI runs without a single byte changing in this repository. A full-length commit SHA is the only remote reference form the upstream owner cannot move.
+
+Pinning is not the whole story: a pin that never advances accumulates unpatched upstream bugs. The two halves are split deliberately.
+
+- `validate-workflow-pins.mjs` proves the reference **shape** is immutable and documented. It is offline and deterministic; it never contacts GitHub, so it cannot fail because an upstream repository is unreachable.
+- Dependabot owns **advancing** those pins.
+
+### The rules the validator enforces
+
+| Rule | Rejected example |
+| --- | --- |
+| Remote references pin a 40-character lowercase commit SHA | `actions/checkout@v4`, `@main`, `@27d5ce7f`, `@27D5CE7F…` |
+| Reusable workflows follow the same rule at job level | `org/repo/.github/workflows/build.yml@v1` |
+| Every remote pin carries a version comment | `actions/upload-artifact@043fb46d…` with no `#` comment |
+| The comment names a specific release, at least `MAJOR.MINOR` | `# v7` — a moving tag, false as soon as upstream re-points it |
+| Local references carry no `@ref` | `./.github/actions/summarize@main` |
+| Container references pin a digest | `docker://ghcr.io/org/scanner:latest` |
+| One repository resolves to one commit repository-wide | `actions/upload-artifact` pinned to v7.0.0 in one workflow and v7.0.1 in another |
+| One commit is documented as one release | `org/analysis/init@<sha> # v4.30.0` next to `org/analysis/analyze@<sha> # v4.29.0` |
+
+The last two rules exist because Dependabot updates an action as a single dependency across every call site. A split pin is how a stale SHA survives an update — it is exactly how `internal-package.yml` ended up on `actions/upload-artifact` v7.0.0 while `release.yml` was on v7.0.1.
+
+Sub-paths of one repository (`github/codeql-action/init` and `github/codeql-action/analyze`) share a repository, so they must share a SHA. The validator groups by `owner/repo` for this reason.
+
+### Reviewing an upstream action update
+
+1. Dependabot opens one grouped `ci: bump …` PR per week.
+2. Confirm the new SHA really is the tag in the comment:
+   ```bash
+   gh api repos/OWNER/REPO/tags --paginate \
+     --jq '.[] | select(.commit.sha=="<new-sha>") | .name'
+   ```
+   An annotated tag object SHA is **not** a valid `uses:` ref — always pin the commit the tag resolves to, which is what the command above returns.
+3. Read the upstream release notes for behavior changes, not just the version delta.
+4. `CI / Build and Test` re-runs the validator on the PR head; a bump that drops the version comment or splits a pin fails there.
+
+Dependabot writes its own PR body, so it cannot include `Fixes #N` or the `Validation Status` checklist. `validate-pr-metadata.mjs` waives both requirements for `dependabot[bot]` only. It does **not** waive runtime sensitivity: a bot PR that touches a runtime-sensitive path fails and must be taken over as a maintainer PR.
+
+### Known scanner limitation
+
+The validator is a line scanner, not a YAML parser (the repository has no `package.json`, so it has no YAML dependency available). It tracks block scalars, so a `uses:` written inside a `run: |` heredoc or a `path: |` list is correctly ignored — this is covered by the `noisy` fixture. It would, however, treat a literal mapping key named `uses:` nested under `with:` as a reference. No GitHub action defines such an input, and the failure mode is a false positive that a reviewer can see, not a silently accepted mutable reference.
+
+### Repository-setting evidence
+
+Enabling any organization- or repository-level policy that *requires* SHA pinning needs repository-admin access. The tokens available to this automation are not admin, so that state cannot be read or written from here. Until an admin records it, the repo-native validator plus branch protection is the enforcement path, and the admin setting remains an open follow-up on issue #439.
 
 ## Runtime Validation Boundary
 
