@@ -317,6 +317,8 @@ jobs:
       # the documented consumer check accepts — rehearsal bytes would verify as
       # a release. Rehearsals must therefore run from a branch.
       - name: Check that provenance will name the right ref
+        env:
+          MANUAL_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           EXPECTED_REF="refs/tags/${RELEASE_TAG_OR_PLANNED}"
 
@@ -327,7 +329,19 @@ jobs:
                 exit 1
                 ;;
             esac
-            echo "Rehearsal provenance will name ${GITHUB_REF} (not ${EXPECTED_REF}), as intended."
+
+            # A rehearsal must BUILD the ref it was dispatched from. With
+            # `release_tag` set, `Checkout manual release tag` replaces the tree
+            # with the tag's content while the certificate still records the
+            # dispatching branch's commit — so `sourceRepositoryDigest` would
+            # name a commit that did not produce these bytes, breaking the
+            # exact-revision claim the verification instructions make.
+            if [ -n "${MANUAL_RELEASE_TAG}" ]; then
+              echo "::error title=Rehearsal of a different commit::This rehearsal builds refs/tags/${MANUAL_RELEASE_TAG} but provenance would name ${GITHUB_REF} at ${GITHUB_SHA}, which is not the commit that produced the artifacts. Rehearse without release_tag, from a branch pointing at the content you want to validate." >&2
+              exit 1
+            fi
+
+            echo "Rehearsal provenance will name ${GITHUB_REF} at ${GITHUB_SHA}, which is also what it builds."
             exit 0
           fi
 

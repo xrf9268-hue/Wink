@@ -509,8 +509,11 @@ and fails closed in both directions:
 | Tag push | `refs/tags/vX.Y.Z` | publishes; provenance names the tag |
 | `gh workflow run release.yml --ref vX.Y.Z -f release_tag=vX.Y.Z -f dry_run=false` | `refs/tags/vX.Y.Z` | publishes; provenance names the tag |
 | Dispatch from a branch with `dry_run: false` | `refs/heads/…` | **rejected** — would name the branch, and documented verification would reject the release |
-| Dispatch from a branch with `dry_run: true` | `refs/heads/…` | rehearses; provenance names the branch, as intended |
+| Dispatch from a branch with `dry_run: true`, no `release_tag` | `refs/heads/…` | rehearses; provenance names the branch commit, which is also what it built |
 | Dispatch from a tag with `dry_run: true` | `refs/tags/vX.Y.Z` | **rejected** — rehearsal bytes would satisfy the documented release verification |
+| Dispatch from a branch with `dry_run: true` **and** `release_tag` | `refs/heads/…` | **rejected** — it would build the tag while provenance named the branch commit |
+
+That last row is why a rehearsal takes no `release_tag`. With one set, `Checkout manual release tag` replaces the tree with the tag's content while the certificate still records the dispatching branch's commit, so `sourceRepositoryDigest` would name a commit that did not produce the artifacts — the exact-revision claim in [`VERIFYING_RELEASES.md`](../VERIFYING_RELEASES.md) would be false. To rehearse specific content, dispatch from a branch pointing at it.
 
 So repairing a failed publish means dispatching **with `--ref` set to the tag**,
 not dispatching from the default branch:
