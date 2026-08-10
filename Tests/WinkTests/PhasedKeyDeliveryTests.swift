@@ -13,8 +13,8 @@ struct PhasedKeyDeliveryEventTapTests {
         let box = EventTapBox()
         box.registeredShortcuts = [keyPress]
         box.phasedChords = [keyPress]
-        nonisolated(unsafe) var legacyDeliveries: [KeyPress] = []
-        box.onKeyPress = { legacyDeliveries.append($0) }
+        let legacyDeliveries = CallbackRecorder<KeyPress>()
+        box.onKeyPress = { legacyDeliveries.record($0) }
 
         let event = makeKeyEvent(keyPress.keyCode, modifiers: keyPress.modifiers, keyDown: true)
         let delivered: (KeyPress, KeyEventPhase) = await withCheckedContinuation { continuation in
@@ -51,20 +51,23 @@ struct PhasedKeyDeliveryEventTapTests {
     }
 
     @Test
-    func nonPhasedRegisteredChordUpPassesThroughUnswallowed() {
+    func nonPhasedRegisteredChordUpPassesThroughUnswallowed() async {
         let keyPress = KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.command])
         let box = EventTapBox()
         box.registeredShortcuts = [keyPress]
         // No phased chords: the pre-existing contract — only F19's keyUp is
         // ever swallowed — must be preserved bit-for-bit.
-        nonisolated(unsafe) var phasedDeliveries = 0
-        box.setPhasedKeyObserver { _, _ in phasedDeliveries += 1 }
+        let phasedDeliveries = CallbackRecorder<KeyEventPhase>()
+        box.setPhasedKeyObserver { _, phase in phasedDeliveries.record(phase) }
 
         let event = makeKeyEvent(keyPress.keyCode, modifiers: keyPress.modifiers, keyDown: false)
         let result = handleEventTapEvent(type: .keyUp, event: event, box: box)
+        // Phased delivery hops through the main queue; without the drain this
+        // assertion would pass even if a delivery had been scheduled.
+        await drainMainQueue()
 
         #expect(result != nil, "non-phased keyUp must pass through to the frontmost app")
-        #expect(phasedDeliveries == 0)
+        #expect(phasedDeliveries.isEmpty)
     }
 
     @Test
@@ -109,11 +112,11 @@ struct PhasedKeyDeliveryEventTapTests {
         box.phasedChords = [keyPress]
 
         let phases: [KeyEventPhase] = await withCheckedContinuation { continuation in
-            nonisolated(unsafe) var received: [KeyEventPhase] = []
+            let received = CallbackRecorder<KeyEventPhase>()
             box.setPhasedKeyObserver { _, phase in
-                received.append(phase)
+                received.record(phase)
                 if received.count == 2 {
-                    continuation.resume(returning: received)
+                    continuation.resume(returning: received.values)
                 }
             }
             let down = makeKeyEvent(keyPress.keyCode, modifiers: keyPress.modifiers, keyDown: true)
