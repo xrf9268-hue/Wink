@@ -28,6 +28,19 @@ on:
   # Called by the release workflow so a public release depends on a fresh scan
   # rather than on whatever the last pull request happened to see.
   workflow_call:
+    inputs:
+      ref:
+        # A called workflow otherwise checks out the CALLER's commit. When
+        # `Release` is dispatched from a branch with `release_tag` set, it
+        # builds and publishes `refs/tags/<tag>` while the caller's commit is
+        # the branch — so without this the gate would clear a revision that is
+        # not the one being released. If the requested ref predates this gate
+        # the checkout succeeds but the assertion script is missing and the job
+        # fails, which is the correct direction to fail.
+        description: Git ref to scan; defaults to the calling workflow's commit
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -49,6 +62,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
 
       # continue-on-error because a found vulnerability exits 1 and would end the
       # job before the report is read. Pass/fail is decided by the next step.
@@ -97,6 +111,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
 
       # A green scan of the real lockfile only proves the gate is quiet. This
       # scans an isolated fixture pinning a package with long-published

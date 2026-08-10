@@ -204,6 +204,40 @@ export function evaluateScanReport({
 // Node ships no TOML parser and the repository has no package.json, so anything
 // outside `[[IgnoredVulns]]` with these three keys is rejected rather than
 // silently ignored.
+// TOML keeps `#` inside a quoted string, and a suppression reason routinely
+// carries an issue reference. Cutting at the first `#` would silently truncate
+// `reason = "owner:@handle — tracked in #447 …"`, either rejecting a valid
+// suppression for falling under the minimum length or accepting a rationale
+// materially different from the one checked in.
+export function stripTomlComment(line) {
+  let quote = null;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+
+    if (quote) {
+      if (character === '\\' && quote === '"') {
+        index += 1;
+      } else if (character === quote) {
+        quote = null;
+      }
+
+      continue;
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+
+    if (character === '#') {
+      return line.slice(0, index);
+    }
+  }
+
+  return line;
+}
+
 export function parseSuppressions(tomlText) {
   const suppressions = [];
   const findings = [];
@@ -213,7 +247,7 @@ export function parseSuppressions(tomlText) {
   const lines = (tomlText ?? '').split(/\r?\n/);
 
   lines.forEach((rawLine, lineIndex) => {
-    const line = rawLine.replace(/\s+#.*$/, '').trim();
+    const line = stripTomlComment(rawLine).trim();
     if (line === '' || line.startsWith('#')) {
       return;
     }

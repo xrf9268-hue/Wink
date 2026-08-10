@@ -12,6 +12,7 @@ import {
   expectedPackagesFromPackageResolved,
   normalizeSwiftLocation,
   parseSuppressions,
+  stripTomlComment,
 } from '../lib/osv-results.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('../../..', import.meta.url));
@@ -310,4 +311,25 @@ test('the negative-proof mode passes when the fixture reports advisories', () =>
 
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /Negative proof: the gate reported 2 advisory\(ies\)/);
+});
+
+test('stripTomlComment keeps a `#` that lives inside a quoted value', () => {
+  assert.equal(
+    stripTomlComment('reason = "owner:@alice — tracked in #447 because upstream is unreleased"'),
+    'reason = "owner:@alice — tracked in #447 because upstream is unreleased"',
+  );
+  assert.equal(stripTomlComment('id = "GHSA-x" # a real comment'), 'id = "GHSA-x" ');
+  assert.equal(stripTomlComment('# whole-line comment'), '');
+  assert.equal(stripTomlComment('reason = "escaped \\" quote # still inside"'), 'reason = "escaped \\" quote # still inside"');
+});
+
+test('a suppression reason may reference an issue without being truncated', () => {
+  const reason = 'owner:@xrf9268-hue — accepted while upstream is unreleased, tracked in #447';
+  const { suppressions, findings } = parseSuppressions(
+    ['[[IgnoredVulns]]', 'id = "GHSA-g3hp-f6mg-559v"', 'ignoreUntil = 2026-12-01', `reason = "${reason}"`].join('\n'),
+  );
+
+  assert.deepEqual(findings, []);
+  assert.equal(suppressions[0].reason, reason);
+  assert.deepEqual(evaluateSuppressions(suppressions, { now: NOW }), []);
 });
