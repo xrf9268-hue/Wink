@@ -614,3 +614,42 @@ test('a bare `?` that is not a uses key is left alone', () => {
     [],
   );
 });
+
+test('a colon only separates a key when what follows it does', () => {
+  // `uses:foo` is one plain scalar, so none of these are the `uses` key and
+  // none may be reported — a false positive here fails a valid workflow.
+  const notKeys = [
+    ['jobs:', '  a:', '    steps:', '      - ? uses:foo', '        : value'],
+    ['jobs:', '  a:', '    steps: [ ? uses:foo : value ]'],
+    ['jobs:', '  a:', '    steps: [', '      ? uses:foo : value', '    ]'],
+  ];
+
+  for (const lines of notKeys) {
+    assert.deepEqual(
+      scanUsesReferences(lines.join('\n')),
+      [],
+      `expected no reference for:\n${lines.join('\n')}`,
+    );
+  }
+
+  assert.equal(matchUsesKey('uses:foo: value'), null);
+  assert.equal(
+    matchUsesKey(`uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd`).value,
+    `actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd`,
+  );
+});
+
+test('the separation rule does not lose the real key forms', () => {
+  const kept = [
+    ['      - uses: actions/cache@main', 'actions/cache@main'],
+    ['      - "uses": actions/cache@main', 'actions/cache@main'],
+    ['      - "uses":actions/cache@main', 'actions/cache@main'],
+    ["      - 'uses': actions/cache@main", 'actions/cache@main'],
+  ];
+
+  for (const [step, expected] of kept) {
+    const references = scanUsesReferences(['jobs:', '  a:', '    steps:', step].join('\n'));
+    assert.equal(references.length, 1, `expected a reference for: ${step}`);
+    assert.equal(references[0].value, expected);
+  }
+});

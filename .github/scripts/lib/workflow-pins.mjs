@@ -30,7 +30,8 @@ const BLOCK_SCALAR_INDICATOR_PATTERN = new RegExp(`^${BLOCK_SCALAR_INDICATOR}$`)
 // YAML permits a quoted mapping key, and GitHub accepts `"uses": owner/repo@ref`.
 // A double-quoted key may also carry escapes, so `"uses"` is the same key —
 // keys are decoded before comparison rather than matched literally.
-const USES_PATTERN = /^(?:uses|"((?:[^"\\]|\\.)*)"|'((?:[^']|'')*)')\s*:\s*(.*)$/;
+const USES_PATTERN =
+  /^(?:uses(?=\s*:(?:\s|$))|"((?:[^"\\]|\\.)*)"|'((?:[^']|'')*)')\s*:\s*(.*)$/;
 // A flow mapping (`- { name: Cache, uses: owner/repo@main }`) is valid YAML that
 // GitHub honors, but its `uses` never starts a line. Rather than grow a YAML
 // parser, detect the shape and fail closed — an unreadable reference must never
@@ -42,17 +43,26 @@ const FLOW_MAPPING_USES_PATTERN = /[{[,]\s*(?:uses|"uses"|'uses')\s*:/;
 // one. Anchoring here, after quoted spans are blanked out, keeps
 // `run: echo "{ uses: x }"` from reading as a reference.
 const FLOW_MAPPING_OPENS_PATTERN = /^[{[]|:\s*[{[]/;
+const USES_KEY = String.raw`(?:uses|"uses"|'uses')`;
+// A colon only separates key from value when what follows it is whitespace, a
+// flow delimiter, or end of line. `uses:foo` is ONE plain scalar — an unrelated
+// key — so treating its embedded colon as a separator would fail a valid
+// workflow. The value part is optional because `? uses` may put its `:` line
+// underneath.
+const USES_KEY_END = String.raw`(?::(?=[\s,\]}]|$)|(?=[\s,\]}]|$))`;
 // `? uses` may be followed by `: <value>` on the same line or by a `:` line of
-// its own, so the value part is optional in both explicit-key patterns.
-const EXPLICIT_USES_KEY_PATTERN = /^\?\s+(?:uses|"uses"|'uses')\s*(?::|$)/;
+// its own.
+const EXPLICIT_USES_KEY_PATTERN = new RegExp(String.raw`^\?\s+${USES_KEY}${USES_KEY_END}`);
 // The same key on a flow CONTINUATION line has no delimiter ahead of it:
 // `steps: [` followed by `? uses : actions/cache@main`.
-const LEADING_EXPLICIT_USES_KEY_PATTERN = /^\?\s*(?:uses|"uses"|'uses')\s*(?::|$)/;
+const LEADING_EXPLICIT_USES_KEY_PATTERN = new RegExp(String.raw`^\?\s*${USES_KEY}${USES_KEY_END}`);
 // The same explicit-key form is legal inside a flow collection, where it never
 // starts a line: `steps: [ ? uses : actions/cache@main ]`. The `?` sits between
 // the collection delimiter and the key, so neither the flow `uses` pattern nor
 // the whole-line explicit-key pattern sees it.
-const FLOW_EXPLICIT_USES_KEY_PATTERN = /[{[,]\s*\?\s*(?:uses|"uses"|'uses')\s*[:\s]/;
+const FLOW_EXPLICIT_USES_KEY_PATTERN = new RegExp(
+  String.raw`[{[,]\s*\?\s*${USES_KEY}${USES_KEY_END}`,
+);
 const QUOTED_SPAN_PATTERN = /("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')(\s*:)?/g;
 
 // Blank quoted *values* so `run: echo "{ uses: x }"` cannot be mistaken for a
