@@ -29,9 +29,14 @@ export function normalizeSwiftLocation(location) {
 export function expectedPackagesFromPackageResolved(packageResolved) {
   const pins = Array.isArray(packageResolved?.pins) ? packageResolved.pins : [];
 
+  // A branch- or revision-pinned dependency has no `state.version`, and the
+  // extractor never reads `state.revision`, so there is nothing to compare a
+  // scan result against. Such a pin is flagged rather than silently exempted
+  // from the exact-resolution proof.
   return pins.map((pin) => ({
     name: pin.location ? normalizeSwiftLocation(pin.location) : pin.identity,
     version: pin.state?.version ?? null,
+    revision: pin.state?.revision ?? null,
     ecosystem: 'SwiftURL',
   }));
 }
@@ -166,7 +171,17 @@ export function evaluateScanReport({
       continue;
     }
 
-    if (expectedPackage.version && match.version !== expectedPackage.version) {
+    if (!expectedPackage.version) {
+      findings.push({
+        code: 'unverifiable-pin-resolution',
+        message: `\`${expectedPackage.name}\` is pinned without a resolved version (revision ${
+          expectedPackage.revision ?? 'unknown'
+        }). The Swift extractor never reads \`state.revision\`, so no scan result can prove it matches this checkout — pin the dependency to a released version.`,
+      });
+      continue;
+    }
+
+    if (match.version !== expectedPackage.version) {
       findings.push({
         code: 'expected-package-version-mismatch',
         message: `\`${expectedPackage.name}\` is pinned at ${expectedPackage.version} but the scanner read ${match.version}; the scan did not run against this checkout.`,

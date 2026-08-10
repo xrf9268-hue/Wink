@@ -63,7 +63,7 @@ test('expectedPackagesFromPackageResolved reads a v3 lockfile', () => {
     ],
   });
 
-  assert.deepEqual(expected, SPARKLE_2_9_5);
+  assert.deepEqual(expected, [{ ...SPARKLE_2_9_5[0], revision: null }]);
 });
 
 test('expectedPackagesFromPackageResolved yields nothing for a v1 lockfile shape', () => {
@@ -305,12 +305,13 @@ test('the negative-proof mode fails when the fixture reports nothing', () => {
 
 test('the negative-proof mode passes when the fixture reports advisories', () => {
   const result = runAssert({
-    OSV_RESULTS_PATH: join(fixtureRoot, 'vulnerable-sparkle-2.9.1.json'),
+    OSV_RESULTS_PATH: join(fixtureRoot, 'known-advisory-swift-nio.json'),
+    OSV_LOCKFILE_PATH: '.github/osv-fixtures/known-advisory/Package.resolved',
     OSV_EXPECT_VULNERABILITIES: 'true',
   });
 
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  assert.match(result.stdout, /Negative proof: the gate reported 2 advisory\(ies\)/);
+  assert.match(result.stdout, /Negative proof: the gate reported 4 advisory\(ies\)/);
 });
 
 test('stripTomlComment keeps a `#` that lives inside a quoted value', () => {
@@ -332,4 +333,37 @@ test('a suppression reason may reference an issue without being truncated', () =
   assert.deepEqual(findings, []);
   assert.equal(suppressions[0].reason, reason);
   assert.deepEqual(evaluateSuppressions(suppressions, { now: NOW }), []);
+});
+
+test('a pin with no resolved version cannot satisfy the exact-resolution proof', () => {
+  const expected = expectedPackagesFromPackageResolved({
+    version: 3,
+    pins: [
+      {
+        identity: 'sparkle',
+        location: 'https://github.com/sparkle-project/Sparkle',
+        state: { revision: '79bc9e872948e47877e76f194cb0c8e0412b0b90', branch: 'main' },
+      },
+    ],
+  });
+
+  assert.equal(expected[0].version, null);
+  assert.equal(expected[0].revision, '79bc9e872948e47877e76f194cb0c8e0412b0b90');
+
+  const result = evaluateScanReport({ report: CLEAN_REPORT, expectedPackages: expected, now: NOW });
+  assert.deepEqual(codesFor(result.findings), ['unverifiable-pin-resolution']);
+});
+
+test('the negative proof fails when it scanned something other than the fixture', () => {
+  // Vulnerable Sparkle report while expecting the swift-nio fixture: advisories
+  // are present, but not from the package the proof claims to exercise.
+  const result = runAssert({
+    OSV_RESULTS_PATH: join(fixtureRoot, 'vulnerable-sparkle-2.9.1.json'),
+    OSV_LOCKFILE_PATH: '.github/osv-fixtures/known-advisory/Package.resolved',
+    OSV_EXPECT_VULNERABILITIES: 'true',
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /expected-package-missing/);
+  assert.match(result.stderr, /did not scan what it claims to scan/);
 });

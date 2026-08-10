@@ -99,6 +99,26 @@ async function main() {
   if (expectVulnerabilities) {
     console.log(summary.join('\n'));
 
+    // Coverage findings are NOT waived here. Finding some advisory is not the
+    // proof — finding them in the expected fixture package is. Without this, a
+    // scan that read the wrong lockfile entirely would satisfy the negative
+    // proof on unrelated vulnerabilities while never exercising the fixture.
+    const coverageFindings = findings.filter(
+      (finding) => finding.code !== 'unsuppressed-vulnerability',
+    );
+
+    if (coverageFindings.length > 0) {
+      for (const finding of coverageFindings) {
+        console.error(`::error::[${finding.code}] ${finding.message}`);
+      }
+
+      console.error(
+        '::error::The negative proof did not scan what it claims to scan; advisories found elsewhere do not demonstrate the gate works.',
+      );
+      process.exitCode = 1;
+      return;
+    }
+
     if (vulnerabilityFindings.length === 0) {
       console.error(
         '::error::The known-advisory fixture reported no vulnerabilities. The gate would not catch a real one — do not trust a green scan of the production lockfile.',
@@ -108,7 +128,7 @@ async function main() {
     }
 
     console.log(
-      `Negative proof: the gate reported ${vulnerabilityFindings.length} advisory(ies) on the fixture, so it can fail.`,
+      `Negative proof: the gate reported ${vulnerabilityFindings.length} advisory(ies) on the expected fixture package, so it can fail.`,
     );
     return;
   }
