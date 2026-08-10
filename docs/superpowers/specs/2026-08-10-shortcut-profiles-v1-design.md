@@ -172,7 +172,23 @@ Write order, with the important distinction that a **switch writes no profile da
 | Switch | `Profiles/active.json` → mirror → `mirror.json` |
 | Create / duplicate | `Profiles/<new>.json` → `manifest.json` |
 | Rename | `manifest.json` |
-| Delete (of the active profile) | `Profiles/active.json` → `manifest.json` → unlink |
+| Delete (of the active profile) | `Profiles/active.json` → `manifest.json` → mirror → `mirror.json` → unlink |
+| Delete (of an inactive profile) | `manifest.json` → unlink |
+| Import an outside edit into profile P | `Profiles/<P>.json` → mirror → `mirror.json` |
+
+Deleting the **active** profile is a switch with an extra step, not a lighter operation: it
+selects the fallback, applies it through the same runtime path a switch uses, and refreshes
+the mirror and its descriptor from the fallback. Stopping after the manifest would leave
+`shortcuts.json` describing the profile that was just deleted, so the E2E harness and a
+downgraded build would read a configuration that no longer exists while Wink runs another
+one.
+
+Importing an outside edit writes **P's own data file**, never the active profile's — `P` is
+whichever profile the mirror described, which need not be the active one. That import does
+**not** switch to `P` and applies nothing to the runtime; the mirror is then rewritten from
+the *still-active* profile, so the compat file keeps describing what Wink is actually
+running. When `P` does happen to be the active profile, the same two writes coincide and the
+adopted shortcuts are applied.
 
 A switch only moves the pointer — D1's whole reason for giving every profile its own file.
 Re-writing the target's data file during a switch would re-encode it and discard members the
@@ -299,7 +315,9 @@ costs nothing — the user's next save rewrites the mirror as a matter of course
 
 `P` is the profile the mirror last described — which is the profile the older build was
 actually editing — so an adopted import lands where the user expects even if the active
-profile has since changed.
+profile has since changed. The transaction for that case is spelled out in D3's write-order
+table: the import writes `Profiles/<P>.json`, does not switch, applies nothing to the
+runtime, and then restores the mirror from the still-active profile.
 
 Nothing is adopted or discarded automatically. This is the concrete answer to "external
 switches must not silently overwrite an unsaved editor draft", applied to the other
@@ -490,7 +508,7 @@ cannot invent one later:
 | Create | Two entry points: **Duplicate current** (default) and **New empty profile**. Duplicate mints IDs per D6 and names it `<name> copy`, `<name> copy 2`, … |
 | Rename | Metadata-only write. No data file touched, no IDs touched. |
 | Delete | Allowed only while ≥2 profiles exist. Confirmation names the profile and states that its shortcuts and their exclusively-owned usage history are removed. |
-| Delete the active profile | The active pointer moves to the **preceding entry in manifest order**, or to the first entry if the deleted one was first. Deterministic and matches the visible list; `modifiedAt` was rejected because ties are possible. |
+| Delete the active profile | The active pointer moves to the **preceding entry in manifest order**, or to the first entry if the deleted one was first. Deterministic and matches the visible list; `modifiedAt` was rejected because ties are possible. The fallback is then applied through the same runtime path as a switch, and the mirror is refreshed from it (D3). If the manifest write fails after the pointer was committed, the pointer and the in-process locator are rolled back so the failure is total — a half-applied delete would keep the runtime on the deleted profile while saves landed in the fallback's file. |
 | Empty profile | Legal and fully supported. Zero armed chords is a valid configuration ("Presentation"), and the existing `emitCaptureBlockedDiagnostics` already stays silent at zero counts, so nothing reports it as an error. |
 
 ### D14 — In-flight sessions and editor conflicts
@@ -646,7 +664,8 @@ packaged-app validation.
 | V10g | Interrupted migration is resumable | Manifest present, Default data file absent, legacy `shortcuts.json` intact → assert zero armed **and** an offered import |
 | V10f | Dangling descriptor is unknown provenance | Descriptor naming a deleted profile, mirror changed out of band → assert no banner and no import action offered |
 | V11 | Name and cap rules | Empty, 65-char, case-differing duplicate, 33rd profile — all rejected with a message |
-| V12 | Delete-active fallback | Delete active at list positions first/middle/last; assert the deterministic successor |
+| V12 | Delete-active fallback | Delete active at list positions first/middle/last; assert the deterministic successor, that the fallback is applied to the runtime, and that the mirror now describes it |
+| V12b | Delete-active failure is total | Fail the manifest write after the pointer commit; assert the throw, and that the pointer, locator, and a fresh load all still name the original profile |
 | V13 | Palette per-profile | Profile A has a palette trigger, B does not; switch A→B→A; assert trigger index membership follows and no ID churn |
 | V14 | **runtime** Live switch with real capture | Packaged app, standard + Hyper bindings live: switch, assert old chords stop and new chords fire; record SHA, bundle path, executable SHA-256, registrations/readiness, activation evidence |
 | V15 | **runtime** Switch under a live Hyper hold / picker | Switch while the picker is open; assert dismissal with no stray toggle |
