@@ -152,6 +152,13 @@ export function splitValueAndComment(rawValue) {
   };
 }
 
+// Only safe to call after `blankQuotedValues`, which has already removed any
+// `#` living inside a quoted scalar.
+export function stripYamlComment(text) {
+  const commentIndex = text.search(/(?:^|\s)#/);
+  return commentIndex === -1 ? text : text.slice(0, commentIndex);
+}
+
 function flowDelta(text) {
   let delta = 0;
 
@@ -196,7 +203,10 @@ export function scanUsesReferences(source) {
     // Values are blanked so `run: echo "{ uses: x }"` is not a flow mapping;
     // the surviving quoted spans are keys, so decoding their escapes is what
     // makes `{ "uses": … }` readable as the `uses` key it really is.
-    const bare = decodeDoubleQuoted(blankQuotedValues(rest));
+    // Comments must go before the braces are counted: a `}` written inside a
+    // trailing comment would otherwise close a flow collection that is still
+    // open, dropping the depth and hiding a `uses` on the continuation line.
+    const bare = stripYamlComment(decodeDoubleQuoted(blankQuotedValues(rest)));
     const continuesFlow = flowDepth > 0;
     // A flow collection that opens and closes on one line still needs the
     // `uses` check; only the depth bookkeeping cares whether it stayed open.

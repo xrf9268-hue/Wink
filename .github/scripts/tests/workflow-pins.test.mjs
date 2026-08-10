@@ -476,3 +476,36 @@ test('block scalars accept the indicators in either order', () => {
     );
   }
 });
+
+test('a brace inside a YAML comment does not close a flow collection', () => {
+  const references = scanUsesReferences(
+    [
+      'jobs:',
+      '  a:',
+      '    steps:',
+      '      - { name: Checkout, # }',
+      '          id: checkout, uses: actions/checkout@main }',
+    ].join('\n'),
+  );
+
+  assert.equal(references.length, 1);
+  assert.equal(references[0].flowMapping, true);
+  assert.equal(references[0].line, 5);
+});
+
+test('a trailing comment on a closed flow mapping still leaves depth at zero', () => {
+  const references = scanUsesReferences(
+    [
+      'jobs:',
+      '  a:',
+      '    steps:',
+      '      - { name: Cache, uses: actions/cache@main } # { not a brace',
+      '      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2',
+    ].join('\n'),
+  );
+
+  assert.equal(references.length, 2);
+  assert.equal(references[0].flowMapping, true);
+  assert.equal(references[1].value, `actions/checkout@${CHECKOUT_SHA}`);
+  assert.equal(references[1].flowMapping, undefined);
+});
