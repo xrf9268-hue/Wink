@@ -1,23 +1,31 @@
 # Verifying a Wink release
 
-Every public Wink release publishes a **build provenance attestation** for the
-exact `Wink-<version>.dmg` and `Wink-<version>.zip` bytes. The attestation is a
+Wink releases publish a **build provenance attestation** for the exact
+`Wink-<version>.dmg` and `Wink-<version>.zip` bytes. The attestation is a
 cryptographically signed record binding those bytes to the repository, the
 commit, the tag, and the workflow that produced them.
 
 You do not have to trust this page, the download link, or the person who sent
 it to you. You can check the bytes yourself.
 
+> **Which releases have one.** Attestations start with the first release built
+> after this workflow landed. **v0.7.3 and earlier predate it and have no
+> attestation** — verifying one of those fails with `no attestations found`,
+> which is the *same* message a tampered artifact produces. Check the release
+> notes if you are unsure whether a given version is covered; absence of an
+> attestation on an old release is not evidence of tampering.
+
 ## Verify a downloaded DMG
 
-Requires [GitHub CLI](https://cli.github.com) **2.68.0 or newer** (`--source-ref`
-landed in 2.68.0) and `gh auth login`.
+Requires [GitHub CLI](https://cli.github.com) **2.68.0 or newer**
+(`--source-ref` landed in 2.68.0) and `gh auth login`.
 
 ```bash
-gh attestation verify Wink-0.7.3.dmg \
+gh attestation verify Wink-X.Y.Z.dmg \
   --repo xrf9268-hue/Wink \
   --signer-workflow xrf9268-hue/Wink/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.7.3
+  --source-ref refs/tags/vX.Y.Z \
+  --deny-self-hosted-runners
 ```
 
 Substitute the version you downloaded in both the filename and the tag.
@@ -25,10 +33,11 @@ Substitute the version you downloaded in both the filename and the tag.
 The same command works for the Sparkle update archive:
 
 ```bash
-gh attestation verify Wink-0.7.3.zip \
+gh attestation verify Wink-X.Y.Z.zip \
   --repo xrf9268-hue/Wink \
   --signer-workflow xrf9268-hue/Wink/.github/workflows/release.yml \
-  --source-ref refs/tags/v0.7.3
+  --source-ref refs/tags/vX.Y.Z \
+  --deny-self-hosted-runners
 ```
 
 ### Reading the result
@@ -64,6 +73,7 @@ Dropping a constraint weakens the claim to something that may still pass:
 - **`--repo`** — without it, an attestation signed by any repository could satisfy the check.
 - **`--signer-workflow`** — without it, any workflow in this repository could have produced the artifact, including one added by a pull request.
 - **`--source-ref`** — without it, a build from a branch or a rehearsal run verifies just as happily as the tagged release. This is the flag that separates a real release from a dry run.
+- **`--deny-self-hosted-runners`** — without it, an attestation minted on a self-hosted runner is accepted, and the "built on a GitHub-hosted runner" claim below would not actually be checked.
 
 The release workflow refuses to run in either configuration that would blur that line: it will not publish from a run whose triggering ref is not the release tag, and it will not rehearse from a tag ref. So a passing `--source-ref refs/tags/vX.Y.Z` really does mean "this came from the tagged release", not merely "someone ran the workflow".
 
@@ -96,7 +106,8 @@ file that was attested.
 ## What this does and does not prove
 
 **It proves** these bytes were produced by this repository's release workflow,
-from a specific commit, on a GitHub-hosted runner, and have not changed since.
+from a specific commit, on a GitHub-hosted runner (which is what
+`--deny-self-hosted-runners` checks), and have not changed since.
 
 **It does not prove:**
 

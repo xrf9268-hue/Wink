@@ -529,17 +529,22 @@ reusable workflow.
 4. Run `bash scripts/package-update-zip.sh`
 5. Run `bash scripts/package-dmg.sh`
 6. Tag the release: `git tag vX.Y.Z && git push origin vX.Y.Z`
-7. If a run failed before the final appcast upload, re-run it manually: open `Release`, keep the branch on the default branch, and set `release_tag` to the existing `vX.Y.Z`. Re-running a tag **after** its feed entry is live is blocked by the feed gate — to repair a published release, bump to a new version instead
+7. If a run failed before the final appcast upload, re-run it manually **from the tag itself**, not from the default branch — provenance records the triggering ref, so a branch dispatch is rejected by the guard above before any upload:
+   ```bash
+   gh workflow run release.yml --ref vX.Y.Z -f release_tag=vX.Y.Z -f dry_run=false
+   ```
+   Re-running a tag **after** its feed entry is live is blocked by the feed gate — to repair a published release, bump to a new version instead
 8. Confirm the `Release` workflow succeeds for both the DMG and the Sparkle feed upload
 9. Download the published DMG **from its publication origin** and verify its provenance end to end, so the check exercises the bytes users receive rather than the runner's local copy:
    ```bash
    gh attestation verify Wink-X.Y.Z.dmg \
      --repo xrf9268-hue/Wink \
      --signer-workflow xrf9268-hue/Wink/.github/workflows/release.yml \
-     --source-ref refs/tags/vX.Y.Z
+     --source-ref refs/tags/vX.Y.Z \
+     --deny-self-hosted-runners
    ```
    Exit `0` (and silent output) is success; `4` means you are not signed in, not that verification failed
-9. Validate the published DMG and Sparkle update path on a clean macOS machine, including the Finder background, icon layout, and drag-install affordance
+10. Validate the published DMG and Sparkle update path on a clean macOS machine, including the Finder background, icon layout, and drag-install affordance
 
 ## Validation Commands
 
