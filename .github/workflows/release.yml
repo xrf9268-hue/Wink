@@ -154,9 +154,25 @@ jobs:
             echo "For an internal test build, run the \`Internal Package\` workflow with \`package_ref=$RELEASE_REF\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # A public release depends on a FRESH dependency scan (issue #441). The scan a
+  # pull request saw weeks ago says nothing about advisories published since,
+  # and this is fail-closed on purpose: no scan, no release.
+  #
+  # `security-events: write` is granted here because the called workflow declares
+  # it for its code-scanning upload; that upload is skipped on this path (it runs
+  # only on schedule/manual), so the release job's own token is unaffected.
+  dependency-scan:
+    name: Scan dependencies before publishing
+    needs: release-readiness
+    if: ${{ needs.release-readiness.outputs.release_ready == 'true' }}
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/osv-scan.yml
+
   release:
     name: Build, Release DMG, and Publish Sparkle Feed
-    needs: release-readiness
+    needs: [release-readiness, dependency-scan]
     if: ${{ needs.release-readiness.outputs.release_ready == 'true' }}
     runs-on: macos-15
     timeout-minutes: 45

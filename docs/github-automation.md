@@ -174,6 +174,61 @@ gh api /repos/xrf9268-hue/Wink/actions/permissions --jq '.sha_pinning_required'
 
 `xrf9268-hue` is a user account rather than an organization, so there is no org-level layer above this; the repository setting is the only GitHub-side control point.
 
+## Dependency Vulnerability Gate
+
+`.github/workflows/osv-scan.yml` scans the SwiftPM resolution against the OSV database. Dependabot has no SwiftPM ecosystem, so without this workflow `Package.resolved` carries no automated security signal at all.
+
+### Modes
+
+| Mode | Trigger | SARIF upload | Purpose |
+| --- | --- | --- | --- |
+| Pull request | changes to `Package.resolved`, `Package.swift`, `osv-scanner.toml`, or the gate's own files | no | catch a vulnerable dependency before it lands |
+| Scheduled | weekly, Monday 06:23 UTC | yes | catch advisories published *after* a dependency landed |
+| Manual | `workflow_dispatch` | yes | ad-hoc triage |
+| Release gate | `workflow_call` from `release.yml` | no | a public release depends on a fresh scan, not on whatever a pull request saw weeks ago |
+
+SARIF is uploaded only on the scheduled and manual runs: GitHub does not grant `security-events: write` to fork pull requests, and the release path must not publish scan history mid-release. Pass/fail is decided identically in all four modes — skipping the upload only changes where the result is displayed.
+
+### Why the gate does not trust the scanner's exit code
+
+`osv-scanner` reports "0 vulnerabilities" both when a dependency is clean and when it extracted nothing at all. Its own `128` exit code covers the total-zero case, but the upstream reusable workflows run the scanner under `continue-on-error: true`, so that code never fails a job.
+
+`.github/scripts/assert-osv-scan.mjs` therefore decides pass/fail from the JSON report:
+
+1. An empty report fails — the scanner writes nothing when it extracts zero packages.
+2. Zero extracted packages fails, even with zero vulnerabilities reported.
+3. Every pin in `Package.resolved` must appear in the scan output at the resolved version. A version mismatch means the scan did not run against this checkout.
+4. Any advisory without a valid, unexpired suppression fails.
+
+The expected-package list is derived from `Package.resolved` rather than hard-coded, so it cannot go stale when a dependency is added.
+
+### The negative proof
+
+A green scan of the real lockfile only shows the gate was quiet. The `negative-proof` job scans `.github/osv-fixtures/known-advisory/Package.resolved` — an isolated fixture pinning `apple/swift-nio` at a version with advisories published in 2023 — with `OSV_EXPECT_VULNERABILITIES=true`, so a *clean* result there fails the job. The fixture is a Swift lockfile on purpose: it re-proves that the `swift/packageresolved` extractor Wink depends on is still enabled, not merely that the scanner ran. Never "fix" the fixture; see [`.github/osv-fixtures/README.md`](../.github/osv-fixtures/README.md).
+
+### Suppressions
+
+`osv-scanner.toml` is optional; absent means no suppressions. Wink allows exactly one section shape, and `assert-osv-scan.mjs` enforces more than osv-scanner does — upstream requires neither a reason nor an owner, and omitting `ignoreUntil` suppresses an advisory forever.
+
+```toml
+[[IgnoredVulns]]
+id = "GHSA-xxxx-xxxx-xxxx"
+ignoreUntil = 2026-12-01
+reason = "owner:@handle — why this is acceptable, specifically"
+```
+
+- `id` must be a GHSA, CVE, or OSV identifier; a suppression may reference an advisory by either its GHSA id or a CVE alias.
+- `reason` must start `owner:@handle — ` and carry at least 24 further characters, so every suppression names an accountable person and a real technical argument.
+- `ignoreUntil` is mandatory. An expired suppression fails the build **and** stops silencing its advisory, so an overdue entry cannot quietly keep hiding a finding.
+- Any other section or key is rejected rather than ignored.
+
+### Coverage limits — a green run is not a safety claim
+
+- **The OSV database is not complete for Swift.** `GHSA-gmj2-gq3j-vqmj`, one of three advisories affecting the Sparkle 2.9.1 pin, is absent from OSV entirely (`GET https://api.osv.dev/v1/vulns/GHSA-gmj2-gq3j-vqmj` returns no record) because its GitHub advisory names the package `sparkle-project/Sparkle` rather than the `SwiftURL` identifier `github.com/sparkle-project/Sparkle`. This gate would have caught two of the three. Read upstream release notes as well.
+- **Only `Package.resolved` v2 and v3 are extracted.** The v1 layout nests pins under `object.pins`; the extractor reads a top-level `pins` array only and would silently find nothing. Rule 3 above is what turns that into a failure instead of a green run.
+- **The scanner action's container is a moving tag.** `google/osv-scanner-action` is pinned to a full commit SHA, but that commit's `action.yml` refers to `docker://ghcr.io/google/osv-scanner-action:v2.5.0` — a mutable tag this repository's pin policy cannot reach. Dependabot advancing the action SHA is the practical mitigation; the non-vacuity assertions are what prevent a silently changed image from producing a meaningless pass.
+- **`--config` in `scan-args` would apply globally.** It overrides every `osv-scanner.toml` in the tree, including the isolation the fixture relies on. Do not add it.
+
 ## Runtime Validation Boundary
 
 The governance harness does **not** change Wink's runtime-validation policy:

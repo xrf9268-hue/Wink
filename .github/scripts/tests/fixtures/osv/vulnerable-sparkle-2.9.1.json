@@ -1,0 +1,178 @@
+{
+  "results": [
+    {
+      "source": {
+        "path": "/tmp/osvtest/vuln/Package.resolved",
+        "type": "lockfile"
+      },
+      "packages": [
+        {
+          "package": {
+            "name": "github.com/sparkle-project/Sparkle",
+            "version": "2.9.1",
+            "ecosystem": "SwiftURL"
+          },
+          "groups": [
+            {
+              "ids": [
+                "GHSA-g3hp-f6mg-559v"
+              ],
+              "aliases": [
+                "CVE-2026-47122",
+                "GHSA-g3hp-f6mg-559v"
+              ],
+              "max_severity": "4.2"
+            },
+            {
+              "ids": [
+                "GHSA-hg88-v3cw-3qrh"
+              ],
+              "aliases": [
+                "CVE-2026-47121",
+                "GHSA-hg88-v3cw-3qrh"
+              ],
+              "max_severity": "6.1"
+            }
+          ],
+          "vulnerabilities": [
+            {
+              "affected": [
+                {
+                  "database_specific": {
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/05/GHSA-g3hp-f6mg-559v/GHSA-g3hp-f6mg-559v.json"
+                  },
+                  "package": {
+                    "ecosystem": "SwiftURL",
+                    "name": "github.com/sparkle-project/Sparkle",
+                    "purl": "pkg:swift/github.com%2Fsparkle-project%2FSparkle"
+                  },
+                  "ranges": [
+                    {
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "last_affected": "2.9.1"
+                        }
+                      ],
+                      "type": "SEMVER"
+                    }
+                  ]
+                }
+              ],
+              "aliases": [
+                "CVE-2026-47122"
+              ],
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-306",
+                  "CWE-441"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-05-29T19:47:19Z",
+                "nvd_published_at": null,
+                "severity": "MODERATE"
+              },
+              "details": "## Summary\n\nAppInstaller post-stage-1 XPC listener accepts unvalidated connections, allowing spoofed appcast item data injection.\n\n## Details\n\n`Autoupdate/AppInstaller.m`'s `shouldAcceptNewConnection:` only enforces `SUCodeSigningVerifier validateConnection:` before stage 1 completes. After `_performedStage1Installation = YES`, new connections to the registered Mach service `\u003cbundleId\u003e-spki` are accepted from any local process without team-ID or code-signing checks.\n\nThe following chain of events enables an attacker to inject a spoofed `SPUSentUpdateAppcastItemData` payload:\n\n1. Installer finishes unarchiving the update successfully (`_willCompleteInstallation` is set).\n2. The app responsible for updating the bundle crashes or is forcefully quit before it has a chance to send `SPUSentUpdateAppcastItemData` to the installer. There is no user interaction between the prior step and this one, so the timing window is tight.\n3. After stage 1 of the installer is performed (`_performedStage1Installation = YES`), but before final installation completes (since all services are cleaned up by then), an attacker process connects to the `\u003cbundleId\u003e-spki` Mach service - no code-signing validation is enforced - and sends a spoofed `SPUSentUpdateAppcastItemData` message containing an attacker-crafted `SUAppcastItem`.\n4. A Sparkle-aware app that checks for updates on the bundle being updated launches before installation completes. The progress agent re-broadcasts the spoofed `SUAppcastItem` on its `\u003cbundleId\u003e-spks` status service, and the launching app displays attacker-controlled release notes (name, version, critical flag).\n\nNote: Sparkle can be used to update other app bundles, so the \"app doing the updating\" and the \"app being updated\" are not necessarily the same bundle.\n\nIn the system-domain case (`SPUUsesSystemDomainForBundlePath = true`), the AppInstaller runs as root via `SMJobSubmit` to `kSMDomainSystemLaunchd`, and the Mach service is reachable by any local user process.\n\nAffected versions: 2.x branch including 2.9.1.\n\n## Impact\n\nA local user-level process can inject a forged `SUAppcastItem` (arbitrary name, version, critical flag) into the progress agent's status broadcast. Other Sparkle-aware clients on the system will display attacker-controlled release notes as authoritative installation state.\n\nThe integrity of the installed code is **not** affected - the bundle moved into place is the legitimate, signature-validated update from stage 1. The impact is limited to UI spoofing of installation metadata.\n\n## Remediation\n\nEnforce `SUCodeSigningVerifier validateConnection:` on all new connections regardless of installation stage, or disallow `SPUSentUpdateAppcastItemData` after the active connection invalidates.",
+              "id": "GHSA-g3hp-f6mg-559v",
+              "modified": "2026-05-29T20:00:14.253394550Z",
+              "published": "2026-05-29T19:47:19Z",
+              "references": [
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/sparkle-project/Sparkle/security/advisories/GHSA-g3hp-f6mg-559v"
+                },
+                {
+                  "type": "PACKAGE",
+                  "url": "https://github.com/sparkle-project/Sparkle"
+                }
+              ],
+              "schema_version": "1.7.5",
+              "severity": [
+                {
+                  "score": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:C/C:N/I:L/A:L",
+                  "type": "CVSS_V3"
+                }
+              ],
+              "summary": "Sparkle's AppInstaller post-stage-1 XPC listener accepts unvalidated connections, allowing spoofed appcast item data injection"
+            },
+            {
+              "affected": [
+                {
+                  "database_specific": {
+                    "last_known_affected_version_range": "\u003c= 2.9.1",
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/05/GHSA-hg88-v3cw-3qrh/GHSA-hg88-v3cw-3qrh.json"
+                  },
+                  "package": {
+                    "ecosystem": "SwiftURL",
+                    "name": "github.com/sparkle-project/Sparkle",
+                    "purl": "pkg:swift/github.com/sparkle-project/Sparkle"
+                  },
+                  "ranges": [
+                    {
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "2.9.2"
+                        }
+                      ],
+                      "type": "SEMVER"
+                    }
+                  ]
+                }
+              ],
+              "aliases": [
+                "CVE-2026-47121"
+              ],
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-22",
+                  "CWE-59"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-05-29T19:45:04Z",
+                "nvd_published_at": null,
+                "severity": "MODERATE"
+              },
+              "details": "## Summary\n\nBinary delta apply intermediate-symlink traversal in malicious .delta\n\n`Autoupdate/SUBinaryDeltaApply.m` enforces `relativePath.pathComponents containsObject:@\"..\"` and rejects writes whose immediate parent directory IS itself a symbolic link, but does not detect symlinks deeper in the relative path. `Autoupdate/SPUSparkleDeltaArchive.m`'s `extractItem:` will create symlinks in the destination tree from archive content (no `..` check on the symlink target), and a subsequent `Extract` item targeting `\u003csymlink\u003e/foo/bar` then escapes the destination tree via `fopen(path, \"wb\")` because the kernel resolves the intermediate symlink during the open call.\n\nThis is a defense-in-depth issue: exploitation requires a maliciously-crafted `.delta` that passes EdDSA signature verification, i.e. EdDSA private-key compromise. With the AppInstaller running as root for system-domain installs, it gives the holder of a stolen signing key arbitrary file write at root level via the delta-apply path, which is a strictly broader primitive than the \"drop-in replacement bundle\" install they would otherwise have.\n\nAffected versions: 1.x (master branch), 2.x branch including 2.9.1.\n\n## Details\n\n### Symlink writeable from archive\n\n`Autoupdate/SPUSparkleDeltaArchive.m:557-678`'s `extractItem:` handles symlinks if the archive item carries `S_ISLNK(mode)`:\n\n```objc\n} else {\n    // Link files\n\n    if (PARTIAL_IO_CHUNK_SIZE \u003c decodedLength) { ...too long... }\n    if (decodedLength \u003e PATH_MAX) { ...too long... }\n\n    char buffer[PATH_MAX + 1] = {0};\n    if (![self _readBuffer:buffer length:(int32_t)decodedLength]) { ... }\n\n    NSString *destinationPath = [fileManager stringWithFileSystemRepresentation:buffer length:decodedLength];\n\n    [fileManager removeItemAtPath:itemFilePath error:NULL];\n\n    NSError *createLinkError = nil;\n    if (![fileManager createSymbolicLinkAtPath:itemFilePath withDestinationPath:destinationPath error:\u0026createLinkError]) {\n        _error = createLinkError;\n        return NO;\n    }\n    ...\n    lchmod(itemFilePathString, mode);\n}\n```\n\nThe link's `destinationPath` is taken verbatim from the archive content with only a length cap; absolute paths and `..` are accepted. After this item is processed, the destination tree contains a symlink that points outside it.\n\n### Parent-symlink check is shallow\n\n`Autoupdate/SUBinaryDeltaApply.m:177-207`:\n\n```objc\n[archive enumerateItems:^(SPUDeltaArchiveItem *item, BOOL *stop) {\n    NSString *relativePath = item.relativeFilePath;\n\n    if ([relativePath.pathComponents containsObject:@\"..\"]) {\n        ...reject...\n    }\n\n    NSString *sourceFilePath = [source stringByAppendingPathComponent:relativePath];\n    NSString *destinationFilePath = [destination stringByAppendingPathComponent:relativePath];\n    {\n        NSString *destinationParentDirectory = destinationFilePath.stringByDeletingLastPathComponent;\n        NSDictionary\u003cNSFileAttributeKey, id\u003e *destinationParentDirectoryAttributes = [fileManager attributesOfItemAtPath:destinationParentDirectory error:NULL];\n\n        // It is OK for the directory parent to not exist if it has already been removed\n        if (destinationParentDirectoryAttributes != nil) {\n            NSString *fileType = destinationParentDirectoryAttributes[NSFileType];\n            if ([fileType isEqualToString:NSFileTypeSymbolicLink]) {\n                ...reject...\n            }\n        }\n    }\n    ...\n}];\n```\n\nTwo gaps:\n\n1. The check inspects only `destinationParentDirectory` (one level up), not all intermediate components. For a relative path `a/b/c.txt`, the kernel resolves through any symlink at component `a`. `attributesOfItemAtPath:` with the resolved path returns attributes of the resolved-through directory, which is `NSFileTypeDirectory` (not `NSFileTypeSymbolicLink`), so the check passes.\n\n2. The check is skipped entirely if `destinationParentDirectoryAttributes == nil` (line 195). When the symlink target is to a directory that does not contain the named subpath, the parent appears not to exist and the check is skipped. The subsequent `fopen(path, \"wb\")` then creates the file along the resolved path.\n\n### Write primitive\n\nFor an item with `SPUDeltaItemCommandExtract` set, `SUBinaryDeltaApply.m:354-365` calls `[archive extractItem:item]` which goes through `SPUSparkleDeltaArchive.m:574-622` for regular files:\n\n```objc\n[fileManager removeItemAtPath:itemFilePath error:NULL];\n\nchar itemFilePathString[PATH_MAX + 1] = {0};\nif (![itemFilePath getFileSystemRepresentation:itemFilePathString maxLength:sizeof(itemFilePathString) - 1]) { ... }\n\nFILE *outputFile = fopen(itemFilePathString, \"wb\");\n```\n\n`fopen(path, \"wb\")` follows symlinks at every path component and creates/truncates the file at the resolved path. If `\u003cdest\u003e/a` is a symlink to `/Library/LaunchDaemons` (for a root install) and the relative path is `a/com.attacker.plist`, the call writes `/Library/LaunchDaemons/com.attacker.plist`.\n\nThe `chmod` follow-up at `SUBinaryDeltaApply.m:335` (`chmod(destinationFilePath.fileSystemRepresentation, sourceFileInfo.st_mode)`) and `SPUSparkleDeltaArchive.m:619` (`chmod(itemFilePathString, mode)`) likewise follows symlinks, so attacker-chosen permissions land on the attacker-chosen target.\n\n### Threat model\n\nThis primitive is reachable only when the archive can pass EdDSA signature verification, which requires either:\n\n- The developer's private signing key has been compromised, or\n- A separate vulnerability allows bypassing `SUSignatureVerifier` (none was identified in this review).\n\nGiven a stolen private key, the attacker already has the ability to push a normal full-bundle update. The delta-apply traversal grants strictly more: arbitrary file write into directories outside `\u003cdestination\u003e`. When the AppInstaller runs in the system domain (root), this becomes arbitrary file write as root, which is qualitatively broader than \"replace the app bundle\".\n\nIt is therefore worth fixing as a defense-in-depth measure, even though the prerequisite (key compromise) is itself a worst case.\n\n## PoC\n\nThe PoC requires a valid EdDSA signature on the malicious `.delta` archive. With a test signing key under your control (any Sparkle test fixture key), generate a delta as follows:\n\n1. Construct the archive payload with two items, in this order, using the `SPUSparkleDeltaArchive` writer (or by hand-assembling the format described in `SPUSparkleDeltaArchive.m` and `SPUDeltaArchiveProtocol.h`):\n\n```\nItem 1:\n  relativeFilePath = \"Contents/Resources/escape\"\n  commands         = SPUDeltaItemCommandExtract  (= 0x02)\n  mode             = S_IFLNK | 0o755             (= 0xA1ED)\n  payload          = \"/Library/LaunchDaemons\"\n\nItem 2:\n  relativeFilePath = \"Contents/Resources/escape/com.attacker.persistence.plist\"\n  commands         = SPUDeltaItemCommandExtract  (= 0x02)\n  mode             = S_IFREG | 0o644             (= 0x81A4)\n  payload          = \u003cattacker-chosen LaunchDaemon plist bytes\u003e\n```\n\n2. Sign the archive with the test EdDSA key, publish it as a delta enclosure with matching `sparkle:edSignature`, and host it from a feed pointed at by a Sparkle host whose old-bundle public key matches.\n\n3. Trigger a system-domain install. The flow:\n   - `applyBinaryDelta` enumerates items.\n   - Item 1 passes the `..` check (the path components are `Contents`, `Resources`, `escape` - no `..`). The parent `Contents/Resources` exists in the source-copy and is a directory, not a symlink. The check passes. `extractItem:` for `S_ISLNK(mode)` calls `createSymbolicLinkAtPath:withDestinationPath:` and creates `\u003cdest\u003e/Contents/Resources/escape -\u003e /Library/LaunchDaemons`.\n   - Item 2 passes the `..` check. Its parent `\u003cdest\u003e/Contents/Resources/escape` resolves through the just-created symlink to `/Library/LaunchDaemons`, whose attributes are returned as `NSFileTypeDirectory` (not symlink). The check passes.\n   - `extractItem:` for `S_ISREG(mode)` does `removeItemAtPath` (no-op, target file does not yet exist) then `fopen(\"\u003cdest\u003e/Contents/Resources/escape/com.attacker.persistence.plist\", \"wb\")`. The kernel resolves the symlink and creates `/Library/LaunchDaemons/com.attacker.persistence.plist`.\n   - The hash check at the end of `applyBinaryDelta` (`getRawHashOfTreeWithVersion(afterHash, finalDestination, ...)`) is computed only against `finalDestination`. The file dropped at `/Library/LaunchDaemons/` is outside that tree and does not affect the hash. The hash check still passes (or, if it does not because the dest tree is missing the file, the dropped LaunchDaemon plist is still left behind - destination cleanup at line 471 only removes `finalDestination`, not the escape target).\n\n4. Observed result: a root-owned LaunchDaemon plist exists at `/Library/LaunchDaemons/com.attacker.persistence.plist`. On next reboot it is launched as root.\n\nA simpler proof-of-concept that does not require a system-domain install: target a user-writable directory (e.g. `~/Library/LaunchAgents/`), use a user-domain Sparkle host. The same item-pair lands a user-level LaunchAgent at next login.\n\n## Impact\n\nDefense-in-depth gap: the holder of a compromised EdDSA signing key gains a primitive (arbitrary file write at the privilege of the AppInstaller process) that exceeds what an \"install a malicious bundle\" path provides. For system-domain installs this is arbitrary file write as root, including locations outside the target app bundle (`/Library/LaunchDaemons`, `/etc/...` subpaths that exist as directories, `/usr/local/`, etc.).\n\nRecommended fix: in `SUBinaryDeltaApply.m`, walk every component of `relativePath` and reject if any intermediate component is a symlink (or refuse to allow the archive to create symlinks during apply at all, given the limited number of legitimate use cases for symlinks inside an `.app` bundle and the existing `lchmod` already in place). Cleanup on failure should also `removeTree` along the symlink target, not just `finalDestination`.",
+              "id": "GHSA-hg88-v3cw-3qrh",
+              "modified": "2026-07-21T14:00:35.937627015Z",
+              "published": "2026-05-29T19:45:04Z",
+              "references": [
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/sparkle-project/Sparkle/security/advisories/GHSA-hg88-v3cw-3qrh"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/sparkle-project/Sparkle/commit/fe7b718d0736f3e139e374e26fbca96f29e13bf0"
+                },
+                {
+                  "type": "PACKAGE",
+                  "url": "https://github.com/sparkle-project/Sparkle"
+                }
+              ],
+              "schema_version": "1.7.5",
+              "severity": [
+                {
+                  "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:N/I:H/A:N",
+                  "type": "CVSS_V3"
+                }
+              ],
+              "summary": "Sparkle: Binary delta apply intermediate-symlink traversal in malicious .delta"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "experimental_config": {
+    "licenses": {
+      "summary": false,
+      "allowlist": null
+    }
+  }
+}
