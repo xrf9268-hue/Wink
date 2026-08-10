@@ -79,8 +79,17 @@ The release workflow refuses to run in either configuration that would blur that
 
 ## Inspect what was actually attested
 
+Keep the same constraints as the verification command — this prints whatever
+passed the policy you supplied, so a loosened policy prints a rehearsal's
+certificate just as readily as a release's:
+
 ```bash
-gh attestation verify Wink-X.Y.Z.dmg --repo xrf9268-hue/Wink --format json \
+gh attestation verify Wink-X.Y.Z.dmg \
+  --repo xrf9268-hue/Wink \
+  --signer-workflow xrf9268-hue/Wink/.github/workflows/release.yml \
+  --source-ref refs/tags/vX.Y.Z \
+  --deny-self-hosted-runners \
+  --format json \
   | jq '.[].verificationResult.signature.certificate
         | {sourceRepositoryURI, sourceRepositoryRef, sourceRepositoryDigest,
            buildSignerURI, runnerEnvironment}'
