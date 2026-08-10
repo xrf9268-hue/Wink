@@ -1,0 +1,150 @@
+name: Dependency Scan
+
+# Scans the SwiftPM resolution against the OSV database (issue #441).
+#
+# Dependabot has no SwiftPM ecosystem, so `Package.resolved` gets no automated
+# security signal at all without this workflow. Sparkle is currently Wink's only
+# external dependency, which is exactly why a vacuous pass is the real risk: one
+# lost extractor and "0 vulnerabilities" would mean "0 packages examined".
+# `assert-osv-scan.mjs` decides pass/fail from the report, not from the scanner's
+# exit code, because the upstream reusable workflows run the scanner under
+# `continue-on-error: true` and its "no packages found" exit 128 never fails a job.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "Package.resolved"
+      - "Package.swift"
+      - "osv-scanner.toml"
+      - ".github/workflows/osv-scan.yml"
+      - ".github/scripts/assert-osv-scan.mjs"
+      - ".github/scripts/lib/osv-results.mjs"
+      # The gate runs its own policy tests, so a change to those tests or their
+      # captured scanner reports has to trigger it too — otherwise the only job
+      # that executes them never runs on the pull request that changes them.
+      - ".github/scripts/tests/osv-results.test.mjs"
+      - ".github/scripts/tests/fixtures/osv/**"
+      - ".github/osv-fixtures/**"
+  schedule:
+    # Weekly, so an advisory published after a dependency landed is still found.
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+  # Called by the release workflow so a public release depends on a fresh scan
+  # rather than on whatever the last pull request happened to see.
+  workflow_call:
+    inputs:
+      ref:
+        # A called workflow otherwise checks out the CALLER's commit. When
+        # `Release` is dispatched from a branch with `release_tag` set, it
+        # builds and publishes `refs/tags/<tag>` while the caller's commit is
+        # the branch — so without this the gate would clear a revision that is
+        # not the one being released. If the requested ref predates this gate
+        # the checkout succeeds but the assertion script is missing and the job
+        # fails, which is the correct direction to fail.
+        description: Git ref to scan; defaults to the calling workflow's commit
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Scan resolved dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+
+      # continue-on-error because a found vulnerability exits 1 and would end the
+      # job before the report is read. Pass/fail is decided by the next step.
+      - name: Scan Package.resolved
+        id: scan
+        continue-on-error: true
+        uses: google/osv-scanner-action/osv-scanner-action@8deb546fdb875b9996d27d4950be7312dac076a1 # v2.5.0
+        with:
+          scan-args: |-
+            --lockfile=Package.resolved
+            --format=json
+            --output=osv-results.json
+            --all-packages
+
+      # The gate's own logic is only exercised by whatever the two live scans
+      # happen to hit; expiry, alias, and TOML branches would otherwise regress
+      # silently. Cheap enough to run inline rather than rely on another workflow.
+      - name: Dependency-gate policy tests
+        run: node --test .github/scripts/tests/osv-results.test.mjs
+
+      - name: Assert the scan covered every pinned package
+        run: node .github/scripts/assert-osv-scan.mjs
+
+      # SARIF surfacing is deliberately limited to the scheduled and manual runs.
+      # GitHub does not grant `security-events: write` to fork pull requests, and
+      # the release gate must not publish scan history mid-release. In every mode
+      # the gate above has already decided pass/fail, so skipping the upload
+      # never weakens the check — it only changes where the result is displayed.
+      # `!cancelled()` rather than the implicit `success()`: a scheduled run that
+      # actually FINDS something fails the assertion above, and that is precisely
+      # the run whose results belong in code scanning.
+      - name: Produce SARIF for code scanning
+        if: ${{ !cancelled() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+        continue-on-error: true
+        uses: google/osv-scanner-action/osv-scanner-action@8deb546fdb875b9996d27d4950be7312dac076a1 # v2.5.0
+        with:
+          scan-args: |-
+            --lockfile=Package.resolved
+            --format=sarif
+            --output=osv-results.sarif
+
+      - name: Upload SARIF to code scanning
+        if: ${{ !cancelled() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          sarif_file: osv-results.sarif
+          category: osv-scanner
+
+  negative-proof:
+    name: Prove the gate can fail
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref || github.sha }}
+
+      # A green scan of the real lockfile only proves the gate is quiet. This
+      # scans an isolated fixture pinning a package with long-published
+      # advisories, so a round where the database, the extractor, or the network
+      # silently stopped working cannot masquerade as "no vulnerabilities".
+      # The real lockfile is never downgraded to produce this signal.
+      - name: Scan the known-advisory fixture
+        continue-on-error: true
+        uses: google/osv-scanner-action/osv-scanner-action@8deb546fdb875b9996d27d4950be7312dac076a1 # v2.5.0
+        with:
+          scan-args: |-
+            --lockfile=.github/osv-fixtures/known-advisory/Package.resolved
+            --format=json
+            --output=osv-fixture-results.json
+            --all-packages
+
+      - name: Assert the fixture trips the gate
+        env:
+          OSV_RESULTS_PATH: osv-fixture-results.json
+          OSV_LOCKFILE_PATH: .github/osv-fixtures/known-advisory/Package.resolved
+          OSV_EXPECT_VULNERABILITIES: "true"
+        run: node .github/scripts/assert-osv-scan.mjs

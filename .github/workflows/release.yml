@@ -35,6 +35,7 @@ jobs:
       missing_secrets: ${{ steps.check.outputs.missing_secrets }}
       signing_mode: ${{ steps.check.outputs.signing_mode }}
       release_ref: ${{ steps.resolve.outputs.release_ref }}
+      release_checkout_ref: ${{ steps.resolve.outputs.release_checkout_ref }}
     steps:
       - name: Resolve requested release ref
         id: resolve
@@ -43,11 +44,16 @@ jobs:
         run: |
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${MANUAL_RELEASE_TAG}" ]; then
             RELEASE_REF="${MANUAL_RELEASE_TAG}"
+            # Fully qualified so a branch sharing the tag's name cannot win the
+            # checkout resolution and have the gate scan the wrong revision.
+            RELEASE_CHECKOUT_REF="refs/tags/${MANUAL_RELEASE_TAG}"
           else
             RELEASE_REF="${GITHUB_REF_NAME}"
+            RELEASE_CHECKOUT_REF="${GITHUB_REF}"
           fi
 
           echo "release_ref=$RELEASE_REF" >> "$GITHUB_OUTPUT"
+          echo "release_checkout_ref=$RELEASE_CHECKOUT_REF" >> "$GITHUB_OUTPUT"
 
       - name: Check release secrets
         id: check
@@ -154,9 +160,31 @@ jobs:
             echo "For an internal test build, run the \`Internal Package\` workflow with \`package_ref=$RELEASE_REF\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # A public release depends on a FRESH dependency scan (issue #441). The scan a
+  # pull request saw weeks ago says nothing about advisories published since,
+  # and this is fail-closed on purpose: no scan, no release.
+  #
+  # `security-events: write` is granted here because the called workflow declares
+  # it for its code-scanning upload; that upload is skipped on this path (it runs
+  # only on schedule/manual), so the release job's own token is unaffected.
+  dependency-scan:
+    name: Scan dependencies before publishing
+    needs: release-readiness
+    if: ${{ needs.release-readiness.outputs.release_ready == 'true' }}
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/osv-scan.yml
+    # Scan the ref that will actually be built and published, fully qualified.
+    # A manual dispatch from a branch with `release_tag` set builds
+    # `refs/tags/<tag>`, so without this the gate would clear the branch; and an
+    # unqualified `vX.Y.Z` could resolve to a branch of the same name.
+    with:
+      ref: ${{ needs.release-readiness.outputs.release_checkout_ref }}
+
   release:
     name: Build, Release DMG, and Publish Sparkle Feed
-    needs: release-readiness
+    needs: [release-readiness, dependency-scan]
     if: ${{ needs.release-readiness.outputs.release_ready == 'true' }}
     runs-on: macos-15
     timeout-minutes: 45

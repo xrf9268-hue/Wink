@@ -6,7 +6,13 @@ Repository-native state sync is now handled separately by GitHub Actions:
 - `.github/workflows/pr-metadata.yml` enforces PR issue linkage and validation-state metadata
 - `.github/workflows/review-gate.yml` turns unresolved actionable review state into a deterministic required check
 - `.github/workflows/project-sync.yml` keeps `Wink Backlog` `Status` and `Runtime Validation` aligned with issue/PR state
+- `.github/workflows/osv-scan.yml` (`Dependency Scan`) gates the SwiftPM resolution against the OSV database on dependency-touching PRs, weekly, on demand, and as a `workflow_call` gate before a public release
 - [`github-automation.md`](./github-automation.md) documents the required `PROJECT_AUTOMATION_TOKEN` secret, checked-in ruleset artifact, and governance rollout order
+
+A loop session should treat a red `Dependency Scan` as implementation work, not
+as flaky infrastructure: the gate fails when an advisory is unsuppressed, when
+zero packages were extracted, or when the scan ran against a different revision
+than the checkout. None of those clear themselves on a re-run.
 
 ## Quick Start
 

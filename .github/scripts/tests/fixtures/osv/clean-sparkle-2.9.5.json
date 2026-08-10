@@ -1,0 +1,25 @@
+{
+  "results": [
+    {
+      "source": {
+        "path": "/Users/yvan/developer/Wink/Package.resolved",
+        "type": "lockfile"
+      },
+      "packages": [
+        {
+          "package": {
+            "name": "github.com/sparkle-project/Sparkle",
+            "version": "2.9.5",
+            "ecosystem": "SwiftURL"
+          }
+        }
+      ]
+    }
+  ],
+  "experimental_config": {
+    "licenses": {
+      "summary": false,
+      "allowlist": null
+    }
+  }
+}

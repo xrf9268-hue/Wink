@@ -1,0 +1,12 @@
+{
+  "originHash" : "0000000000000000000000000000000000000000000000000000000000000000",
+  "pins" : [
+    {
+      "identity" : "swift-nio",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-nio",
+      "state" : { "revision" : "0000000000000000000000000000000000000000", "version" : "2.29.0" }
+    }
+  ],
+  "version" : 3
+}
