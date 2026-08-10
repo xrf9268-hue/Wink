@@ -267,6 +267,32 @@ struct ShortcutProfileRecoveryTests {
     }
 
     @Test
+    func anUnsupportedPointerSchemaFailsClosedEvenWithASingleProfile() throws {
+        let (harness, _) = try migratedHarness()
+        defer { harness.cleanup() }
+
+        // Well-formed, from a build this one does not understand. Unlike
+        // truncation, that is a deliberate signal: a future schema may mean
+        // more than "which of today's profiles", so adopting the single
+        // profile could arm bindings that build left unarmed.
+        try harness.writeRaw(
+            #"{"schemaVersion": 99, "activeProfileID": "00000000-0000-0000-0000-000000000000"}"#,
+            to: harness.layout.activePointerURL
+        )
+
+        let store = harness.makeStore()
+        guard case let .activeProfileAmbiguous(profiles, preservedCopyPath) = store.load() else {
+            Issue.record("expected activeProfileAmbiguous for an unsupported pointer schema")
+            return
+        }
+
+        #expect(profiles.count == 1)
+        #expect(preservedCopyPath != nil)
+        #expect(store.locator.currentActiveProfileID() == nil)
+        #expect(harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_ACTIVE_UNSUPPORTED_SCHEMA") })
+    }
+
+    @Test
     func anUnreadablePointerWithSeveralProfilesIsAmbiguousAndPreservesItsBytes() throws {
         let (harness, _) = try migratedHarness()
         defer { harness.cleanup() }
@@ -932,6 +958,57 @@ struct ShortcutProfileMirrorTests {
                 == harness.data(at: harness.layout.profileDataURL(loaded.activeProfileID))
         )
         #expect(harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_MIRROR_STALE") })
+    }
+
+    @Test
+    func unmodelledJSONMembersDoNotMakeAByteIdenticalMirrorLookStale() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+
+        // A profile file carrying a member `AppShortcut` does not model — a
+        // newer build wrote it, or a user hand-edited it. It decodes fine and
+        // is dropped by a re-encode, so comparing the mirror against a model
+        // round trip would call a perfect byte copy stale and then strip the
+        // member from the file a downgrade reads.
+        let withUnknownMember = """
+        [
+          {
+            "appName" : "Safari",
+            "bundleIdentifier" : "com.apple.Safari",
+            "futureField" : { "kind" : "something-new" },
+            "id" : "22222222-2222-2222-2222-222222222222",
+            "isEnabled" : true,
+            "keyEquivalent" : "s",
+            "modifierFlags" : [ "command" ]
+          }
+        ]
+        """
+        try harness.writeRawLegacyShortcuts(withUnknownMember)
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // Migration copies bytes, so the profile file still carries the member.
+        try harness.writeRaw(withUnknownMember, to: harness.layout.profileDataURL(loaded.activeProfileID))
+        store.rewriteMirror(loaded.activeShortcuts, profileID: loaded.activeProfileID)
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        #expect(after.foreignMirror == nil)
+        // The member survives in BOTH files: no spurious stale rewrite, and
+        // the mirror a downgrade reads is still byte-identical to the profile.
+        let mirrorBytes = try #require(harness.data(at: harness.layout.mirrorURL))
+        let profileBytes = try #require(harness.data(at: harness.layout.profileDataURL(loaded.activeProfileID)))
+        #expect(mirrorBytes == profileBytes)
+        #expect(String(decoding: mirrorBytes, as: UTF8.self).contains("futureField"))
+        #expect(!harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_MIRROR_STALE") })
     }
 
     @Test

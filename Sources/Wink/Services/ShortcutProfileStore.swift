@@ -320,6 +320,13 @@ final class ShortcutProfileStore {
         }
     }
 
+    /// Reads only `schemaVersion`, so a metadata file written by another
+    /// build can be recognized as *understood but unsupported* rather than
+    /// lumped in with corruption.
+    private struct MetadataSchemaProbe: Decodable {
+        let schemaVersion: Int
+    }
+
     private enum ActivePointerResolution {
         case resolved(UUID)
         case ambiguous(preservedCopyPath: String?)
@@ -332,6 +339,21 @@ final class ShortcutProfileStore {
         var preservedCopyPath: String?
 
         if let data = try? Data(contentsOf: layout.activePointerURL) {
+            if
+                let probe = try? Self.metadataDecoder.decode(MetadataSchemaProbe.self, from: data),
+                probe.schemaVersion != ShortcutProfileActivePointer.currentSchemaVersion
+            {
+                // A well-formed pointer from a build this one does not
+                // understand is a deliberate signal, not corruption, and a
+                // future schema may mean more than "which of today's profiles"
+                // — "none active", for instance. Adopting a single profile
+                // here would arm bindings that build had deliberately left
+                // unarmed, so fail closed regardless of profile count.
+                let preserved = preserveRejectedPayload(data, originalURL: layout.activePointerURL)
+                log("PROFILE_TRACE_ACTIVE_UNSUPPORTED_SCHEMA version=\(probe.schemaVersion)")
+                return .ambiguous(preservedCopyPath: preserved)
+            }
+
             if
                 let pointer = try? Self.metadataDecoder.decode(ShortcutProfileActivePointer.self, from: data),
                 pointer.schemaVersion == ShortcutProfileActivePointer.currentSchemaVersion
@@ -591,7 +613,14 @@ final class ShortcutProfileStore {
         let descriptor = loadMirrorDescriptor(layout: layout)
         let mirrorDigest = Self.digest(mirrorData)
 
-        if let activeData = try? PersistenceService.encodeShortcuts(activeShortcuts),
+        // Raw file bytes on BOTH sides. A profile file can legitimately carry
+        // JSON members `AppShortcut` does not model — a newer build wrote it,
+        // or a user hand-edited it — and those members survive the file but
+        // not a decode/re-encode round trip. Comparing against a re-encoding
+        // would report a mismatch for a mirror that is already a perfect byte
+        // copy, and the repair that followed would strip the preserved members
+        // from the very file a downgrade reads.
+        if let activeData = try? Data(contentsOf: layout.profileDataURL(activeProfileID)),
            mirrorDigest == Self.digest(activeData) {
             // Current. Keep the descriptor honest so a later comparison
             // attributes correctly; the mirror bytes themselves are already
@@ -646,7 +675,15 @@ final class ShortcutProfileStore {
         profileID: UUID,
         layout: ShortcutProfileLayout
     ) {
-        guard let data = try? PersistenceService.encodeShortcuts(shortcuts) else {
+        // Prefer the profile file's own bytes so unmodelled JSON members
+        // reach the mirror verbatim; a re-encoding is only a fallback for the
+        // case where that file cannot be read at all.
+        let data: Data
+        if let raw = try? Data(contentsOf: layout.profileDataURL(profileID)) {
+            data = raw
+        } else if let encoded = try? PersistenceService.encodeShortcuts(shortcuts) {
+            data = encoded
+        } else {
             log("PROFILE_TRACE_MIRROR_FAILED reason=encode_failed")
             return
         }
