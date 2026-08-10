@@ -233,8 +233,19 @@ jobs:
           esac
 
           git fetch --force --tags origin
-          git rev-parse "refs/tags/$RELEASE_TAG" >/dev/null
-          git checkout --force "refs/tags/$RELEASE_TAG"
+          TAG_SHA="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+
+          # `--ref <tag>` fixes GITHUB_SHA when the run is created, but the tag
+          # itself can be force-moved before this fetch. Building the tag's new
+          # target while the attestation certificate still names the original
+          # GITHUB_SHA would publish provenance for code that did not produce
+          # the artifact — so bind the build to the commit provenance will name.
+          if [ "$TAG_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error title=Tag moved after dispatch::refs/tags/$RELEASE_TAG now resolves to $TAG_SHA, but this run was created at $GITHUB_SHA and its attestation would name that commit. Re-dispatch so the two agree." >&2
+            exit 1
+          fi
+
+          git checkout --force "$GITHUB_SHA"
 
       - name: Capture toolchain cache key
         run: echo "TOOLCHAIN_KEY=$(swift --version 2>/dev/null | head -1 | shasum -a 256 | cut -c1-12)" >> "$GITHUB_ENV"
