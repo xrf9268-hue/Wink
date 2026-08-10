@@ -42,7 +42,12 @@ const FLOW_MAPPING_USES_PATTERN = /[{[,]\s*(?:uses|"uses"|'uses')\s*:/;
 // one. Anchoring here, after quoted spans are blanked out, keeps
 // `run: echo "{ uses: x }"` from reading as a reference.
 const FLOW_MAPPING_OPENS_PATTERN = /^[{[]|:\s*[{[]/;
-const EXPLICIT_USES_KEY_PATTERN = /^\?\s+(?:uses|"uses"|'uses')\s*$/;
+// `? uses` may be followed by `: <value>` on the same line or by a `:` line of
+// its own, so the value part is optional in both explicit-key patterns.
+const EXPLICIT_USES_KEY_PATTERN = /^\?\s+(?:uses|"uses"|'uses')\s*(?::|$)/;
+// The same key on a flow CONTINUATION line has no delimiter ahead of it:
+// `steps: [` followed by `? uses : actions/cache@main`.
+const LEADING_EXPLICIT_USES_KEY_PATTERN = /^\?\s*(?:uses|"uses"|'uses')\s*(?::|$)/;
 // The same explicit-key form is legal inside a flow collection, where it never
 // starts a line: `steps: [ ? uses : actions/cache@main ]`. The `?` sits between
 // the collection delimiter and the key, so neither the flow `uses` pattern nor
@@ -243,7 +248,10 @@ export function scanUsesReferences(source) {
     const opensFlow = FLOW_MAPPING_OPENS_PATTERN.test(bare);
 
     if (continuesFlow || opensFlow) {
-      if (FLOW_EXPLICIT_USES_KEY_PATTERN.test(bare)) {
+      if (
+        FLOW_EXPLICIT_USES_KEY_PATTERN.test(bare) ||
+        LEADING_EXPLICIT_USES_KEY_PATTERN.test(bare)
+      ) {
         references.push({ line: index + 1, value: rest.trim(), comment: null, explicitKey: true });
       } else if (FLOW_MAPPING_USES_PATTERN.test(bare) || matchUsesKey(bare) !== null) {
         references.push({ line: index + 1, value: rest.trim(), comment: null, flowMapping: true });

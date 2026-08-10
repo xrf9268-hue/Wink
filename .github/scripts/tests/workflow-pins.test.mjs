@@ -582,3 +582,35 @@ test('release.yml scans the immutable commit for a no-tag dispatch', async () =>
   assert.match(releaseWorkflow, /RELEASE_CHECKOUT_REF="\$\{GITHUB_SHA\}"/);
   assert.doesNotMatch(releaseWorkflow, /RELEASE_CHECKOUT_REF="\$\{GITHUB_REF\}"/);
 });
+
+test('explicit keys are caught in every flow position', () => {
+  const cases = [
+    // delimiter and key on one line
+    ['jobs:', '  a:', '    steps: [ ? uses : actions/cache@main ]'],
+    // continuation line, no delimiter ahead of the key
+    ['jobs:', '  a:', '    steps: [', '      ? uses : actions/cache@main', '    ]'],
+    // block style, value on the same line
+    ['jobs:', '  a:', '    steps:', '      - ? uses : actions/cache@main'],
+    // block style, value on its own line
+    ['jobs:', '  a:', '    steps:', '      - ? uses', '        : actions/cache@main'],
+  ];
+
+  for (const lines of cases) {
+    const references = scanUsesReferences(lines.join('\n'));
+    assert.equal(references.length, 1, `expected a reference for:\n${lines.join('\n')}`);
+    assert.equal(references[0].explicitKey, true);
+    assert.deepEqual(
+      evaluateReference(references[0]).problems.map((problem) => problem.code),
+      ['explicit-key-reference'],
+    );
+  }
+});
+
+test('a bare `?` that is not a uses key is left alone', () => {
+  assert.deepEqual(
+    scanUsesReferences(
+      ['jobs:', '  a:', '    steps: [', '      ? name : Checkout', '    ]'].join('\n'),
+    ),
+    [],
+  );
+});
