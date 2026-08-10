@@ -41,6 +41,12 @@ Wink now uses repository-native GitHub Actions and a checked-in ruleset artifact
    - Gives repository admins a reviewable artifact to apply after the workflow changes are present on `main`
    - Is kept in the same schema shape used by GitHub's repository ruleset REST `POST`/`PUT` endpoints so the checked-in file can be applied directly
 
+7. **Static analysis** (GitHub CodeQL default setup, Swift, `default` query suite)
+   - Analyzes pull requests, `main` pushes, and a weekly full scan on a macOS runner
+   - Covers 100% of `Sources/Wink` with zero unresolved AST nodes; the test target and standalone scripts are not compiled by `swift build` and are therefore out of scope
+   - Configured by a repository setting, not by a workflow file, so there is nothing to SHA-pin
+   - **Advisory, not blocking**: alerts do not fail the check on their own; severity gating is separate branch protection an administrator has not enabled
+
 ## Required Repository Setup
 
 Store a repository secret named `PROJECT_AUTOMATION_TOKEN`.
@@ -228,6 +234,102 @@ reason = "owner:@handle — why this is acceptable, specifically"
 - **Only `Package.resolved` v2 and v3 are extracted.** The v1 layout nests pins under `object.pins`; the extractor reads a top-level `pins` array only and would silently find nothing. Rule 3 above is what turns that into a failure instead of a green run.
 - **The scanner action's container is a moving tag.** `google/osv-scanner-action` is pinned to a full commit SHA, but that commit's `action.yml` refers to `docker://ghcr.io/google/osv-scanner-action:v2.5.0` — a mutable tag this repository's pin policy cannot reach. Dependabot advancing the action SHA is the practical mitigation; the non-vacuity assertions are what prevent a silently changed image from producing a meaningless pass.
 - **`--config` in `scan-args` would apply globally.** It overrides every `osv-scanner.toml` in the tree, including the isolation the fixture relies on. Do not add it.
+
+## Static Analysis Gate (CodeQL)
+
+Wink runs GitHub's **default setup** for CodeQL, Swift only, on the `default` query suite.
+It analyzes pull requests, pushes to `main`, and a weekly full scan. Swift analysis requires
+a macOS runner and cannot use `build-mode: none`; default setup handles that automatically
+(`Analyze (swift)` on `macos-latest`) and there is no advanced workflow to keep pinned.
+
+### Default versus advanced — who owns what
+
+| | Default setup (current) | Advanced workflow |
+| --- | --- | --- |
+| Configured by | repository setting, one API call | a committed `.github/workflows/*.yml` |
+| Build | autobuild (`swift build`) | manual build commands |
+| Action pinning | not applicable — no workflow file exists to pin | subject to the full-SHA policy above |
+| Query suite | `default` | any, including custom packs |
+| Changing it | Settings → Code security, or `PATCH /repos/:owner/:repo/code-scanning/default-setup` | a normal pull request |
+
+Default setup was chosen because autobuild already compiles the whole shipping target (see
+coverage below), so an advanced workflow would add a maintained build script and four more
+pinned actions for no additional coverage. **Do not run both**: two configurations analyzing
+the same language produce duplicate and stale alerts.
+
+Move to advanced only if autobuild stops compiling the target, or if a custom query pack is
+needed. If that happens, disable default setup in the same change.
+
+### Inspecting scan health
+
+A green check is not evidence that anything was analyzed. Three signals, in order of how
+often they matter:
+
+```bash
+# 1. Is it configured, and for what?
+gh api /repos/xrf9268-hue/Wink/code-scanning/default-setup
+
+# 2. Did the last analysis actually run queries?
+gh api '/repos/xrf9268-hue/Wink/code-scanning/analyses?per_page=5' \
+  --jq '.[] | [.ref, .category, .results_count, .rules_count, .error] | @tsv'
+
+# 3. What is open right now?
+gh api '/repos/xrf9268-hue/Wink/code-scanning/alerts?ref=refs/heads/main' \
+  --jq '.[] | [.number, .rule.id, .rule.security_severity_level, .most_recent_instance.location.path] | @tsv'
+```
+
+These endpoints need an account with repository admin; a contributor token returns `403`
+regardless of its scopes, which is an identity problem and not a missing scope.
+
+The number that actually proves extraction happens is in the run log of the `CodeQL Setup` /
+`Analyze (swift)` job:
+
+```
+CodeQL scanned 89 out of 166 Swift files in this invocation.
+| Number of unresolved AST nodes |      0 |
+| Number of extracted AST nodes  | 750976 |
+```
+
+89 of 166 is **full coverage of the shipping source**, not a gap. The repository tracks 166
+`.swift` files: 88 in `Sources/Wink`, 74 in `Tests/`, plus `Package.swift` and three
+standalone scripts. Autobuild runs `swift build`, which compiles the `Wink` target and the
+manifest — 88 + 1 = 89. The 77 unscanned files are the test target and standalone scripts,
+none of which ship. **Zero unresolved AST nodes** is the signal that extraction did not
+silently degrade; a rising number there means the extractor is losing track of the code even
+though the job is green.
+
+### Why a zero-alert baseline was not accepted as proof
+
+A scanner that extracts nothing reports zero alerts, and so does a clean codebase. The two
+were separated by measurement rather than assumption: a throwaway branch added a file with
+two deliberately flawed declarations targeting queries confirmed to have run against `main`,
+and both produced high-severity alerts:
+
+| Rule | CWE | Result |
+| --- | --- | --- |
+| `swift/cleartext-storage-preferences` | 312 | alert raised |
+| `swift/weak-password-hashing` | 328 | alert raised |
+
+The second is worth noting: the probe was written expecting the sibling query
+`swift/weak-sensitive-data-hashing`, and the suite classified the flow more precisely than
+the prediction did — which is stronger evidence than a match, because it shows the alert came
+from dataflow analysis rather than from a pattern that happened to line up with the guess.
+
+That branch was closed unmerged and deleted; nothing from it is on `main`. Repeat the
+exercise the same way if the configuration ever changes materially — never adopt a new
+scanning setup on a zero-alert baseline alone.
+
+### Current baseline and the required-check blocker
+
+`main` has **0 open alerts**. That is now a measured property rather than an untested
+assumption, so there is nothing to triage.
+
+`Analyze (swift)` reports **pass even with high-severity alerts open** — verified on the
+probe branch, which was green with two open high-severity alerts. Code scanning alerts do
+not block a merge by themselves; alert-severity gating is a separate branch-protection or
+ruleset setting, outside default setup and outside what the checked-in ruleset artifact
+covers. Until an administrator configures it, treat CodeQL as **advisory**, and do not
+describe it as a merge gate in release notes or issue write-ups.
 
 ## Runtime Validation Boundary
 
