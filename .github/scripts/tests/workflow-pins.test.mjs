@@ -158,6 +158,58 @@ test('a flow mapping reached through a flow sequence is still caught', () => {
   }
 });
 
+test('a flow mapping continuing onto later lines is still caught', () => {
+  const references = scanUsesReferences(
+    [
+      'jobs:',
+      '  a:',
+      '    steps:',
+      '      - { name: Checkout,',
+      '          id: checkout, uses: actions/checkout@main }',
+      '      - { name: Cache,',
+      '          with: { path: .build },',
+      '          uses: actions/cache@main }',
+    ].join('\n'),
+  );
+
+  assert.equal(references.length, 2);
+  assert.ok(references.every((reference) => reference.flowMapping === true));
+  assert.deepEqual(
+    references.map((reference) => reference.line),
+    [5, 8],
+  );
+});
+
+test('a multi-line flow sequence of mappings is still caught', () => {
+  const references = scanUsesReferences(
+    ['jobs:', '  a:', '    steps: [', '      { uses: actions/checkout@main }', '    ]'].join('\n'),
+  );
+
+  assert.equal(references.length, 1);
+  assert.equal(references[0].flowMapping, true);
+});
+
+test('flow tracking cannot swallow the ordinary block-style scanner', () => {
+  const references = scanUsesReferences(
+    [
+      'jobs:',
+      '  a:',
+      '    steps:',
+      "      - if: ${{ github.event_name == 'push' }}",
+      '        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2',
+      '        with:',
+      '          path: [a, b]',
+      '      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5',
+    ].join('\n'),
+  );
+
+  assert.deepEqual(
+    references.map((reference) => reference.value),
+    [`actions/checkout@${CHECKOUT_SHA}`, `actions/cache@${CACHE_SHA}`],
+  );
+  assert.ok(references.every((reference) => reference.flowMapping === undefined));
+});
+
 test('a plain flow sequence with no `uses` key is left alone', () => {
   assert.deepEqual(
     scanUsesReferences(['on:', '  pull_request:', '    branches: [main]'].join('\n')),

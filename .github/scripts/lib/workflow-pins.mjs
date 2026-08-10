@@ -91,10 +91,29 @@ export function splitValueAndComment(rawValue) {
   };
 }
 
+function flowDelta(text) {
+  let delta = 0;
+
+  for (const character of text) {
+    if (character === '{' || character === '[') {
+      delta += 1;
+    } else if (character === '}' || character === ']') {
+      delta -= 1;
+    }
+  }
+
+  return delta;
+}
+
 export function scanUsesReferences(source) {
   const references = [];
   const lines = source.split(/\r?\n/);
   let blockScalarKeyColumn = null;
+  // A flow collection can span lines, and its `uses` key may sit on a
+  // continuation line behind another key: `- { name: Checkout,` followed by
+  // `id: checkout, uses: actions/checkout@main }`. Neither line matches on its
+  // own, so track how deep we are inside braces instead.
+  let flowDepth = 0;
 
   lines.forEach((line, index) => {
     const { indent, keyColumn, rest } = splitIndent(line);
@@ -107,17 +126,32 @@ export function scanUsesReferences(source) {
       blockScalarKeyColumn = null;
     }
 
+    // A top-level key cannot be inside a flow collection, so it bounds any
+    // runaway depth from an unbalanced brace we misread.
+    if (indent === 0 && rest !== '') {
+      flowDepth = 0;
+    }
+
+    const bare = blankQuotedValues(rest);
+    const continuesFlow = flowDepth > 0;
+    // A flow collection that opens and closes on one line still needs the
+    // `uses` check; only the depth bookkeeping cares whether it stayed open.
+    const opensFlow = FLOW_MAPPING_OPENS_PATTERN.test(bare);
+
+    if (continuesFlow || opensFlow) {
+      if (FLOW_MAPPING_USES_PATTERN.test(bare) || USES_PATTERN.test(bare)) {
+        references.push({ line: index + 1, value: rest.trim(), comment: null, flowMapping: true });
+      }
+
+      flowDepth = Math.max(0, flowDepth + flowDelta(bare));
+      return;
+    }
+
     const match = USES_PATTERN.exec(rest);
 
     if (!match) {
       if (BLOCK_SCALAR_PATTERN.test(rest)) {
         blockScalarKeyColumn = keyColumn;
-        return;
-      }
-
-      const bare = blankQuotedValues(rest);
-      if (FLOW_MAPPING_OPENS_PATTERN.test(bare) && FLOW_MAPPING_USES_PATTERN.test(bare)) {
-        references.push({ line: index + 1, value: rest.trim(), comment: null, flowMapping: true });
       }
 
       return;
