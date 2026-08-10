@@ -30,8 +30,12 @@ jobs:
       - name: Validate immutable action references
         run: node .github/scripts/validate-workflow-pins.mjs
 
+      # Deliberately shell-expanded rather than a Node glob or a bare directory:
+      # `node --test <dir>` is a module path on Node 22+, and quoted-glob support
+      # is version-dependent. An explicit file list works on every Node the
+      # runner image has ever shipped, and a zero-match glob fails loudly.
       - name: Governance script tests
-        run: node --test '.github/scripts/tests/**/*.test.mjs'
+        run: node --test .github/scripts/tests/*.test.mjs
 
       - name: Swift version
         run: swift --version

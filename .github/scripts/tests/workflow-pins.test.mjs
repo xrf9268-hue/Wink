@@ -120,6 +120,47 @@ test('evaluateReference accepts every immutable reference shape', () => {
   }
 });
 
+test('a quoted `uses` mapping key is read as a real reference', () => {
+  const references = scanUsesReferences(
+    ['jobs:', '  a:', '    steps:', `      - "uses": actions/cache@main`].join('\n'),
+  );
+
+  assert.equal(references.length, 1);
+  assert.equal(references[0].value, 'actions/cache@main');
+  assert.deepEqual(
+    evaluateReference(references[0]).problems.map((problem) => problem.code),
+    ['mutable-reference', 'missing-version-comment'],
+  );
+});
+
+test('a `uses` inside a YAML flow mapping fails closed instead of vanishing', () => {
+  const references = scanUsesReferences(
+    ['jobs:', '  a:', '    steps:', '      - { name: Cache, uses: actions/cache@main }'].join('\n'),
+  );
+
+  assert.equal(references.length, 1);
+  assert.equal(references[0].flowMapping, true);
+  assert.deepEqual(
+    evaluateReference(references[0]).problems.map((problem) => problem.code),
+    ['flow-mapping-reference'],
+  );
+});
+
+test('a brace that is not a flow-mapping `uses` key is left alone', () => {
+  const references = scanUsesReferences(
+    [
+      'jobs:',
+      '  a:',
+      '    steps:',
+      '      - name: Interpolated',
+      '        if: ${{ github.event_name == "push" }}',
+      '        run: echo "{ uses: not/a-reference@v1 }"',
+    ].join('\n'),
+  );
+
+  assert.deepEqual(references, []);
+});
+
 test('a reference hidden in a block scalar is reported, not skipped as opaque text', () => {
   const references = scanUsesReferences(
     ['jobs:', '  a:', '    steps:', '      - uses: >-', '          actions/checkout@main'].join('\n'),
@@ -224,6 +265,7 @@ test('the violation fixtures fail with every expected policy code', async () => 
   assert.equal(result.ok, false);
   assert.deepEqual(codesFor(result.findings), [
     'block-scalar-reference',
+    'flow-mapping-reference',
     'inconsistent-action-pin',
     'inconsistent-version-comment',
     'invalid-version-comment',
@@ -283,7 +325,7 @@ test('the validator entrypoint fails on a discovery root with no definitions', a
 test('CI runs the pin validator and the governance script tests', async () => {
   const ciWorkflow = await readFile(join(repositoryRoot, '.github/workflows/ci.yml'), 'utf8');
 
-  assert.match(ciWorkflow, /node --test '\.github\/scripts\/tests\/\*\*\/\*\.test\.mjs'/);
+  assert.match(ciWorkflow, /node --test \.github\/scripts\/tests\/\*\.test\.mjs/);
   assert.match(ciWorkflow, /node \.github\/scripts\/validate-workflow-pins\.mjs/);
 });
 

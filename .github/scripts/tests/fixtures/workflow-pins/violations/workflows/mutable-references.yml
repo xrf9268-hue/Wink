@@ -48,3 +48,7 @@ jobs:
       - name: Reference hidden in a block scalar
         uses: >-
           actions/checkout@main
+
+      - { name: Reference hidden in a flow mapping, uses: actions/checkout@main }
+
+      - "uses": actions/cache@main

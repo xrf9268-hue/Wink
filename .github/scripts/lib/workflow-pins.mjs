@@ -22,8 +22,23 @@ const REMOTE_REFERENCE_PATTERN =
 // indented past its key, and those lines are opaque text. Without this the
 // scanner reports a `uses:` written inside a shell heredoc as a real reference.
 const BLOCK_SCALAR_PATTERN = /^[^\s#][^:]*:\s*[|>][+-]?\d*\s*(?:#.*)?$/;
-const USES_PATTERN = /^uses:\s*(.*)$/;
+// YAML permits a quoted mapping key, and GitHub accepts `"uses": owner/repo@ref`.
+const USES_PATTERN = /^(?:uses|"uses"|'uses')\s*:\s*(.*)$/;
 const BLOCK_SCALAR_INDICATOR_PATTERN = /^[|>][+-]?\d*$/;
+// A flow mapping (`- { name: Cache, uses: owner/repo@main }`) is valid YAML that
+// GitHub honors, but its `uses` never starts a line. Rather than grow a YAML
+// parser, detect the shape and fail closed — an unreadable reference must never
+// be mistaken for an absent one.
+const FLOW_MAPPING_USES_PATTERN = /[{,]\s*(?:uses|"uses"|'uses')\s*:/;
+// A flow mapping only ever opens in value position: `- { … }` (the leading `- `
+// is already stripped) or `key: { … }`. Anchoring there, after quoted spans are
+// blanked out, keeps `run: echo "{ uses: x }"` from reading as a reference.
+const FLOW_MAPPING_OPENS_PATTERN = /^\{|:\s*\{/;
+const QUOTED_SPAN_PATTERN = /"(?:[^"\\]|\\.)*"|'(?:[^']|'')*'/g;
+
+function blankQuotedSpans(text) {
+  return text.replace(QUOTED_SPAN_PATTERN, '""');
+}
 
 function splitIndent(line) {
   const match = /^([ \t]*)((?:-[ \t]+)*)(.*)$/.exec(line);
@@ -92,6 +107,12 @@ export function scanUsesReferences(source) {
     if (!match) {
       if (BLOCK_SCALAR_PATTERN.test(rest)) {
         blockScalarKeyColumn = keyColumn;
+        return;
+      }
+
+      const bare = blankQuotedSpans(rest);
+      if (FLOW_MAPPING_OPENS_PATTERN.test(bare) && FLOW_MAPPING_USES_PATTERN.test(bare)) {
+        references.push({ line: index + 1, value: rest.trim(), comment: null, flowMapping: true });
       }
 
       return;
@@ -114,8 +135,17 @@ export function scanUsesReferences(source) {
   return references;
 }
 
-export function evaluateReference({ value, comment, blockScalar = false }) {
+export function evaluateReference({ value, comment, blockScalar = false, flowMapping = false }) {
   const problems = [];
+
+  if (flowMapping) {
+    problems.push({
+      code: 'flow-mapping-reference',
+      message: `\`${value}\` puts \`uses\` inside a YAML flow mapping; rewrite the step in block style so each \`uses:\` starts its own line and the immutable-reference policy can read it.`,
+    });
+
+    return { kind: 'invalid', action: null, ref: null, version: null, problems };
+  }
 
   if (blockScalar) {
     problems.push({
