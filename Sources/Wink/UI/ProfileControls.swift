@@ -179,7 +179,7 @@ struct ProfileBar: View {
                         bundle: WinkResourceBundle.bundle
                     )
                     : String(
-                        localized: "This usually means an older version of Wink edited it. Wink has changed nothing yet.",
+                        localized: "This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.",
                         bundle: WinkResourceBundle.bundle
                     )
             ) {

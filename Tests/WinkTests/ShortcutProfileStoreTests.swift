@@ -289,7 +289,7 @@ struct ShortcutProfileRecoveryTests {
         try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(profileID))
 
         let store = harness.makeStore()
-        guard case let .activeProfileUnreadable(profiles, activeProfileID, preservedCopyPath) = store.load() else {
+        guard case let .activeProfileUnreadable(profiles, activeProfileID, preservedCopyPath, _) = store.load() else {
             Issue.record("expected activeProfileUnreadable")
             return
         }
@@ -357,7 +357,7 @@ struct ShortcutProfileRecoveryTests {
         try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(profileID))
 
         let store = harness.makeStore()
-        guard case let .activeProfileUnreadable(profiles, activeProfileID, preservedCopyPath) = store.load() else {
+        guard case let .activeProfileUnreadable(profiles, activeProfileID, preservedCopyPath, _) = store.load() else {
             Issue.record("expected activeProfileUnreadable")
             return
         }
@@ -377,7 +377,7 @@ struct ShortcutProfileRecoveryTests {
         try FileManager.default.removeItem(at: harness.layout.profileDataURL(profileID))
 
         let store = harness.makeStore()
-        guard case let .activeProfileUnreadable(_, _, preservedCopyPath) = store.load() else {
+        guard case let .activeProfileUnreadable(_, _, preservedCopyPath, _) = store.load() else {
             Issue.record("expected activeProfileUnreadable")
             return
         }
@@ -1078,7 +1078,7 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
-    func aMirrorOneWriteBehindIsRecognizedAsWinkOwnRatherThanForeign() throws {
+    func aMirrorOneWriteBehindAsksRatherThanOverwriting() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
         try harness.writeLegacyShortcuts([makeTestShortcut()])
@@ -1091,12 +1091,15 @@ struct ShortcutProfileMirrorTests {
 
         // The reordering window D7 admits: `Data.write(.atomic)` renames
         // without an fsync, so the descriptor's rename can reach disk while
-        // the mirror's does not. Simulate it by failing only the mirror write.
+        // the mirror's does not. That is NOT the same as the mirror write
+        // failing — a failure is reported and skips the descriptor, keeping
+        // the two consistent. Simulate the real window by letting the mirror
+        // write report success while writing nothing, so the descriptor
+        // advances alone.
         let mirrorURL = harness.layout.mirrorURL
         let failing = harness.makeStore(
             writeClient: ShortcutProfileStore.WriteClient { data, url in
-                struct InjectedWriteFailure: Error {}
-                guard url != mirrorURL else { throw InjectedWriteFailure() }
+                guard url != mirrorURL else { return }
                 try data.write(to: url, options: .atomic)
             }
         )
@@ -1111,10 +1114,12 @@ struct ShortcutProfileMirrorTests {
             return
         }
 
-        // No spurious "changed outside Wink" banner — whose Import action
-        // would have reverted the profile to the older bindings.
-        #expect(after.foreignMirror == nil)
-        #expect(harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_MIRROR_STALE") })
+        // Deliberately NOT silently repaired. These bytes are indistinguishable
+        // from a user or older build restoring the previous configuration on
+        // purpose, so the classification asks instead of overwriting. The
+        // banner names both causes.
+        #expect(after.foreignMirror != nil)
+        #expect(harness.data(at: mirrorURL) != nil)
     }
 
     @Test

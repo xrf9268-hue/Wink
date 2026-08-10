@@ -3954,19 +3954,19 @@
         }
       }
     },
-    "This usually means an older version of Wink edited it. Wink has changed nothing yet.": {
+    "This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This usually means an older version of Wink edited it. Wink has changed nothing yet."
+            "value": "This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这通常意味着旧版本的 Wink 修改过它。Wink 目前还未做任何改动。"
+            "value": "这通常意味着旧版本的 Wink 修改过它，也可能发生在意外关机之后。Wink 目前还未做任何改动。"
           }
         }
       }

@@ -125,7 +125,7 @@ final class ShortcutProfileState {
             self.profiles = profiles
             return []
 
-        case let .activeProfileUnreadable(profiles, activeProfileID, preservedCopyPath):
+        case let .activeProfileUnreadable(profiles, activeProfileID, preservedCopyPath, importableMirror):
             reset(
                 recovery: .activeProfileUnreadable(
                     profileID: activeProfileID,
@@ -134,6 +134,10 @@ final class ShortcutProfileState {
             )
             self.profiles = profiles
             self.unreadableProfileIDs = [activeProfileID]
+            // An interrupted first-run migration leaves an intact legacy file
+            // with nothing pointing at it; offering it through the same
+            // import banner turns a dead end into a choice.
+            self.pendingForeignMirror = importableMirror
             return []
         }
     }

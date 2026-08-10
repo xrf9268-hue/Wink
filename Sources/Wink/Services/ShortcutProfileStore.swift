@@ -181,7 +181,12 @@ final class ShortcutProfileStore {
         case activeProfileUnreadable(
             profiles: [ShortcutProfile],
             activeProfileID: UUID,
-            preservedCopyPath: String?
+            preservedCopyPath: String?,
+            /// Set only when the active profile has no data file *and* a
+            /// legacy `shortcuts.json` still parses — an interrupted first-run
+            /// migration. The user is offered that import rather than a dead
+            /// end; nothing is adopted without the choice.
+            importableMirror: ForeignMirror? = nil
         )
     }
 
@@ -391,10 +396,20 @@ final class ShortcutProfileStore {
         guard fileManager.fileExists(atPath: dataURL.path) else {
             locator.setActiveProfileID(nil)
             log("PROFILE_TRACE_UNREADABLE id=\(activeProfileID.uuidString) reason=missing preservedCopyPath=none")
+            // The metadata can outlive the data it describes: atomic writes
+            // rename without an fsync, so a power loss during first-run
+            // migration can land manifest.json while the Default profile's
+            // data rename is still in flight. Migration never re-runs once a
+            // manifest exists, so without this the intact legacy file would
+            // sit on disk with nothing offered to import it. Surfacing it as
+            // an importable mirror reuses the path that already exists for
+            // outside edits, and still requires an explicit choice.
+            let resumableMirror = resumableLegacyMirror(layout: layout, activeProfileID: activeProfileID)
             return .activeProfileUnreadable(
                 profiles: manifest.profiles,
                 activeProfileID: activeProfileID,
-                preservedCopyPath: nil
+                preservedCopyPath: nil,
+                importableMirror: resumableMirror
             )
         }
 
@@ -439,6 +454,23 @@ final class ShortcutProfileStore {
                 foreignMirror: foreignMirror
             )
         )
+    }
+
+    /// A legacy `shortcuts.json` that still parses, offered as an import when
+    /// the active profile has no data file of its own.
+    private func resumableLegacyMirror(
+        layout: ShortcutProfileLayout,
+        activeProfileID: UUID
+    ) -> ForeignMirror? {
+        guard
+            let data = try? Data(contentsOf: layout.mirrorURL),
+            let shortcuts = try? JSONDecoder().decode([AppShortcut].self, from: data),
+            Set(shortcuts.map(\.id)).count == shortcuts.count
+        else {
+            return nil
+        }
+        log("PROFILE_TRACE_MIGRATION_RESUMABLE id=\(activeProfileID.uuidString) shortcuts=\(shortcuts.count)")
+        return ForeignMirror(profileID: activeProfileID, shortcuts: shortcuts)
     }
 
     // MARK: - Migration
@@ -647,10 +679,13 @@ final class ShortcutProfileStore {
             return nil
         }
 
-        // Either digest counts as "Wink wrote this": the current one covers an
-        // ordinary stale mirror, and the previous one covers the reordering
-        // window where the descriptor's rename landed and the mirror's did not.
-        if descriptor.sha256 == mirrorDigest || descriptor.previousSHA256 == mirrorDigest {
+        // Only the CURRENT digest counts as "Wink wrote this". Remembering the
+        // previous one would also match a user or older build deliberately
+        // restoring the immediately preceding configuration — byte-identical
+        // on disk to the crash window it was meant to recognize — and this
+        // branch overwrites silently. When two states cannot be told apart,
+        // the safe wrong answer is to ask, not to act.
+        if descriptor.sha256 == mirrorDigest {
             log("PROFILE_TRACE_MIRROR_STALE describedProfile=\(descriptor.profileID.uuidString) active=\(activeProfileID.uuidString)")
             rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
             return nil
@@ -728,15 +763,6 @@ final class ShortcutProfileStore {
         writeClient: WriteClient,
         diagnosticClient: DiagnosticClient
     ) {
-        // Read the digest we are about to replace, so the new descriptor can
-        // still vouch for it. `Data.write(.atomic)` renames without an fsync,
-        // so under sudden power loss the descriptor's rename can reach disk
-        // while the mirror's does not; without the previous digest, Wink's own
-        // one-step-behind mirror would then look like an outside edit and the
-        // user would be offered an "import" that silently reverts the profile.
-        let previousSHA256 = (try? Data(contentsOf: layout.mirrorDescriptorURL))
-            .flatMap { try? metadataDecoder.decode(ShortcutProfileMirrorDescriptor.self, from: $0) }
-            .map(\.sha256)
         // The mirror is derived data written last. Its failure is reported but
         // never fails the operation that produced it, because a stale mirror
         // cannot affect this build's behavior.
@@ -751,8 +777,7 @@ final class ShortcutProfileStore {
 
         let descriptor = ShortcutProfileMirrorDescriptor(
             profileID: profileID,
-            sha256: digest(data),
-            previousSHA256: previousSHA256
+            sha256: digest(data)
         )
         do {
             try writeClient.write(try metadataEncoder.encode(descriptor), layout.mirrorDescriptorURL)
