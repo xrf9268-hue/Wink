@@ -481,13 +481,19 @@ final class ShortcutProfileState {
     func adoptPendingForeignMirror() {
         guard let mirror = pendingForeignMirror else { return }
         do {
-            if let adopted = try store.adoptForeignMirror(mirror) {
+            let adopted = try store.adoptForeignMirror(mirror)
+            // The import repaired that profile's data file whether or not it is
+            // the active one — a nil return means only that there is nothing to
+            // arm right now. Leaving it marked unreadable would keep every
+            // picker disabling a profile that is now perfectly loadable, until
+            // the next relaunch says otherwise.
+            unreadableProfileIDs.remove(mirror.profileID)
+            if let adopted {
                 // The store re-commits the pointer when this import is what
                 // repaired an unloadable active profile, so clearing the
                 // recovery state here is what turns the banner off and puts
                 // the profile back in the picker.
                 activeProfileID = mirror.profileID
-                unreadableProfileIDs.remove(mirror.profileID)
                 if case .activeProfileUnreadable = recovery {
                     recovery = .none
                     profiles = store.manifest?.profiles ?? profiles

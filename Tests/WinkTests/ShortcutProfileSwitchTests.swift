@@ -877,6 +877,60 @@ struct ShortcutProfileRecoveryRuntimeTests {
         #expect(state.errorMessage != nil)
     }
 
+    @MainActor
+    @Test
+    func importingIntoAnInactiveProfileMarksItReadableAgain() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+
+        let setup = harness.makeStore()
+        guard case let .ready(loaded) = setup.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        let work = try setup.createProfile(named: "Work", duplicating: nil)
+        _ = try setup.activateProfile(work.id)
+
+        // Default is inactive and unreadable, and the outside edit is exactly
+        // what repairs it. A nil return means only "nothing to arm right now".
+        try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(defaultID))
+        let repaired = try PersistenceService.encodeShortcuts([makeTestShortcut(appName: "Mail")])
+        try harness.writeRaw(String(decoding: repaired, as: UTF8.self), to: harness.layout.mirrorURL)
+        try harness.writeRaw(
+            """
+            {"schemaVersion": 1, "profileID": "\(defaultID.uuidString)", "sha256": "\(ShortcutProfileStore.digest(Data("stale".utf8)))"}
+            """,
+            to: harness.layout.mirrorDescriptorURL
+        )
+
+        let store = harness.makeStore()
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let state = ShortcutProfileState(store: store, shortcutManager: manager)
+        _ = state.loadAtStartup()
+        #expect(state.unreadableProfileIDs.contains(defaultID))
+        #expect(state.pendingForeignMirror?.profileID == defaultID)
+
+        state.adoptPendingForeignMirror()
+
+        // Still on Work, but Default is loadable now and every picker must say so.
+        #expect(state.activeProfileID == work.id)
+        #expect(!state.unreadableProfileIDs.contains(defaultID))
+        #expect(state.pendingForeignMirror == nil)
+    }
+
 /// Reports every deletion as failed, which is what an unavailable or erroring
 /// SQLite connection does.
 final class FailingDeleteUsageTracker: UsageTracking, @unchecked Sendable {
