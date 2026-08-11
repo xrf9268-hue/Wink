@@ -192,6 +192,14 @@ it. `manifest.json` therefore carries a `pendingUsageDeletions` journal, written
 commit as the removal, and the rows are deleted afterwards; clearing the journal is a separate
 commit so a failure there retries rather than silently dropping the ids.
 
+`deleteUsage` must **report whether the rows are actually gone**, and only confirmed ids may
+leave the journal. A void-returning delete cannot distinguish a completed transaction from a
+rolled-back one, so an unavailable or erroring database would take the retry record with it
+and strand the rows permanently — the one outcome the journal exists to prevent. Ids whose
+deletion failed stay journalled and are retried on the next launch. The reporting has to reach
+all the way down: a transaction helper that swallows its own commit result makes every caller
+above it equally unable to tell.
+
 The journal records a conclusion about an inventory, not a fact about ids, so it is
 **re-checked at drain time** against the profiles that exist then. A manifest restored from a
 backup beside newer profile data files can owe a deletion for an id a live profile still
@@ -735,6 +743,14 @@ cannot invent one later:
 > re-read, because reading the same path twice can observe two different files — the same rule
 > migration follows when it decodes the exact buffer it copies.
 >
+> **Carried forward means the bytes, not just the rows.** The commit also writes the compat
+> mirror, so handing it only the decoded array sends it back to the file for bytes and reopens
+> the gap one function later: the runtime arms what was validated while the mirror describes
+> whatever is on disk by then. The rows and the bytes they were decoded from therefore travel
+> as a single value from validation to commit. A mirror write with no payload in hand and an
+> unreadable profile file **refuses** — the re-encode it used to fall back on ran exactly when
+> the file could not be read, and produced a mirror with every unmodelled member stripped.
+>
 > This cannot be made total. A write can still fail after the drafts are gone, so the failure
 > message says what was discarded rather than reporting that nothing changed.
 
@@ -871,6 +887,7 @@ packaged-app validation.
 | V7 | Duplicate mints IDs and preserves every member | Duplicate a profile whose file carries **unmodelled JSON members**; assert ID sets are disjoint, and compare the two payloads **as JSON, member by member, with only `id` removed** — asserting on modelled fields alone would pass for an implementation that decoded and re-encoded, which is the loss this rule exists to prevent. Byte equality is deliberately *not* asserted: the `id` rewrite forces a re-serialization (see D6) |
 | V8 | Usage is not cross-deleted | Same ID in two profiles → delete in one → assert the other's rows survive and `deleteUsage` was not issued |
 | V8c | History is never erased before the commit lands | Fail the manifest write during a delete; assert `deleteUsage` was not issued for any id and the profile's rows are intact |
+| V8e | A failed deletion keeps its journal entry | Make the usage tracker report failure; assert the drain attempted the id, and that the journal still lists it afterwards |
 | V8d | The journal is re-checked, not trusted | Hand-write a manifest owing a deletion for an id a live profile still holds; assert the drain issues nothing and keeps the id journalled |
 | V8b | Exclusivity fails closed | Make a remaining profile unreadable → delete another profile → assert **no** usage deletion is issued, for any ID |
 | V9 | Editor conflicts | Switch during recorder / composer draft / pending import; assert D14's row-by-row outcome |
