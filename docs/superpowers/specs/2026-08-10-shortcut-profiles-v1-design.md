@@ -176,7 +176,7 @@ Write order, with the important distinction that a **switch writes no profile da
 | Delete (of an inactive profile) | `manifest.json` → unlink |
 | Delete that failed with an unrecoverable switch | mirror → `mirror.json` only — nothing else committed, and the mirror follows the switch that stuck |
 | Import an outside edit into profile P | `Profiles/<P>.json` → mirror → `mirror.json` |
-| Any mirror write | re-check the existing compat file against  and preserve it first when they disagree |
+| Any mirror write | re-check the existing compat file against `mirror.json` and preserve it first when they disagree |
 | Recover a quarantined profile list | `Profiles/<new>.json` → `manifest.json` → `Profiles/active.json` → preserved copy of the existing mirror → mirror → `mirror.json` |
 
 Deleting the **active** profile is a switch with an extra step, not a lighter operation: it
