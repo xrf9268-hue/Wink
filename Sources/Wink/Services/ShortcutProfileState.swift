@@ -257,6 +257,19 @@ final class ShortcutProfileState {
         }
     }
 
+    /// A free name for a brand-new empty profile. "New Profile" is only the
+    /// base: submitting it unconditionally means the second use always fails
+    /// duplicate-name validation for a reason the user did nothing to cause.
+    func suggestedNewProfileName() -> String {
+        let base = String(localized: "New Profile", bundle: WinkResourceBundle.bundle)
+        guard ShortcutProfileNameRules.violation(for: base, in: profiles) != nil else { return base }
+        return ShortcutProfileNameRules.duplicateName(
+            basedOn: base,
+            in: profiles,
+            fallbackSuffix: activeProfileID ?? UUID()
+        )
+    }
+
     /// The name a Duplicate action should pre-fill.
     func suggestedDuplicateName() -> String {
         guard let activeProfile else {

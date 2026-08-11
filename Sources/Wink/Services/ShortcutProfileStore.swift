@@ -325,7 +325,17 @@ final class ShortcutProfileStore {
             let decodedManifest = try? Self.metadataDecoder.decode(ShortcutProfileManifest.self, from: manifestData),
             decodedManifest.schemaVersion == ShortcutProfileManifest.currentSchemaVersion,
             !decodedManifest.profiles.isEmpty,
-            Set(decodedManifest.profiles.map(\.id)).count == decodedManifest.profiles.count
+            Set(decodedManifest.profiles.map(\.id)).count == decodedManifest.profiles.count,
+            // A hand-edited or partially restored manifest can carry empty or
+            // colliding names. Both break the surfaces that address a profile
+            // by the name the user reads — the picker, the menu, rename — so
+            // they are load failures, exactly like a duplicate id. The
+            // 32-profile cap is deliberately NOT enforced here: existing data
+            // over the cap stays usable, and `createProfile` already refuses
+            // to add to it.
+            decodedManifest.profiles.allSatisfy { !ShortcutProfileNameRules.trimmed($0.name).isEmpty },
+            Set(decodedManifest.profiles.map { ShortcutProfileNameRules.comparisonKey($0.name) }).count
+                == decodedManifest.profiles.count
         else {
             let preserved = preserveRejectedPayload(manifestData, originalURL: layout.manifestURL)
             manifest = nil
@@ -815,11 +825,12 @@ final class ShortcutProfileStore {
         writeMirrorForActiveProfile(shortcuts, profileID: profileID, layout: layout)
     }
 
+    @discardableResult
     private func writeMirrorForActiveProfile(
         _ shortcuts: [AppShortcut],
         profileID: UUID,
         layout: ShortcutProfileLayout
-    ) {
+    ) -> Bool {
         // Prefer the profile file's own bytes so unmodelled JSON members
         // reach the mirror verbatim; a re-encoding is only a fallback for the
         // case where that file cannot be read at all.
@@ -830,9 +841,9 @@ final class ShortcutProfileStore {
             data = encoded
         } else {
             log("PROFILE_TRACE_MIRROR_FAILED reason=encode_failed")
-            return
+            return false
         }
-        Self.writeMirror(
+        return Self.writeMirror(
             data: data,
             profileID: profileID,
             layout: layout,
@@ -843,13 +854,14 @@ final class ShortcutProfileStore {
 
     /// `static` and parameterized so the `@Sendable` derived-copy closure can
     /// call it without capturing the main-actor-isolated store.
+    @discardableResult
     nonisolated private static func writeMirror(
         data: Data,
         profileID: UUID,
         layout: ShortcutProfileLayout,
         writeClient: WriteClient,
         diagnosticClient: DiagnosticClient
-    ) {
+    ) -> Bool {
         // Preserve anything unattributable BEFORE replacing it. Doing this
         // here rather than at each call site is what makes the invariant
         // unconditional: the launch-time classification cannot see an edit
@@ -892,7 +904,7 @@ final class ShortcutProfileStore {
                         let message = "PROFILE_TRACE_MIRROR_WRITE_SKIPPED reason=preserve_failed detail=\(error.localizedDescription)"
                         logger.error("\(message, privacy: .public)")
                         diagnosticClient.log(message)
-                        return
+                        return false
                     }
                 }
             }
@@ -907,7 +919,7 @@ final class ShortcutProfileStore {
             let message = "PROFILE_TRACE_MIRROR_FAILED reason=mirror_write_failed detail=\(error.localizedDescription)"
             logger.error("\(message, privacy: .public)")
             diagnosticClient.log(message)
-            return
+            return false
         }
 
         let descriptor = ShortcutProfileMirrorDescriptor(
@@ -920,7 +932,10 @@ final class ShortcutProfileStore {
             let message = "PROFILE_TRACE_MIRROR_FAILED reason=descriptor_write_failed detail=\(error.localizedDescription)"
             logger.error("\(message, privacy: .public)")
             diagnosticClient.log(message)
+            return false
         }
+
+        return true
     }
 
     nonisolated static func digest(_ data: Data) -> String {
@@ -1390,7 +1405,17 @@ final class ShortcutProfileStore {
         // The UI promises the unreadable file was kept. If it cannot be kept,
         // the recovery must not proceed — replacing the manifest would lose
         // the profile inventory while the banner claimed a copy exists.
-        if let existing = try? Data(contentsOf: layout.manifestURL) {
+        if fileManager.fileExists(atPath: layout.manifestURL.path) {
+            // Present but unreadable is the case that matters: the directory
+            // can still permit an atomic replacement, so skipping the guard
+            // here would replace a file whose contents were never captured.
+            guard let existing = try? Data(contentsOf: layout.manifestURL) else {
+                log("PROFILE_TRACE_RECOVER_REFUSED reason=manifest_unreadable_for_backup")
+                throw StoreError.writeFailed(
+                    path: layout.manifestURL.path,
+                    reason: "could not read the profile list in order to preserve it"
+                )
+            }
             guard preserveRejectedPayload(existing, originalURL: layout.manifestURL) != nil else {
                 log("PROFILE_TRACE_RECOVER_REFUSED reason=preserve_failed")
                 throw StoreError.writeFailed(
@@ -1517,7 +1542,13 @@ final class ShortcutProfileStore {
     @discardableResult
     func discardForeignMirror(activeShortcuts: [AppShortcut]) -> Bool {
         guard let layout, let activeProfileID = locator.currentActiveProfileID() else { return false }
-        writeMirrorForActiveProfile(activeShortcuts, profileID: activeProfileID, layout: layout)
+        // Reporting success when the file still holds the foreign edit would
+        // clear the banner and leave the user believing they chose to keep
+        // their profile, while the compat file says otherwise.
+        guard writeMirrorForActiveProfile(activeShortcuts, profileID: activeProfileID, layout: layout) else {
+            log("PROFILE_TRACE_FOREIGN_MIRROR_DISCARD_FAILED profile=\(activeProfileID.uuidString)")
+            return false
+        }
         log("PROFILE_TRACE_FOREIGN_MIRROR_DISCARDED profile=\(activeProfileID.uuidString)")
         return true
     }

@@ -292,7 +292,7 @@ struct ProfileManagerSheet: View {
                     }
                     Button {
                         profileState.createProfile(
-                            named: String(localized: "New Profile", bundle: WinkResourceBundle.bundle),
+                            named: profileState.suggestedNewProfileName(),
                             duplicatingActiveProfile: false
                         )
                     } label: {

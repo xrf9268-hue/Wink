@@ -1126,6 +1126,102 @@ struct ShortcutProfileCRUDTests {
     }
 
     @Test
+    func recoveryRefusesWhenTheManifestCannotEvenBeReadForBackup() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        _ = harness.makeStore().load()
+
+        // Present but unreadable is the dangerous shape: the directory can
+        // still accept an atomic replacement, so a guard that only runs when
+        // the read succeeds would replace a file it never captured.
+        try harness.writeRaw("{ broken", to: harness.layout.manifestURL)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: harness.layout.manifestURL.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644],
+                ofItemAtPath: harness.layout.manifestURL.path
+            )
+        }
+
+        let store = harness.makeStore()
+        guard case .manifestUnreadable = store.load() else {
+            Issue.record("expected manifestUnreadable")
+            return
+        }
+        #expect(throws: (any Error).self) {
+            _ = try store.recoverManifest()
+        }
+    }
+
+    @Test
+    func aManifestWithEmptyOrCollidingNamesIsALoadFailure() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        _ = harness.makeStore().load()
+
+        // Both break every surface that addresses a profile by the name the
+        // user reads, so they are load failures exactly like a duplicate id.
+        try harness.writeRaw(
+            """
+            {"schemaVersion": 1, "profiles": [
+              {"id": "11111111-1111-1111-1111-111111111111", "name": "Work",
+               "createdAt": "2026-08-10T00:00:00Z", "modifiedAt": "2026-08-10T00:00:00Z"},
+              {"id": "22222222-2222-2222-2222-222222222222", "name": "work",
+               "createdAt": "2026-08-10T00:00:00Z", "modifiedAt": "2026-08-10T00:00:00Z"}
+            ]}
+            """,
+            to: harness.layout.manifestURL
+        )
+        guard case .manifestUnreadable = harness.makeStore().load() else {
+            Issue.record("expected a colliding-name manifest to be a load failure")
+            return
+        }
+
+        try harness.writeRaw(
+            """
+            {"schemaVersion": 1, "profiles": [
+              {"id": "33333333-3333-3333-3333-333333333333", "name": "   ",
+               "createdAt": "2026-08-10T00:00:00Z", "modifiedAt": "2026-08-10T00:00:00Z"}
+            ]}
+            """,
+            to: harness.layout.manifestURL
+        )
+        guard case .manifestUnreadable = harness.makeStore().load() else {
+            Issue.record("expected an empty-name manifest to be a load failure")
+            return
+        }
+    }
+
+    @Test
+    func discardReportsFailureWhenTheFileCouldNotBeRewritten() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let mirrorURL = harness.layout.mirrorURL
+        let store = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                if url == mirrorURL { throw InjectedWriteFailure() }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // Reporting success here would clear the banner and leave the user
+        // believing they kept their profile while the file says otherwise.
+        #expect(store.discardForeignMirror(activeShortcuts: loaded.activeShortcuts) == false)
+    }
+
+    @Test
     func recoveryRefusesToReplaceAManifestItCannotPreserve() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
