@@ -808,7 +808,7 @@ struct ShortcutProfileRecoveryRuntimeTests {
         // The database refuses the delete. Clearing the journal here would
         // strand the rows with no record that they were ever owed a deletion.
         state.drainPendingUsageDeletions()
-        try await Task.sleep(nanoseconds: 300_000_000)
+        await state.waitForPendingUsageDrainForTesting()
 
         #expect(tracker.attempts.values.contains(shared.id))
         #expect(store.pendingUsageDeletions() == [shared.id])

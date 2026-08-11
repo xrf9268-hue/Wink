@@ -55,6 +55,10 @@ final class ShortcutProfileState {
     private let store: ShortcutProfileStore
     private let shortcutManager: ShortcutManager
     private let usageTracker: (any UsageTracking)?
+    /// The in-flight drain, so tests can await it instead of sleeping. A test
+    /// that guesses a duration passes on a quiet machine and fails on a loaded
+    /// CI runner, which is a flake reported as a defect.
+    private var usageDrainTask: Task<Void, Never>?
     private let prepareForSwitch: @MainActor () -> DiscardedProfileSwitchDrafts
     private let hasUnsavedEditorWork: @MainActor () -> Bool
     private let onProfileApplied: @MainActor () -> Void
@@ -175,8 +179,11 @@ final class ShortcutProfileState {
         // journal: a restored manifest can owe a deletion for an id a live
         // profile still holds, and that history is not recoverable once gone.
         let deletable = store.drainableUsageDeletions().deletable
-        guard let usageTracker, !deletable.isEmpty else { return }
-        Task { [weak self] in
+        guard let usageTracker, !deletable.isEmpty else {
+            usageDrainTask = nil
+            return
+        }
+        usageDrainTask = Task { [weak self] in
             // Only the ids whose rows are confirmed gone leave the journal. A
             // failed delete keeps its entry so the next launch retries it —
             // clearing it would strand the rows with no record that they were
@@ -188,6 +195,10 @@ final class ShortcutProfileState {
             guard !deleted.isEmpty else { return }
             await MainActor.run { self?.store.clearPendingUsageDeletions(deleted) }
         }
+    }
+
+    func waitForPendingUsageDrainForTesting() async {
+        await usageDrainTask?.value
     }
 
     private func apply(_ loaded: ShortcutProfileStore.LoadedProfiles) {
