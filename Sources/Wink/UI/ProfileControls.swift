@@ -47,7 +47,14 @@ struct ProfileBar: View {
                 selection: profileSelection
             ) {
                 ForEach(profileState.profiles) { profile in
-                    Text(profileRowLabel(profile)).tag(Optional(profile.id))
+                    Text(profileRowLabel(profile))
+                        .tag(Optional(profile.id))
+                        // Matches the manager list and the menu bar, which
+                        // already refuse these rows. `switchToProfile` rejects
+                        // them regardless — a Picker row is not a reliable
+                        // place to enforce a rule — but offering a row that
+                        // cannot be chosen is its own defect.
+                        .disabled(profileState.unreadableProfileIDs.contains(profile.id))
                 }
             }
             .labelsHidden()

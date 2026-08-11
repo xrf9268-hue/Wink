@@ -1944,6 +1944,64 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func migrationDecodesTheExactBytesItCopies() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+
+        // An unmodelled member is the whole point: it survives a byte copy and
+        // does not survive a re-encode, so it distinguishes the two paths.
+        let legacy = """
+        [
+          {
+            "id" : "66666666-6666-6666-6666-666666666666",
+            "appName" : "Safari",
+            "bundleIdentifier" : "com.apple.Safari",
+            "keyEquivalent" : "s",
+            "modifierFlags" : [ "command" ],
+            "isEnabled" : true,
+            "futureMemberFromANewerBuild" : "kept"
+          }
+        ]
+        """
+        try harness.writeRawLegacyShortcuts(legacy)
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // One read means the armed payload and the installed file cannot
+        // disagree, and there is no second read that could fail and drop the
+        // profile into the re-encoding fallback.
+        #expect(harness.data(at: harness.layout.profileDataURL(loaded.activeProfileID)) == Data(legacy.utf8))
+        #expect(loaded.activeShortcuts.count == 1)
+        #expect(loaded.activeShortcuts[0].appName == "Safari")
+    }
+
+    @Test
+    func aRefusedSwitchIsRejectedBeforeAnythingIsDiscarded() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(work.id))
+
+        // Validation writes nothing, so a caller can run it before discarding
+        // the recorder, the composer draft, or a pending import.
+        #expect(throws: (any Error).self) {
+            _ = try store.loadProfileForActivation(work.id)
+        }
+        #expect(store.locator.currentActiveProfileID() != work.id)
+    }
+
+    @Test
     func aCrashedSwitchIsRepairedWithoutWritingACopy() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

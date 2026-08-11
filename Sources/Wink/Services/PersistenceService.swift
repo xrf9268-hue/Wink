@@ -83,6 +83,20 @@ struct PersistenceService: Sendable {
     }
 
     func load() throws -> [AppShortcut] {
+        try loadWithBytes().shortcuts
+    }
+
+    /// The decoded payload **and** the exact bytes it was decoded from, read
+    /// once. `data` is nil only when the file does not exist.
+    ///
+    /// A caller that needs both must use this rather than `load()` followed by
+    /// its own `Data(contentsOf:)`: two reads of one path can observe two
+    /// different files. The migration copy is the case that matters — a second
+    /// read that returned different bytes would install one configuration and
+    /// arm another, and a second read that *failed* would fall through to a
+    /// re-encode, dropping exactly the unmodelled members the byte copy exists
+    /// to preserve.
+    func loadWithBytes() throws -> (shortcuts: [AppShortcut], data: Data?) {
         guard let url = storageURLProvider() else {
             let error = LoadError.storageUnavailable
             logLoadFailure(error)
@@ -90,7 +104,7 @@ struct PersistenceService: Sendable {
         }
 
         guard FileManager.default.fileExists(atPath: url.path) else {
-            return []
+            return ([], nil)
         }
 
         let data: Data
@@ -130,7 +144,7 @@ struct PersistenceService: Sendable {
             throw loadError
         }
 
-        return shortcuts
+        return (shortcuts, data)
     }
 
     func save(_ shortcuts: [AppShortcut]) throws {

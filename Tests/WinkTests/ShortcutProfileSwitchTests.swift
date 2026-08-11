@@ -665,4 +665,54 @@ struct ShortcutProfileRecoveryRuntimeTests {
         state.deleteProfile(defaultID)
         #expect(state.pendingForeignMirror == nil)
     }
+
+    @MainActor
+    @Test
+    func switchingToAnUnreadableProfileKeepsTheUsersInFlightWork() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+
+        let setup = harness.makeStore()
+        guard case let .ready(loaded) = setup.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        let work = try setup.createProfile(named: "Work", duplicating: nil)
+        try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(work.id))
+
+        let store = harness.makeStore()
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let prepareCount = CallbackRecorder<Bool>()
+        let state = ShortcutProfileState(
+            store: store,
+            shortcutManager: manager,
+            prepareForSwitch: {
+                prepareCount.record(true)
+                return DiscardedProfileSwitchDrafts()
+            }
+        )
+        _ = state.loadAtStartup()
+
+        // The switch cannot succeed, so nothing may be thrown away for it:
+        // prepareForSwitch cancels the recorder, the composer draft, and any
+        // pending import, and the user gets none of that back.
+        state.switchToProfile(work.id)
+
+        #expect(prepareCount.isEmpty)
+        #expect(state.activeProfileID == defaultID)
+        #expect(state.errorMessage != nil)
+    }
 }

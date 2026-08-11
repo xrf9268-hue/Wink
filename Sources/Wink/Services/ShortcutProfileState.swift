@@ -220,10 +220,22 @@ final class ShortcutProfileState {
             return
         }
 
+        // Validated BEFORE anything irreversible. `prepareForSwitch()` cancels
+        // the recorder, the composer draft, and any pending import, so running
+        // it for a switch that cannot succeed destroys work to no purpose —
+        // and an unreadable profile stays selectable in at least one surface.
+        let shortcuts: [AppShortcut]
+        do {
+            shortcuts = try store.loadProfileForActivation(profileID)
+        } catch {
+            errorMessage = userFacingMessage(for: error)
+            return
+        }
+
         let discarded = prepareForSwitch()
 
         do {
-            let shortcuts = try store.activateProfile(profileID)
+            try store.commitActivation(profileID, shortcuts: shortcuts)
             activeProfileID = profileID
             unreadableProfileIDs.remove(profileID)
             recovery = .none

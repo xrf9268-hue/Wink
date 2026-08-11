@@ -570,8 +570,14 @@ final class ShortcutProfileStore {
 
         if fileManager.fileExists(atPath: layout.mirrorURL.path) {
             do {
-                migrated = try profilePersistenceService(for: layout.mirrorURL).load()
-                migratedBytes = try? Data(contentsOf: layout.mirrorURL)
+                // One read. `migrated` arms the runtime and `migratedBytes`
+                // becomes the profile file, so they must be the same bytes:
+                // reading the path twice can observe two different files, and
+                // a failed second read used to fall through to a re-encode
+                // that drops the members this copy exists to preserve.
+                let legacy = try profilePersistenceService(for: layout.mirrorURL).loadWithBytes()
+                migrated = legacy.shortcuts
+                migratedBytes = legacy.data
             } catch {
                 // The existing quarantine already ran and preserved a copy.
                 // An empty Default profile must not then mirror itself over a
@@ -1207,15 +1213,35 @@ final class ShortcutProfileStore {
     ///
     /// A refused switch writes nothing and applies nothing.
     func activateProfile(_ profileID: UUID) throws -> [AppShortcut] {
-        guard let layout else { throw StoreError.storageUnavailable }
-        guard manifest != nil else { throw StoreError.manifestQuarantined }
+        let shortcuts = try loadProfileForActivation(profileID)
+        try commitActivation(profileID, shortcuts: shortcuts)
+        return shortcuts
+    }
 
-        let shortcuts = try self.shortcuts(in: profileID)
+    /// Validates a switch target and returns its payload, **writing nothing**.
+    ///
+    /// Split from the commit so a caller can discard in-flight work only once
+    /// the switch is known to be possible. `ShortcutProfileState` cancels the
+    /// recorder, the composer draft, and any pending import before switching —
+    /// work the user cannot get back — and an unreadable profile is reachable
+    /// from more than one selector, so "your recording is gone and the switch
+    /// failed anyway" is the one outcome with no upside.
+    func loadProfileForActivation(_ profileID: UUID) throws -> [AppShortcut] {
+        guard layout != nil else { throw StoreError.storageUnavailable }
+        guard manifest != nil else { throw StoreError.manifestQuarantined }
+        return try shortcuts(in: profileID)
+    }
+
+    /// Commits a switch whose payload `loadProfileForActivation` already
+    /// validated. The payload is passed in rather than re-read for the same
+    /// reason migration reads once: a second read of the same path can observe
+    /// a different file, and this one would commit the pointer for it.
+    func commitActivation(_ profileID: UUID, shortcuts: [AppShortcut]) throws {
+        guard let layout else { throw StoreError.storageUnavailable }
         try commitActivePointer(profileID, layout: layout)
         pointedProfileID = profileID
         locator.setActiveProfileID(profileID)
         writeMirrorForActiveProfile(shortcuts, profileID: profileID, layout: layout)
-        return shortcuts
     }
 
     // MARK: - CRUD
