@@ -767,4 +767,70 @@ struct ShortcutProfileRecoveryRuntimeTests {
         #expect(state.profiles.count == 2)
         #expect(state.errorMessage != nil)
     }
+
+    @MainActor
+    @Test
+    func aFailedUsageDeletionKeepsItsJournalEntryForTheNextLaunch() async throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        let shared = safariShortcut()
+        try harness.writeLegacyShortcuts([shared])
+
+        let setup = harness.makeStore()
+        guard case let .ready(loaded) = setup.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        _ = try setup.createProfile(named: "Work", duplicating: nil)
+        _ = try setup.deleteProfile(loaded.activeProfileID)
+        #expect(setup.pendingUsageDeletions() == [shared.id])
+
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let tracker = FailingDeleteUsageTracker()
+        let state = ShortcutProfileState(store: store, shortcutManager: manager, usageTracker: tracker)
+
+        // The database refuses the delete. Clearing the journal here would
+        // strand the rows with no record that they were ever owed a deletion.
+        state.drainPendingUsageDeletions()
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        #expect(tracker.attempts.values.contains(shared.id))
+        #expect(store.pendingUsageDeletions() == [shared.id])
+    }
+}
+
+/// Reports every deletion as failed, which is what an unavailable or erroring
+/// SQLite connection does.
+final class FailingDeleteUsageTracker: UsageTracking, @unchecked Sendable {
+    let attempts = CallbackRecorder<UUID>()
+    func usageCounts(days: Int, relativeTo now: Date) async -> [UUID: Int] { [:] }
+    func dailyCounts(days: Int, relativeTo now: Date) async -> [String: [(date: String, count: Int)]] { [:] }
+    func totalSwitches(days: Int, relativeTo now: Date) async -> Int { 0 }
+    func hourlyCounts(days: Int, relativeTo now: Date) async -> [HourlyUsageBucket] { [] }
+    func previousPeriodTotal(days: Int, relativeTo now: Date) async -> Int { 0 }
+    func streakDays(relativeTo now: Date) async -> Int { 0 }
+    func usageTimeZone() async -> TimeZone { .gmt }
+    func lastUsedPerShortcut() async -> [UUID: Date] { [:] }
+    func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] { [] }
+    func dashboardSnapshot(for request: UsageDashboardRequest) async -> UsageDashboardSnapshot? { nil }
+    func deleteUsage(shortcutId: UUID) async -> Bool {
+        attempts.record(shortcutId)
+        return false
+    }
 }

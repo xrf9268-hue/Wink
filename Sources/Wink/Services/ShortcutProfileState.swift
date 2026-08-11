@@ -177,10 +177,16 @@ final class ShortcutProfileState {
         let deletable = store.drainableUsageDeletions().deletable
         guard let usageTracker, !deletable.isEmpty else { return }
         Task { [weak self] in
-            for id in deletable {
-                await usageTracker.deleteUsage(shortcutId: id)
+            // Only the ids whose rows are confirmed gone leave the journal. A
+            // failed delete keeps its entry so the next launch retries it —
+            // clearing it would strand the rows with no record that they were
+            // ever owed a deletion.
+            var deleted: [UUID] = []
+            for id in deletable where await usageTracker.deleteUsage(shortcutId: id) {
+                deleted.append(id)
             }
-            await MainActor.run { self?.store.clearPendingUsageDeletions(deletable) }
+            guard !deleted.isEmpty else { return }
+            await MainActor.run { self?.store.clearPendingUsageDeletions(deleted) }
         }
     }
 
@@ -224,9 +230,9 @@ final class ShortcutProfileState {
         // the recorder, the composer draft, and any pending import, so running
         // it for a switch that cannot succeed destroys work to no purpose —
         // and an unreadable profile stays selectable in at least one surface.
-        let shortcuts: [AppShortcut]
+        let payload: ShortcutProfileStore.ValidatedProfilePayload
         do {
-            shortcuts = try store.loadProfileForActivation(profileID)
+            payload = try store.loadProfileForActivation(profileID)
         } catch {
             errorMessage = userFacingMessage(for: error)
             return
@@ -235,14 +241,14 @@ final class ShortcutProfileState {
         let discarded = prepareForSwitch()
 
         do {
-            try store.commitActivation(profileID, shortcuts: shortcuts)
+            try store.commitActivation(profileID, payload: payload)
             activeProfileID = profileID
             unreadableProfileIDs.remove(profileID)
             recovery = .none
             // The pointer is already committed; this is the same synchronous
             // main-actor apply an ordinary save performs, so no observable
             // state mixes the outgoing store with the incoming index.
-            shortcutManager.applyLoadedShortcuts(shortcuts, source: .profileSwitch)
+            shortcutManager.applyLoadedShortcuts(payload.shortcuts, source: .profileSwitch)
             onProfileApplied()
             errorMessage = nil
             statusMessage = switchedMessage(discarded: discarded)

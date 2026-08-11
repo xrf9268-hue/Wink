@@ -611,7 +611,7 @@ final class ShortcutProfileStore {
         locator.setActiveProfileID(profileID)
 
         if !legacySourceUnreadable {
-            writeMirrorForActiveProfile(migrated, profileID: profileID, layout: layout)
+            writeMirrorForActiveProfile(bytes: migratedBytes, profileID: profileID, layout: layout)
         }
 
         log("PROFILE_TRACE_MIGRATED shortcuts=\(migrated.count) source=\(layout.mirrorURL.path)")
@@ -745,7 +745,7 @@ final class ShortcutProfileStore {
                 return nil
             }
             // Nothing on disk to lose.
-            rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
+            rewriteMirror(profileID: activeProfileID, layout: layout)
             return nil
         }
 
@@ -765,7 +765,7 @@ final class ShortcutProfileStore {
             // attributes correctly; the mirror bytes themselves are already
             // right, so this rewrite is a no-op on content.
             if descriptor?.profileID != activeProfileID || descriptor?.sha256 != mirrorDigest {
-                rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
+                rewriteMirror(profileID: activeProfileID, layout: layout)
             }
             return nil
         }
@@ -812,7 +812,7 @@ final class ShortcutProfileStore {
                 return nil
             }
             log("PROFILE_TRACE_MIRROR_STALE describedProfile=\(descriptor.profileID.uuidString) active=\(activeProfileID.uuidString)")
-            rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
+            rewriteMirror(profileID: activeProfileID, layout: layout)
             return nil
         }
 
@@ -926,27 +926,38 @@ final class ShortcutProfileStore {
     /// between any data-file write and the mirror write) — never to resolve a
     /// foreign edit or a mirror of unknown provenance, both of which require
     /// an explicit user choice.
-    func rewriteMirror(_ shortcuts: [AppShortcut], profileID: UUID, layout: ShortcutProfileLayout? = nil) {
+    func rewriteMirror(profileID: UUID, layout: ShortcutProfileLayout? = nil) {
         guard let layout = layout ?? self.layout else { return }
-        writeMirrorForActiveProfile(shortcuts, profileID: profileID, layout: layout)
+        // No bytes to carry: a repair's whole purpose is to republish what the
+        // profile file currently holds.
+        writeMirrorForActiveProfile(profileID: profileID, layout: layout)
     }
 
+    /// Writes the compat mirror from `bytes` when the caller already has the
+    /// validated payload, and only reads the profile file when it does not.
+    ///
+    /// Passing the bytes in is not an optimization. A caller that validated a
+    /// payload and then let this function re-read the file would be back in
+    /// the gap the validation was for: another process replacing the file in
+    /// between makes the runtime apply one payload while the mirror describes
+    /// another. And the old re-encode fallback was worse than useless — it ran
+    /// exactly when the file could not be read, and produced a mirror with
+    /// every unmodelled member stripped, which is the loss D4 exists to
+    /// prevent. There is no payload worth writing that this function can
+    /// synthesize, so it now refuses instead.
     @discardableResult
     private func writeMirrorForActiveProfile(
-        _ shortcuts: [AppShortcut],
+        bytes: Data? = nil,
         profileID: UUID,
         layout: ShortcutProfileLayout
     ) -> Bool {
-        // Prefer the profile file's own bytes so unmodelled JSON members
-        // reach the mirror verbatim; a re-encoding is only a fallback for the
-        // case where that file cannot be read at all.
         let data: Data
-        if let raw = try? Data(contentsOf: layout.profileDataURL(profileID)) {
+        if let bytes {
+            data = bytes
+        } else if let raw = try? Data(contentsOf: layout.profileDataURL(profileID)) {
             data = raw
-        } else if let encoded = try? PersistenceService.encodeShortcuts(shortcuts) {
-            data = encoded
         } else {
-            log("PROFILE_TRACE_MIRROR_FAILED reason=encode_failed")
+            log("PROFILE_TRACE_MIRROR_FAILED reason=profile_unreadable")
             return false
         }
         return Self.writeMirror(
@@ -1142,7 +1153,16 @@ final class ShortcutProfileStore {
     /// Strict read of any profile, quarantining on failure. Used when the user
     /// is about to activate or duplicate a profile — the moment its contents
     /// stop being merely displayed and start being relied on.
-    func shortcuts(in profileID: UUID) throws -> [AppShortcut] {
+    /// A profile's decoded rows together with the exact bytes they were
+    /// decoded from. The two travel as one value because every consumer that
+    /// applies a payload also has to write it, and reading the file a second
+    /// time to get the bytes reintroduces the gap this type exists to close.
+    struct ValidatedProfilePayload: Sendable {
+        let shortcuts: [AppShortcut]
+        let bytes: Data
+    }
+
+    func profilePayload(in profileID: UUID) throws -> ValidatedProfilePayload {
         guard let layout else { throw StoreError.storageUnavailable }
         guard manifest?.profile(id: profileID) != nil else {
             throw StoreError.profileNotFound(profileID)
@@ -1155,11 +1175,22 @@ final class ShortcutProfileStore {
             throw StoreError.profileUnreadable(id: profileID, reason: "data file is missing")
         }
         do {
-            return try profilePersistenceService(for: layout.profileDataURL(profileID)).load()
+            let loaded = try profilePersistenceService(for: layout.profileDataURL(profileID)).loadWithBytes()
+            guard let bytes = loaded.data else {
+                throw StoreError.profileUnreadable(id: profileID, reason: "data file is missing")
+            }
+            return ValidatedProfilePayload(shortcuts: loaded.shortcuts, bytes: bytes)
+        } catch let error as StoreError {
+            throw error
         } catch {
             throw StoreError.profileUnreadable(id: profileID, reason: error.localizedDescription)
         }
     }
+
+    func shortcuts(in profileID: UUID) throws -> [AppShortcut] {
+        try profilePayload(in: profileID).shortcuts
+    }
+
 
     /// What other profiles are known to hold. `isComplete` is false when some
     /// sibling profile could not be read, which makes every ownership question
@@ -1213,9 +1244,9 @@ final class ShortcutProfileStore {
     ///
     /// A refused switch writes nothing and applies nothing.
     func activateProfile(_ profileID: UUID) throws -> [AppShortcut] {
-        let shortcuts = try loadProfileForActivation(profileID)
-        try commitActivation(profileID, shortcuts: shortcuts)
-        return shortcuts
+        let payload = try loadProfileForActivation(profileID)
+        try commitActivation(profileID, payload: payload)
+        return payload.shortcuts
     }
 
     /// Validates a switch target and returns its payload, **writing nothing**.
@@ -1226,22 +1257,25 @@ final class ShortcutProfileStore {
     /// work the user cannot get back — and an unreadable profile is reachable
     /// from more than one selector, so "your recording is gone and the switch
     /// failed anyway" is the one outcome with no upside.
-    func loadProfileForActivation(_ profileID: UUID) throws -> [AppShortcut] {
+    func loadProfileForActivation(_ profileID: UUID) throws -> ValidatedProfilePayload {
         guard layout != nil else { throw StoreError.storageUnavailable }
         guard manifest != nil else { throw StoreError.manifestQuarantined }
-        return try shortcuts(in: profileID)
+        return try profilePayload(in: profileID)
     }
 
     /// Commits a switch whose payload `loadProfileForActivation` already
     /// validated. The payload is passed in rather than re-read for the same
     /// reason migration reads once: a second read of the same path can observe
     /// a different file, and this one would commit the pointer for it.
-    func commitActivation(_ profileID: UUID, shortcuts: [AppShortcut]) throws {
+    func commitActivation(_ profileID: UUID, payload: ValidatedProfilePayload) throws {
         guard let layout else { throw StoreError.storageUnavailable }
         try commitActivePointer(profileID, layout: layout)
         pointedProfileID = profileID
         locator.setActiveProfileID(profileID)
-        writeMirrorForActiveProfile(shortcuts, profileID: profileID, layout: layout)
+        // The exact bytes that were validated and are about to be applied, so
+        // the mirror cannot describe a different payload than the runtime is
+        // running.
+        writeMirrorForActiveProfile(bytes: payload.bytes, profileID: profileID, layout: layout)
     }
 
     // MARK: - CRUD
@@ -1413,7 +1447,7 @@ final class ShortcutProfileStore {
         let wasActive: Bool
         /// The successor and its payload, already read. Passing it forward
         /// rather than re-reading keeps this to one read of that file.
-        let successor: (id: UUID, shortcuts: [AppShortcut])?
+        let successor: (id: UUID, shortcuts: [AppShortcut], bytes: Data)?
     }
 
     func planDeletion(of profileID: UUID) throws -> DeletionPlan {
@@ -1429,7 +1463,7 @@ final class ShortcutProfileStore {
         let exclusivelyOwned = removedShortcutIDs.filter { !ownership.isRetainedElsewhere($0) }
 
         let wasActive = (pointedProfileID ?? locator.currentActiveProfileID()) == profileID
-        var successor: (id: UUID, shortcuts: [AppShortcut])?
+        var successor: (id: UUID, shortcuts: [AppShortcut], bytes: Data)?
         if wasActive {
             // The preceding entry in the visible list order, or the first
             // entry when the deleted profile was first. Deterministic, and it
@@ -1437,7 +1471,8 @@ final class ShortcutProfileStore {
             // because ties are possible.
             let successorIndex = index == 0 ? 1 : index - 1
             let successorID = current.profiles[successorIndex].id
-            successor = (successorID, try shortcuts(in: successorID))
+            let payload = try profilePayload(in: successorID)
+            successor = (successorID, payload.shortcuts, payload.bytes)
         }
 
         return DeletionPlan(
@@ -1523,7 +1558,7 @@ final class ShortcutProfileStore {
             // file describing the former active profile would point the E2E
             // harness and a downgraded build at bindings nothing is running.
             if let newActiveProfileID, let newActiveShortcuts {
-                writeMirrorForActiveProfile(newActiveShortcuts, profileID: newActiveProfileID, layout: layout)
+                writeMirrorForActiveProfile(bytes: plan.successor?.bytes, profileID: newActiveProfileID, layout: layout)
             }
 
             // Stop here. The durable manifest still lists the profile, so
@@ -1543,7 +1578,7 @@ final class ShortcutProfileStore {
         manifest = current
 
         if let newActiveProfileID, let newActiveShortcuts {
-            writeMirrorForActiveProfile(newActiveShortcuts, profileID: newActiveProfileID, layout: layout)
+            writeMirrorForActiveProfile(bytes: plan.successor?.bytes, profileID: newActiveProfileID, layout: layout)
         }
 
         // Best effort: a failed unlink leaves an orphan, which is reported on
@@ -1691,7 +1726,7 @@ final class ShortcutProfileStore {
                 layout: layout
             )
         }
-        writeMirrorForActiveProfile([], profileID: profile.id, layout: layout)
+        writeMirrorForActiveProfile(profileID: profile.id, layout: layout)
         log("PROFILE_TRACE_RECOVERED id=\(profile.id.uuidString)")
 
         return LoadedProfiles(
@@ -1764,12 +1799,12 @@ final class ShortcutProfileStore {
         // E2E harness and a downgraded build read.
         guard let activeProfileID = locator.currentActiveProfileID() else { return nil }
         if activeProfileID == mirror.profileID {
-            writeMirrorForActiveProfile(shortcuts, profileID: activeProfileID, layout: layout)
+            writeMirrorForActiveProfile(bytes: mirror.rawBytes, profileID: activeProfileID, layout: layout)
             return shortcuts
         }
 
         let activeShortcuts = (try? self.shortcuts(in: activeProfileID)) ?? []
-        writeMirrorForActiveProfile(activeShortcuts, profileID: activeProfileID, layout: layout)
+        writeMirrorForActiveProfile(profileID: activeProfileID, layout: layout)
         return nil
     }
 
@@ -1785,7 +1820,7 @@ final class ShortcutProfileStore {
         // Reporting success when the file still holds the foreign edit would
         // clear the banner and leave the user believing they chose to keep
         // their profile, while the compat file says otherwise.
-        guard writeMirrorForActiveProfile(activeShortcuts, profileID: activeProfileID, layout: layout) else {
+        guard writeMirrorForActiveProfile(profileID: activeProfileID, layout: layout) else {
             log("PROFILE_TRACE_FOREIGN_MIRROR_DISCARD_FAILED profile=\(activeProfileID.uuidString)")
             return false
         }

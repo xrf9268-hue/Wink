@@ -364,7 +364,9 @@ final class ShortcutEditorState {
             return
         }
         Task {
-            await usageTracker.deleteUsage(shortcutId: id)
+            // Best effort here: this deletion is not journalled, because the
+            // shortcut row it belongs to is gone from the profile either way.
+            _ = await usageTracker.deleteUsage(shortcutId: id)
             await refreshUsageCounts()
         }
     }

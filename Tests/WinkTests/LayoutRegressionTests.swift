@@ -892,7 +892,7 @@ private actor StaticUsageTracker: UsageTracking {
     func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
         []
     }
-    func deleteUsage(shortcutId: UUID) {}
+    func deleteUsage(shortcutId: UUID) -> Bool { true }
     let shortcutId: UUID
 
     init(shortcutId: UUID) {
@@ -941,7 +941,7 @@ private actor MultiShortcutUsageTracker: UsageTracking {
     func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
         []
     }
-    func deleteUsage(shortcutId: UUID) {}
+    func deleteUsage(shortcutId: UUID) -> Bool { true }
     private let counts: [UUID: Int]
     private let dailyCountsByShortcut: [String: [(date: String, count: Int)]]
     private let hourlyBuckets: [HourlyUsageBucket]

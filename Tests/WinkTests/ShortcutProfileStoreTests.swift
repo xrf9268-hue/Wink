@@ -1747,7 +1747,7 @@ struct ShortcutProfileMirrorTests {
 
         // Migration copies bytes, so the profile file still carries the member.
         try harness.writeRaw(withUnknownMember, to: harness.layout.profileDataURL(loaded.activeProfileID))
-        store.rewriteMirror(loaded.activeShortcuts, profileID: loaded.activeProfileID)
+        store.rewriteMirror(profileID: loaded.activeProfileID)
 
         let reloaded = harness.makeStore()
         guard case let .ready(after) = reloaded.load() else {
@@ -1999,6 +1999,72 @@ struct ShortcutProfileMirrorTests {
             _ = try store.loadProfileForActivation(work.id)
         }
         #expect(store.locator.currentActiveProfileID() != work.id)
+    }
+
+    @Test
+    func activationMirrorsTheBytesItValidatedRatherThanRereadingThem() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        let validated = """
+        [ { "id" : "77777777-7777-7777-7777-777777777777", "appName" : "Mail",
+            "bundleIdentifier" : "com.apple.mail", "keyEquivalent" : "m",
+            "modifierFlags" : [ "command" ], "isEnabled" : true, "futureMember" : "kept" } ]
+        """
+        try harness.writeRaw(validated, to: harness.layout.profileDataURL(work.id))
+
+        let payload = try store.loadProfileForActivation(work.id)
+
+        // Another process replaces the file between validation and commit. A
+        // commit that re-read would mirror THESE bytes while the runtime is
+        // about to arm the ones it validated.
+        try harness.writeRaw(
+            """
+            [ { "id" : "88888888-8888-8888-8888-888888888888", "appName" : "Replaced",
+                "bundleIdentifier" : "com.example.replaced", "keyEquivalent" : "z",
+                "modifierFlags" : [ "command" ], "isEnabled" : true } ]
+            """,
+            to: harness.layout.profileDataURL(work.id)
+        )
+
+        try store.commitActivation(work.id, payload: payload)
+
+        #expect(harness.data(at: harness.layout.mirrorURL) == Data(validated.utf8))
+        #expect(payload.shortcuts.first?.appName == "Mail")
+    }
+
+    @Test
+    func aMirrorWriteWithNoReadablePayloadRefusesRatherThanReencoding() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let mirrorBefore = harness.data(at: harness.layout.mirrorURL)
+
+        // The old fallback re-encoded the model here, which ran exactly when
+        // the file could not be read and produced a mirror with every
+        // unmodelled member stripped — the loss D4 exists to prevent.
+        try FileManager.default.removeItem(at: harness.layout.profileDataURL(loaded.activeProfileID))
+        store.rewriteMirror(profileID: loaded.activeProfileID)
+
+        #expect(harness.data(at: harness.layout.mirrorURL) == mirrorBefore)
+        #expect(
+            harness.diagnostics.values.contains {
+                $0.contains("PROFILE_TRACE_MIRROR_FAILED reason=profile_unreadable")
+            }
+        )
     }
 
     @Test

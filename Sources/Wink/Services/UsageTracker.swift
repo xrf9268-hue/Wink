@@ -205,23 +205,24 @@ actor UsageTracker: UsageTracking {
         }
     }
 
-    func deleteUsage(shortcutId: UUID) {
+    @discardableResult
+    func deleteUsage(shortcutId: UUID) -> Bool {
         guard let db else {
-            return
+            return false
         }
 
         let shortcutID = shortcutId.uuidString
         let dailySQL = "DELETE FROM daily_usage WHERE shortcut_id = ?"
         guard let dailyStmt = cachedStatement(&deleteDailyUsageStmt, sql: dailySQL) else {
-            return
+            return false
         }
 
         let hourlySQL = "DELETE FROM usage_hourly WHERE shortcut_id = ?"
         guard let hourlyStmt = cachedStatement(&deleteHourlyUsageStmt, sql: hourlySQL) else {
-            return
+            return false
         }
 
-        performTransaction(named: "delete usage", in: db) {
+        return performTransaction(named: "delete usage", in: db) {
             sqlite3_bind_text(dailyStmt, 1, (shortcutID as NSString).utf8String, -1, Self.SQLITE_TRANSIENT)
             guard sqlite3_step(dailyStmt) == SQLITE_DONE else {
                 let message = "Failed to delete daily usage: \(String(cString: sqlite3_errmsg(db)))"
@@ -750,24 +751,30 @@ actor UsageTracker: UsageTracking {
         return stmt
     }
 
+    /// Returns whether the transaction COMMITTED. Swallowing that made every
+    /// caller unable to tell a completed write from a rolled-back one, which
+    /// is only harmless for callers that do not record anything about it.
+    @discardableResult
     private func performTransaction(
         named name: String,
         in db: OpaquePointer,
         operation: () -> Bool
-    ) {
+    ) -> Bool {
         guard execute(sql: "BEGIN IMMEDIATE", in: db, failurePrefix: "Failed to begin \(name) transaction") else {
-            return
+            return false
         }
 
         guard operation() else {
             _ = execute(sql: "ROLLBACK", in: db, failurePrefix: "Failed to roll back \(name) transaction")
-            return
+            return false
         }
 
         guard execute(sql: "COMMIT", in: db, failurePrefix: "Failed to commit \(name) transaction") else {
             _ = execute(sql: "ROLLBACK", in: db, failurePrefix: "Failed to roll back \(name) transaction after commit error")
-            return
+            return false
         }
+
+        return true
     }
 
     private func execute(sql: String, in db: OpaquePointer, failurePrefix: String) -> Bool {
