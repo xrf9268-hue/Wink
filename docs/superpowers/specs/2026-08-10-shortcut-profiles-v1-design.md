@@ -355,6 +355,19 @@ direction: Wink must not silently overwrite the user's older-build edits either.
 > call site has to remember. That is what makes it hold for saves, switches, forced switches,
 > and recovery alike, including paths added later.
 >
+> **What "unattributable" excludes, and why.** A payload whose digest matches the descriptor
+> *and* whose descriptor names the profile being written is Wink's own current output, which
+> this write supersedes; it is not preserved, because doing so would produce one copy per
+> save. A payload Wink wrote for a **different** profile — a switch whose mirror write never
+> landed — is preserved, because the descriptor cannot vouch for this write superseding it.
+>
+> One case is deliberately not covered at write time: an external restore of the descriptor's
+> current payload for the same profile. By the time the mirror is written, the profile data
+> file has already advanced, so "was the mirror in sync before this write" is no longer
+> answerable there. It *is* answerable at launch, where the mirror is compared against the
+> profile file before anything moves, and the stale branch preserves. Stating the limit is
+> better than a rule the writer cannot keep.
+>
 > The second clause is deliberately weaker than "never overwritten". Unknown-provenance bytes
 > cannot block saves forever — Wink would be unusable — so the design buys the freedom to
 > overwrite by paying for it first, with the copy. A foreign edit that *can* be attributed
@@ -740,6 +753,7 @@ packaged-app validation.
 | V9 | Editor conflicts | Switch during recorder / composer draft / pending import; assert D14's row-by-row outcome |
 | V10 | Foreign-edit detection | Rewrite `shortcuts.json` out of band → relaunch → assert banner state and that nothing was written until a choice was made |
 | V10b | Stale mirror is not mistaken for a foreign edit | Fail the mirror write during a switch **and** during a same-profile save → relaunch each → assert the mirror is rewritten from the live profile with **no** banner |
+| V10i | Ordinary saves accumulate no copies | Save five times in a row; assert no `shortcuts.unknown-*.json` exists — preserving Wink's own superseded output per save would be unbounded |
 | V10h | Every mirror overwrite preserves first | Reach the silent stale repair; assert a `shortcuts.unknown-*.json` copy exists alongside the repaired mirror |
 | V7b | A lossy duplicate is refused | Make the source payload unreshapeable; assert the duplicate fails and writes nothing |
 | V10c | Unknown provenance is left alone | Migrate from an unreadable legacy file → relaunch → assert no banner, and that `shortcuts.json` still holds the user's original bytes |
