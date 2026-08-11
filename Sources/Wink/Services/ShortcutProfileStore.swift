@@ -858,8 +858,14 @@ final class ShortcutProfileStore {
         // a cost worth trading a silent data loss for.
         if let existing = try? Data(contentsOf: layout.mirrorURL) {
             let existingDigest = digest(existing)
+            // Schema-validated, exactly as the startup read is. Without this
+            // a descriptor written by a NEWER build would be decoded on its
+            // v1 fields and could authorize overwriting that build's mirror —
+            // the one payload most likely to carry members this build cannot
+            // model.
             let descriptor = (try? Data(contentsOf: layout.mirrorDescriptorURL))
                 .flatMap { try? metadataDecoder.decode(ShortcutProfileMirrorDescriptor.self, from: $0) }
+                .flatMap { $0.schemaVersion == ShortcutProfileMirrorDescriptor.currentSchemaVersion ? $0 : nil }
             // Ours, and for the profile being written: Wink's own previous
             // output, which this write supersedes. Preserving that would mean
             // a copy on every save, which is unbounded garbage rather than
@@ -874,8 +880,20 @@ final class ShortcutProfileStore {
                 let copyURL = layout.appDirectory
                     .appendingPathComponent("shortcuts.unknown-\(existingDigest.prefix(12)).json")
                 if !FileManager.default.fileExists(atPath: copyURL.path) {
-                    try? writeClient.write(existing, copyURL)
-                    diagnosticClient.log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVED path=\(copyURL.path)")
+                    do {
+                        try writeClient.write(existing, copyURL)
+                        diagnosticClient.log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVED path=\(copyURL.path)")
+                    } catch {
+                        // "Preserve before overwriting" is not advice, it is
+                        // the condition under which overwriting is allowed.
+                        // A full volume can refuse the copy of a large edited
+                        // payload and still accept the smaller incoming write,
+                        // which would destroy the only copy of that edit.
+                        let message = "PROFILE_TRACE_MIRROR_WRITE_SKIPPED reason=preserve_failed detail=\(error.localizedDescription)"
+                        logger.error("\(message, privacy: .public)")
+                        diagnosticClient.log(message)
+                        return
+                    }
                 }
             }
         }
@@ -1258,6 +1276,11 @@ final class ShortcutProfileStore {
         }
 
         current.profiles.remove(at: index)
+        // Committed WITH the removal, so the ids survive a crash between the
+        // delete and the usage cleanup. A fire-and-forget task after the
+        // manifest is written cannot be retried: the inventory needed to
+        // recompute exclusivity is gone by then.
+        current.pendingUsageDeletions = (current.pendingUsageDeletions ?? []) + exclusivelyOwned
         do {
             try commitManifest(current, layout: layout)
         } catch let manifestError {
@@ -1335,6 +1358,27 @@ final class ShortcutProfileStore {
         )
     }
 
+    /// Shortcut ids whose usage rows are owed a deletion, recorded durably by
+    /// `deleteProfile` so a crash cannot strand them.
+    func pendingUsageDeletions() -> [UUID] {
+        manifest?.pendingUsageDeletions ?? []
+    }
+
+    /// Called after the rows are actually gone. Clearing the journal is a
+    /// separate commit on purpose: if it fails, the ids are retried rather
+    /// than silently dropped.
+    func clearPendingUsageDeletions(_ ids: [UUID]) {
+        guard let layout, var current = manifest, current.pendingUsageDeletions?.isEmpty == false else { return }
+        let remaining = (current.pendingUsageDeletions ?? []).filter { !ids.contains($0) }
+        current.pendingUsageDeletions = remaining.isEmpty ? nil : remaining
+        do {
+            try commitManifest(current, layout: layout)
+            manifest = current
+        } catch {
+            log("PROFILE_TRACE_USAGE_JOURNAL_NOT_CLEARED count=\(ids.count)")
+        }
+    }
+
     // MARK: - Recovery actions
 
     /// The single explicit action that overwrites a quarantined manifest.
@@ -1343,8 +1387,17 @@ final class ShortcutProfileStore {
     func recoverManifest() throws -> LoadedProfiles {
         guard let layout else { throw StoreError.storageUnavailable }
 
+        // The UI promises the unreadable file was kept. If it cannot be kept,
+        // the recovery must not proceed — replacing the manifest would lose
+        // the profile inventory while the banner claimed a copy exists.
         if let existing = try? Data(contentsOf: layout.manifestURL) {
-            _ = preserveRejectedPayload(existing, originalURL: layout.manifestURL)
+            guard preserveRejectedPayload(existing, originalURL: layout.manifestURL) != nil else {
+                log("PROFILE_TRACE_RECOVER_REFUSED reason=preserve_failed")
+                throw StoreError.writeFailed(
+                    path: layout.manifestURL.path,
+                    reason: "could not preserve the unreadable profile list"
+                )
+            }
         }
 
         let now = dateProvider()
@@ -1404,6 +1457,19 @@ final class ShortcutProfileStore {
         // rather than trusted from the decode.
         guard Set(shortcuts.map(\.id)).count == shortcuts.count else {
             throw StoreError.profileUnreadable(id: mirror.profileID, reason: "duplicate shortcut id")
+        }
+        // Uniqueness WITHIN the payload is not enough: global uniqueness
+        // across profiles is what lets `usage.db` stay keyed by shortcut UUID
+        // with no profile column, and an import is the one path that can
+        // introduce IDs a sibling already owns. Fails closed — an unreadable
+        // sibling could be holding any of them.
+        let ownership = shortcutOwnership(excluding: mirror.profileID)
+        if let collision = shortcuts.map(\.id).first(where: { ownership.isRetainedElsewhere($0) }) {
+            log("PROFILE_TRACE_IMPORT_REFUSED id=\(collision.uuidString) reason=cross_profile_duplicate")
+            throw StoreError.profileUnreadable(
+                id: mirror.profileID,
+                reason: "shortcut id already belongs to another profile"
+            )
         }
 
         // Install the ORIGINAL bytes when they are available: re-encoding

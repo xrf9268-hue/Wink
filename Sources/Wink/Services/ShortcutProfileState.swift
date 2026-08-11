@@ -123,6 +123,9 @@ final class ShortcutProfileState {
         switch store.load() {
         case let .ready(loaded):
             apply(loaded)
+            // A crash between a delete and its usage cleanup leaves the ids in
+            // the manifest; this is where they get retried.
+            drainPendingUsageDeletions()
             return loaded.activeShortcuts
 
         case .storageUnavailable:
@@ -152,6 +155,20 @@ final class ShortcutProfileState {
             // import banner turns a dead end into a choice.
             self.pendingForeignMirror = importableMirror
             return []
+        }
+    }
+
+    /// Deletes the usage rows a completed profile deletion still owes, then
+    /// clears the journal. Safe to call at any time — the journal is empty in
+    /// the ordinary case — so startup drains anything a crash stranded.
+    func drainPendingUsageDeletions() {
+        let ids = store.pendingUsageDeletions()
+        guard let usageTracker, !ids.isEmpty else { return }
+        Task { [weak self] in
+            for id in ids {
+                await usageTracker.deleteUsage(shortcutId: id)
+            }
+            await MainActor.run { self?.store.clearPendingUsageDeletions(ids) }
         }
     }
 
@@ -272,13 +289,29 @@ final class ShortcutProfileState {
             return
         }
 
-        let switchesActive = profileID == activeProfileID
+        // `activeProfileID` is nil in the unreadable-active recovery state, but
+        // the store follows the DURABLE pointer — so deleting the profile it
+        // names does switch, and the drafts and HUDs have to be cleared for it
+        // exactly as for an ordinary switch.
+        let deletesPointedProfile: Bool
+        if case let .activeProfileUnreadable(recoveringProfileID, _) = recovery {
+            deletesPointedProfile = recoveringProfileID == profileID
+        } else {
+            deletesPointedProfile = false
+        }
+        let switchesActive = profileID == activeProfileID || deletesPointedProfile
         let discarded = switchesActive ? prepareForSwitch() : DiscardedProfileSwitchDrafts()
 
         do {
             let outcome = try store.deleteProfile(profileID)
             profiles = outcome.profiles
-            unreadableProfileIDs.remove(profileID)
+            // Only when the profile is actually gone. On the unrecoverable
+            // path the manifest still lists it and its file survives, so
+            // marking it readable would hide the one piece of state that
+            // tells the user what is wrong with it.
+            if outcome.unrecoverableSwitchReason == nil {
+                unreadableProfileIDs.remove(profileID)
+            }
 
             if let newActiveProfileID = outcome.newActiveProfileID,
                let newActiveShortcuts = outcome.newActiveShortcuts {
@@ -287,7 +320,12 @@ final class ShortcutProfileState {
                 // very state the banner describes. Leaving it up would keep
                 // telling the user no shortcuts are active while a successor
                 // is loaded and armed.
-                if case .activeProfileUnreadable = recovery {
+                //
+                // Not on the unrecoverable path, though: there the delete
+                // failed and the profile is still there and still unreadable,
+                // so clearing the banner — and with it a resumable import —
+                // would remove the only guidance the user has.
+                if case .activeProfileUnreadable = recovery, outcome.unrecoverableSwitchReason == nil {
                     recovery = .none
                     pendingForeignMirror = nil
                 }
@@ -308,16 +346,7 @@ final class ShortcutProfileState {
                 return
             }
 
-            // Only IDs this profile exclusively owned: a shortcut that still
-            // exists in another profile keeps its history.
-            if let usageTracker, !outcome.exclusivelyOwnedShortcutIDs.isEmpty {
-                let ids = outcome.exclusivelyOwnedShortcutIDs
-                Task {
-                    for id in ids {
-                        await usageTracker.deleteUsage(shortcutId: id)
-                    }
-                }
-            }
+            drainPendingUsageDeletions()
 
             errorMessage = nil
             statusMessage = discarded.isEmpty ? nil : discardedMessage(discarded)

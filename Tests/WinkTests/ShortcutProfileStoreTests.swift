@@ -1094,6 +1094,90 @@ struct ShortcutProfileCRUDTests {
     }
 
     @Test
+    func adoptingAMirrorRejectsShortcutIDsHeldBySiblingProfiles() throws {
+        let sharedID = UUID()
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut(id: sharedID)])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        _ = try store.activateProfile(work.id)
+
+        // Uniqueness inside the payload is not enough: global uniqueness
+        // across profiles is what lets usage.db skip a profile column, and an
+        // import is the one path that can violate it.
+        let foreign = [makeTestShortcut(id: sharedID, appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        #expect(throws: (any Error).self) {
+            _ = try store.adoptForeignMirror(
+                ShortcutProfileStore.ForeignMirror(
+                    profileID: work.id,
+                    shortcuts: foreign,
+                    rawBytes: try PersistenceService.encodeShortcuts(foreign)
+                )
+            )
+        }
+        #expect(try store.shortcuts(in: loaded.activeProfileID).map(\.id) == [sharedID])
+        #expect(try store.shortcuts(in: work.id).isEmpty)
+    }
+
+    @Test
+    func recoveryRefusesToReplaceAManifestItCannotPreserve() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        _ = harness.makeStore().load()
+
+        let corrupt = Data("{ broken-manifest".utf8)
+        try corrupt.write(to: harness.layout.manifestURL, options: .atomic)
+
+        let store = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                if url.lastPathComponent.contains(".load-failure-") { throw InjectedWriteFailure() }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        guard case .manifestUnreadable = store.load() else {
+            Issue.record("expected manifestUnreadable")
+            return
+        }
+
+        // The banner promises the unreadable file was kept. If it cannot be,
+        // recovery must not proceed rather than replace it and claim it did.
+        #expect(throws: (any Error).self) {
+            _ = try store.recoverManifest()
+        }
+        #expect(harness.data(at: harness.layout.manifestURL) == corrupt)
+    }
+
+    @Test
+    func aDeletedProfilesUsageIdsSurviveACrashInTheJournal() throws {
+        let (harness, store, loaded) = try readyStore()
+        defer { harness.cleanup() }
+
+        let work = try store.createProfile(named: "Work", duplicating: loaded.activeProfileID)
+        let workIDs = try store.shortcuts(in: work.id).map(\.id)
+        _ = try store.deleteProfile(work.id)
+
+        // Recorded in the same commit as the removal: by the time the profile
+        // is gone, the inventory needed to recompute exclusivity is gone too,
+        // so a fire-and-forget task could not be retried.
+        #expect(Set(store.pendingUsageDeletions()) == Set(workIDs))
+
+        let reloaded = harness.makeStore()
+        _ = reloaded.load()
+        #expect(Set(reloaded.pendingUsageDeletions()) == Set(workIDs))
+
+        reloaded.clearPendingUsageDeletions(workIDs)
+        #expect(reloaded.pendingUsageDeletions().isEmpty)
+    }
+
+    @Test
     func aMirrorWithDuplicateShortcutIDsIsNotOfferedForImport() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
@@ -1528,6 +1612,71 @@ struct ShortcutProfileMirrorTests {
         #expect(mirrorBytes == profileBytes)
         #expect(String(decoding: mirrorBytes, as: UTF8.self).contains("futureField"))
         #expect(!harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_MIRROR_STALE") })
+    }
+
+    @Test
+    func aFailedPreservationRefusesToOverwriteTheOutsideEdit() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        // "Preserve before overwriting" is the condition under which
+        // overwriting is allowed, not advice. A full volume can refuse the
+        // copy of a large edited payload and still accept the smaller
+        // incoming write.
+        let store = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                if url.lastPathComponent.hasPrefix("shortcuts.unknown-") { throw InjectedWriteFailure() }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        let outsideEdit = Data(#"[{"outside":true}]"#.utf8)
+        try outsideEdit.write(to: harness.layout.mirrorURL, options: .atomic)
+
+        try store.makeActiveProfilePersistenceService().save(
+            [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        )
+
+        #expect(harness.data(at: harness.layout.mirrorURL) == outsideEdit)
+    }
+
+    @Test
+    func aFutureSchemaDescriptorDoesNotAuthorizeAnOverwrite() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // A newer build wrote both files while this process was running. Its
+        // mirror is the payload most likely to carry members this build
+        // cannot model, so a descriptor it cannot validate must not be read
+        // as permission to replace it.
+        let futureBytes = Data(#"[{"future":true}]"#.utf8)
+        try futureBytes.write(to: harness.layout.mirrorURL, options: .atomic)
+        try harness.writeRaw(
+            "{\"schemaVersion\": 2, \"profileID\": \"\(loaded.activeProfileID.uuidString)\", \"sha256\": \"\(ShortcutProfileStore.digest(futureBytes))\"}",
+            to: harness.layout.mirrorDescriptorURL
+        )
+
+        try store.makeActiveProfilePersistenceService().save(
+            [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        )
+
+        let copies = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(copies.count == 1)
+        #expect(harness.data(at: harness.directory.appendingPathComponent(copies[0])) == futureBytes)
     }
 
     @Test

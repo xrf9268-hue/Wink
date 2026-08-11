@@ -135,10 +135,21 @@ struct ShortcutProfileManifest: Codable, Equatable, Sendable {
     var schemaVersion: Int
     /// User-visible list order. Preserved on every write.
     var profiles: [ShortcutProfile]
+    /// Shortcut ids whose usage rows a completed profile deletion still owes.
+    /// Written in the same commit as the removal so a crash between the two
+    /// cannot strand them — by the time the profile is gone, the inventory
+    /// needed to recompute exclusivity is gone with it. Optional so a manifest
+    /// without it stays valid.
+    var pendingUsageDeletions: [UUID]?
 
-    init(schemaVersion: Int = ShortcutProfileManifest.currentSchemaVersion, profiles: [ShortcutProfile]) {
+    init(
+        schemaVersion: Int = ShortcutProfileManifest.currentSchemaVersion,
+        profiles: [ShortcutProfile],
+        pendingUsageDeletions: [UUID]? = nil
+    ) {
         self.schemaVersion = schemaVersion
         self.profiles = profiles
+        self.pendingUsageDeletions = pendingUsageDeletions
     }
 
     func profile(id: UUID) -> ShortcutProfile? {
