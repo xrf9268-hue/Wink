@@ -176,7 +176,7 @@ Write order, with the important distinction that a **switch writes no profile da
 | Delete (of an inactive profile) | `manifest.json` → unlink |
 | Delete that failed with an unrecoverable switch | mirror → `mirror.json` only — nothing else committed, and the mirror follows the switch that stuck |
 | Import an outside edit into profile P | `Profiles/<P>.json` → mirror → `mirror.json` |
-| Recover a quarantined profile list | `Profiles/<new>.json` → `manifest.json` → `Profiles/active.json` → mirror → `mirror.json` |
+| Recover a quarantined profile list | `Profiles/<new>.json` → `manifest.json` → `Profiles/active.json` → preserved copy of the existing mirror → mirror → `mirror.json` |
 
 Deleting the **active** profile is a switch with an extra step, not a lighter operation: it
 selects the fallback, applies it through the same runtime path a switch uses, and refreshes
@@ -474,8 +474,16 @@ actually load, so it writes all three files, in this order:
 1. `Profiles/<new>.json` — an empty shortcut array
 2. `Profiles/manifest.json` — one Default profile naming that id
 3. `Profiles/active.json` — pointing at it
-4. the mirror and its descriptor — like every other active-profile transition, so the compat
+4. a preserved copy of the existing `shortcuts.json`, **before** step 5
+5. the mirror and its descriptor — like every other active-profile transition, so the compat
    file stops describing the pre-recovery bindings
+
+Step 4 is not redundant with the manifest's own quarantine copy. Stage 1 stopped before an
+active profile was resolved, so D5's classification never ran and an older build's edits to
+`shortcuts.json` have never been examined — without preserving them here, Recover would
+replace the only copy of a downgrade edit with an empty profile's bytes. The universal rule
+holds without exception: the mirror is never overwritten until a byte-identical copy exists
+beside it.
 
 Writing only the manifest would leave a stale `active.json` naming an id the new manifest does
 not contain, and stage 2 would return the user straight back to the zero-armed picker; writing
@@ -553,8 +561,13 @@ cannot invent one later:
 
 - A **manual** switch sets `manualOverride = (profileID, timestamp)` and always wins.
 - An **automatic** (Focus-selected) switch is applied only when no manual override is in
-  effect for the current Focus session. Leaving the Focus mode clears the automatic
-  selection and restores the profile that was active before it — never a third profile.
+  effect for the current Focus session.
+- Leaving the Focus mode restores the profile that was active before it **only if the
+  automatic selection still owns the active profile**. If the user manually chose a different
+  profile during the session, that choice stands and nothing is restored — otherwise the
+  "a manual switch always wins" rule above would be contradicted by the exit path, and the
+  user's most recent explicit decision would be the one discarded. Either way the restore
+  never selects a third profile.
 - `canApplyExternalSwitch` is `false` while a recorder session or a pending recipe-import
   preview is live (D14). Automatic switches **defer**; they never cancel user drafts.
 - v1 implements the seam and returns `false`/no-op for the automatic case. #438 supplies
@@ -737,6 +750,8 @@ packaged-app validation.
 | V13 | Palette per-profile | Profile A has a palette trigger, B does not; switch A→B→A; assert trigger index membership follows and no ID churn |
 | V14 | **runtime** Live switch with real capture | Packaged app, standard + Hyper bindings live: switch, assert old chords stop and new chords fire; record SHA, bundle path, executable SHA-256, registrations/readiness, activation evidence |
 | V15 | **runtime** Switch under a live Hyper hold / picker | Switch while the picker is open; assert dismissal with no stray toggle |
+| V15b | Focus exit respects a later manual switch | Automatic A→B, manual B→C during the session, Focus ends → assert C stays active and nothing is restored |
+| V13c | Recover preserves a downgrade edit | Damaged manifest plus an externally edited `shortcuts.json` → Recover → assert the edit survives as a preserved copy |
 | V16 | **runtime** Relaunch after switch | Switch, quit, relaunch; assert the same profile is active and armed |
 
 ## Test plan for migration and recovery
