@@ -172,12 +172,33 @@ Write order, with the important distinction that a **switch writes no profile da
 | Switch | `Profiles/active.json` → mirror → `mirror.json` |
 | Create / duplicate | `Profiles/<new>.json` → `manifest.json` |
 | Rename | `manifest.json` |
-| Delete (of the active profile) | `Profiles/active.json` → `manifest.json` → mirror → `mirror.json` → unlink |
-| Delete (of an inactive profile) | `manifest.json` → unlink |
+| Delete (of the active profile) | `Profiles/active.json` → `manifest.json` (carrying the usage journal) → mirror → `mirror.json` → unlink → `deleteUsage` → journal cleared |
+| Delete (of an inactive profile) | `manifest.json` (carrying the usage journal) → unlink → `deleteUsage` → journal cleared |
 | Delete that failed with an unrecoverable switch | mirror → `mirror.json` only — nothing else committed, and the mirror follows the switch that stuck |
 | Import an outside edit into profile P | `Profiles/<P>.json` → mirror → `mirror.json` |
 | Any mirror write | re-check the existing compat file against `mirror.json` and preserve it first when they disagree |
 | Recover a quarantined profile list | `Profiles/<new>.json` → `Profiles/active.json` → `manifest.json` → preserved copy of the existing mirror → mirror → `mirror.json` |
+
+**Usage rows are deleted only after the manifest has committed**, and never as a
+fire-and-forget consequence of it. Erasing history before the commit would leave a profile
+that still exists with its Insights permanently gone if that write then failed — irreversible
+damage from a failed operation — so this follows the same persist-first order the existing
+single-shortcut removal path uses.
+
+That ordering creates the opposite problem, which is why the ids ride in the manifest itself:
+by the time the deletion has committed, the inventory needed to recompute which ids were
+*exclusively* the deleted profile's is gone, so a retry after a crash could not reconstruct
+it. `manifest.json` therefore carries a `pendingUsageDeletions` journal, written in the same
+commit as the removal, and the rows are deleted afterwards; clearing the journal is a separate
+commit so a failure there retries rather than silently dropping the ids.
+
+The journal records a conclusion about an inventory, not a fact about ids, so it is
+**re-checked at drain time** against the profiles that exist then. A manifest restored from a
+backup beside newer profile data files can owe a deletion for an id a live profile still
+holds, and that history is not recoverable once erased. Ids that are still held stay
+journalled rather than being dropped — the same fail-closed rule the delete path itself uses,
+where an unreadable sibling makes every ownership question unanswerable rather than answered
+"no".
 
 Deleting the **active** profile is a switch with an extra step, not a lighter operation: it
 selects the fallback, applies it through the same runtime path a switch uses, and refreshes
@@ -249,14 +270,20 @@ launch (active profile = A_now, whose shortcuts are already loaded)
          ├─ no USABLE mirror.json   → UNKNOWN PROVENANCE. Leave BOTH files alone and log.
          │    (absent, unreadable, or an unsupported schemaVersion — all three
          │     mean the same thing here: nothing to compare against.)
-         ├─ digest matches          → STALE. Preserve a copy, then rewrite from
-         │                             A_now silently. No banner. Checked BEFORE
-         │                             membership: after deleting active A with a
-         │                             failed mirror refresh, the mirror and its
-         │                             descriptor both name a profile the manifest
-         │                             no longer lists, and those bytes are still
-         │                             Wink'''s own — they need repairing, not
-         │                             abandoning on the deleted configuration.
+         ├─ digest matches          → STALE. Rewrite from A_now silently, no banner.
+         │                             Preserve a copy FIRST unless the descriptor's
+         │                             own profile file still holds these exact bytes
+         │                             (the crashed A→B switch: Profiles/A.json IS the
+         │                             copy). When a copy IS needed and the write
+         │                             fails, DEFER the rewrite — here the copy is the
+         │                             only guard, because the writer skips its own
+         │                             preservation for the profile it is writing.
+         │                             Checked BEFORE membership: after deleting
+         │                             active A with a failed mirror refresh, the
+         │                             mirror and its descriptor both name a profile
+         │                             the manifest no longer lists, and those bytes
+         │                             are still Wink's own — they need repairing,
+         │                             not abandoning on the deleted configuration.
          ├─ P is not in the manifest → UNKNOWN PROVENANCE. Leave both files alone.
          │    (the import action would have no destination, and recreating P
          │     is exactly what D9 refuses to do with an orphan.)
@@ -695,6 +722,22 @@ cannot invent one later:
 | Window cycle session | Invalidated with `reason: "profile_switched"` | Deferred |
 | Toggle session in flight | Left alone. It is a pid-scoped activation already in progress and is not a binding; killing it would strand a half-activated app. | Same |
 
+> **Nothing in this table is discarded until the operation is known to be possible.** Every
+> row above destroys work the user cannot get back, and both operations that trigger it can
+> still be refused after the fact: a switch to a profile whose data file is unreadable — which
+> stays selectable, because an unreadable profile is listed — and a delete of the active
+> profile whose *successor* is unreadable. Discarding first and failing second is the one
+> ordering with no upside: the user loses the recording and does not get the switch.
+>
+> So both paths validate before they discard. `loadProfileForActivation` / `planDeletion`
+> perform every check that can refuse the operation and write nothing; `commitActivation` /
+> `deleteProfile(plan)` then commit. The validated payload is carried forward rather than
+> re-read, because reading the same path twice can observe two different files — the same rule
+> migration follows when it decodes the exact buffer it copies.
+>
+> This cannot be made total. A write can still fail after the drafts are gone, so the failure
+> message says what was discarded rather than reporting that nothing changed.
+
 ### D15 — Search Palette trigger is per-profile
 
 **Decision: the Search Palette trigger stays inside the profile's `[AppShortcut]` array and
@@ -827,8 +870,11 @@ packaged-app validation.
 | V6 | Crash points | Inject failure after each of the four writes; assert the resulting on-disk state maps to exactly one D8 row |
 | V7 | Duplicate mints IDs and preserves every member | Duplicate a profile whose file carries **unmodelled JSON members**; assert ID sets are disjoint, and compare the two payloads **as JSON, member by member, with only `id` removed** — asserting on modelled fields alone would pass for an implementation that decoded and re-encoded, which is the loss this rule exists to prevent. Byte equality is deliberately *not* asserted: the `id` rewrite forces a re-serialization (see D6) |
 | V8 | Usage is not cross-deleted | Same ID in two profiles → delete in one → assert the other's rows survive and `deleteUsage` was not issued |
+| V8c | History is never erased before the commit lands | Fail the manifest write during a delete; assert `deleteUsage` was not issued for any id and the profile's rows are intact |
+| V8d | The journal is re-checked, not trusted | Hand-write a manifest owing a deletion for an id a live profile still holds; assert the drain issues nothing and keeps the id journalled |
 | V8b | Exclusivity fails closed | Make a remaining profile unreadable → delete another profile → assert **no** usage deletion is issued, for any ID |
 | V9 | Editor conflicts | Switch during recorder / composer draft / pending import; assert D14's row-by-row outcome |
+| V9b | A refusable operation discards nothing | Switch to a profile with an unreadable data file, and delete an active profile whose successor is unreadable; assert `prepareForSwitch` was never called, the active profile is unchanged, and the error is surfaced |
 | V10 | Foreign-edit detection | Rewrite `shortcuts.json` out of band → relaunch → assert banner state and that nothing was written until a choice was made |
 | V10b | Stale mirror is not mistaken for a foreign edit | Fail the mirror write during a switch **and** during a same-profile save → relaunch each → assert the mirror is rewritten from the live profile with **no** banner |
 | V10i | Ordinary saves accumulate no copies | Save five times in a row; assert no `shortcuts.unknown-*.json` exists — preserving Wink's own superseded output per save would be unbounded |
