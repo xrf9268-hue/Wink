@@ -449,6 +449,7 @@
         <a href="#insights">07 · insights</a>
         <a href="#quiet">08 · quiet</a>
         <a href="#sharing">09 · sharing</a>
+        <a href="#troubleshooting">10 · nothing happened</a>
         <a href="#extras" class="toc-extra">also, briefly</a>
       </nav>
 
@@ -602,6 +603,40 @@
             <div class="dim">wink://pause · wink://resume — same idea</div>
           </div>
           <p>Always call it with <kbd>open -g</kbd>. A plain <kbd>open</kbd> activates Wink to deliver the URL, which makes your actual target read as “not frontmost” and turns every toggle into a plain activate; <kbd>-g</kbd> keeps Wink in the background so the toggle sees the real frontmost state. Automation presses respect the same per-bundle cooldown as a real keypress, but they never count toward Insights.</p>
+        </article>
+
+
+        <!-- 10 -->
+        <article class="chapter" id="troubleshooting">
+          <p class="eyebrow">10 · when a chord does nothing</p>
+          <h2>Nothing happened. Here's why.</h2>
+          <p>A shortcut that does nothing has failed at exactly one of two places, and they are not the same problem. macOS may have withdrawn a <strong>permission</strong>, or the <strong>route</strong> that shortcut travels may not be ready. The menu bar pill tells you which.</p>
+          <div class="list">
+            <div class="list-row">
+              <span class="term">only some shortcuts died</span>
+              <span class="desc">It is a route, not a permission. Plain modifier chords (<kbd>⌃⌥K</kbd>) ride Carbon hot keys; anything on the Hyper layer or an Fn-row key rides the event tap. Secure Input and Input Monitoring stop the second kind and leave the first working — which is why half your shortcuts can vanish while the other half are fine.</span>
+            </div>
+            <div class="list-row">
+              <span class="term">all of them died</span>
+              <span class="desc">Check Accessibility first, in System Settings → Privacy &amp; Security. If Wink is listed and switched on, switch it <strong>off and on again</strong> — a stale grant looks identical to a live one from the outside.</span>
+            </div>
+            <div class="list-row">
+              <span class="term">after an update</span>
+              <span class="desc">macOS ties a permission to the app's signature, not its name or path. A build signed differently from the one you granted is a different app as far as TCC is concerned, and both permissions have to be granted again. Being notarized does not change this — notarization is about Gatekeeper letting the app open, TCC is about what it may do afterwards. They are separate, and the diagnostics export names the signing mode so you can tell which build you are running.</span>
+            </div>
+            <div class="list-row">
+              <span class="term">only in one app</span>
+              <span class="desc">That app is probably holding Secure Input — a password field, a lock screen, a remote-desktop session. The pill reads <strong>Limited · Secure Input</strong> and it clears itself. If the app is a VM or remote desktop you use for long stretches, add it under <strong>“Pause in exception apps”</strong> instead of fighting it.</span>
+            </div>
+            <div class="list-row">
+              <span class="term">the app moved or is gone</span>
+              <span class="desc">Wink binds to a bundle identifier, not a path, so moving an app is fine. Deleting it is not: the row stays and reports the app as unavailable, so nothing fires silently into a gap.</span>
+            </div>
+          </div>
+          <p class="lead-chips">If none of that explains it, take the evidence with you:</p>
+          <p><strong>Settings → General → Diagnostics</strong> has <strong>Reveal Log</strong> and <strong>Export…</strong>. The export shows you every file and everything in it <em>before</em> anything is written, and nothing leaves the Mac unless you send it.</p>
+          <p>Your user name, home folder path, passwords, tokens, and the query strings on any web address are removed. Application names and bundle identifiers are <em>kept</em> — they are what makes the report worth reading, and they do reveal which apps you have shortcuts for. Read the preview before you share it.</p>
+          <p>When you file something, the useful report is short: Wink's version, your macOS version, what you pressed and what you expected, which kind of shortcut it was, and the export attached.</p>
         </article>
 
         <!-- closing -->

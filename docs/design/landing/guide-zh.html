@@ -449,6 +449,7 @@
         <a href="#insights">07 · 洞察</a>
         <a href="#quiet">08 · 静默</a>
         <a href="#sharing">09 · 分享</a>
+        <a href="#troubleshooting">10 · 没反应</a>
         <a href="#extras" class="toc-extra">还有，顺带一提</a>
       </nav>
 
@@ -602,6 +603,40 @@
             <div class="dim">wink://pause · wink://resume — 同样的用法</div>
           </div>
           <p>始终用 <kbd>open -g</kbd> 调用它。单纯的 <kbd>open</kbd> 会先激活 Wink 来投递这个 URL，这会让你真正的目标应用被判定成"不在前台"，把每一次切换都变成单纯的激活；<kbd>-g</kbd> 能让 Wink 留在后台，这样切换看到的才是真实的前台状态。自动化触发遵守和真实按键一样的按应用冷却时间，但从不计入洞察。</p>
+        </article>
+
+
+        <!-- 10 -->
+        <article class="chapter" id="troubleshooting">
+          <p class="eyebrow">10 · 按了没反应</p>
+          <h2>什么都没发生。原因在这。</h2>
+          <p>快捷键没反应，一定是两处之一出了问题，而这两处不是一回事：可能 macOS 收回了<strong>权限</strong>，也可能这个快捷键走的<strong>通道</strong>没就绪。菜单栏的状态标签会告诉你是哪一种。</p>
+          <div class="list">
+            <div class="list-row">
+              <span class="term">只有一部分失灵</span>
+              <span class="desc">那是通道问题，不是权限问题。普通修饰键组合（<kbd>⌃⌥K</kbd>）走 Carbon 热键；Hyper 层和 Fn 行的按键走事件监听。安全输入和「输入监控」只会挡住后一种，前一种照常工作——所以你的快捷键才会一半失灵、一半正常。</span>
+            </div>
+            <div class="list-row">
+              <span class="term">全部失灵</span>
+              <span class="desc">先看「系统设置 → 隐私与安全性 → 辅助功能」。如果 Wink 已列出且开关是打开的，把它<strong>关掉再打开</strong>——失效的授权从外面看和有效的一模一样。</span>
+            </div>
+            <div class="list-row">
+              <span class="term">更新之后</span>
+              <span class="desc">macOS 把权限绑定在 App 的<strong>签名</strong>上，而不是名称或路径。签名方式和你当初授权时不同的构建，在 TCC 眼里就是另一个 App，两个权限都要重新授予。已公证也改变不了这一点——公证管的是 Gatekeeper 让不让它打开，TCC 管的是打开之后能做什么，两者互不相干。诊断导出里会写明签名方式，方便你判断自己在跑哪种构建。</span>
+            </div>
+            <div class="list-row">
+              <span class="term">只在某个 App 里失灵</span>
+              <span class="desc">那个 App 多半占用了安全输入——密码框、锁屏、远程桌面。状态标签会显示 <strong>Limited · Secure Input</strong>，并会自行恢复。如果那是你长时间使用的虚拟机或远程桌面，把它加进<strong>「在例外应用中暂停」</strong>，比硬碰硬省事。</span>
+            </div>
+            <div class="list-row">
+              <span class="term">App 被移动或删除了</span>
+              <span class="desc">Wink 绑定的是 Bundle ID 而不是路径，所以移动 App 没问题。删除就不行了：那一行会保留并标记为「应用不可用」，不会悄悄地对着一个空位触发。</span>
+            </div>
+          </div>
+          <p class="lead-chips">如果以上都解释不了，把证据带上：</p>
+          <p><strong>设置 → 通用 → 诊断信息</strong>里有<strong>显示日志</strong>和<strong>导出…</strong>。导出会在写入<em>之前</em>把每个文件和其中的全部内容展示给你，除非你自己发出去，否则不会离开这台 Mac。</p>
+          <p>你的用户名、个人文件夹路径、密码、令牌，以及网址中的查询参数都会被移除。应用名称和 Bundle ID 会<em>保留</em>——正是它们让报告有阅读价值，同时也会暴露你为哪些应用设置了快捷键。分享前先看一眼预览。</p>
+          <p>提交问题时，有用的报告很短：Wink 版本、macOS 版本、你按了什么、期待发生什么、属于哪一类快捷键，再附上导出。</p>
         </article>
 
         <!-- closing -->
