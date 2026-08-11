@@ -1531,6 +1531,31 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func ordinarySavesDoNotAccumulatePreservedCopies() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let persistence = store.makeActiveProfilePersistenceService()
+
+        // Each save supersedes Wink'''s own previous output for the same
+        // profile. Preserving that would mean a copy per save — unbounded
+        // garbage rather than protection.
+        for index in 0..<5 {
+            try persistence.save([makeTestShortcut(appName: "App \(index)")])
+        }
+
+        let copies = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(copies.isEmpty)
+    }
+
+    @Test
     func anEditMadeWhileWinkIsRunningIsPreservedByTheNextSave() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

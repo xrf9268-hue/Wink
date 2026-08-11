@@ -858,10 +858,19 @@ final class ShortcutProfileStore {
         // a cost worth trading a silent data loss for.
         if let existing = try? Data(contentsOf: layout.mirrorURL) {
             let existingDigest = digest(existing)
-            let describedDigest = (try? Data(contentsOf: layout.mirrorDescriptorURL))
+            let descriptor = (try? Data(contentsOf: layout.mirrorDescriptorURL))
                 .flatMap { try? metadataDecoder.decode(ShortcutProfileMirrorDescriptor.self, from: $0) }
-                .map(\.sha256)
-            if existingDigest != describedDigest, existingDigest != digest(data) {
+            // Ours, and for the profile being written: Wink's own previous
+            // output, which this write supersedes. Preserving that would mean
+            // a copy on every save, which is unbounded garbage rather than
+            // protection.
+            //
+            // Ours but for a DIFFERENT profile: a switch whose mirror write
+            // never landed, so these bytes are another profile's and the
+            // descriptor cannot vouch for them being superseded here.
+            let isWinkOwnCurrentPayload = descriptor?.sha256 == existingDigest
+                && descriptor?.profileID == profileID
+            if !isWinkOwnCurrentPayload, existingDigest != digest(data) {
                 let copyURL = layout.appDirectory
                     .appendingPathComponent("shortcuts.unknown-\(existingDigest.prefix(12)).json")
                 if !FileManager.default.fileExists(atPath: copyURL.path) {
