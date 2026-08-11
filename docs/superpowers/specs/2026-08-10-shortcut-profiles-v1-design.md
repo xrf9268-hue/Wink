@@ -176,6 +176,7 @@ Write order, with the important distinction that a **switch writes no profile da
 | Delete (of an inactive profile) | `manifest.json` → unlink |
 | Delete that failed with an unrecoverable switch | mirror → `mirror.json` only — nothing else committed, and the mirror follows the switch that stuck |
 | Import an outside edit into profile P | `Profiles/<P>.json` → mirror → `mirror.json` |
+| Any mirror write | re-check the existing compat file against  and preserve it first when they disagree |
 | Recover a quarantined profile list | `Profiles/<new>.json` → `manifest.json` → `Profiles/active.json` → preserved copy of the existing mirror → mirror → `mirror.json` |
 
 Deleting the **active** profile is a switch with an extra step, not a lighter operation: it
@@ -347,7 +348,12 @@ direction: Wink must not silently overwrite the user's older-build edits either.
 
 > **Invariant.** A `shortcuts.json` Wink cannot attribute is never auto-**imported** without
 > an explicit user action, and is never **overwritten** until a byte-identical copy has been
-> preserved beside it.
+> preserved beside it — checked at the moment of the overwrite, not only at launch.
+>
+> The launch-time classification cannot see an edit made while Wink is running, so the
+> guarantee lives inside the single function that writes the mirror rather than in a rule each
+> call site has to remember. That is what makes it hold for saves, switches, forced switches,
+> and recovery alike, including paths added later.
 >
 > The second clause is deliberately weaker than "never overwritten". Unknown-provenance bytes
 > cannot block saves forever — Wink would be unusable — so the design buys the freedom to
