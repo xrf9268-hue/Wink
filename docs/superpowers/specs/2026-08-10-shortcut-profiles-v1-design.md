@@ -174,7 +174,9 @@ Write order, with the important distinction that a **switch writes no profile da
 | Rename | `manifest.json` |
 | Delete (of the active profile) | `Profiles/active.json` → `manifest.json` → mirror → `mirror.json` → unlink |
 | Delete (of an inactive profile) | `manifest.json` → unlink |
+| Delete that failed with an unrecoverable switch | mirror → `mirror.json` only — nothing else committed, and the mirror follows the switch that stuck |
 | Import an outside edit into profile P | `Profiles/<P>.json` → mirror → `mirror.json` |
+| Recover a quarantined profile list | `Profiles/<new>.json` → `manifest.json` → `Profiles/active.json` → mirror → `mirror.json` |
 
 Deleting the **active** profile is a switch with an extra step, not a lighter operation: it
 selects the fallback, applies it through the same runtime path a switch uses, and refreshes
@@ -249,7 +251,8 @@ launch (active profile = A_now, whose shortcuts are already loaded)
          ├─ P is not in the manifest → UNKNOWN PROVENANCE. Leave both files alone.
          │    (the import action would have no destination, and recreating P
          │     is exactly what D9 refuses to do with an orphan.)
-         ├─ digest matches          → STALE. Rewrite from A_now silently. No banner.
+         ├─ digest matches          → STALE. Preserve a copy, then rewrite from
+         │                             A_now silently. No banner.
          └─ digest does not match    → NOT OURS. Load A_now normally, surface a
                                       non-modal banner naming P (mirror.json's profile)
                                       and BOTH possible causes:
@@ -306,6 +309,14 @@ descriptor — would remove the ambiguity at the source. It is deliberately out 
 v1: the mirror is derived data, and buying a barrier for it would mean replacing the atomic
 write on the save path with hand-rolled `FileHandle` work.)
 
+**Why even the silent repair preserves first.** A matching digest proves these bytes are
+ones Wink wrote — not that Wink wrote them *last*. An older build or a tool restoring the
+exact previous payload produces a file byte-identical to what the crash window leaves behind,
+and no rule can separate them, for the same reason the withdrawn `previousSHA256` idea
+failed. Rather than add a banner to a case that is usually a crash artifact, the repair obeys
+the invariant that already governs every other overwrite: preserve a byte-identical copy
+first. The crash case still needs no prompt, and the restore case is no longer destructive.
+
 **Why unknown provenance is left alone — and why "left alone" is not enough on its own.**
 Migration deliberately skips the mirror write when the legacy `shortcuts.json` was unreadable
 (D4), so that state is reachable by design. Rewriting the mirror there would destroy bytes
@@ -351,9 +362,12 @@ direction: Wink must not silently overwrite the user's older-build edits either.
 - **Duplicate** rewrites only each row's `id`, **inside the source file's own JSON**, and
   copies everything else byte-for-byte. Going through `AppShortcut` would drop members this
   build does not model — the same loss D4 and D5 already guard migration and mirroring
-  against — so duplication is a copy, not a re-encode. A reshape failure falls back to a
-  model-level copy (`isEnabled`, `frontmostBehaviorOverride`, `target`, `holdAction`, and the
-  preserved-invalid-target gate) rather than refusing to duplicate at all.
+  against — so duplication is a copy, not a re-encode. A reshape failure **refuses the
+  duplicate** rather than falling back to a model-level copy: a fallback that re-encodes would
+  reintroduce, in the fallback, the exact loss this rule exists to prevent — and before any
+  ordinary save, so the boundary below would not even apply. The condition is close to
+  unreachable in practice, because a payload the strict loader accepted is JSON that
+  `JSONSerialization` can also read.
 
 > **Where preservation ends.** Unmodelled members survive every *copy* in this design —
 > migration, mirroring, import, duplication — and are dropped by the first ordinary **save**
@@ -460,6 +474,8 @@ actually load, so it writes all three files, in this order:
 1. `Profiles/<new>.json` — an empty shortcut array
 2. `Profiles/manifest.json` — one Default profile naming that id
 3. `Profiles/active.json` — pointing at it
+4. the mirror and its descriptor — like every other active-profile transition, so the compat
+   file stops describing the pre-recovery bindings
 
 Writing only the manifest would leave a stale `active.json` naming an id the new manifest does
 not contain, and stage 2 would return the user straight back to the zero-armed picker; writing
@@ -705,6 +721,8 @@ packaged-app validation.
 | V9 | Editor conflicts | Switch during recorder / composer draft / pending import; assert D14's row-by-row outcome |
 | V10 | Foreign-edit detection | Rewrite `shortcuts.json` out of band → relaunch → assert banner state and that nothing was written until a choice was made |
 | V10b | Stale mirror is not mistaken for a foreign edit | Fail the mirror write during a switch **and** during a same-profile save → relaunch each → assert the mirror is rewritten from the live profile with **no** banner |
+| V10h | Every mirror overwrite preserves first | Reach the silent stale repair; assert a `shortcuts.unknown-*.json` copy exists alongside the repaired mirror |
+| V7b | A lossy duplicate is refused | Make the source payload unreshapeable; assert the duplicate fails and writes nothing |
 | V10c | Unknown provenance is left alone | Migrate from an unreadable legacy file → relaunch → assert no banner, and that `shortcuts.json` still holds the user's original bytes |
 | V10d | Unmodelled members survive | Profile file with an extra JSON member, mirror a byte copy → relaunch → assert no stale rewrite and that the member is still present in both files |
 | V11b | Unsupported pointer schema fails closed | Well-formed `active.json` with `schemaVersion` 99 and exactly one profile → assert zero armed, a quarantine copy, and an explicit picker |
