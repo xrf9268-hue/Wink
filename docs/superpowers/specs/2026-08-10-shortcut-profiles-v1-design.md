@@ -177,7 +177,7 @@ Write order, with the important distinction that a **switch writes no profile da
 | Delete that failed with an unrecoverable switch | mirror → `mirror.json` only — nothing else committed, and the mirror follows the switch that stuck |
 | Import an outside edit into profile P | `Profiles/<P>.json` → mirror → `mirror.json` |
 | Any mirror write | re-check the existing compat file against `mirror.json` and preserve it first when they disagree |
-| Recover a quarantined profile list | `Profiles/<new>.json` → `manifest.json` → `Profiles/active.json` → preserved copy of the existing mirror → mirror → `mirror.json` |
+| Recover a quarantined profile list | `Profiles/<new>.json` → `Profiles/active.json` → `manifest.json` → preserved copy of the existing mirror → mirror → `mirror.json` |
 
 Deleting the **active** profile is a switch with an extra step, not a lighter operation: it
 selects the fallback, applies it through the same runtime path a switch uses, and refreshes
@@ -361,11 +361,32 @@ direction: Wink must not silently overwrite the user's older-build edits either.
 > call site has to remember. That is what makes it hold for saves, switches, forced switches,
 > and recovery alike, including paths added later.
 >
-> **What "unattributable" excludes, and why.** A payload whose digest matches the descriptor
-> *and* whose descriptor names the profile being written is Wink's own current output, which
-> this write supersedes; it is not preserved, because doing so would produce one copy per
-> save. A payload Wink wrote for a **different** profile — a switch whose mirror write never
-> landed — is preserved, because the descriptor cannot vouch for this write superseding it.
+> **A file that exists but cannot be read is not an absent file**, and it is the case the rule
+> exists for: the containing directory can still accept an atomic replacement, so a
+> `try? Data(contentsOf:)` that falls through to the write destroys bytes it never captured —
+> precisely the older-build or external-tool edit worth keeping. Existence and readability are
+> separate questions everywhere a read precedes an overwrite, here and in recovery, and an
+> unreadable current file **cancels** the write rather than licensing it.
+>
+> **What "unattributable" excludes, and why.** Two cases are exempt, each because the bytes
+> provably survive somewhere else.
+>
+> A payload whose digest matches the descriptor *and* whose descriptor names the profile being
+> written is Wink's own current output, which this write supersedes; preserving it would
+> produce one copy per save.
+>
+> A payload the descriptor attributes to a **different** profile whose data file still holds
+> those exact bytes is a redundant copy of live data. This is the state **every** ordinary A→B
+> switch is in — the mirror still holds A while B is being written — so treating "different
+> profile" alone as unattributable would drop a junk file for every distinct payload ever
+> mirrored, on the normal path rather than the damaged one. The test is byte equality with a
+> file that exists at that moment, so it does not depend on the manifest being readable; the
+> only path that later removes the source is the user deleting that profile, which is a
+> deliberate discard of exactly those bytes.
+>
+> What remains — a source profile that is gone, missing, or has moved on — **is** preserved: a
+> switch whose mirror write never landed, and whose profile file then advanced, leaves the
+> mirror as the last copy of that payload.
 >
 > One case is deliberately not covered at write time: an external restore of the descriptor's
 > current payload for the same profile. By the time the mirror is written, the profile data
@@ -385,14 +406,23 @@ direction: Wink must not silently overwrite the user's older-build edits either.
 
 - A **switch** loads the stored array verbatim and regenerates nothing.
 - **Duplicate** rewrites only each row's `id`, **inside the source file's own JSON**, and
-  copies everything else byte-for-byte. Going through `AppShortcut` would drop members this
-  build does not model — the same loss D4 and D5 already guard migration and mirroring
-  against — so duplication is a copy, not a re-encode. A reshape failure **refuses the
-  duplicate** rather than falling back to a model-level copy: a fallback that re-encodes would
-  reintroduce, in the fallback, the exact loss this rule exists to prevent — and before any
-  ordinary save, so the boundary below would not even apply. The condition is close to
-  unreachable in practice, because a payload the strict loader accepted is JSON that
-  `JSONSerialization` can also read.
+  carries every other member across unchanged. Going through `AppShortcut` would drop members
+  this build does not model — the same loss D4 and D5 already guard migration and mirroring
+  against — so duplication reshapes the JSON rather than re-encoding the model. A reshape
+  failure **refuses the duplicate** rather than falling back to a model-level copy: a fallback
+  that re-encodes would reintroduce, in the fallback, the exact loss this rule exists to
+  prevent — and before any ordinary save, so the boundary below would not even apply. The
+  condition is close to unreachable in practice, because a payload the strict loader accepted
+  is JSON that `JSONSerialization` can also read.
+
+> **Duplication preserves members, not bytes — and that distinction is load-bearing.**
+> Migration and mirroring copy `Data` and are byte-exact. Duplication cannot be: it must
+> rewrite every `id`, so the payload is re-serialized, which normalizes key order and
+> whitespace (and could reformat a number literal). What it guarantees is that every member of
+> every row survives with its value, including members this build does not model — which is
+> the property the forward-compatibility rule actually needs. Claiming byte identity here
+> would be a promise the code cannot keep and a test could only pass by accident, so the
+> weaker true statement is the one recorded.
 
 > **Where preservation ends.** Unmodelled members survive every *copy* in this design —
 > migration, mirroring, import, duplication — and are dropped by the first ordinary **save**
@@ -497,11 +527,22 @@ from that value.
 actually load, so it writes all three files, in this order:
 
 1. `Profiles/<new>.json` — an empty shortcut array
-2. `Profiles/manifest.json` — one Default profile naming that id
-3. `Profiles/active.json` — pointing at it
+2. `Profiles/active.json` — pointing at it
+3. `Profiles/manifest.json` — one Default profile naming that id
 4. a preserved copy of the existing `shortcuts.json`, **before** step 5
 5. the mirror and its descriptor — like every other active-profile transition, so the compat
    file stops describing the pre-recovery bindings
+
+**The manifest is written last because stage 1 reads it first**: it is the commit point of a
+recovery exactly as `active.json` is the commit point of a switch — in both cases, the file
+the earliest reading stage consults is the one written last. A failure before it therefore
+leaves the state the user is already looking at, with the same banner and the same Recover
+action, instead of a disk that quietly advanced while the UI reported that nothing changed.
+The reverse order has a real failure: manifest committed, pointer write refused, the method
+reports failure, and the next launch meets a pointer naming a profile the new manifest does
+not list. What the chosen order leaves behind on a partial failure is an unreferenced data
+file and a pointer no stage consults while stage 1 still fails — both superseded by the next
+recovery, neither observable.
 
 Step 4 is not redundant with the manifest's own quarantine copy. Stage 1 stopped before an
 active profile was resolved, so D5's classification never ran and an older build's edits to
@@ -512,7 +553,7 @@ beside it.
 
 Writing only the manifest would leave a stale `active.json` naming an id the new manifest does
 not contain, and stage 2 would return the user straight back to the zero-armed picker; writing
-manifest and pointer without the data file would pass stages 1 and 2 and then fail stage 3.
+the pointer and manifest without the data file would pass stages 1 and 2 and then fail stage 3.
 Overwriting the damaged manifest is safe because a byte-identical copy was preserved before the
 banner appeared, and Recover re-attempts that preservation first in case the earlier attempt
 failed.
@@ -753,13 +794,15 @@ packaged-app validation.
 | V4 | Exactly-once rebuild | Counting fake asserts `rebuildIndex` == 1 per successful switch, 0 per refused switch |
 | V5 | Every recovery state | Table-driven over each stage of D8 **and** their compositions (unreadable pointer with unreadable data, etc.); assert armed-shortcut count and that no *other* profile ever loads |
 | V6 | Crash points | Inject failure after each of the four writes; assert the resulting on-disk state maps to exactly one D8 row |
-| V7 | Duplicate mints IDs and preserves bytes | Duplicate a profile whose file carries an **unmodelled JSON member**; assert ID sets are disjoint, the member survives in the copy, and every modelled field is equal including preserved invalid targets |
+| V7 | Duplicate mints IDs and preserves every member | Duplicate a profile whose file carries **unmodelled JSON members**; assert ID sets are disjoint, and compare the two payloads **as JSON, member by member, with only `id` removed** — asserting on modelled fields alone would pass for an implementation that decoded and re-encoded, which is the loss this rule exists to prevent. Byte equality is deliberately *not* asserted: the `id` rewrite forces a re-serialization (see D6) |
 | V8 | Usage is not cross-deleted | Same ID in two profiles → delete in one → assert the other's rows survive and `deleteUsage` was not issued |
 | V8b | Exclusivity fails closed | Make a remaining profile unreadable → delete another profile → assert **no** usage deletion is issued, for any ID |
 | V9 | Editor conflicts | Switch during recorder / composer draft / pending import; assert D14's row-by-row outcome |
 | V10 | Foreign-edit detection | Rewrite `shortcuts.json` out of band → relaunch → assert banner state and that nothing was written until a choice was made |
 | V10b | Stale mirror is not mistaken for a foreign edit | Fail the mirror write during a switch **and** during a same-profile save → relaunch each → assert the mirror is rewritten from the live profile with **no** banner |
 | V10i | Ordinary saves accumulate no copies | Save five times in a row; assert no `shortcuts.unknown-*.json` exists — preserving Wink's own superseded output per save would be unbounded |
+| V10j | Ordinary switches accumulate no copies | Switch A→B→A three times; assert no `shortcuts.unknown-*.json` exists — the mirror holds A's bytes while B is written, and A's own file is the copy |
+| V10k | An unreadable mirror is never replaced | Make `shortcuts.json` present but unreadable in a still-writable directory → switch → assert the switch commits, the mirror bytes are unchanged, and the skip is traced |
 | V10h | Every mirror overwrite preserves first | Reach the silent stale repair; assert a `shortcuts.unknown-*.json` copy exists alongside the repaired mirror |
 | V7b | A lossy duplicate is refused | Make the source payload unreshapeable; assert the duplicate fails and writes nothing |
 | V10c | Unknown provenance is left alone | Migrate from an unreadable legacy file → relaunch → assert no banner, and that `shortcuts.json` still holds the user's original bytes |
@@ -769,6 +812,8 @@ packaged-app validation.
 | V10g | Interrupted migration is resumable | Manifest present, Default data file absent, legacy `shortcuts.json` intact → assert zero armed **and** an offered import |
 | V10f | Dangling descriptor is unknown provenance | Descriptor naming a deleted profile, mirror changed out of band → assert no banner and no import action offered |
 | V11 | Name and cap rules | Empty, 65-char, case-differing duplicate, 33rd profile — all rejected with a message |
+| V11c | Load enforces the same name rules | Hand-written manifests carrying an empty, 65-char, or case-colliding name → assert each is a load failure, since every surface addresses a profile by the name the user reads. The 32-profile cap is deliberately **not** enforced at load: over-cap data stays usable, and refusing to start would turn a restored backup into a lockout |
+| V12d | A failed recovery changes nothing | Fail the `active.json` write during Recover → assert the throw, that the quarantined manifest bytes are unchanged, and that a fresh load still reports the same state the user was looking at |
 | V12 | Delete-active fallback | Delete active at list positions first/middle/last; assert the deterministic successor, that the fallback is applied to the runtime, and that the mirror now describes it |
 | V12b | Delete-active failure is total | Fail the manifest write after the pointer commit; assert the throw, and that the pointer, locator, and a fresh load all still name the original profile |
 | V12c | A failed rollback is not claimed as one | Fail the manifest write **and** the rollback write; assert the outcome reports the forced switch, the locator names the fallback, and a fresh load agrees with the message shown |
