@@ -511,8 +511,9 @@ from that value.
 | --- | --- |
 | valid and names a listed profile | That profile. Continue to stage 3. |
 | valid but names an ID the list does not contain | Zero shortcuts armed + banner + explicit picker. **Never** fall through to another profile. |
-| absent, or **malformed** (truncated, unparseable, missing fields), **and the list has exactly one profile** | Preserve a quarantine copy when there were bytes to preserve, then adopt the single profile and rewrite the pointer. This is a determination, not a fall-through: with one profile there is no *other* configuration the lost pointer could have named. Continue to stage 3. |
+| absent, or **malformed** (truncated, unparseable, missing fields — read successfully, understood to be damaged), **and the list has exactly one profile** | Preserve a quarantine copy when there were bytes to preserve, then adopt the single profile and rewrite the pointer. This is a determination, not a fall-through: with one profile there is no *other* configuration the lost pointer could have named. Continue to stage 3. |
 | absent, or **malformed**, **and the list has two or more** | Preserve a quarantine copy when applicable, then zero shortcuts armed + banner + explicit picker. The pointer's content is precisely what was lost, so any selection would be a guess. |
+| present but **unreadable** (permissions, I/O error — the bytes were never seen), *any* profile count | Zero shortcuts armed + banner + explicit picker, and **the file is left exactly as it is**. Adoption rewrites the pointer, so treating this as the malformed row would overwrite bytes this build never read. Unreadable is strictly *less* interpretable than an unsupported schema, which the row below already refuses to adopt for any profile count, so it cannot license the weaker response: the file may equally have said "none active". |
 | well-formed but carrying a **`schemaVersion` this build does not support**, *any* profile count | Preserve a quarantine copy, then zero shortcuts armed + banner + explicit picker. **Never adopt, even with a single profile.** This is not corruption but a deliberate signal from another build, and a future pointer schema may mean more than "which of today's profiles" — "none active", for instance. Adopting would arm bindings that build left unarmed, which is exactly the guessing D2 forbids. |
 
 **Stage 3 — that profile's data file, given a resolved profile**
@@ -559,8 +560,9 @@ banner appeared, and Recover re-attempts that preservation first in case the ear
 failed.
 
 Because the stages compose, a doubly damaged install has exactly one reading with no extra
-rule: an unreadable pointer with a single profile resolves in stage 2 (adopt), and if that
-profile's data is *also* unreadable, stage 3 quarantines it and arms nothing.
+rule: a *malformed* pointer with a single profile resolves in stage 2 (adopt), and if that
+profile's data is *also* unreadable, stage 3 quarantines it and arms nothing. A pointer that
+could not be read at all does not reach that adoption — see the stage 2 table.
 
 
 The rule the stages encode: **an unreadable configuration yields no shortcuts, never a
@@ -812,6 +814,7 @@ packaged-app validation.
 | V10g | Interrupted migration is resumable | Manifest present, Default data file absent, legacy `shortcuts.json` intact → assert zero armed **and** an offered import |
 | V10f | Dangling descriptor is unknown provenance | Descriptor naming a deleted profile, mirror changed out of band → assert no banner and no import action offered |
 | V11 | Name and cap rules | Empty, 65-char, case-differing duplicate, 33rd profile — all rejected with a message |
+| V11d | An unreadable pointer is neither adopted nor rewritten | Make `active.json` present but unreadable with exactly one profile listed — the count that normally licenses adoption → assert zero armed, an explicit picker, and byte-identical pointer bytes afterwards |
 | V11c | Load enforces the same name rules | Hand-written manifests carrying an empty, 65-char, or case-colliding name → assert each is a load failure, since every surface addresses a profile by the name the user reads. The 32-profile cap is deliberately **not** enforced at load: over-cap data stays usable, and refusing to start would turn a restored backup into a lockout |
 | V12d | A failed recovery changes nothing | Fail the `active.json` write during Recover → assert the throw, that the quarantined manifest bytes are unchanged, and that a fresh load still reports the same state the user was looking at |
 | V12 | Delete-active fallback | Delete active at list positions first/middle/last; assert the deterministic successor, that the fallback is applied to the runtime, and that the mirror now describes it |
