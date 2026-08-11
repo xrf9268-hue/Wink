@@ -419,6 +419,23 @@ direction: Wink must not silently overwrite the user's older-build edits either.
 > call site has to remember. That is what makes it hold for saves, switches, forced switches,
 > and recovery alike, including paths added later.
 >
+> **The preservation copy is flushed before the overwrite it authorizes.** Program order is
+> not disk order: `.atomic` is a temp file plus a rename, and a rename is not a barrier, so
+> the mirror replacement can reach stable storage while the copy that made it legal does not.
+> D7 accepts exactly that reordering for the metadata commits, on the grounds that every
+> on-disk combination has a defined reading and recovery is therefore total — and that
+> argument does not reach here. These copies exist *because* their contents cannot be
+> reconstructed, so a lost one is not a state to interpret; it is data that is gone.
+>
+> The three writes that authorize a destructive overwrite — the unknown-mirror copy, the same
+> copy taken inside the writer, and the quarantine copy that lets Recover replace an
+> unreadable file — therefore flush to stable storage before returning. Everything else keeps
+> the plain atomic write, where a lost write leaves a state recovery can already read.
+> `F_FULLFSYNC`, not `fsync`: on Apple platforms `fsync` only hands the blocks to the drive,
+> which may still hold them in a volatile cache. The containing directory is synced too, since
+> the file arrives by rename and an unsynced directory can lose the entry even when the file's
+> own blocks are durable.
+>
 > **A file that exists but cannot be read is not an absent file**, and it is the case the rule
 > exists for: the containing directory can still accept an atomic replacement, so a
 > `try? Data(contentsOf:)` that falls through to the write destroys bytes it never captured —
@@ -548,7 +565,7 @@ state that either leads or equals what was in memory — never lags it.
 **On atomicity, precisely.** `Data.write(options: .atomic)` writes a temporary file and
 renames it. That guarantees *no torn file* and survives a process crash. It does **not**
 guarantee cross-file ordering under sudden power loss, because rename is not an fsync.
-v1 does not add explicit `fsync` barriers; instead, recovery is made **total** — every
+v1 adds no `fsync` barriers to the metadata commits; instead, recovery is made **total** — every
 pairwise combination of the four files has exactly one defined interpretation (D8). A
 design that relied on write ordering it cannot enforce would be worse than one that can
 read any combination.
@@ -934,6 +951,7 @@ packaged-app validation.
 | V12 | Delete-active fallback | Delete active at list positions first/middle/last; assert the deterministic successor, that the fallback is applied to the runtime, and that the mirror now describes it |
 | V12b | Delete-active failure is total | Fail the manifest write after the pointer commit; assert the throw, and that the pointer, locator, and a fresh load all still name the original profile |
 | V12c | A failed rollback is not claimed as one | Fail the manifest write **and** the rollback write; assert the outcome reports the forced switch, the locator names the fallback, and a fresh load agrees with the message shown |
+| V13d | The authorizing copy is durable, not merely earlier | Assert the unknown-mirror and quarantine copies go through the flushing write path and the other writes do not — program order alone does not survive power loss |
 | V13b | Unattributable bytes are preserved | Reach unknown provenance twice; assert exactly one `shortcuts.unknown-*.json` copy exists and holds the original bytes |
 | V13 | Palette per-profile | Profile A has a palette trigger, B does not; switch A→B→A; assert trigger index membership follows and no ID churn |
 | V14 | **runtime** Live switch with real capture | Packaged app, standard + Hyper bindings live: switch, assert old chords stop and new chords fire; record SHA, bundle path, executable SHA-256, registrations/readiness, activation evidence |
