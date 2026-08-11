@@ -701,6 +701,48 @@ struct ShortcutProfileCRUDTests {
     }
 
     @Test
+    func duplicationPreservesMembersTheModelDoesNotCarry() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+
+        let source = """
+        [
+          {
+            "appName" : "Safari",
+            "bundleIdentifier" : "com.apple.Safari",
+            "futureField" : { "kind" : "something-new" },
+            "id" : "55555555-5555-5555-5555-555555555555",
+            "isEnabled" : true,
+            "keyEquivalent" : "s",
+            "modifierFlags" : [ "command" ]
+          }
+        ]
+        """
+        try harness.writeRawLegacyShortcuts(source)
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        let copy = try store.createProfile(named: "Work", duplicating: loaded.activeProfileID)
+        let copiedBytes = try #require(harness.data(at: harness.layout.profileDataURL(copy.id)))
+        let copiedText = String(decoding: copiedBytes, as: UTF8.self)
+
+        // Copied at the JSON level: the unmodelled member survives, and only
+        // the id changed.
+        #expect(copiedText.contains("futureField"))
+        #expect(copiedText.contains("something-new"))
+        #expect(!copiedText.contains("55555555-5555-5555-5555-555555555555"))
+
+        let copied = try store.shortcuts(in: copy.id)
+        #expect(copied.count == 1)
+        #expect(copied[0].id != loaded.activeShortcuts[0].id)
+        #expect(copied[0].appName == "Safari")
+    }
+
+    @Test
     func nameRulesRejectEmptyTooLongAndCaseInsensitiveDuplicates() throws {
         let (harness, store, _) = try readyStore()
         defer { harness.cleanup() }

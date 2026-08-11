@@ -1023,12 +1023,66 @@ final class ShortcutProfileStore {
         }
 
         // Duplication mints a fresh UUID per row, keeping shortcut IDs
-        // globally unique so `usage.db` needs no profile column. Every other
-        // field is copied verbatim, including the preserved invalid-target
-        // gate — dropping it would re-arm a row a newer build meant to keep
-        // unavailable (#404).
-        let contents: [AppShortcut] = try sourceProfileID.map { sourceID in
-            try shortcuts(in: sourceID).map { source in
+        // globally unique so `usage.db` needs no profile column. Everything
+        // else is copied at the JSON level rather than through the model:
+        // re-encoding an `AppShortcut` drops members this build does not
+        // model, which is the same data loss migration and mirroring were
+        // fixed to avoid.
+        var duplicatedBytes: Data?
+        var contents: [AppShortcut] = []
+        if let sourceProfileID {
+            // Validate through the strict loader first, so an unreadable
+            // source is refused before anything is written.
+            _ = try shortcuts(in: sourceProfileID)
+            let copy = try duplicatedProfileBytes(from: sourceProfileID, layout: layout)
+            duplicatedBytes = copy.data
+            contents = copy.shortcuts
+        }
+
+        let profile = ShortcutProfile(
+            id: idProvider(),
+            name: ShortcutProfileNameRules.trimmed(rawName),
+            createdAt: dateProvider()
+        )
+
+        // Data file first: a crash before the manifest write leaves an orphan
+        // (reported, never auto-imported), which is strictly safer than a
+        // manifest entry pointing at a file that does not exist.
+        if let duplicatedBytes {
+            try writeProfileBytes(duplicatedBytes, profileID: profile.id, layout: layout)
+        } else {
+            try writeProfileData(contents, profileID: profile.id, layout: layout)
+        }
+        current.profiles.append(profile)
+        try commitManifest(current, layout: layout)
+        manifest = current
+        log("PROFILE_TRACE_CREATED id=\(profile.id.uuidString) shortcuts=\(contents.count) duplicated=\(sourceProfileID != nil)")
+        return profile
+    }
+
+    /// Rewrites only each row's `id` inside the source file's own JSON, so
+    /// members `AppShortcut` does not model survive the copy.
+    ///
+    /// The boundary is worth stating: unmodelled members survive every
+    /// *copy* in this store — migration, mirroring, import, and this — but not
+    /// the first ordinary **save** of the profile, because a save re-encodes
+    /// the model by definition. Preserving them through edits would require
+    /// modelling them, which is exactly what a forward-compatible schema
+    /// cannot do.
+    private func duplicatedProfileBytes(
+        from sourceProfileID: UUID,
+        layout: ShortcutProfileLayout
+    ) throws -> (data: Data, shortcuts: [AppShortcut]) {
+        let sourceURL = layout.profileDataURL(sourceProfileID)
+        guard
+            let raw = try? Data(contentsOf: sourceURL),
+            let rows = (try? JSONSerialization.jsonObject(with: raw)) as? [[String: Any]]
+        else {
+            // Fall back to a model-level copy rather than refusing to
+            // duplicate: losing an unmodelled member is bad, losing the
+            // ability to duplicate at all is worse.
+            log("PROFILE_TRACE_DUPLICATE_FALLBACK id=\(sourceProfileID.uuidString) reason=json_reshape_failed")
+            let copied = try shortcuts(in: sourceProfileID).map { source in
                 AppShortcut(
                     id: idProvider(),
                     appName: source.appName,
@@ -1042,23 +1096,30 @@ final class ShortcutProfileStore {
                     persistedInvalidTarget: source.persistedInvalidTargetForCopy
                 )
             }
-        } ?? []
+            return (try PersistenceService.encodeShortcuts(copied), copied)
+        }
 
-        let profile = ShortcutProfile(
-            id: idProvider(),
-            name: ShortcutProfileNameRules.trimmed(rawName),
-            createdAt: dateProvider()
-        )
+        let rewritten = rows.map { row -> [String: Any] in
+            var row = row
+            row["id"] = idProvider().uuidString
+            return row
+        }
 
-        // Data file first: a crash before the manifest write leaves an orphan
-        // (reported, never auto-imported), which is strictly safer than a
-        // manifest entry pointing at a file that does not exist.
-        try writeProfileData(contents, profileID: profile.id, layout: layout)
-        current.profiles.append(profile)
-        try commitManifest(current, layout: layout)
-        manifest = current
-        log("PROFILE_TRACE_CREATED id=\(profile.id.uuidString) shortcuts=\(contents.count) duplicated=\(sourceProfileID != nil)")
-        return profile
+        guard
+            let data = try? JSONSerialization.data(
+                withJSONObject: rewritten,
+                options: [.prettyPrinted, .sortedKeys]
+            ),
+            let decoded = try? JSONDecoder().decode([AppShortcut].self, from: data),
+            Set(decoded.map(\.id)).count == decoded.count
+        else {
+            throw StoreError.profileUnreadable(
+                id: sourceProfileID,
+                reason: "duplicated payload did not round trip"
+            )
+        }
+
+        return (data, decoded)
     }
 
     @discardableResult
