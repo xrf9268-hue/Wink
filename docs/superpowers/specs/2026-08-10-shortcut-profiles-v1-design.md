@@ -334,18 +334,32 @@ Nothing is adopted or discarded automatically. This is the concrete answer to "e
 switches must not silently overwrite an unsaved editor draft", applied to the other
 direction: Wink must not silently overwrite the user's older-build edits either.
 
-> **Invariant.** A `shortcuts.json` whose digest differs from `mirror.json` is never
-> overwritten and never auto-imported without an explicit user action.
+> **Invariant.** A `shortcuts.json` Wink cannot attribute is never auto-**imported** without
+> an explicit user action, and is never **overwritten** until a byte-identical copy has been
+> preserved beside it.
+>
+> The second clause is deliberately weaker than "never overwritten". Unknown-provenance bytes
+> cannot block saves forever — Wink would be unusable — so the design buys the freedom to
+> overwrite by paying for it first, with the copy. A foreign edit that *can* be attributed
+> still blocks on the user's choice, because there the import action is meaningful.
 
 ### D6 — Shortcut identity
 
 **Shortcut UUIDs are globally unique across all profiles.**
 
 - A **switch** loads the stored array verbatim and regenerates nothing.
-- **Duplicate** mints a fresh UUID for every copied shortcut and copies every other field
-  verbatim — `isEnabled`, `frontmostBehaviorOverride`, `target`, `holdAction`, and the
-  preserved-invalid-target gate (`AppShortcut.init(persistedInvalidTarget:)` already
-  exposes this).
+- **Duplicate** rewrites only each row's `id`, **inside the source file's own JSON**, and
+  copies everything else byte-for-byte. Going through `AppShortcut` would drop members this
+  build does not model — the same loss D4 and D5 already guard migration and mirroring
+  against — so duplication is a copy, not a re-encode. A reshape failure falls back to a
+  model-level copy (`isEnabled`, `frontmostBehaviorOverride`, `target`, `holdAction`, and the
+  preserved-invalid-target gate) rather than refusing to duplicate at all.
+
+> **Where preservation ends.** Unmodelled members survive every *copy* in this design —
+> migration, mirroring, import, duplication — and are dropped by the first ordinary **save**
+> of that profile, because a save re-encodes the model by definition. Preserving them across
+> edits would require modelling them, which is precisely what a forward-compatible schema
+> cannot do. State this rather than implying the guarantee is unconditional.
 - **Recipe import** is unchanged: it already mints IDs, into the active profile.
 
 The alternative — allowing IDs to repeat across profiles and widening usage identity to
@@ -365,8 +379,15 @@ One consequence must be handled explicitly, or deletion becomes destructive acro
 profiles:
 
 > **Invariant.** `UsageTracker.deleteUsage(shortcutId:)` is issued only for IDs that appear
-> in **no other profile**. Deleting a shortcut, or a whole profile, never deletes usage
-> history belonging to a shortcut that still exists elsewhere.
+> in **no other profile**, and the check **fails closed**: if any remaining profile could not
+> be read, exclusivity is unknown and no usage is deleted.
+>
+> Both halves are load-bearing. D8 and D9 make an unreadable or missing sibling profile
+> reachable, and D6 deliberately reports cross-profile duplicate IDs rather than repairing
+> them — so "not found among the profiles I could read" is not the same as "does not exist",
+> and treating it as such would erase another profile's history the moment that file is
+> restored. A retained usage row is a stale number in Insights; a deleted one cannot be
+> recovered.
 
 ### D7 — Commit ordering and crash model
 
@@ -678,8 +699,9 @@ packaged-app validation.
 | V4 | Exactly-once rebuild | Counting fake asserts `rebuildIndex` == 1 per successful switch, 0 per refused switch |
 | V5 | Every recovery state | Table-driven over each stage of D8 **and** their compositions (unreadable pointer with unreadable data, etc.); assert armed-shortcut count and that no *other* profile ever loads |
 | V6 | Crash points | Inject failure after each of the four writes; assert the resulting on-disk state maps to exactly one D8 row |
-| V7 | Duplicate mints IDs | Duplicate a profile; assert ID sets are disjoint and every other field is equal, including preserved invalid targets |
+| V7 | Duplicate mints IDs and preserves bytes | Duplicate a profile whose file carries an **unmodelled JSON member**; assert ID sets are disjoint, the member survives in the copy, and every modelled field is equal including preserved invalid targets |
 | V8 | Usage is not cross-deleted | Same ID in two profiles → delete in one → assert the other's rows survive and `deleteUsage` was not issued |
+| V8b | Exclusivity fails closed | Make a remaining profile unreadable → delete another profile → assert **no** usage deletion is issued, for any ID |
 | V9 | Editor conflicts | Switch during recorder / composer draft / pending import; assert D14's row-by-row outcome |
 | V10 | Foreign-edit detection | Rewrite `shortcuts.json` out of band → relaunch → assert banner state and that nothing was written until a choice was made |
 | V10b | Stale mirror is not mistaken for a foreign edit | Fail the mirror write during a switch **and** during a same-profile save → relaunch each → assert the mirror is rewritten from the live profile with **no** banner |
