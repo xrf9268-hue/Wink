@@ -209,10 +209,14 @@ final class ShortcutProfileStore {
         /// `nil` when the foreign bytes do not decode, in which case only
         /// "keep the profile and overwrite the file" is offered.
         var shortcuts: [AppShortcut]?
-        /// The bytes exactly as they were read. Adoption installs these rather
-        /// than a re-encoding of `shortcuts`, so JSON members this build does
-        /// not model survive the import — the same rule migration follows.
-        var rawBytes: Data?
+        /// The bytes exactly as they were read. **Not optional**: adoption
+        /// installs these rather than a re-encoding of `shortcuts`, so JSON
+        /// members this build does not model survive the import — the same rule
+        /// migration follows. Making it optional left a branch that re-encoded
+        /// the model, which is precisely the loss this import exists to rescue
+        /// from, and a type that can express the lossy state invites a caller
+        /// that produces it.
+        var rawBytes: Data
     }
 
     struct LoadedProfiles: Equatable, Sendable {
@@ -1935,14 +1939,10 @@ final class ShortcutProfileStore {
             )
         }
 
-        // Install the ORIGINAL bytes when they are available: re-encoding
-        // would drop members this build does not model, which is exactly what
-        // this import is meant to rescue.
-        if let rawBytes = mirror.rawBytes {
-            try writeProfileBytes(rawBytes, profileID: mirror.profileID, layout: layout)
-        } else {
-            try writeProfileData(shortcuts, profileID: mirror.profileID, layout: layout)
-        }
+        // The ORIGINAL bytes, always. A re-encoding would drop members this
+        // build does not model, which is exactly what this import is meant to
+        // rescue.
+        try writeProfileBytes(mirror.rawBytes, profileID: mirror.profileID, layout: layout)
         log("PROFILE_TRACE_FOREIGN_MIRROR_ADOPTED profile=\(mirror.profileID.uuidString) shortcuts=\(shortcuts.count)")
 
         // Startup clears the locator when the active profile's data file is

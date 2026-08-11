@@ -1366,9 +1366,12 @@ struct ShortcutProfileCRUDTests {
 
         let work = try store.createProfile(named: "Work", duplicating: nil)
         let foreign = [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        // The original bytes travel with the payload; the import installs those
+        // rather than a re-encoding, so an unmodelled member would survive.
+        let foreignBytes = try PersistenceService.encodeShortcuts(foreign)
 
         let adopted = try store.adoptForeignMirror(
-            ShortcutProfileStore.ForeignMirror(profileID: work.id, shortcuts: foreign)
+            ShortcutProfileStore.ForeignMirror(profileID: work.id, shortcuts: foreign, rawBytes: foreignBytes)
         )
 
         // Nothing to apply — the import went into an inactive profile.
