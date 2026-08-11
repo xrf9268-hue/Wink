@@ -326,16 +326,22 @@ final class ShortcutProfileStore {
             decodedManifest.schemaVersion == ShortcutProfileManifest.currentSchemaVersion,
             !decodedManifest.profiles.isEmpty,
             Set(decodedManifest.profiles.map(\.id)).count == decodedManifest.profiles.count,
-            // A hand-edited or partially restored manifest can carry empty or
-            // colliding names. Both break the surfaces that address a profile
-            // by the name the user reads — the picker, the menu, rename — so
-            // they are load failures, exactly like a duplicate id. The
-            // 32-profile cap is deliberately NOT enforced here: existing data
-            // over the cap stays usable, and `createProfile` already refuses
-            // to add to it.
-            decodedManifest.profiles.allSatisfy { !ShortcutProfileNameRules.trimmed($0.name).isEmpty },
-            Set(decodedManifest.profiles.map { ShortcutProfileNameRules.comparisonKey($0.name) }).count
-                == decodedManifest.profiles.count
+            // A hand-edited or partially restored manifest can carry names the
+            // create and rename paths would have rejected — empty, over the
+            // length limit, or colliding. Each breaks the surfaces that address
+            // a profile by the name the user reads (the picker, the menu,
+            // rename), so they are load failures, exactly like a duplicate id.
+            //
+            // Asking `ShortcutProfileNameRules` rather than restating its
+            // clauses here is the point: a rule added to creation is then
+            // enforced on load for free, instead of drifting into a state only
+            // a restored file can reach. `excluding` is each profile itself,
+            // which must not count as its own collision.
+            //
+            // The 32-profile cap is deliberately NOT enforced here: existing
+            // data over the cap stays usable, and `createProfile` already
+            // refuses to add to it.
+            Self.everyNameIsAddressable(decodedManifest.profiles)
         else {
             let preserved = preserveRejectedPayload(manifestData, originalURL: layout.manifestURL)
             manifest = nil
@@ -707,6 +713,16 @@ final class ShortcutProfileStore {
         activeShortcuts: [AppShortcut]
     ) -> ForeignMirror? {
         guard let mirrorData = try? Data(contentsOf: layout.mirrorURL) else {
+            guard !fileManager.fileExists(atPath: layout.mirrorURL.path) else {
+                // Present but unreadable. Its bytes cannot be classified and
+                // cannot be copied, so the one thing that must not happen is
+                // an overwrite — and the directory can still permit one.
+                // `writeMirror` refuses this on its own; stopping here as well
+                // keeps the trace honest instead of logging a repair that was
+                // never attempted.
+                log("PROFILE_TRACE_MIRROR_UNREADABLE active=\(activeProfileID.uuidString)")
+                return nil
+            }
             // Nothing on disk to lose.
             rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
             return nil
@@ -739,7 +755,7 @@ final class ShortcutProfileStore {
             // nothing here preserved a copy first, so an older build's edits
             // could be lost with no trace. Copy them beside the original now,
             // which makes every later overwrite non-destructive.
-            preserveUnknownMirror(mirrorData, digest: mirrorDigest, layout: layout)
+            preserveUnknownMirror(mirrorData, digest: mirrorDigest, descriptor: nil, layout: layout)
             log("PROFILE_TRACE_MIRROR_UNKNOWN active=\(activeProfileID.uuidString) reason=no_descriptor")
             return nil
         }
@@ -758,7 +774,7 @@ final class ShortcutProfileStore {
             // The repair therefore obeys the same rule as every other
             // overwrite — preserve a copy first — so both readings are safe
             // and the crash case still needs no banner.
-            preserveUnknownMirror(mirrorData, digest: mirrorDigest, layout: layout)
+            preserveUnknownMirror(mirrorData, digest: mirrorDigest, descriptor: descriptor, layout: layout)
             log("PROFILE_TRACE_MIRROR_STALE describedProfile=\(descriptor.profileID.uuidString) active=\(activeProfileID.uuidString)")
             rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
             return nil
@@ -769,7 +785,7 @@ final class ShortcutProfileStore {
         // resurrect exactly what D9 refuses to adopt. Unknown provenance:
         // leave both files alone.
         guard manifest?.profile(id: descriptor.profileID) != nil else {
-            preserveUnknownMirror(mirrorData, digest: mirrorDigest, layout: layout)
+            preserveUnknownMirror(mirrorData, digest: mirrorDigest, descriptor: descriptor, layout: layout)
             log("PROFILE_TRACE_MIRROR_UNKNOWN active=\(activeProfileID.uuidString) reason=descriptor_profile_deleted")
             return nil
         }
@@ -792,7 +808,54 @@ final class ShortcutProfileStore {
     /// overwrite the mirror without destroying whatever wrote it. Named by
     /// content digest: relaunching with the same unattributable bytes rewrites
     /// the same path with identical content instead of accumulating copies.
-    private func preserveUnknownMirror(_ data: Data, digest: String, layout: ShortcutProfileLayout) {
+    /// True when the mirror bytes also live, byte for byte, in the profile
+    /// data file the descriptor names — the state every ordinary A→B switch is
+    /// in, because the mirror still holds A while B is being written. Copying
+    /// those to `shortcuts.unknown-*.json` protects nothing (A's file is the
+    /// copy) and leaves one junk file per distinct payload ever mirrored.
+    ///
+    /// The proof is byte equality with a file that exists right now, so it does
+    /// not depend on the manifest being readable. The only path that removes
+    /// the source afterwards is the user explicitly deleting that profile,
+    /// which is a deliberate discard of exactly those bytes.
+    nonisolated private static func mirrorIsHeldByItsSourceProfile(
+        digest mirrorDigest: String,
+        descriptor: ShortcutProfileMirrorDescriptor?,
+        layout: ShortcutProfileLayout
+    ) -> Bool {
+        // A descriptor that does not claim these bytes cannot vouch for where
+        // they came from, so it cannot license skipping the copy either.
+        guard let descriptor, descriptor.sha256 == mirrorDigest else { return false }
+        guard let source = try? Data(contentsOf: layout.profileDataURL(descriptor.profileID)) else {
+            // Deleted or moved on: these bytes are the last copy.
+            return false
+        }
+        return digest(source) == mirrorDigest
+    }
+
+    /// Every profile carries a name the create and rename paths would accept.
+    /// Asked as one question so a rule added to `ShortcutProfileNameRules` is
+    /// enforced on load for free, rather than drifting into a state only a
+    /// hand-edited or restored file can reach.
+    nonisolated private static func everyNameIsAddressable(_ profiles: [ShortcutProfile]) -> Bool {
+        profiles.allSatisfy {
+            // `excluding` is the profile itself, which must not count as its
+            // own collision.
+            ShortcutProfileNameRules.violation(for: $0.name, excluding: $0.id, in: profiles) == nil
+        }
+    }
+
+    private func preserveUnknownMirror(
+        _ data: Data,
+        digest: String,
+        descriptor: ShortcutProfileMirrorDescriptor?,
+        layout: ShortcutProfileLayout
+    ) {
+        guard !Self.mirrorIsHeldByItsSourceProfile(
+            digest: digest,
+            descriptor: descriptor,
+            layout: layout
+        ) else { return }
         let url = layout.appDirectory
             .appendingPathComponent("shortcuts.unknown-\(digest.prefix(12)).json")
         guard !fileManager.fileExists(atPath: url.path) else { return }
@@ -868,7 +931,18 @@ final class ShortcutProfileStore {
         // made while Wink is running, so every overwrite has to re-check.
         // Reading and hashing a few kilobytes on a user-initiated save is not
         // a cost worth trading a silent data loss for.
-        if let existing = try? Data(contentsOf: layout.mirrorURL) {
+        if FileManager.default.fileExists(atPath: layout.mirrorURL.path) {
+            // Present but unreadable is the case this guard exists for: the
+            // directory can still accept an atomic replacement, so treating an
+            // unreadable file as absent would destroy the only copy of an
+            // older build's or an external tool's edits. Nothing may overwrite
+            // bytes it could not first capture.
+            guard let existing = try? Data(contentsOf: layout.mirrorURL) else {
+                let message = "PROFILE_TRACE_MIRROR_WRITE_SKIPPED reason=existing_unreadable"
+                logger.error("\(message, privacy: .public)")
+                diagnosticClient.log(message)
+                return false
+            }
             let existingDigest = digest(existing)
             // Schema-validated, exactly as the startup read is. Without this
             // a descriptor written by a NEWER build would be decoded on its
@@ -888,7 +962,15 @@ final class ShortcutProfileStore {
             // descriptor cannot vouch for them being superseded here.
             let isWinkOwnCurrentPayload = descriptor?.sha256 == existingDigest
                 && descriptor?.profileID == profileID
-            if !isWinkOwnCurrentPayload, existingDigest != digest(data) {
+            // Ours, for a different profile, and that profile STILL holds these
+            // exact bytes: an ordinary A→B switch. There is nothing to lose, so
+            // copying here would only accumulate junk beside the real files.
+            let isHeldByItsSourceProfile = mirrorIsHeldByItsSourceProfile(
+                digest: existingDigest,
+                descriptor: descriptor,
+                layout: layout
+            )
+            if !isWinkOwnCurrentPayload, !isHeldByItsSourceProfile, existingDigest != digest(data) {
                 let copyURL = layout.appDirectory
                     .appendingPathComponent("shortcuts.unknown-\(existingDigest.prefix(12)).json")
                 if !FileManager.default.fileExists(atPath: copyURL.path) {
@@ -1432,9 +1514,18 @@ final class ShortcutProfileStore {
             createdAt: now
         )
 
+        // The manifest is written LAST because stage 1 of the load reads it
+        // first: it is the commit point of a recovery exactly as `active.json`
+        // is the commit point of a switch. Any failure before it therefore
+        // leaves the state the user is already looking at — the manifest is
+        // still unreadable and Recover is still offered — instead of a disk
+        // that quietly advanced while the UI reported nothing had changed.
+        // What is left behind is an unreferenced data file and a pointer no
+        // stage consults while stage 1 fails, both of which the next recovery
+        // supersedes.
         try writeProfileData([], profileID: profile.id, layout: layout)
-        try commitManifest(ShortcutProfileManifest(profiles: [profile]), layout: layout)
         try commitActivePointer(profile.id, layout: layout)
+        try commitManifest(ShortcutProfileManifest(profiles: [profile]), layout: layout)
 
         manifest = ShortcutProfileManifest(profiles: [profile])
         pointedProfileID = profile.id
@@ -1449,7 +1540,12 @@ final class ShortcutProfileStore {
         // keeps the universal rule true here too: the mirror is never
         // overwritten until a byte-identical copy exists beside it.
         if let existingMirror = try? Data(contentsOf: layout.mirrorURL) {
-            preserveUnknownMirror(existingMirror, digest: Self.digest(existingMirror), layout: layout)
+            preserveUnknownMirror(
+                existingMirror,
+                digest: Self.digest(existingMirror),
+                descriptor: loadMirrorDescriptor(layout: layout),
+                layout: layout
+            )
         }
         writeMirrorForActiveProfile([], profileID: profile.id, layout: layout)
         log("PROFILE_TRACE_RECOVERED id=\(profile.id.uuidString)")

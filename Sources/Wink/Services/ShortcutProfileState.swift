@@ -98,6 +98,15 @@ final class ShortcutProfileState {
         isMutable && profiles.count > 1
     }
 
+    /// Duplication needs something to duplicate. `activeProfileAmbiguous` and
+    /// `activeProfileUnreadable` leave the manager usable — the user is meant
+    /// to be able to pick a profile out of them — but with no active profile,
+    /// so the command has no source and would silently produce an EMPTY
+    /// profile under a name promising a copy.
+    var canDuplicateActiveProfile: Bool {
+        canCreateProfile && activeProfileID != nil
+    }
+
     /// The seam #438's Focus Filter automation must consult before applying an
     /// automatic switch. A manual switch may discard the user's drafts because
     /// the user asked for it; an automatic one must defer.
@@ -238,6 +247,14 @@ final class ShortcutProfileState {
     func createProfile(named rawName: String, duplicatingActiveProfile: Bool) {
         guard canCreateProfile else {
             errorMessage = isMutable ? profileLimitMessage : recoveryBlockedMessage
+            return
+        }
+
+        // Belt and braces with the disabled command: falling back to an empty
+        // profile here would report success for something the user did not ask
+        // for, and an empty binding set is not a near miss of a copy.
+        guard !duplicatingActiveProfile || activeProfileID != nil else {
+            errorMessage = noActiveProfileToDuplicateMessage
             return
         }
 
@@ -456,6 +473,13 @@ final class ShortcutProfileState {
     private var recoveryBlockedMessage: String {
         String(
             localized: "Wink could not read your profile list, so nothing can be changed until you recover it.",
+            bundle: WinkResourceBundle.bundle
+        )
+    }
+
+    private var noActiveProfileToDuplicateMessage: String {
+        String(
+            localized: "Choose a profile before duplicating it.",
             bundle: WinkResourceBundle.bundle
         )
     }

@@ -197,6 +197,12 @@ final class AppController {
         onProfileApplied: { [weak self] in
             self?.appPreferences.refreshPermissions()
             self?.shortcutEditor.scheduleUsageRefresh()
+            // Insights reads `ShortcutStore` only while refreshing, so its
+            // rankings, unused-shortcut list, and bound-app suggestions keep
+            // describing the OUTGOING profile after a switch made from the
+            // menu bar — the tab is already open, so neither the tab-change
+            // nor the become-active refresh fires.
+            self?.insightsViewModel.scheduleRefresh()
         }
     )
     private lazy var frontmostExceptionMonitor = FrontmostExceptionMonitor(

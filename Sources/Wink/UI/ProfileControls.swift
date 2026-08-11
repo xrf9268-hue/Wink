@@ -290,6 +290,7 @@ struct ProfileManagerSheet: View {
                     } label: {
                         Text("Duplicate current profile", bundle: WinkResourceBundle.bundle)
                     }
+                    .disabled(!profileState.canDuplicateActiveProfile)
                     Button {
                         profileState.createProfile(
                             named: profileState.suggestedNewProfileName(),

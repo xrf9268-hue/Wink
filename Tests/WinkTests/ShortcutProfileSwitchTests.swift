@@ -572,4 +572,48 @@ struct ShortcutProfileRecoveryRuntimeTests {
         // The list is offered so the user can pick — but nothing is chosen.
         #expect(state.recovery != .none)
     }
+
+    @MainActor
+    @Test
+    func duplicatingWithNoActiveProfileIsRefusedRatherThanEmptied() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+        let firstLoad = harness.makeStore()
+        guard case let .ready(loaded) = firstLoad.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        _ = try firstLoad.createProfile(named: "Work", duplicating: nil)
+
+        // activeProfileUnreadable keeps the manager usable on purpose — the
+        // user is meant to be able to pick their way out of it — but there is
+        // no active profile to copy.
+        try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(loaded.activeProfileID))
+
+        let store = harness.makeStore()
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let state = ShortcutProfileState(store: store, shortcutManager: manager)
+        _ = state.loadAtStartup()
+
+        #expect(state.activeProfileID == nil)
+        #expect(state.canCreateProfile)
+        #expect(!state.canDuplicateActiveProfile)
+
+        let before = state.profiles.count
+        state.createProfile(named: "Copy", duplicatingActiveProfile: true)
+        #expect(state.profiles.count == before)
+        #expect(state.errorMessage != nil)
+    }
 }

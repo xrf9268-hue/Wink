@@ -666,6 +666,61 @@ struct ShortcutProfileCRUDTests {
     }
 
     @Test
+    func duplicationPreservesEveryMemberExceptTheShortcutIDs() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+
+        // Members this build does not model, plus ones it does. Asserting on
+        // the modeled fields alone would pass for an implementation that
+        // decoded and re-encoded, which is exactly the loss duplication has to
+        // avoid.
+        let sourceJSON = """
+        [
+          {
+            "id" : "55555555-5555-5555-5555-555555555555",
+            "appName" : "Safari",
+            "bundleIdentifier" : "com.apple.Safari",
+            "keyEquivalent" : "s",
+            "modifierFlags" : [ "command", "option" ],
+            "isEnabled" : false,
+            "futureMemberFromANewerBuild" : { "nested" : [ 1, 2, 3 ] },
+            "anotherUnknownMember" : "kept"
+          }
+        ]
+        """
+        try harness.writeRawLegacyShortcuts(sourceJSON)
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let copy = try store.createProfile(named: "Work", duplicating: loaded.activeProfileID)
+
+        guard
+            let sourceData = harness.data(at: harness.layout.profileDataURL(loaded.activeProfileID)),
+            let copyData = harness.data(at: harness.layout.profileDataURL(copy.id)),
+            let sourceRows = (try? JSONSerialization.jsonObject(with: sourceData)) as? [[String: Any]],
+            let copyRows = (try? JSONSerialization.jsonObject(with: copyData)) as? [[String: Any]]
+        else {
+            Issue.record("expected both payloads to be readable JSON arrays")
+            return
+        }
+
+        #expect(sourceRows.count == copyRows.count)
+        for (sourceRow, copyRow) in zip(sourceRows, copyRows) {
+            #expect(sourceRow["id"] as? String != copyRow["id"] as? String)
+            // Every OTHER member, compared as JSON rather than through the
+            // model, so an unmodeled member that silently vanished fails here.
+            var expected = sourceRow
+            var actual = copyRow
+            expected.removeValue(forKey: "id")
+            actual.removeValue(forKey: "id")
+            #expect(NSDictionary(dictionary: expected) == NSDictionary(dictionary: actual))
+        }
+    }
+
+    @Test
     func duplicationCarriesThePreservedInvalidTargetGate() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
@@ -1773,6 +1828,174 @@ struct ShortcutProfileMirrorTests {
             .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
         #expect(copies.count == 1)
         #expect(harness.data(at: harness.directory.appendingPathComponent(copies[0])) == futureBytes)
+    }
+
+    @Test
+    func anOrdinaryProfileSwitchDoesNotAccumulatePreservedCopies() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+
+        // Every A->B switch reaches the writer while the mirror still holds A
+        // and the descriptor still names A. Those bytes are not at risk: they
+        // are exactly what Profiles/A.json contains. Copying them would leave
+        // one junk file per distinct payload ever mirrored.
+        for _ in 0..<3 {
+            _ = try store.activateProfile(work.id)
+            _ = try store.activateProfile(defaultID)
+        }
+
+        let copies = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(copies.isEmpty)
+    }
+
+    @Test
+    func aMirrorItsSourceProfileNoLongerHoldsIsStillPreserved() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        guard let mirrorBytes = harness.data(at: harness.layout.mirrorURL) else {
+            Issue.record("expected a mirror after migration")
+            return
+        }
+
+        // The profile file advances without the mirror following — a crash
+        // between the two writes. Now the mirror is the ONLY copy of those
+        // bytes, so the redundancy exemption must not apply to it.
+        try PersistenceService.encodeShortcuts([makeTestShortcut(appName: "Advanced")])
+            .write(to: harness.layout.profileDataURL(loaded.activeProfileID), options: .atomic)
+
+        guard case .ready = harness.makeStore().load() else {
+            Issue.record("expected a ready load state after the stale repair")
+            return
+        }
+
+        let copies = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(copies.count == 1)
+        #expect(harness.data(at: harness.directory.appendingPathComponent(copies[0])) == mirrorBytes)
+    }
+
+    @Test
+    func anUnreadableCompatMirrorIsNeverReplaced() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        let originalBytes = harness.data(at: harness.layout.mirrorURL)
+
+        // Present but unreadable, with a directory that still accepts an
+        // atomic replacement. Treating that as absent would destroy the only
+        // copy of an older build's or an external tool's edits.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: harness.layout.mirrorURL.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644],
+                ofItemAtPath: harness.layout.mirrorURL.path
+            )
+        }
+
+        // The switch itself still commits: the mirror is derived data, and its
+        // refusal must not fail the operation that produced it.
+        _ = try store.activateProfile(work.id)
+        #expect(store.locator.currentActiveProfileID() == work.id)
+
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o644],
+            ofItemAtPath: harness.layout.mirrorURL.path
+        )
+        #expect(harness.data(at: harness.layout.mirrorURL) == originalBytes)
+        #expect(
+            harness.diagnostics.values.contains {
+                $0.contains("PROFILE_TRACE_MIRROR_WRITE_SKIPPED reason=existing_unreadable")
+            }
+        )
+        _ = loaded
+    }
+
+    @Test
+    func aManifestWithAnOverlongNameIsALoadFailure() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        _ = harness.makeStore().load()
+
+        // Create and rename both reject this, so a restored or hand-edited
+        // manifest must not be the one way into the state.
+        let overlong = String(repeating: "a", count: ShortcutProfileNameRules.maximumLength + 1)
+        try harness.writeRaw(
+            """
+            {"schemaVersion": 1, "profiles": [
+              {"id": "44444444-4444-4444-4444-444444444444", "name": "\(overlong)",
+               "createdAt": "2026-08-10T00:00:00Z", "modifiedAt": "2026-08-10T00:00:00Z"}
+            ]}
+            """,
+            to: harness.layout.manifestURL
+        )
+        guard case .manifestUnreadable = harness.makeStore().load() else {
+            Issue.record("expected an overlong-name manifest to be a load failure")
+            return
+        }
+    }
+
+    @Test
+    func recoveryLeavesTheQuarantinedStateWhenThePointerCannotBeCommitted() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        _ = harness.makeStore().load()
+
+        let damaged = "{ not a manifest"
+        try harness.writeRaw(damaged, to: harness.layout.manifestURL)
+
+        let pointerURL = harness.layout.activePointerURL
+        let store = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                if url == pointerURL { throw InjectedWriteFailure() }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        guard case .manifestUnreadable = store.load() else {
+            Issue.record("expected manifestUnreadable")
+            return
+        }
+        #expect(throws: (any Error).self) {
+            _ = try store.recoverManifest()
+        }
+
+        // The manifest is written LAST, so a failure before it leaves exactly
+        // the state the user is looking at rather than a disk that advanced
+        // while the UI reported nothing had changed.
+        #expect(harness.data(at: harness.layout.manifestURL) == Data(damaged.utf8))
+        guard case .manifestUnreadable = harness.makeStore().load() else {
+            Issue.record("expected the quarantined state to survive a failed recovery")
+            return
+        }
     }
 
     @Test
