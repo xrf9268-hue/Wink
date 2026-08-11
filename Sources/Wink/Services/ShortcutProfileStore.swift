@@ -1282,6 +1282,15 @@ final class ShortcutProfileStore {
         // Every other active-profile transition refreshes the mirror; without
         // it the E2E harness and a downgraded build would keep reading the
         // pre-recovery bindings until some later save happened to repair it.
+        //
+        // But stage 1 stopped on the damaged manifest, so the mirror
+        // classification never ran and an older build's edits to
+        // shortcuts.json have never been examined. Preserving first is what
+        // keeps the universal rule true here too: the mirror is never
+        // overwritten until a byte-identical copy exists beside it.
+        if let existingMirror = try? Data(contentsOf: layout.mirrorURL) {
+            preserveUnknownMirror(existingMirror, digest: Self.digest(existingMirror), layout: layout)
+        }
         writeMirrorForActiveProfile([], profileID: profile.id, layout: layout)
         log("PROFILE_TRACE_RECOVERED id=\(profile.id.uuidString)")
 

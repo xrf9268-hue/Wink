@@ -768,6 +768,36 @@ struct ShortcutProfileCRUDTests {
     }
 
     @Test
+    func recoveryPreservesTheCompatFileBeforeReplacingIt() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        _ = store.load()
+
+        // Stage 1 stops on the damaged manifest, so the mirror classification
+        // never runs — an older build's edits here have never been examined,
+        // and Recover would otherwise replace the only copy of them.
+        let downgradeEdit = "[ { \"appName\" : \"Mail\" } ]"
+        try harness.writeRaw("{ truncated", to: harness.layout.manifestURL)
+        try harness.writeRawLegacyShortcuts(downgradeEdit)
+
+        let reloaded = harness.makeStore()
+        guard case .manifestUnreadable = reloaded.load() else {
+            Issue.record("expected manifestUnreadable")
+            return
+        }
+        _ = try reloaded.recoverManifest()
+
+        let copies = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(copies.count == 1)
+        let copyURL = harness.directory.appendingPathComponent(copies[0])
+        #expect(harness.data(at: copyURL) == Data(downgradeEdit.utf8))
+    }
+
+    @Test
     func duplicationRefusesRatherThanSilentlyDroppingMembers() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
