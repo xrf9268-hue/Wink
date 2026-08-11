@@ -748,6 +748,19 @@ cannot invent one later:
 > re-read, because reading the same path twice can observe two different files — the same rule
 > migration follows when it decodes the exact buffer it copies.
 >
+> **The carried bytes are re-verified at the commit, not trusted.** Validation and commit are
+> not adjacent — `prepareForSwitch()` runs between them — so the gap is real work rather than
+> a few instructions, and an external write lands in it easily enough to matter. Committing
+> regardless leaves three files disagreeing: the pointer names P, the runtime and mirror hold
+> what was validated, and P's own file holds something else, so the session runs a payload P
+> does not contain and the next launch silently arms the other one. Both the switch and the
+> active-profile delete therefore re-read the canonical file immediately before the pointer
+> moves and **refuse** when it no longer matches, which keeps a refused operation total.
+>
+> This narrows the window rather than closing it. Nothing short of a lock closes it and the
+> file is not Wink's to lock; what is guaranteed is that an operation never COMMITS a payload
+> it already knows is superseded.
+>
 > **Carried forward means the bytes, not just the rows.** The commit also writes the compat
 > mirror, so handing it only the decoded array sends it back to the file for bytes and reopens
 > the gap one function later: the runtime arms what was validated while the mirror describes
@@ -896,6 +909,7 @@ packaged-app validation.
 | V8d | The journal is re-checked, not trusted | Hand-write a manifest owing a deletion for an id a live profile still holds; assert the drain issues nothing and keeps the id journalled |
 | V8b | Exclusivity fails closed | Make a remaining profile unreadable → delete another profile → assert **no** usage deletion is issued, for any ID |
 | V9 | Editor conflicts | Switch during recorder / composer draft / pending import; assert D14's row-by-row outcome |
+| V9c | A payload that changed under the operation is refused | Replace the target profile's file between validation and commit, for both a switch and an active-profile delete; assert the throw, that the pointer did not move, and that the mirror was not written |
 | V9b | A refusable operation discards nothing | Switch to a profile with an unreadable data file, and delete an active profile whose successor is unreadable; assert `prepareForSwitch` was never called, the active profile is unchanged, and the error is surfaced |
 | V10 | Foreign-edit detection | Rewrite `shortcuts.json` out of band → relaunch → assert banner state and that nothing was written until a choice was made |
 | V10b | Stale mirror is not mistaken for a foreign edit | Fail the mirror write during a switch **and** during a same-profile save → relaunch each → assert the mirror is rewritten from the live profile with **no** banner |
