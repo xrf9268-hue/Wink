@@ -2152,6 +2152,44 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func theStartupRepairAlsoVerifiesAnExistingPreservationCopy() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        guard let mirrorBytes = harness.data(at: harness.layout.mirrorURL) else {
+            Issue.record("expected a mirror after migration")
+            return
+        }
+        let mirrorDigest = ShortcutProfileStore.digest(mirrorBytes)
+
+        // Same-profile stale: the profile file advanced, so the repair's copy is
+        // the only guard — the writer recognizes its own current payload here
+        // and skips its own preservation by design.
+        try PersistenceService.encodeShortcuts([makeTestShortcut(appName: "Advanced")])
+            .write(to: harness.layout.profileDataURL(loaded.activeProfileID), options: .atomic)
+
+        // ...and the path that copy would take is occupied by something else.
+        let squatted = harness.directory
+            .appendingPathComponent("shortcuts.unknown-\(mirrorDigest.prefix(12)).json")
+        try harness.writeRaw("not the copy", to: squatted)
+
+        guard case .ready = harness.makeStore().load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        #expect(harness.data(at: squatted) == Data("not the copy".utf8))
+        let fullURL = harness.directory.appendingPathComponent("shortcuts.unknown-\(mirrorDigest).json")
+        #expect(harness.data(at: fullURL) == mirrorBytes)
+    }
+
+    @Test
     func aPreservationCopyThatIsNotTheCopyDoesNotAuthorizeAnOverwrite() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

@@ -925,6 +925,52 @@ final class ShortcutProfileStore {
         return digest(current) == digest(expected)
     }
 
+    /// Puts `data` beside the compat file, verified and flushed, and returns
+    /// whether a copy provably exists afterwards. `false` means no caller may
+    /// overwrite these bytes.
+    ///
+    /// This is deliberately the ONLY implementation. The rule had been written
+    /// twice — once here and once at the mirror writer — and the second copy
+    /// kept the naive "a file exists at that path, so a copy exists" check
+    /// through a round that fixed the first. A filename is not the property
+    /// that matters; contents are.
+    ///
+    /// Candidate names, most preferred first: the 12-character digest prefix,
+    /// then the full digest as the unambiguous fallback for when the prefix
+    /// name is occupied by other bytes after a partial restore or a manual
+    /// edit. Those occupying bytes are not ours to overwrite either, so when
+    /// no name is usable this refuses rather than choosing a victim.
+    nonisolated private static func preserveBytes(
+        _ data: Data,
+        digest dataDigest: String,
+        layout: ShortcutProfileLayout,
+        writeClient: WriteClient,
+        diagnosticClient: DiagnosticClient
+    ) -> Bool {
+        let candidates = [
+            layout.appDirectory.appendingPathComponent("shortcuts.unknown-\(dataDigest.prefix(12)).json"),
+            layout.appDirectory.appendingPathComponent("shortcuts.unknown-\(dataDigest).json"),
+        ]
+        for candidate in candidates {
+            if fileHolds(data, at: candidate) { return true }
+            guard !FileManager.default.fileExists(atPath: candidate.path) else { continue }
+            do {
+                try writeClient.writeDurable(data, candidate)
+                diagnosticClient.log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVED path=\(candidate.path)")
+                return true
+            } catch {
+                let message = "PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVE_FAILED reason=\(error.localizedDescription)"
+                logger.error("\(message, privacy: .public)")
+                diagnosticClient.log(message)
+                return false
+            }
+        }
+        let message = "PROFILE_TRACE_MIRROR_WRITE_SKIPPED reason=no_usable_preservation_path"
+        logger.error("\(message, privacy: .public)")
+        diagnosticClient.log(message)
+        return false
+    }
+
     nonisolated private static func mirrorIsHeldByItsSourceProfile(
         digest mirrorDigest: String,
         descriptor: ShortcutProfileMirrorDescriptor?,
@@ -956,6 +1002,10 @@ final class ShortcutProfileStore {
     /// where none was needed, because the bytes are already held elsewhere or
     /// a copy of them already exists. Only a failed write returns false, and a
     /// caller that is about to overwrite these bytes must not proceed on it.
+    /// Returns whether a copy of `data` is now on disk — including the cases
+    /// where none was needed, because the bytes are already held by their
+    /// source profile. Only a genuine failure returns false, and a caller
+    /// about to overwrite these bytes must not proceed on it.
     @discardableResult
     private func preserveUnknownMirror(
         _ data: Data,
@@ -968,20 +1018,13 @@ final class ShortcutProfileStore {
             descriptor: descriptor,
             layout: layout
         ) else { return true }
-        let url = layout.appDirectory
-            .appendingPathComponent("shortcuts.unknown-\(digest.prefix(12)).json")
-        guard !fileManager.fileExists(atPath: url.path) else { return true }
-        do {
-            // Durable: this copy is what makes the following overwrite legal,
-            // so it has to be on disk before that overwrite, not merely
-            // submitted ahead of it.
-            try writeClient.writeDurable(data, url)
-            log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVED path=\(url.path)")
-            return true
-        } catch {
-            log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVE_FAILED reason=\(error.localizedDescription)")
-            return false
-        }
+        return Self.preserveBytes(
+            data,
+            digest: digest,
+            layout: layout,
+            writeClient: writeClient,
+            diagnosticClient: diagnosticClient
+        )
     }
 
     private func loadMirrorDescriptor(layout: ShortcutProfileLayout) -> ShortcutProfileMirrorDescriptor? {
@@ -1082,53 +1125,19 @@ final class ShortcutProfileStore {
                 // last real one. Verify the contents, and when they disagree
                 // fall back to the full-digest name rather than overwriting a
                 // file whose value is unknown.
-                // Candidate names, most preferred first. A name is usable when
-                // it already holds these exact bytes (nothing to do) or is
-                // free. The prefix name can be occupied by something else after
-                // a partial restore or a manual edit, and the full digest is
-                // the unambiguous fallback.
-                let candidates = [
-                    layout.appDirectory
-                        .appendingPathComponent("shortcuts.unknown-\(existingDigest.prefix(12)).json"),
-                    layout.appDirectory
-                        .appendingPathComponent("shortcuts.unknown-\(existingDigest).json"),
-                ]
-                var alreadyPreserved = false
-                var copyURL: URL?
-                for candidate in candidates {
-                    if fileHolds(existing, at: candidate) {
-                        alreadyPreserved = true
-                        break
-                    }
-                    if !FileManager.default.fileExists(atPath: candidate.path) {
-                        copyURL = candidate
-                        break
-                    }
-                }
-                if !alreadyPreserved, copyURL == nil {
-                    // Every name is taken by bytes that are not these, and none
-                    // of them may be overwritten either — so neither may the
-                    // mirror.
-                    let message = "PROFILE_TRACE_MIRROR_WRITE_SKIPPED reason=no_usable_preservation_path"
-                    logger.error("\(message, privacy: .public)")
-                    diagnosticClient.log(message)
+                guard Self.preserveBytes(
+                    existing,
+                    digest: existingDigest,
+                    layout: layout,
+                    writeClient: writeClient,
+                    diagnosticClient: diagnosticClient
+                ) else {
+                    // "Preserve before overwriting" is not advice, it is the
+                    // condition under which overwriting is allowed. A full
+                    // volume can refuse the copy of a large edited payload and
+                    // still accept the smaller incoming write, which would
+                    // destroy the only copy of that edit.
                     return false
-                }
-                if let copyURL {
-                    do {
-                        try writeClient.writeDurable(existing, copyURL)
-                        diagnosticClient.log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVED path=\(copyURL.path)")
-                    } catch {
-                        // "Preserve before overwriting" is not advice, it is
-                        // the condition under which overwriting is allowed.
-                        // A full volume can refuse the copy of a large edited
-                        // payload and still accept the smaller incoming write,
-                        // which would destroy the only copy of that edit.
-                        let message = "PROFILE_TRACE_MIRROR_WRITE_SKIPPED reason=preserve_failed detail=\(error.localizedDescription)"
-                        logger.error("\(message, privacy: .public)")
-                        diagnosticClient.log(message)
-                        return false
-                    }
                 }
             }
         }
