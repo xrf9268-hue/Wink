@@ -616,4 +616,53 @@ struct ShortcutProfileRecoveryRuntimeTests {
         #expect(state.profiles.count == before)
         #expect(state.errorMessage != nil)
     }
+
+    @MainActor
+    @Test
+    func deletingTheProfileAnOutsideEditTargetsClearsTheOffer() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+
+        let setup = harness.makeStore()
+        guard case let .ready(loaded) = setup.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        _ = try setup.createProfile(named: "Work", duplicating: nil)
+
+        // What an older build does: rewrite shortcuts.json directly. The
+        // resulting offer addresses the Default profile by id, so deleting
+        // that profile leaves it rendering a name with nothing behind it and
+        // an import that can only fail with profileNotFound.
+        try harness.writeLegacyShortcuts([
+            AppShortcut(
+                appName: "Mail",
+                bundleIdentifier: "com.apple.mail",
+                keyEquivalent: "m",
+                modifierFlags: ["command"]
+            )
+        ])
+
+        let store = harness.makeStore()
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let state = ShortcutProfileState(store: store, shortcutManager: manager)
+        _ = state.loadAtStartup()
+        #expect(state.pendingForeignMirror?.profileID == defaultID)
+
+        state.deleteProfile(defaultID)
+        #expect(state.pendingForeignMirror == nil)
+    }
 }

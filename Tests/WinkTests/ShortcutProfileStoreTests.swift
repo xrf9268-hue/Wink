@@ -1831,6 +1831,91 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aStaleRepairIsDeferredWhenItsPreservationCopyFails() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let first = harness.makeStore()
+        guard case let .ready(loaded) = first.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let profileID = loaded.activeProfileID
+        guard let mirrorBytes = harness.data(at: harness.layout.mirrorURL) else {
+            Issue.record("expected a mirror after migration")
+            return
+        }
+
+        // Same-profile stale: the profile file advanced, while the mirror and
+        // its descriptor still agree with each other. `writeMirror` recognizes
+        // its own current payload here and skips its guard by design, so the
+        // copy taken before the repair is the ONLY thing protecting these
+        // bytes — a silent failure would leave the overwrite unguarded.
+        try PersistenceService.encodeShortcuts([makeTestShortcut(appName: "Advanced")])
+            .write(to: harness.layout.profileDataURL(profileID), options: .atomic)
+
+        let store = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                if url.lastPathComponent.hasPrefix("shortcuts.unknown-") { throw InjectedWriteFailure() }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // Deferred rather than forced through: the mirror still holds the
+        // bytes nothing has a copy of, and the next save re-attempts.
+        #expect(harness.data(at: harness.layout.mirrorURL) == mirrorBytes)
+        #expect(
+            harness.diagnostics.values.contains {
+                $0.contains("PROFILE_TRACE_MIRROR_STALE_REPAIR_DEFERRED")
+            }
+        )
+    }
+
+    @Test
+    func aJournalledDeletionIsRecheckedAgainstTheProfilesThatExistNow() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        let shared = makeTestShortcut()
+        try harness.writeLegacyShortcuts([shared])
+
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        try PersistenceService.encodeShortcuts([shared])
+            .write(to: harness.layout.profileDataURL(work.id), options: .atomic)
+
+        // The shape a partial backup restore produces: a manifest owing a
+        // deletion for an id a live profile still holds. Trusting the journal
+        // there erases a live shortcut's Insights history, which is exactly
+        // what the exclusivity rule exists to prevent — and is not undoable.
+        let manifestData = try #require(harness.data(at: harness.layout.manifestURL))
+        var manifestObject = try #require(
+            try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+        )
+        manifestObject["pendingUsageDeletions"] = [shared.id.uuidString]
+        try JSONSerialization.data(withJSONObject: manifestObject, options: [.sortedKeys])
+            .write(to: harness.layout.manifestURL, options: .atomic)
+
+        let reloaded = harness.makeStore()
+        guard case .ready = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let drainable = reloaded.drainableUsageDeletions()
+        #expect(drainable.deletable.isEmpty)
+        #expect(drainable.retained == [shared.id])
+    }
+
+    @Test
     func anOrdinaryProfileSwitchDoesNotAccumulatePreservedCopies() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

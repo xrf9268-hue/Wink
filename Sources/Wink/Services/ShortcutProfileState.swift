@@ -171,13 +171,16 @@ final class ShortcutProfileState {
     /// clears the journal. Safe to call at any time — the journal is empty in
     /// the ordinary case — so startup drains anything a crash stranded.
     func drainPendingUsageDeletions() {
-        let ids = store.pendingUsageDeletions()
-        guard let usageTracker, !ids.isEmpty else { return }
+        // Re-checked against the profiles that exist NOW, not trusted from the
+        // journal: a restored manifest can owe a deletion for an id a live
+        // profile still holds, and that history is not recoverable once gone.
+        let deletable = store.drainableUsageDeletions().deletable
+        guard let usageTracker, !deletable.isEmpty else { return }
         Task { [weak self] in
-            for id in ids {
+            for id in deletable {
                 await usageTracker.deleteUsage(shortcutId: id)
             }
-            await MainActor.run { self?.store.clearPendingUsageDeletions(ids) }
+            await MainActor.run { self?.store.clearPendingUsageDeletions(deletable) }
         }
     }
 
@@ -341,6 +344,15 @@ final class ShortcutProfileState {
             // tells the user what is wrong with it.
             if outcome.unrecoverableSwitchReason == nil {
                 unreadableProfileIDs.remove(profileID)
+                // The outside-edit banner addresses a profile by id, so once
+                // that profile is gone its "Import into <name>" action can only
+                // fail with profileNotFound, and the name it renders has no
+                // profile to come from. Dropping the offer loses nothing: the
+                // edited bytes are still in shortcuts.json, and the next write
+                // preserves them beside it rather than overwriting silently.
+                if pendingForeignMirror?.profileID == profileID {
+                    pendingForeignMirror = nil
+                }
             }
 
             if let newActiveProfileID = outcome.newActiveProfileID,

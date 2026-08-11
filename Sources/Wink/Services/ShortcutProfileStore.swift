@@ -789,7 +789,22 @@ final class ShortcutProfileStore {
             // The repair therefore obeys the same rule as every other
             // overwrite — preserve a copy first — so both readings are safe
             // and the crash case still needs no banner.
-            preserveUnknownMirror(mirrorData, digest: mirrorDigest, descriptor: descriptor, layout: layout)
+            // This copy is the ONLY thing that makes the repair below safe.
+            // When the descriptor names the active profile, `writeMirror` sees
+            // its own current payload and skips its preservation guard by
+            // design — so a silently failed copy here would leave the overwrite
+            // completely unguarded, which is the one path the whole rule exists
+            // to close. A failed copy therefore defers the repair; the mirror
+            // stays stale, the next save re-attempts, and nothing is lost.
+            guard preserveUnknownMirror(
+                mirrorData,
+                digest: mirrorDigest,
+                descriptor: descriptor,
+                layout: layout
+            ) else {
+                log("PROFILE_TRACE_MIRROR_STALE_REPAIR_DEFERRED describedProfile=\(descriptor.profileID.uuidString)")
+                return nil
+            }
             log("PROFILE_TRACE_MIRROR_STALE describedProfile=\(descriptor.profileID.uuidString) active=\(activeProfileID.uuidString)")
             rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
             return nil
@@ -860,25 +875,32 @@ final class ShortcutProfileStore {
         }
     }
 
+    /// Returns whether a copy of `data` is now on disk — including the cases
+    /// where none was needed, because the bytes are already held elsewhere or
+    /// a copy of them already exists. Only a failed write returns false, and a
+    /// caller that is about to overwrite these bytes must not proceed on it.
+    @discardableResult
     private func preserveUnknownMirror(
         _ data: Data,
         digest: String,
         descriptor: ShortcutProfileMirrorDescriptor?,
         layout: ShortcutProfileLayout
-    ) {
+    ) -> Bool {
         guard !Self.mirrorIsHeldByItsSourceProfile(
             digest: digest,
             descriptor: descriptor,
             layout: layout
-        ) else { return }
+        ) else { return true }
         let url = layout.appDirectory
             .appendingPathComponent("shortcuts.unknown-\(digest.prefix(12)).json")
-        guard !fileManager.fileExists(atPath: url.path) else { return }
+        guard !fileManager.fileExists(atPath: url.path) else { return true }
         do {
             try writeClient.write(data, url)
             log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVED path=\(url.path)")
+            return true
         } catch {
             log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVE_FAILED reason=\(error.localizedDescription)")
+            return false
         }
     }
 
@@ -1153,7 +1175,7 @@ final class ShortcutProfileStore {
     /// erase history belonging to one that still exists elsewhere — including
     /// the cross-profile duplicates `scanIntegrity` deliberately reports
     /// rather than repairs.
-    func shortcutOwnership(excluding profileID: UUID) -> ShortcutOwnership {
+    func shortcutOwnership(excluding profileID: UUID?) -> ShortcutOwnership {
         guard let layout, let manifest else {
             // No profile store to consult: nothing else can hold the ID.
             return ShortcutOwnership(idsHeldElsewhere: [], isComplete: true)
@@ -1474,6 +1496,41 @@ final class ShortcutProfileStore {
     /// `deleteProfile` so a crash cannot strand them.
     func pendingUsageDeletions() -> [UUID] {
         manifest?.pendingUsageDeletions ?? []
+    }
+
+    /// Splits the journal into ids that are safe to delete now and ids some
+    /// profile still holds.
+    ///
+    /// `deleteProfile` computed exclusivity against the inventory as it stood
+    /// at that moment, and journalled the answer so a crash could not strand
+    /// it. That answer is not durable: a manifest restored from a backup
+    /// beside newer profile data files can list a deletion for an id a live
+    /// profile still uses, and deleting a live shortcut's history is exactly
+    /// the loss the exclusivity rule exists to prevent. So the question is
+    /// asked again at the moment of the deletion, against the profiles that
+    /// exist now.
+    ///
+    /// Retained ids stay journalled rather than being dropped, matching the
+    /// fail-closed rule the rest of this path uses: an unreadable sibling
+    /// makes every id look retained, and a stale journal entry costs nothing
+    /// while a wrong deletion cannot be undone.
+    func drainableUsageDeletions() -> (deletable: [UUID], retained: [UUID]) {
+        let ids = pendingUsageDeletions()
+        guard !ids.isEmpty else { return ([], []) }
+        let ownership = shortcutOwnership(excluding: nil)
+        var deletable: [UUID] = []
+        var retained: [UUID] = []
+        for id in ids {
+            if ownership.isRetainedElsewhere(id) {
+                retained.append(id)
+            } else {
+                deletable.append(id)
+            }
+        }
+        if !retained.isEmpty {
+            log("PROFILE_TRACE_USAGE_JOURNAL_RETAINED count=\(retained.count) complete=\(ownership.isComplete)")
+        }
+        return (deletable, retained)
     }
 
     /// Called after the rows are actually gone. Clearing the journal is a
