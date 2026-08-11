@@ -226,6 +226,12 @@ final class ShortcutProfileStore {
     /// pointed profile without committing a successor.
     private(set) var pointedProfileID: UUID?
 
+    /// False when the active pointer could not be written during a repair.
+    /// The single-profile case stays usable, but a second profile cannot be
+    /// created until the pointer exists — with two profiles and no pointer,
+    /// the next launch has nothing to resolve.
+    private(set) var activePointerIsDurable = true
+
     init(
         directoryProvider: @escaping @Sendable () -> URL? = { StoragePaths.appSupportDirectory() },
         fileManager: FileManager = .default,
@@ -404,7 +410,19 @@ final class ShortcutProfileStore {
         // determination rather than a guess.
         if manifest.profiles.count == 1 {
             let only = manifest.profiles[0].id
-            try? commitActivePointer(only, layout: layout)
+            do {
+                try commitActivePointer(only, layout: layout)
+                activePointerIsDurable = true
+            } catch {
+                // Keep the profile armed — the data is readable and refusing
+                // to run because of a pointer write would be a worse outcome
+                // than a transient full disk deserves — but remember that no
+                // durable pointer exists, because adding a second profile
+                // while that is true is what turns it into ambiguous recovery
+                // on the next launch.
+                activePointerIsDurable = false
+                log("PROFILE_TRACE_ACTIVE_POINTER_NOT_DURABLE id=\(only.uuidString)")
+            }
             return .resolved(only)
         }
 
@@ -832,6 +850,27 @@ final class ShortcutProfileStore {
         writeClient: WriteClient,
         diagnosticClient: DiagnosticClient
     ) {
+        // Preserve anything unattributable BEFORE replacing it. Doing this
+        // here rather than at each call site is what makes the invariant
+        // unconditional: the launch-time classification cannot see an edit
+        // made while Wink is running, so every overwrite has to re-check.
+        // Reading and hashing a few kilobytes on a user-initiated save is not
+        // a cost worth trading a silent data loss for.
+        if let existing = try? Data(contentsOf: layout.mirrorURL) {
+            let existingDigest = digest(existing)
+            let describedDigest = (try? Data(contentsOf: layout.mirrorDescriptorURL))
+                .flatMap { try? metadataDecoder.decode(ShortcutProfileMirrorDescriptor.self, from: $0) }
+                .map(\.sha256)
+            if existingDigest != describedDigest, existingDigest != digest(data) {
+                let copyURL = layout.appDirectory
+                    .appendingPathComponent("shortcuts.unknown-\(existingDigest.prefix(12)).json")
+                if !FileManager.default.fileExists(atPath: copyURL.path) {
+                    try? writeClient.write(existing, copyURL)
+                    diagnosticClient.log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVED path=\(copyURL.path)")
+                }
+            }
+        }
+
         // The mirror is derived data written last. Its failure is reported but
         // never fails the operation that produced it, because a stale mirror
         // cannot affect this build's behavior.
@@ -1049,6 +1088,12 @@ final class ShortcutProfileStore {
         if let violation = ShortcutProfileNameRules.violation(for: rawName, in: current.profiles) {
             throw StoreError.nameRejected(violation)
         }
+        // A second profile is exactly what makes a missing pointer harmful,
+        // so repair it here rather than discovering the problem at launch.
+        if !activePointerIsDurable, let pointedProfileID {
+            try commitActivePointer(pointedProfileID, layout: layout)
+            activePointerIsDurable = true
+        }
 
         // Duplication mints a fresh UUID per row, keeping shortcut IDs
         // globally unique so `usage.db` needs no profile column. Everything
@@ -1177,6 +1222,11 @@ final class ShortcutProfileStore {
         let exclusivelyOwned = removedShortcutIDs.filter { !ownership.isRetainedElsewhere($0) }
 
         let wasActive = (pointedProfileID ?? locator.currentActiveProfileID()) == profileID
+        // What the locator held before this operation. Restoring it verbatim
+        // matters when the pointed profile's data was unreadable: it was nil
+        // then, and putting the id back would send later saves into a profile
+        // the UI is still reporting as unusable.
+        let locatorBeforeDelete = locator.currentActiveProfileID()
         var newActiveProfileID: UUID?
         var newActiveShortcuts: [AppShortcut]?
 
@@ -1218,7 +1268,7 @@ final class ShortcutProfileStore {
 
             guard !rolledBack else {
                 pointedProfileID = profileID
-                locator.setActiveProfileID(profileID)
+                locator.setActiveProfileID(locatorBeforeDelete)
                 throw manifestError
             }
 

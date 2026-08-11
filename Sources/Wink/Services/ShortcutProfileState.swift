@@ -283,6 +283,15 @@ final class ShortcutProfileState {
             if let newActiveProfileID = outcome.newActiveProfileID,
                let newActiveShortcuts = outcome.newActiveShortcuts {
                 activeProfileID = newActiveProfileID
+                // Deleting the pointed-but-unreadable profile resolves the
+                // very state the banner describes. Leaving it up would keep
+                // telling the user no shortcuts are active while a successor
+                // is loaded and armed.
+                if case .activeProfileUnreadable = recovery {
+                    recovery = .none
+                    pendingForeignMirror = nil
+                }
+                unreadableProfileIDs.remove(newActiveProfileID)
                 shortcutManager.applyLoadedShortcuts(newActiveShortcuts, source: .profileSwitch)
                 onProfileApplied()
             }

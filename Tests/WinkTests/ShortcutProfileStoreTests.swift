@@ -1330,6 +1330,40 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aSecondProfileIsRefusedWhileNoDurablePointerExists() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let first = harness.makeStore()
+        _ = first.load()
+        try FileManager.default.removeItem(at: harness.layout.activePointerURL)
+
+        // The pointer repair cannot be written. The single profile still
+        // arms — refusing to run over a pointer write would be worse than a
+        // transient full disk deserves — but a second profile would make the
+        // next launch ambiguous, so it is refused until the pointer exists.
+        let pointerURL = harness.layout.activePointerURL
+        let failing = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                guard url != pointerURL else { throw InjectedWriteFailure() }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        guard case let .ready(loaded) = failing.load() else {
+            Issue.record("expected the sole profile to stay armed")
+            return
+        }
+        #expect(!loaded.activeShortcuts.isEmpty)
+
+        #expect(throws: (any Error).self) {
+            _ = try failing.createProfile(named: "Work", duplicating: nil)
+        }
+        #expect(failing.manifest?.profiles.count == 1)
+    }
+
+    @Test
     func discardIsRefusedWhileTheOnlyProfileIsStillUnusable() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
@@ -1494,6 +1528,35 @@ struct ShortcutProfileMirrorTests {
         #expect(mirrorBytes == profileBytes)
         #expect(String(decoding: mirrorBytes, as: UTF8.self).contains("futureField"))
         #expect(!harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_MIRROR_STALE") })
+    }
+
+    @Test
+    func anEditMadeWhileWinkIsRunningIsPreservedByTheNextSave() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // The launch-time classification has already run. An external tool
+        // editing the compat file now is invisible to it, so the guarantee
+        // has to be re-established at the moment of overwrite instead.
+        let outsideEdit = "[ { \"appName\" : \"EditedWhileRunning\" } ]"
+        try harness.writeRawLegacyShortcuts(outsideEdit)
+
+        try store.makeActiveProfilePersistenceService().save(
+            [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        )
+
+        let copies = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(copies.count == 1)
+        let copyURL = harness.directory.appendingPathComponent(copies[0])
+        #expect(harness.data(at: copyURL) == Data(outsideEdit.utf8))
     }
 
     @Test
