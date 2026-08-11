@@ -1944,6 +1944,49 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aCrashedSwitchIsRepairedWithoutWritingACopy() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        try PersistenceService.encodeShortcuts([makeTestShortcut(appName: "Mail")])
+            .write(to: harness.layout.profileDataURL(work.id), options: .atomic)
+
+        // A switch that committed its pointer and then died before the mirror
+        // write: active is Work, the mirror and descriptor both still describe
+        // Default. Default's own file holds those bytes, so the repair has
+        // nothing to lose and must not leave a copy behind.
+        try harness.writeRaw(
+            """
+            {"schemaVersion": 1, "activeProfileID": "\(work.id.uuidString)"}
+            """,
+            to: harness.layout.activePointerURL
+        )
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        #expect(after.activeProfileID == work.id)
+        #expect(after.foreignMirror == nil)
+
+        let copies = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(copies.isEmpty)
+        // Still repaired: the mirror now describes the profile that is armed.
+        #expect(harness.decodedShortcuts(at: harness.layout.mirrorURL)?.first?.appName == "Mail")
+        _ = defaultID
+    }
+
+    @Test
     func aMirrorItsSourceProfileNoLongerHoldsIsStillPreserved() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
@@ -2411,22 +2454,29 @@ struct ShortcutProfileNameRuleTests {
     }
 
     @Test
-    func duplicateNamingOfAMaximumLengthNameStillProducesAUsableName() {
-        let longName = String(repeating: "x", count: ShortcutProfileNameRules.maximumLength)
-        let existing = ShortcutProfile(name: longName, createdAt: Date(timeIntervalSince1970: 0))
+    func duplicateNamingOfALongNameStillProducesAUsableName() {
+        // Every length where appending " copy" crosses the limit. Load now
+        // rejects an over-length name outright, so a generated one that
+        // ignored the limit would either fail the action that needs no input
+        // or persist a manifest that cannot be read back.
+        let limit = ShortcutProfileNameRules.maximumLength
+        for length in (limit - 4)...limit {
+            let longName = String(repeating: "x", count: length)
+            let existing = ShortcutProfile(name: longName, createdAt: Date(timeIntervalSince1970: 0))
 
-        let name = ShortcutProfileNameRules.duplicateName(
-            basedOn: longName,
-            in: [existing],
-            fallbackSuffix: UUID()
-        )
+            let name = ShortcutProfileNameRules.duplicateName(
+                basedOn: longName,
+                in: [existing],
+                fallbackSuffix: UUID()
+            )
 
-        // Truncating the finished candidate would hand back the source name
-        // itself, so the default Duplicate action could never succeed for a
-        // maximum-length profile.
-        #expect(name != longName)
-        #expect(name.count <= ShortcutProfileNameRules.maximumLength)
-        #expect(ShortcutProfileNameRules.violation(for: name, in: [existing]) == nil)
+            // Truncating the finished candidate would cut into the suffix and
+            // hand back the source name itself, so the default Duplicate
+            // action could never succeed for a near-maximum-length profile.
+            #expect(name != longName, "length \(length)")
+            #expect(name.count <= limit, "length \(length)")
+            #expect(ShortcutProfileNameRules.violation(for: name, in: [existing]) == nil, "length \(length)")
+        }
     }
 
     @Test
