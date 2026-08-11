@@ -359,6 +359,11 @@ final class ShortcutManager {
     /// first (`save(shortcuts:)` above, or the profile store's active-pointer
     /// commit), preserving the persist-then-mutate rule in both directions.
     func applyLoadedShortcuts(_ shortcuts: [AppShortcut], source: ApplySource) {
+        // Before anything is replaced. A provider callback accepted under the
+        // outgoing set may already be queued on the main actor, and in-memory
+        // consistency does not reach it: the structures below move
+        // synchronously, but that event was admitted before they did.
+        MatchedShortcutDelivery.bindingGeneration.advance()
         let inputMonitoringWasRequired = captureCoordinator.inputMonitoringRequired
         shortcutStore.replaceAll(with: shortcuts)
         rebuildIndex()

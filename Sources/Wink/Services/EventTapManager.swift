@@ -45,12 +45,63 @@ enum HyperHoldEvent: Equatable, Sendable {
     case ended
 }
 
+/// Which binding set a delivery was accepted under.
+///
+/// The tap's own lifecycle generation does not answer this: a whole-set apply
+/// updates the registered shortcuts **in place**, so the tap, its thread, and
+/// its owner all survive and that guard keeps passing. What changes underneath
+/// is `ShortcutStore` and the trigger index.
+///
+/// Read on the tap thread at accept time and compared on the main actor at run
+/// time, so it must be safe to touch from both. Monotonic, so a mismatch can
+/// only ever mean "the configuration moved", never a spurious match.
+final class BindingGeneration: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: UInt64 = 0
+
+    func current() -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func advance() {
+        lock.lock()
+        defer { lock.unlock() }
+        value &+= 1
+    }
+}
+
 enum MatchedShortcutDelivery {
+    /// One runtime per process, so one counter. Static rather than threaded
+    /// through the coordinator and the providers because every layer between
+    /// the tap and `ShortcutManager` would otherwise carry a reference it has
+    /// no other use for.
+    static let bindingGeneration = BindingGeneration()
+
+    /// `generation` is explicit rather than defaulted: a default argument
+    /// referencing a static property is the shape CI's Swift 6.1.2 SILGen
+    /// crashes on (see AGENTS.md), and tests need their own counter anyway —
+    /// the shared one is process-wide, so a parallel test advancing it would
+    /// silently drop another test's delivery.
     static func makeHandler(
+        generation: BindingGeneration,
         _ handler: @escaping @MainActor @Sendable (KeyPress) -> Void
     ) -> @Sendable (KeyPress) -> Void {
         { keyPress in
+            // Sampled here, on the tap thread, at the moment the event is
+            // accepted — not inside the Task, where it would already be the
+            // incoming configuration's value.
+            let accepted = generation.current()
             Task { @MainActor in
+                guard generation.current() == accepted else {
+                    // The whole binding set was replaced between accepting this
+                    // event and running it. Resolving it now would dispatch a
+                    // keypress the user made under the OLD profile against the
+                    // NEW profile's index — the same chord, a different app.
+                    DiagnosticLog.log("SHORTCUT_TRACE_DECISION event=dropped reason=binding_generation_changed")
+                    return
+                }
                 handler(keyPress)
             }
         }
@@ -394,12 +445,24 @@ final class EventTapManager: EventTapManaging {
     // internal for @testable access
     var onKeyPress: ShortcutHandler?
 
+    /// Which binding set deliveries from this tap were accepted under.
+    private let bindingGeneration: BindingGeneration
+
     /// Debounce: minimum interval between triggers for the same shortcut (seconds).
     private let debounceInterval: TimeInterval = 0.2  // safety net behind Layer 1 autorepeat filter
     private var lastTriggerTime: CFAbsoluteTime = 0
     private var lastTriggerKeyPress: KeyPress?
 
-    init(runtimeFactory: EventTapRuntimeFactory? = nil) {
+    /// Defaults to the process-wide counter (one shortcut runtime per process).
+    /// `? = nil` resolved in the body rather than a default argument naming the
+    /// static: CI's Swift 6.1.2 SILGen crashes on non-trivial init defaults.
+    /// Tests pass their own so a parallel suite advancing the shared counter
+    /// cannot drop their delivery.
+    init(
+        runtimeFactory: EventTapRuntimeFactory? = nil,
+        bindingGeneration: BindingGeneration? = nil
+    ) {
+        self.bindingGeneration = bindingGeneration ?? MatchedShortcutDelivery.bindingGeneration
         #if WINK_EVENT_TAP_FAULT_INJECTION
         if let runtimeFactory {
             self.runtimeFactory = runtimeFactory
@@ -472,7 +535,9 @@ final class EventTapManager: EventTapManaging {
 
         let box = EventTapBox()
         box.setHyperHoldObserver(hyperHoldObserver)
-        box.onKeyPress = MatchedShortcutDelivery.makeHandler { [weak self] keyPress in
+        box.onKeyPress = MatchedShortcutDelivery.makeHandler(
+            generation: bindingGeneration
+        ) { [weak self] keyPress in
             self?.handleAsync(keyPress, generation: generation)
         }
         box.onTapDisabled = { snapshot in

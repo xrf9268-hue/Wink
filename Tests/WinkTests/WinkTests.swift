@@ -134,7 +134,7 @@ struct EventTapManagerDeliveryTests {
     func matchedShortcutHandlerCanBeInvokedFromBackgroundThread() async {
         let keyPress = KeyPress(keyCode: CGKeyCode(kVK_ANSI_Q), modifiers: [.command])
         let receivedKeyPress: KeyPress = await withCheckedContinuation { (continuation: CheckedContinuation<KeyPress, Never>) in
-            let handler = MatchedShortcutDelivery.makeHandler { deliveredKeyPress in
+            let handler = MatchedShortcutDelivery.makeHandler(generation: BindingGeneration()) { deliveredKeyPress in
                 MainActor.preconditionIsolated()
                 continuation.resume(returning: deliveredKeyPress)
             }
@@ -145,6 +145,40 @@ struct EventTapManagerDeliveryTests {
         }
 
         #expect(receivedKeyPress == keyPress)
+    }
+
+    @Test
+    func aDeliveryAcceptedUnderTheOldBindingSetIsDropped() async {
+        let generation = BindingGeneration()
+        let keyPress = KeyPress(keyCode: CGKeyCode(kVK_ANSI_Q), modifiers: [.command])
+        let delivered = SendableCounter()
+        let handler = MatchedShortcutDelivery.makeHandler(generation: generation) { _ in
+            delivered.value += 1
+        }
+
+        // Accepted under one configuration, then the whole binding set is
+        // replaced before the queued task runs. Resolving it now would
+        // dispatch the user's keypress against the incoming profile's index —
+        // the same chord, a different app.
+        handler(keyPress)
+        generation.advance()
+
+        await MainActor.run {}
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        #expect(delivered.value == 0)
+    }
+
+    @Test
+    func aDeliveryWithNoInterveningApplyStillArrives() async {
+        let generation = BindingGeneration()
+        let keyPress = KeyPress(keyCode: CGKeyCode(kVK_ANSI_Q), modifiers: [.command])
+        let received: KeyPress = await withCheckedContinuation { (continuation: CheckedContinuation<KeyPress, Never>) in
+            let handler = MatchedShortcutDelivery.makeHandler(generation: generation) { delivered in
+                continuation.resume(returning: delivered)
+            }
+            handler(keyPress)
+        }
+        #expect(received == keyPress)
     }
 
     @Test
