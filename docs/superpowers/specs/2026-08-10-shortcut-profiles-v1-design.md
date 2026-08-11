@@ -308,8 +308,13 @@ edited it. Those members survive the file but not a decode/re-encode round trip,
 comparing the mirror against a re-encoded model would report a mismatch for a mirror that
 is already a perfect byte copy, and the "repair" that followed would strip the preserved
 members from the very file a downgrade reads, breaking the byte-preservation contract D3
-and D4 depend on. The same rule governs the repair itself: it copies the profile file's
-bytes and falls back to re-encoding only when that file cannot be read at all.
+and D4 depend on. The same rule governs the repair itself, and it has **no re-encoding
+fallback**: the repair writes the bytes the caller carried in, or the profile file's own
+bytes, and when neither is available it **refuses**. A fallback here would fire exactly when
+the profile file could not be read — the one moment there is nothing safe to write — and
+would publish a mirror with every unmodelled member stripped, which is the loss this whole
+section exists to prevent. A stale mirror costs a downgrade one launch; a re-encoded one
+costs it the members permanently.
 
 **Why Q1 cannot be answered by the descriptor.** `mirror.json` describes the *mirror*, not
 the profile. After any crash between a data-file write and the mirror write, the mirror and
