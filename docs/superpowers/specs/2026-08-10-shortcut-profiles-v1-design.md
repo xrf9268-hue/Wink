@@ -683,8 +683,9 @@ a different persistence target:
 1. Load and validate `B` (decode + per-profile unique IDs), keeping the bytes. Failure →
    refuse, apply nothing, discard nothing.
 2. Re-verify that `Profiles/<B>.json` still holds those bytes. Mismatch → refuse, as above.
-   **This is the last step that can abort.**
-3. Commit `active.json`, then the mirror from the carried bytes.
+3. Commit `active.json`. A failed write refuses too — a full or read-only volume aborts here
+   exactly as a mismatch does. **The boundary is this write SUCCEEDING**, not the check before
+   it. Then the mirror, from the carried bytes.
 4. Cancel the recorder, the composer draft, and any pending import; dismiss the HUDs
    (`prepareForSwitch()`). Nothing before this point has destroyed anything.
 5. `inputMonitoringWasRequired = captureCoordinator.inputMonitoringRequired`.
@@ -700,8 +701,8 @@ order, which is why the profile switch inherits its proven properties instead of
 them.
 
 Steps 1–3 before 4 is the point of the ordering, not an incidental detail: step 4 destroys
-work the user cannot get back, and steps 1 and 2 are the two places a switch can still be
-refused. The mirror moves up into step 3 with the pointer because it is written from the
+work the user cannot get back, and steps 1 through 3 are all still refusable — validation,
+the re-check, and the pointer write itself. The mirror moves up into step 3 with the pointer because it is written from the
 bytes step 2 verified — leaving it until after the apply would let it describe a payload the
 canonical file no longer holds. Standard, Fn+F-row, and Hyper routes are re-derived by the existing coordinator from
 the new set; Hyper enablement itself is global and untouched (Non-goals).
@@ -757,8 +758,14 @@ cannot invent one later:
 
 ### D14 — In-flight sessions and editor conflicts
 
-Every row below happens **after the commit**, in `prepareForSwitch()` — see the sequence under
-the table. "First" in these rows means first within preparation, never before the commit.
+Every row below happens **after the commit** — see the sequence under the table — but they are
+not all in the same place, and the difference matters to an implementer. The rows that discard
+the user's work (drafts, recorder, pending import) and the HUD dismissals are
+`prepareForSwitch()`, D10 step 4. The rows that reset runtime capture state — the hold-gesture
+arbiter, the window-cycle session, `interactivePanelSessionActive` — happen inside the apply
+itself, D10 steps 9–10, because they belong to the same synchronous main-actor block that
+replaces the store and rebuilds the index. "First" in these rows means first within its own
+phase, never before the commit.
 
 | In flight when a switch is requested | Manual switch | Automatic switch (#438) |
 | --- | --- | --- |
@@ -766,8 +773,8 @@ the table. "First" in these rows means first within preparation, never before th
 | Live recorder (`isRecordingShortcut` / `isRecordingSearchPaletteShortcut`) | Cancelled at the start of preparation — both flags false, which releases the #417/#419 dispatch gate — before the incoming set is armed | Deferred |
 | Pending recipe import preview | **Discarded**, with an explicit non-modal message in the Shortcuts tab. Applying a plan whose conflicts and IDs were computed against profile A onto profile B would be plainly wrong, so discarding is the only correct behavior; the requirement is only that it not be silent. | Deferred |
 | Window picker / search palette presented | The HUDs are dismissed in `prepareForSwitch()`; `interactivePanelSessionActive` is cleared inside the apply (D10 step 10), so the gate and the windows come down together | Deferred |
-| Hold gesture mid-flight | `holdGestureArbiter.reset()` — a gesture must not resolve into a tap or hold across the boundary, the same rule the pause transition already applies | Deferred |
-| Window cycle session | Invalidated with `reason: "profile_switched"` | Deferred |
+| Hold gesture mid-flight | `holdGestureArbiter.reset()` inside the apply (D10 step 10) — a gesture must not resolve into a tap or hold across the boundary, the same rule the pause transition already applies. It sits with the apply rather than with preparation because it is capture state, replaced in the same block as the store and the index | Deferred |
+| Window cycle session | Invalidated with `reason: "profile_switched"` inside the apply (D10 step 9) | Deferred |
 | Toggle session in flight | Left alone. It is a pid-scoped activation already in progress and is not a binding; killing it would strand a half-activated app. | Same |
 
 > **Nothing in this table is discarded until the operation is known to be possible.** Every
@@ -859,7 +866,7 @@ making **Duplicate current** the default way to create a profile.
 | # | Scenario | Behavior |
 | --- | --- | --- |
 | F1 | Crash after `active.json`, before memory apply | Next launch loads B. Consistent; the pointer led memory by design. |
-| F2 | Crash after memory apply, before mirror write | Active = B; `shortcuts.json` and `mirror.json` both still describe A. Q1 fails (the mirror is not the live profile's bytes), Q2 passes (Wink wrote it) → *stale*, rewritten silently, no banner. |
+| F2 | Crash after the pointer commit, before the mirror write | Active = B; `shortcuts.json` and `mirror.json` both still describe A. Q1 fails (the mirror is not the live profile's bytes), Q2 passes (Wink wrote it) → *stale*, rewritten silently, no banner. This is now the only reachable ordering: D10 writes the mirror in step 3 with the pointer and applies memory afterwards, so "after the apply, before the mirror" no longer exists. |
 | F2b | Crash after a **same-profile** save, before mirror write | Identical shape: the mirror still describes A's previous contents while A's data file holds the new ones. Same Q1/Q2 outcome — which is why Q1 compares against the live profile rather than against the descriptor's profile. |
 | F2c | Power loss between the mirror rename and the descriptor rename | The descriptor advertises a digest the mirror never received. Indistinguishable on disk from a deliberate restore, so the banner asks and names both causes rather than repairing silently. |
 | F2d | Power loss during first-run migration, manifest landed, data did not | Stage 3 finds no data file, offers the intact legacy `shortcuts.json` as an import, and arms nothing until the user chooses. |
