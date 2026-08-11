@@ -372,17 +372,29 @@ User opens General tab
 ### 2d. Profile switch flow
 ```text
 User picks a profile (Settings picker or menu bar row)
+  -> ShortcutProfileStore.loadProfileForActivation(id)      <- WRITES NOTHING
+       -> decode + unique IDs; a refused switch applies nothing and discards nothing
+       -> returns the rows AND the exact bytes they came from
+  -> ShortcutProfileStore.commitActivation(id, payload)     <- LAST ABORT POINT
+       -> re-verifies Profiles/<id>.json still holds those bytes, and refuses if not
+       -> commits Profiles/active.json  <- the single commit point, BEFORE memory changes
+       -> writes shortcuts.json + mirror.json from the CARRIED bytes, never a re-read
+  -- past this line nothing can abort, so destroying the user's work is now safe --
   -> ShortcutProfileState cancels recorder/composer/import drafts and dismisses panels,
      reporting anything discarded (a manual switch may discard; an automatic one defers)
-  -> ShortcutProfileStore.activateProfile(id)
-       -> loads and validates the target (decode + unique IDs); a refused switch
-          writes nothing and applies nothing
-       -> commits Profiles/active.json  <- the single commit point, BEFORE memory changes
-       -> refreshes shortcuts.json + mirror.json from the new active profile
   -> ShortcutManager.applyLoadedShortcuts(_, source: .profileSwitch)
        -> ShortcutStore.replaceAll -> rebuildIndex (once) -> capture reconcile (once)
        -> hold-gesture arbiter reset, window-cycle session invalidated
        -> readiness pushed to observers
+
+Draft cancellation sits AFTER the commit on purpose. It destroys work the user
+cannot get back, so it must not run for an operation that can still be refused —
+and validation alone cannot be moved late enough to cover the window, because
+the re-verification exists precisely to close the gap that preparation opens.
+Between the commit and the apply the runtime is still on the outgoing set, which
+is the same persist-then-mutate ordering an ordinary save already uses: the
+pointer leads memory, never lags it. Deleting the active profile follows the
+same rule — preparation waits until `deleteProfile` has returned.
 ```
 
 ### 3. Trigger flow

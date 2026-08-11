@@ -3886,6 +3886,23 @@
         }
       }
     },
+    "That profile changed while Wink was switching to it, so nothing was applied. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That profile changed while Wink was switching to it, so nothing was applied. Try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 正在切换到该配置时它发生了改动，因此未应用任何更改。请重试。"
+          }
+        }
+      }
+    },
     "That profile no longer exists.": {
       "extractionState": "manual",
       "localizations": {

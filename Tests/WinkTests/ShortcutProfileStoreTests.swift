@@ -1746,8 +1746,10 @@ struct ShortcutProfileMirrorTests {
         }
 
         // Migration copies bytes, so the profile file still carries the member.
+        // Republished through the discard path, which is a real caller with no
+        // bytes in hand — the same shape the startup repair uses.
         try harness.writeRaw(withUnknownMember, to: harness.layout.profileDataURL(loaded.activeProfileID))
-        store.rewriteMirror(profileID: loaded.activeProfileID)
+        #expect(store.discardForeignMirror(activeShortcuts: loaded.activeShortcuts))
 
         let reloaded = harness.makeStore()
         guard case let .ready(after) = reloaded.load() else {
@@ -2166,7 +2168,7 @@ struct ShortcutProfileMirrorTests {
         // the file could not be read and produced a mirror with every
         // unmodelled member stripped — the loss D4 exists to prevent.
         try FileManager.default.removeItem(at: harness.layout.profileDataURL(loaded.activeProfileID))
-        store.rewriteMirror(profileID: loaded.activeProfileID)
+        #expect(!store.discardForeignMirror(activeShortcuts: loaded.activeShortcuts))
 
         #expect(harness.data(at: harness.layout.mirrorURL) == mirrorBefore)
         #expect(

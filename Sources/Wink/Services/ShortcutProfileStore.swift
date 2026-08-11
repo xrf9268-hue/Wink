@@ -544,10 +544,20 @@ final class ShortcutProfileStore {
         }
 
         let activeShortcuts: [AppShortcut]
+        let activeBytes: Data
         do {
             // Strict, quarantine-on-failure — the unmodified loader every
-            // shortcuts.json has always used.
-            activeShortcuts = try profilePersistenceService(for: dataURL).load()
+            // shortcuts.json has always used. Read ONCE: the mirror
+            // classification below compares against these bytes and repairs
+            // from them, and re-reading the file there would let an external
+            // writer land between the two, arming one payload while the mirror
+            // is repaired from another. Same rule as an explicit switch.
+            let loaded = try profilePersistenceService(for: dataURL).loadWithBytes()
+            activeShortcuts = loaded.shortcuts
+            guard let bytes = loaded.data else {
+                throw StoreError.profileUnreadable(id: activeProfileID, reason: "data file is missing")
+            }
+            activeBytes = bytes
         } catch {
             locator.setActiveProfileID(nil)
             let preserved = preservedCopyPath(from: error)
@@ -570,7 +580,7 @@ final class ShortcutProfileStore {
         let foreignMirror = detectForeignMirror(
             layout: layout,
             activeProfileID: activeProfileID,
-            activeShortcuts: activeShortcuts
+            activeBytes: activeBytes
         )
 
         return .ready(
@@ -787,7 +797,7 @@ final class ShortcutProfileStore {
     private func detectForeignMirror(
         layout: ShortcutProfileLayout,
         activeProfileID: UUID,
-        activeShortcuts: [AppShortcut]
+        activeBytes: Data
     ) -> ForeignMirror? {
         guard let mirrorData = try? Data(contentsOf: layout.mirrorURL) else {
             guard !fileManager.fileExists(atPath: layout.mirrorURL.path) else {
@@ -801,7 +811,7 @@ final class ShortcutProfileStore {
                 return nil
             }
             // Nothing on disk to lose.
-            rewriteMirror(profileID: activeProfileID, layout: layout)
+            writeMirrorForActiveProfile(bytes: activeBytes, profileID: activeProfileID, layout: layout)
             return nil
         }
 
@@ -815,13 +825,12 @@ final class ShortcutProfileStore {
         // would report a mismatch for a mirror that is already a perfect byte
         // copy, and the repair that followed would strip the preserved members
         // from the very file a downgrade reads.
-        if let activeData = try? Data(contentsOf: layout.profileDataURL(activeProfileID)),
-           mirrorDigest == Self.digest(activeData) {
+        if mirrorDigest == Self.digest(activeBytes) {
             // Current. Keep the descriptor honest so a later comparison
             // attributes correctly; the mirror bytes themselves are already
             // right, so this rewrite is a no-op on content.
             if descriptor?.profileID != activeProfileID || descriptor?.sha256 != mirrorDigest {
-                rewriteMirror(profileID: activeProfileID, layout: layout)
+                writeMirrorForActiveProfile(bytes: activeBytes, profileID: activeProfileID, layout: layout)
             }
             return nil
         }
@@ -868,7 +877,7 @@ final class ShortcutProfileStore {
                 return nil
             }
             log("PROFILE_TRACE_MIRROR_STALE describedProfile=\(descriptor.profileID.uuidString) active=\(activeProfileID.uuidString)")
-            rewriteMirror(profileID: activeProfileID, layout: layout)
+            writeMirrorForActiveProfile(bytes: activeBytes, profileID: activeProfileID, layout: layout)
             return nil
         }
 
@@ -980,30 +989,6 @@ final class ShortcutProfileStore {
         return descriptor
     }
 
-    /// Rewrites `shortcuts.json` and its descriptor from a profile's current
-    /// contents. Used to repair a mirror this build left stale (a crash
-    /// between any data-file write and the mirror write) — never to resolve a
-    /// foreign edit or a mirror of unknown provenance, both of which require
-    /// an explicit user choice.
-    func rewriteMirror(profileID: UUID, layout: ShortcutProfileLayout? = nil) {
-        guard let layout = layout ?? self.layout else { return }
-        // No bytes to carry: a repair's whole purpose is to republish what the
-        // profile file currently holds.
-        writeMirrorForActiveProfile(profileID: profileID, layout: layout)
-    }
-
-    /// Writes the compat mirror from `bytes` when the caller already has the
-    /// validated payload, and only reads the profile file when it does not.
-    ///
-    /// Passing the bytes in is not an optimization. A caller that validated a
-    /// payload and then let this function re-read the file would be back in
-    /// the gap the validation was for: another process replacing the file in
-    /// between makes the runtime apply one payload while the mirror describes
-    /// another. And the old re-encode fallback was worse than useless — it ran
-    /// exactly when the file could not be read, and produced a mirror with
-    /// every unmodelled member stripped, which is the loss D4 exists to
-    /// prevent. There is no payload worth writing that this function can
-    /// synthesize, so it now refuses instead.
     @discardableResult
     private func writeMirrorForActiveProfile(
         bytes: Data? = nil,
