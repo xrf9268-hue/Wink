@@ -711,6 +711,14 @@ final class ShortcutProfileStore {
         // branch overwrites silently. When two states cannot be told apart,
         // the safe wrong answer is to ask, not to act.
         if descriptor.sha256 == mirrorDigest {
+            // Byte equality proves only that these bytes are ones Wink wrote,
+            // not that Wink was the last to write them: an older build or a
+            // tool restoring the exact previous payload lands here too, and
+            // that state is indistinguishable on disk from the crash window.
+            // The repair therefore obeys the same rule as every other
+            // overwrite — preserve a copy first — so both readings are safe
+            // and the crash case still needs no banner.
+            preserveUnknownMirror(mirrorData, digest: mirrorDigest, layout: layout)
             log("PROFILE_TRACE_MIRROR_STALE describedProfile=\(descriptor.profileID.uuidString) active=\(activeProfileID.uuidString)")
             rewriteMirror(activeShortcuts, profileID: activeProfileID, layout: layout)
             return nil
@@ -1078,25 +1086,17 @@ final class ShortcutProfileStore {
             let raw = try? Data(contentsOf: sourceURL),
             let rows = (try? JSONSerialization.jsonObject(with: raw)) as? [[String: Any]]
         else {
-            // Fall back to a model-level copy rather than refusing to
-            // duplicate: losing an unmodelled member is bad, losing the
-            // ability to duplicate at all is worse.
-            log("PROFILE_TRACE_DUPLICATE_FALLBACK id=\(sourceProfileID.uuidString) reason=json_reshape_failed")
-            let copied = try shortcuts(in: sourceProfileID).map { source in
-                AppShortcut(
-                    id: idProvider(),
-                    appName: source.appName,
-                    bundleIdentifier: source.bundleIdentifier,
-                    keyEquivalent: source.keyEquivalent,
-                    modifierFlags: source.modifierFlags,
-                    isEnabled: source.isEnabled,
-                    frontmostBehaviorOverride: source.frontmostBehaviorOverride,
-                    target: source.target,
-                    holdAction: source.holdAction,
-                    persistedInvalidTarget: source.persistedInvalidTargetForCopy
-                )
-            }
-            return (try PersistenceService.encodeShortcuts(copied), copied)
+            // No model-level fallback. Re-encoding would drop members this
+            // build does not model, which is the loss duplication was just
+            // fixed to avoid — a silently lossy copy is worse than a refused
+            // one, and the user can still export a recipe. The condition is
+            // close to unreachable in practice: a payload the strict loader
+            // accepted is JSON that `JSONSerialization` can also read.
+            log("PROFILE_TRACE_DUPLICATE_REFUSED id=\(sourceProfileID.uuidString) reason=json_reshape_failed")
+            throw StoreError.profileUnreadable(
+                id: sourceProfileID,
+                reason: "profile payload could not be reshaped for duplication"
+            )
         }
 
         let rewritten = rows.map { row -> [String: Any] in
@@ -1208,6 +1208,14 @@ final class ShortcutProfileStore {
             // report it.
             log("PROFILE_TRACE_DELETE_ROLLBACK_FAILED id=\(profileID.uuidString) active=\(newActiveProfileID?.uuidString ?? "none")")
 
+            // The switch stuck, so the mirror has to follow it: the runtime
+            // and the locator are on the successor now, and leaving the compat
+            // file describing the former active profile would point the E2E
+            // harness and a downgraded build at bindings nothing is running.
+            if let newActiveProfileID, let newActiveShortcuts {
+                writeMirrorForActiveProfile(newActiveShortcuts, profileID: newActiveProfileID, layout: layout)
+            }
+
             // Stop here. The durable manifest still lists the profile, so
             // publishing the reduced list in memory — or unlinking the data
             // file, which can succeed even on a volume that refused the
@@ -1271,6 +1279,10 @@ final class ShortcutProfileStore {
 
         manifest = ShortcutProfileManifest(profiles: [profile])
         locator.setActiveProfileID(profile.id)
+        // Every other active-profile transition refreshes the mirror; without
+        // it the E2E harness and a downgraded build would keep reading the
+        // pre-recovery bindings until some later save happened to repair it.
+        writeMirrorForActiveProfile([], profileID: profile.id, layout: layout)
         log("PROFILE_TRACE_RECOVERED id=\(profile.id.uuidString)")
 
         return LoadedProfiles(

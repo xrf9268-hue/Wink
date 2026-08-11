@@ -743,6 +743,55 @@ struct ShortcutProfileCRUDTests {
     }
 
     @Test
+    func recoveryLeavesTheCompatMirrorDescribingTheNewProfile() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        _ = store.load()
+        try harness.writeRaw("{ truncated", to: harness.layout.manifestURL)
+
+        let reloaded = harness.makeStore()
+        guard case .manifestUnreadable = reloaded.load() else {
+            Issue.record("expected manifestUnreadable")
+            return
+        }
+        let recovered = try reloaded.recoverManifest()
+
+        // Without this the E2E harness and a downgraded build would keep
+        // reading the pre-recovery bindings until some later save repaired it.
+        #expect(
+            harness.data(at: harness.layout.mirrorURL)
+                == harness.data(at: harness.layout.profileDataURL(recovered.activeProfileID))
+        )
+    }
+
+    @Test
+    func duplicationRefusesRatherThanSilentlyDroppingMembers() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // Remove the source file after load so the reshape cannot run. A
+        // lossy fallback here would be the very data loss duplication was
+        // fixed to avoid, so the operation refuses instead.
+        try FileManager.default.removeItem(at: harness.layout.profileDataURL(loaded.activeProfileID))
+
+        #expect(throws: (any Error).self) {
+            _ = try store.createProfile(named: "Work", duplicating: loaded.activeProfileID)
+        }
+        // And it refused before writing anything.
+        #expect(store.manifest?.profiles.count == 1)
+    }
+
+    @Test
     func nameRulesRejectEmptyTooLongAndCaseInsensitiveDuplicates() throws {
         let (harness, store, _) = try readyStore()
         defer { harness.cleanup() }
@@ -922,6 +971,12 @@ struct ShortcutProfileCRUDTests {
         #expect(outcome.profiles.contains { $0.id == loaded.activeProfileID })
         #expect(outcome.exclusivelyOwnedShortcutIDs.isEmpty)
         #expect(harness.profileDataFileIDs().contains(loaded.activeProfileID))
+        // The switch stuck, so the compat file has to follow it rather than
+        // describing bindings nothing is running.
+        #expect(
+            harness.data(at: harness.layout.mirrorURL)
+                == harness.data(at: harness.layout.profileDataURL(second.id))
+        )
 
         let reloaded = harness.makeStore()
         guard case let .ready(after) = reloaded.load() else {
@@ -1275,6 +1330,14 @@ struct ShortcutProfileMirrorTests {
                 == harness.data(at: harness.layout.profileDataURL(loaded.activeProfileID))
         )
         #expect(harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_MIRROR_STALE") })
+
+        // Byte equality proves only that Wink wrote these bytes once, not
+        // that it wrote them last — an older build restoring the exact
+        // previous payload lands here too. The repair therefore preserves a
+        // copy first, so the silent branch is non-destructive either way.
+        let copies = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(copies.count == 1)
     }
 
     @Test
