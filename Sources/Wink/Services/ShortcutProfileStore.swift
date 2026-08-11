@@ -919,6 +919,12 @@ final class ShortcutProfileStore {
     /// not depend on the manifest being readable. The only path that removes
     /// the source afterwards is the user explicitly deleting that profile,
     /// which is a deliberate discard of exactly those bytes.
+    /// Whether `url` exists and holds exactly `expected`.
+    nonisolated private static func fileHolds(_ expected: Data, at url: URL) -> Bool {
+        guard let current = try? Data(contentsOf: url) else { return false }
+        return digest(current) == digest(expected)
+    }
+
     nonisolated private static func mirrorIsHeldByItsSourceProfile(
         digest mirrorDigest: String,
         descriptor: ShortcutProfileMirrorDescriptor?,
@@ -1069,9 +1075,46 @@ final class ShortcutProfileStore {
                 layout: layout
             )
             if !isWinkOwnCurrentPayload, !isHeldByItsSourceProfile, existingDigest != digest(data) {
-                let copyURL = layout.appDirectory
-                    .appendingPathComponent("shortcuts.unknown-\(existingDigest.prefix(12)).json")
-                if !FileManager.default.fileExists(atPath: copyURL.path) {
+                // A file at the expected path is not proof of a copy. The name
+                // carries only a digest PREFIX, and a partial restore, a manual
+                // edit, or corruption can leave something else there — at which
+                // point treating it as the copy would authorize destroying the
+                // last real one. Verify the contents, and when they disagree
+                // fall back to the full-digest name rather than overwriting a
+                // file whose value is unknown.
+                // Candidate names, most preferred first. A name is usable when
+                // it already holds these exact bytes (nothing to do) or is
+                // free. The prefix name can be occupied by something else after
+                // a partial restore or a manual edit, and the full digest is
+                // the unambiguous fallback.
+                let candidates = [
+                    layout.appDirectory
+                        .appendingPathComponent("shortcuts.unknown-\(existingDigest.prefix(12)).json"),
+                    layout.appDirectory
+                        .appendingPathComponent("shortcuts.unknown-\(existingDigest).json"),
+                ]
+                var alreadyPreserved = false
+                var copyURL: URL?
+                for candidate in candidates {
+                    if fileHolds(existing, at: candidate) {
+                        alreadyPreserved = true
+                        break
+                    }
+                    if !FileManager.default.fileExists(atPath: candidate.path) {
+                        copyURL = candidate
+                        break
+                    }
+                }
+                if !alreadyPreserved, copyURL == nil {
+                    // Every name is taken by bytes that are not these, and none
+                    // of them may be overwritten either — so neither may the
+                    // mirror.
+                    let message = "PROFILE_TRACE_MIRROR_WRITE_SKIPPED reason=no_usable_preservation_path"
+                    logger.error("\(message, privacy: .public)")
+                    diagnosticClient.log(message)
+                    return false
+                }
+                if let copyURL {
                     do {
                         try writeClient.writeDurable(existing, copyURL)
                         diagnosticClient.log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVED path=\(copyURL.path)")
@@ -1880,8 +1923,18 @@ final class ShortcutProfileStore {
             return shortcuts
         }
 
-        let activeShortcuts = (try? self.shortcuts(in: activeProfileID)) ?? []
-        writeMirrorForActiveProfile(profileID: activeProfileID, layout: layout)
+        // The import itself landed, but the compat file still holds the
+        // INACTIVE profile's bindings until this restore succeeds. Reporting
+        // success here would clear the banner while the E2E harness and a
+        // downgraded build keep reading the wrong profile, with nothing left
+        // on screen to say so.
+        guard writeMirrorForActiveProfile(profileID: activeProfileID, layout: layout) else {
+            log("PROFILE_TRACE_IMPORT_MIRROR_NOT_RESTORED active=\(activeProfileID.uuidString)")
+            throw StoreError.writeFailed(
+                path: layout.mirrorURL.path,
+                reason: "imported the profile but could not restore the active profile's compat file"
+            )
+        }
         return nil
     }
 

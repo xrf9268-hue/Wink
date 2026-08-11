@@ -2152,6 +2152,99 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aPreservationCopyThatIsNotTheCopyDoesNotAuthorizeAnOverwrite() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        let outsideEdit = "[ { \"appName\" : \"EditedOutside\" } ]"
+        try harness.writeRawLegacyShortcuts(outsideEdit)
+        let digest = ShortcutProfileStore.digest(Data(outsideEdit.utf8))
+
+        // The path the copy WOULD take, already occupied by something else —
+        // a partial restore, a manual edit, corruption. Treating a filename as
+        // proof of a copy would authorize destroying the last real one.
+        let squatted = harness.directory
+            .appendingPathComponent("shortcuts.unknown-\(digest.prefix(12)).json")
+        try harness.writeRaw("not the copy", to: squatted)
+
+        let saving = harness.makeStore()
+        guard case .ready = saving.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        try saving.makeActiveProfilePersistenceService().save([makeTestShortcut(appName: "Mail")])
+
+        // The squatting file is untouched, and the edit is preserved under the
+        // unambiguous full-digest name instead.
+        #expect(harness.data(at: squatted) == Data("not the copy".utf8))
+        let fullURL = harness.directory.appendingPathComponent("shortcuts.unknown-\(digest).json")
+        #expect(harness.data(at: fullURL) == Data(outsideEdit.utf8))
+    }
+
+    @Test
+    func anImportThatCannotRestoreTheActiveMirrorReportsFailure() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let setup = harness.makeStore()
+        guard case let .ready(loaded) = setup.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        let work = try setup.createProfile(named: "Work", duplicating: nil)
+        _ = try setup.activateProfile(work.id)
+
+        // An outside edit attributed to the INACTIVE Default profile: importing
+        // it writes Default's file, then has to put Work's bindings back in the
+        // compat file. If that restore fails, the import is not finished.
+        let foreign = try PersistenceService.encodeShortcuts([makeTestShortcut(appName: "Mail")])
+        try harness.writeRaw(String(decoding: foreign, as: UTF8.self), to: harness.layout.mirrorURL)
+        // The descriptor names Default and does NOT match the file's digest:
+        // that is what makes these bytes a foreign edit rather than a stale
+        // mirror Wink itself left behind.
+        try harness.writeRaw(
+            """
+            {"schemaVersion": 1, "profileID": "\(defaultID.uuidString)", "sha256": "\(ShortcutProfileStore.digest(Data("stale".utf8)))"}
+            """,
+            to: harness.layout.mirrorDescriptorURL
+        )
+
+        let mirrorURL = harness.layout.mirrorURL
+        let allowMirrorWrite = MutableBox(true)
+        let store = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient(
+                write: { data, url in
+                    struct InjectedWriteFailure: Error {}
+                    if url == mirrorURL, !allowMirrorWrite.value { throw InjectedWriteFailure() }
+                    try data.write(to: url, options: .atomic)
+                }
+            )
+        )
+        guard case let .ready(after) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        guard let mirror = after.foreignMirror else {
+            Issue.record("expected an outside edit to be reported")
+            return
+        }
+
+        allowMirrorWrite.value = false
+        #expect(throws: (any Error).self) {
+            _ = try store.adoptForeignMirror(mirror)
+        }
+    }
+
+    @Test
     func aMirrorWriteWithNoReadablePayloadRefusesRatherThanReencoding() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

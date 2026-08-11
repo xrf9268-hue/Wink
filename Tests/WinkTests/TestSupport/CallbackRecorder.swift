@@ -50,3 +50,17 @@ final class CallbackRecorder<Value>: @unchecked Sendable {
 func drainMainQueue() async {
     await MainActor.run {}
 }
+
+/// A `Sendable` mutable flag for injected closures, which cannot capture a
+/// `var` under strict concurrency.
+final class MutableBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: Value
+
+    init(_ value: Value) { storage = value }
+
+    var value: Value {
+        get { lock.lock(); defer { lock.unlock() }; return storage }
+        set { lock.lock(); defer { lock.unlock() }; storage = newValue }
+    }
+}
