@@ -316,13 +316,31 @@ descriptor — would remove the ambiguity at the source. It is deliberately out 
 v1: the mirror is derived data, and buying a barrier for it would mean replacing the atomic
 write on the save path with hand-rolled `FileHandle` work.)
 
-**Why even the silent repair preserves first.** A matching digest proves these bytes are
-ones Wink wrote — not that Wink wrote them *last*. An older build or a tool restoring the
-exact previous payload produces a file byte-identical to what the crash window leaves behind,
-and no rule can separate them, for the same reason the withdrawn `previousSHA256` idea
-failed. Rather than add a banner to a case that is usually a crash artifact, the repair obeys
-the invariant that already governs every other overwrite: preserve a byte-identical copy
-first. The crash case still needs no prompt, and the restore case is no longer destructive.
+**Why even the silent repair preserves first — and when it has nothing to preserve.** A
+matching digest proves these bytes are ones Wink wrote — not that Wink wrote them *last*. An
+older build or a tool restoring the exact previous payload produces a file byte-identical to
+what the crash window leaves behind, and no rule can separate them, for the same reason the
+withdrawn `previousSHA256` idea failed. Rather than add a banner to a case that is usually a
+crash artifact, the repair obeys the invariant that governs every other overwrite: preserve a
+byte-identical copy first. The crash case still needs no prompt, and the restore case is not
+destructive.
+
+The copy is subject to the same exemption as every other one, and the exemption does most of
+the work here. Split the stale cases by whose bytes they are:
+
+- **Descriptor names another profile that still holds these bytes** — the crashed A→B switch.
+  `Profiles/A.json` *is* the copy, so no file is written. This is the common stale case, and
+  writing a copy for it would leave junk beside the real files on a routine recovery.
+- **Descriptor names a profile that no longer holds them** — the same profile whose file has
+  since advanced, or one that was deleted. Now the mirror is the last copy, so it is preserved
+  before the repair.
+
+In that second case the copy is not belt-and-braces, it is the **whole** guard: the writer
+sees its own current payload for the profile being written and skips its own preservation by
+design, so nothing else is checking. A failed copy therefore **defers the repair** rather than
+proceeding — the mirror stays stale, which is the state it was already in, and the next save
+re-runs the sequence. Overwriting on a failed copy would be the single unguarded write in the
+design.
 
 **Why unknown provenance is left alone — and why "left alone" is not enough on its own.**
 Migration deliberately skips the mirror write when the legacy `shortcuts.json` was unreadable
@@ -418,11 +436,21 @@ direction: Wink must not silently overwrite the user's older-build edits either.
 > **Duplication preserves members, not bytes — and that distinction is load-bearing.**
 > Migration and mirroring copy `Data` and are byte-exact. Duplication cannot be: it must
 > rewrite every `id`, so the payload is re-serialized, which normalizes key order and
-> whitespace (and could reformat a number literal). What it guarantees is that every member of
-> every row survives with its value, including members this build does not model — which is
-> the property the forward-compatibility rule actually needs. Claiming byte identity here
-> would be a promise the code cannot keep and a test could only pass by accident, so the
-> weaker true statement is the one recorded.
+> whitespace. What it guarantees is that every member of every row survives, with the value
+> `JSONSerialization` reads for it — including members this build does not model, which is the
+> property the forward-compatibility rule actually needs. Claiming byte identity here would be
+> a promise the code cannot keep and a test could only pass by accident.
+>
+> **The limit of that guarantee is the JSON number.** A literal outside what
+> `JSONSerialization` represents exactly — `1e-400`, which underflows to `0`, or an integer
+> past `Int64` — comes back re-spelled, so the member survives while its value does not.
+> Neither proposed defence works. Re-parsing the output and comparing cannot detect it: the
+> *source* was read by the same parser, so both sides already hold the degraded value. And
+> preserving the original tokens means splicing ids into raw JSON text, trading a rare
+> value-fidelity loss for a routine risk of producing invalid JSON in the one operation that
+> must not corrupt anything. The exposure is confined to unmodelled numeric members from a
+> future build — no field `AppShortcut` models is a number — and the honest response is to
+> record the limit here, not to claim past it.
 
 > **Where preservation ends.** Unmodelled members survive every *copy* in this design —
 > migration, mirroring, import, duplication — and are dropped by the first ordinary **save**
@@ -648,7 +676,8 @@ cannot invent one later:
 | Name length | 1–64 characters after trimming whitespace and newlines |
 | Name uniqueness | Required, case-insensitive over NFC-normalized names. Menus and future automation address profiles by name; ambiguous names would make both unusable. Collisions are rejected inline, never auto-suffixed on rename. |
 | Profile count cap | 32. Keeps the switch menu usable and the manifest small; far above any plausible use. |
-| Create | Two entry points: **Duplicate current** (default) and **New empty profile**. Duplicate mints IDs per D6 and names it `<name> copy`, `<name> copy 2`, … |
+| Create | Two entry points: **Duplicate current** (default) and **New empty profile**. Duplicate mints IDs per D6 and names it `<name> copy`, `<name> copy 2`, …; **New empty profile** submits the first free spelling of `New Profile` the same way, never a constant, so its second use does not fail validation for something the user did not do. |
+| Generated names obey the length limit | The suffix is reserved *before* the base is used: a 60–64 character source is shortened enough to fit ` copy`, rather than the finished candidate being truncated — which would cut into the suffix and could reintroduce a collision. Trimming the finished string is the obvious implementation and the wrong one. Since load now rejects an over-length name (V11c), a generated name that ignored the limit would either be refused at creation, breaking the one action that needs no input, or persisted into a manifest that cannot be loaded. |
 | Rename | Metadata-only write. No data file touched, no IDs touched. |
 | Delete | Allowed only while ≥2 profiles exist. Confirmation names the profile and states that its shortcuts and their exclusively-owned usage history are removed. |
 | Delete the active profile | The active pointer moves to the **preceding entry in manifest order**, or to the first entry if the deleted one was first. Deterministic and matches the visible list; `modifiedAt` was rejected because ties are possible. The fallback is then applied through the same runtime path as a switch, and the mirror is refreshed from it (D3). If the manifest write fails after the pointer was committed, the pointer and the in-process locator are rolled back so the failure is total — a half-applied delete would keep the runtime on the deleted profile while saves landed in the fallback's file. **If that rollback write also fails** — the same full or read-only volume fails both — the switch is *accepted* instead: memory is aligned with the durable pointer, the fallback is applied to the runtime, and the user is told the delete failed and which profile they are now on. Claiming a rollback that did not happen would be contradicted by the next relaunch, and a locator disagreeing with `active.json` is what makes the next save overwrite the wrong file. |
@@ -805,7 +834,9 @@ packaged-app validation.
 | V10i | Ordinary saves accumulate no copies | Save five times in a row; assert no `shortcuts.unknown-*.json` exists — preserving Wink's own superseded output per save would be unbounded |
 | V10j | Ordinary switches accumulate no copies | Switch A→B→A three times; assert no `shortcuts.unknown-*.json` exists — the mirror holds A's bytes while B is written, and A's own file is the copy |
 | V10k | An unreadable mirror is never replaced | Make `shortcuts.json` present but unreadable in a still-writable directory → switch → assert the switch commits, the mirror bytes are unchanged, and the skip is traced |
-| V10h | Every mirror overwrite preserves first | Reach the silent stale repair; assert a `shortcuts.unknown-*.json` copy exists alongside the repaired mirror |
+| V10h | A stale repair with a diverged source preserves first | Reach the silent stale repair with the descriptor's profile file **advanced past** the mirror; assert a `shortcuts.unknown-*.json` copy exists alongside the repaired mirror |
+| V10m | A stale repair with a live source writes no copy | Reach the same repair with the descriptor's profile file still holding the mirror's bytes — the crashed A→B switch; assert the mirror is repaired and **no** copy is written |
+| V10n | A failed preservation defers the repair | Fail only the `shortcuts.unknown-*` write on the diverged-source path; assert the mirror is left stale and untouched, since that copy is the only guard on that write |
 | V7b | A lossy duplicate is refused | Make the source payload unreshapeable; assert the duplicate fails and writes nothing |
 | V10c | Unknown provenance is left alone | Migrate from an unreadable legacy file → relaunch → assert no banner, and that `shortcuts.json` still holds the user's original bytes |
 | V10d | Unmodelled members survive | Profile file with an extra JSON member, mirror a byte copy → relaunch → assert no stale rewrite and that the member is still present in both files |
@@ -815,6 +846,7 @@ packaged-app validation.
 | V10f | Dangling descriptor is unknown provenance | Descriptor naming a deleted profile, mirror changed out of band → assert no banner and no import action offered |
 | V11 | Name and cap rules | Empty, 65-char, case-differing duplicate, 33rd profile — all rejected with a message |
 | V11d | An unreadable pointer is neither adopted nor rewritten | Make `active.json` present but unreadable with exactly one profile listed — the count that normally licenses adoption → assert zero armed, an explicit picker, and byte-identical pointer bytes afterwards |
+| V11e | Generated names fit the limit | Duplicate a profile named with 60, 63, and 64 characters; assert each generated name is ≤64, unique, and still loads |
 | V11c | Load enforces the same name rules | Hand-written manifests carrying an empty, 65-char, or case-colliding name → assert each is a load failure, since every surface addresses a profile by the name the user reads. The 32-profile cap is deliberately **not** enforced at load: over-cap data stays usable, and refusing to start would turn a restored backup into a lockout |
 | V12d | A failed recovery changes nothing | Fail the `active.json` write during Recover → assert the throw, that the quarantined manifest bytes are unchanged, and that a fresh load still reports the same state the user was looking at |
 | V12 | Delete-active fallback | Delete active at list positions first/middle/last; assert the deterministic successor, that the fallback is applied to the runtime, and that the mirror now describes it |
