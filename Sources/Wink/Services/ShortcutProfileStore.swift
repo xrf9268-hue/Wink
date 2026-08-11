@@ -390,6 +390,20 @@ final class ShortcutProfileStore {
     ) -> ActivePointerResolution {
         var preservedCopyPath: String?
 
+        if fileManager.fileExists(atPath: layout.activePointerURL.path),
+           (try? Data(contentsOf: layout.activePointerURL)) == nil {
+            // Present but unreadable. The single-profile adoption below would
+            // both arm a profile this file may deliberately not have named and
+            // overwrite the file while doing it — the same trade the
+            // unsupported-schema branch already refuses, and for the same
+            // reason: bytes this build cannot interpret may still carry a
+            // meaning ("none active") that adopting silently discards. An
+            // unreadable file is even less interpretable than a future schema,
+            // so it cannot license a weaker response.
+            log("PROFILE_TRACE_ACTIVE_UNREADABLE")
+            return .ambiguous(preservedCopyPath: nil)
+        }
+
         if let data = try? Data(contentsOf: layout.activePointerURL) {
             if
                 let probe = try? Self.metadataDecoder.decode(MetadataSchemaProbe.self, from: data),
@@ -421,9 +435,10 @@ final class ShortcutProfileStore {
             preservedCopyPath = preserveRejectedPayload(data, originalURL: layout.activePointerURL)
         }
 
-        // Absent or unreadable. With exactly one profile there is no other
-        // configuration this could be confused with, so adopting it is a
-        // determination rather than a guess.
+        // Absent, or present and readable but not decodable. With exactly one
+        // profile there is no other configuration this could be confused with,
+        // so adopting it is a determination rather than a guess. A file that
+        // could not be READ never reaches here — see above.
         if manifest.profiles.count == 1 {
             let only = manifest.profiles[0].id
             do {

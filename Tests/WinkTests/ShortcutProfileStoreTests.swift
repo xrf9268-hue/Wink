@@ -1938,6 +1938,42 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func anUnreadableActivePointerIsNeitherAdoptedNorOverwritten() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        _ = harness.makeStore().load()
+
+        let pointerBytes = harness.data(at: harness.layout.activePointerURL)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: harness.layout.activePointerURL.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644],
+                ofItemAtPath: harness.layout.activePointerURL.path
+            )
+        }
+
+        // A single profile normally licenses adoption, because there is no
+        // other configuration it could be confused with. Bytes that cannot be
+        // read are less interpretable than a future schema, which this code
+        // already refuses to adopt — so it must not adopt here either, and it
+        // must not overwrite the file while doing so.
+        guard case .activeProfileAmbiguous = harness.makeStore().load() else {
+            Issue.record("expected an unreadable pointer to fail closed")
+            return
+        }
+
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o644],
+            ofItemAtPath: harness.layout.activePointerURL.path
+        )
+        #expect(harness.data(at: harness.layout.activePointerURL) == pointerBytes)
+    }
+
+    @Test
     func aManifestWithAnOverlongNameIsALoadFailure() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
