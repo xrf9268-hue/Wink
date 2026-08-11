@@ -306,12 +306,23 @@ descriptor — would remove the ambiguity at the source. It is deliberately out 
 v1: the mirror is derived data, and buying a barrier for it would mean replacing the atomic
 write on the save path with hand-rolled `FileHandle` work.)
 
-**Why unknown provenance is left alone rather than repaired.** Migration deliberately skips
-the mirror write when the legacy `shortcuts.json` was unreadable (D4), so that state is
-reachable by design. Rewriting the mirror there would destroy bytes the user may still be
-able to repair by hand, and offering it as a foreign edit is worse: those bytes do not
-decode, so the only available action would be "overwrite". Leaving both files untouched
-costs nothing — the user's next save rewrites the mirror as a matter of course.
+**Why unknown provenance is left alone — and why "left alone" is not enough on its own.**
+Migration deliberately skips the mirror write when the legacy `shortcuts.json` was unreadable
+(D4), so that state is reachable by design. Rewriting the mirror there would destroy bytes
+the user may still be able to repair by hand, and offering it as a foreign edit is worse:
+those bytes do not decode, so the only available action would be "overwrite".
+
+But leaving both files untouched only protects them until the **next ordinary save** rewrites
+the mirror, and unlike every quarantine path in D8, nothing on this branch had preserved a
+copy first — so an older build's edits could be lost with no trace at all. Detecting unknown
+provenance therefore writes a byte-identical copy beside the original,
+`shortcuts.unknown-<digest>.json`, before anything else happens. The name carries the content
+digest rather than a fresh UUID, so relaunching with the same unattributable bytes rewrites
+the same path with identical content instead of accumulating copies.
+
+With that copy in place, the later save that overwrites the mirror is no longer destructive,
+which is what makes "leave it alone and carry on" an honest policy rather than a deferred
+data loss.
 
 `P` is the profile the mirror last described — which is the profile the older build was
 actually editing — so an adopted import lands where the user expects even if the active
@@ -401,7 +412,7 @@ from that value.
 | State | Behavior |
 | --- | --- |
 | absent | Migration (D4). Any existing `Profiles/<uuid>.json` are orphans (D9). |
-| unreadable (truncated, malformed, empty profile list, duplicate profile IDs, or a `schemaVersion` this build does not support) | Preserve `manifest.load-failure-<uuid>.json`, **source untouched**. Zero shortcuts armed. Banner with the copy's path and a **Recover** action; every mutation blocked until Recover is chosen. Recover writes a fresh manifest with one empty Default profile — safe, because a byte-identical copy already exists. |
+| unreadable (truncated, malformed, empty profile list, duplicate profile IDs, or a `schemaVersion` this build does not support) | Preserve `manifest.load-failure-<uuid>.json`, **source untouched**. Zero shortcuts armed. Banner with the copy's path and a **Recover** action; every mutation blocked until Recover is chosen. See the Recover transaction below. |
 | valid | Continue to stage 2. |
 
 **Stage 2 — the active pointer (`active.json`), given a valid list**
@@ -421,6 +432,20 @@ from that value.
 | valid | Normal load. |
 | unreadable (malformed, or duplicate shortcut IDs — the existing `PersistenceService` rules, unchanged) | Preserve a quarantine copy, source untouched. The profile is marked *unreadable* in the UI. Zero shortcuts armed. Banner offering to switch to a readable profile — as an explicit action. |
 | absent | As above, minus the quarantine copy. **Plus:** if a legacy `shortcuts.json` still parses, offer it as an import into this profile. Under the same no-fsync model, `manifest.json` can land while the Default profile's data file does not, and migration never re-runs once a manifest exists — without this the intact legacy file would sit on disk with nothing pointing at it. Offered, never adopted automatically. |
+
+**The Recover transaction.** Recover must produce a configuration the three stages can
+actually load, so it writes all three files, in this order:
+
+1. `Profiles/<new>.json` — an empty shortcut array
+2. `Profiles/manifest.json` — one Default profile naming that id
+3. `Profiles/active.json` — pointing at it
+
+Writing only the manifest would leave a stale `active.json` naming an id the new manifest does
+not contain, and stage 2 would return the user straight back to the zero-armed picker; writing
+manifest and pointer without the data file would pass stages 1 and 2 and then fail stage 3.
+Overwriting the damaged manifest is safe because a byte-identical copy was preserved before the
+banner appeared, and Recover re-attempts that preservation first in case the earlier attempt
+failed.
 
 Because the stages compose, a doubly damaged install has exactly one reading with no extra
 rule: an unreadable pointer with a single profile resolves in stage 2 (adopt), and if that
@@ -508,7 +533,7 @@ cannot invent one later:
 | Create | Two entry points: **Duplicate current** (default) and **New empty profile**. Duplicate mints IDs per D6 and names it `<name> copy`, `<name> copy 2`, … |
 | Rename | Metadata-only write. No data file touched, no IDs touched. |
 | Delete | Allowed only while ≥2 profiles exist. Confirmation names the profile and states that its shortcuts and their exclusively-owned usage history are removed. |
-| Delete the active profile | The active pointer moves to the **preceding entry in manifest order**, or to the first entry if the deleted one was first. Deterministic and matches the visible list; `modifiedAt` was rejected because ties are possible. The fallback is then applied through the same runtime path as a switch, and the mirror is refreshed from it (D3). If the manifest write fails after the pointer was committed, the pointer and the in-process locator are rolled back so the failure is total — a half-applied delete would keep the runtime on the deleted profile while saves landed in the fallback's file. |
+| Delete the active profile | The active pointer moves to the **preceding entry in manifest order**, or to the first entry if the deleted one was first. Deterministic and matches the visible list; `modifiedAt` was rejected because ties are possible. The fallback is then applied through the same runtime path as a switch, and the mirror is refreshed from it (D3). If the manifest write fails after the pointer was committed, the pointer and the in-process locator are rolled back so the failure is total — a half-applied delete would keep the runtime on the deleted profile while saves landed in the fallback's file. **If that rollback write also fails** — the same full or read-only volume fails both — the switch is *accepted* instead: memory is aligned with the durable pointer, the fallback is applied to the runtime, and the user is told the delete failed and which profile they are now on. Claiming a rollback that did not happen would be contradicted by the next relaunch, and a locator disagreeing with `active.json` is what makes the next save overwrite the wrong file. |
 | Empty profile | Legal and fully supported. Zero armed chords is a valid configuration ("Presentation"), and the existing `emitCaptureBlockedDiagnostics` already stays silent at zero counts, so nothing reports it as an error. |
 
 ### D14 — In-flight sessions and editor conflicts
@@ -559,6 +584,7 @@ making **Duplicate current** the default way to create a profile.
 | F2b | Crash after a **same-profile** save, before mirror write | Identical shape: the mirror still describes A's previous contents while A's data file holds the new ones. Same Q1/Q2 outcome — which is why Q1 compares against the live profile rather than against the descriptor's profile. |
 | F2c | Power loss between the mirror rename and the descriptor rename | The descriptor advertises a digest the mirror never received. Indistinguishable on disk from a deliberate restore, so the banner asks and names both causes rather than repairing silently. |
 | F2d | Power loss during first-run migration, manifest landed, data did not | Stage 3 finds no data file, offers the intact legacy `shortcuts.json` as an import, and arms nothing until the user chooses. |
+| F2e | Delete of the active profile fails, and so does its rollback | The pointer durably names the fallback. The switch is accepted, applied, and reported; the delete is reported as failed. No divergence between memory, disk, and what the user was told. |
 | F3 | Disk full during profile-data write | Atomic write fails → save/switch throws → in-memory state untouched → `saveErrorMessage` surfaced. Same shape as today's write-failure path. |
 | F4 | Disk full during mirror write | Logged as `PROFILE_TRACE_MIRROR_FAILED`. Switch already succeeded and stays succeeded. |
 | F5 | `manifest.json` truncated by an external tool | D8 row 2: quarantine copy, source untouched, banner + Recover, mutations blocked. |
@@ -666,6 +692,8 @@ packaged-app validation.
 | V11 | Name and cap rules | Empty, 65-char, case-differing duplicate, 33rd profile — all rejected with a message |
 | V12 | Delete-active fallback | Delete active at list positions first/middle/last; assert the deterministic successor, that the fallback is applied to the runtime, and that the mirror now describes it |
 | V12b | Delete-active failure is total | Fail the manifest write after the pointer commit; assert the throw, and that the pointer, locator, and a fresh load all still name the original profile |
+| V12c | A failed rollback is not claimed as one | Fail the manifest write **and** the rollback write; assert the outcome reports the forced switch, the locator names the fallback, and a fresh load agrees with the message shown |
+| V13b | Unattributable bytes are preserved | Reach unknown provenance twice; assert exactly one `shortcuts.unknown-*.json` copy exists and holds the original bytes |
 | V13 | Palette per-profile | Profile A has a palette trigger, B does not; switch A→B→A; assert trigger index membership follows and no ID churn |
 | V14 | **runtime** Live switch with real capture | Packaged app, standard + Hyper bindings live: switch, assert old chords stop and new chords fire; record SHA, bundle path, executable SHA-256, registrations/readiness, activation evidence |
 | V15 | **runtime** Switch under a live Hyper hold / picker | Switch while the picker is open; assert dismissal with no stray toggle |
