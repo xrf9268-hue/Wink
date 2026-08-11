@@ -226,10 +226,12 @@ final class ShortcutProfileState {
             return
         }
 
-        // Validated BEFORE anything irreversible. `prepareForSwitch()` cancels
-        // the recorder, the composer draft, and any pending import, so running
-        // it for a switch that cannot succeed destroys work to no purpose —
-        // and an unreadable profile stays selectable in at least one surface.
+        // Everything that can refuse the switch runs FIRST, and writes nothing:
+        // validation, then the commit-time re-check inside `commitActivation`.
+        // `prepareForSwitch()` cancels the recorder, the composer draft, and
+        // any pending import, so it must not run for a switch that can still
+        // be refused — the rule is not "validate early", it is "discard only
+        // once nothing can abort".
         let payload: ShortcutProfileStore.ValidatedProfilePayload
         do {
             payload = try store.loadProfileForActivation(profileID)
@@ -238,29 +240,28 @@ final class ShortcutProfileState {
             return
         }
 
-        let discarded = prepareForSwitch()
-
         do {
             try store.commitActivation(profileID, payload: payload)
-            activeProfileID = profileID
-            unreadableProfileIDs.remove(profileID)
-            recovery = .none
-            // The pointer is already committed; this is the same synchronous
-            // main-actor apply an ordinary save performs, so no observable
-            // state mixes the outgoing store with the incoming index.
-            shortcutManager.applyLoadedShortcuts(payload.shortcuts, source: .profileSwitch)
-            onProfileApplied()
-            errorMessage = nil
-            statusMessage = switchedMessage(discarded: discarded)
         } catch {
-            // A refused switch writes nothing and applies nothing — but the
-            // drafts are already gone, so say so rather than leaving the user
-            // wondering where their recording went.
+            // Nothing written, nothing applied, and nothing discarded.
             errorMessage = userFacingMessage(for: error)
-            if !discarded.isEmpty {
-                statusMessage = discardedMessage(discarded)
-            }
+            return
         }
+
+        // Past the last abort point: the pointer is durable, so the switch is
+        // going to happen and the drafts can be cleared. Between the commit and
+        // the apply the runtime is still on the outgoing set, which is the same
+        // persist-then-mutate ordering an ordinary save already uses.
+        let discarded = prepareForSwitch()
+        activeProfileID = profileID
+        unreadableProfileIDs.remove(profileID)
+        recovery = .none
+        // The same synchronous main-actor apply an ordinary save performs, so
+        // no observable state mixes the outgoing store with the incoming index.
+        shortcutManager.applyLoadedShortcuts(payload.shortcuts, source: .profileSwitch)
+        onProfileApplied()
+        errorMessage = nil
+        statusMessage = switchedMessage(discarded: discarded)
     }
 
     // MARK: - CRUD
@@ -364,10 +365,16 @@ final class ShortcutProfileState {
             return
         }
 
-        let discarded = switchesActive ? prepareForSwitch() : DiscardedProfileSwitchDrafts()
+        var discarded = DiscardedProfileSwitchDrafts()
 
         do {
+            // Same rule as a switch: `deleteProfile` can still refuse — the
+            // successor may have changed under the plan, or the manifest write
+            // may fail — so nothing is discarded until it has returned.
             let outcome = try store.deleteProfile(plan)
+            if switchesActive {
+                discarded = prepareForSwitch()
+            }
             profiles = outcome.profiles
             // Only when the profile is actually gone. On the unrecoverable
             // path the manifest still lists it and its file survives, so

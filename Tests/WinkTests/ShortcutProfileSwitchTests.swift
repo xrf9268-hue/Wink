@@ -815,6 +815,68 @@ struct ShortcutProfileRecoveryRuntimeTests {
     }
 }
 
+    @MainActor
+    @Test
+    func aSwitchRefusedAtTheCommitDiscardsNothing() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+
+        let setup = harness.makeStore()
+        guard case let .ready(loaded) = setup.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        let work = try setup.createProfile(named: "Work", duplicating: nil)
+
+        // The commit fails at the pointer write. Any refusal reachable from
+        // `commitActivation` — this one, or the commit-time re-check when the
+        // profile changed underneath — arrives AFTER validation, which is
+        // exactly where preparation used to have already run.
+        let pointerURL = harness.layout.activePointerURL
+        let store = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient(
+                write: { data, url in
+                    struct InjectedWriteFailure: Error {}
+                    if url == pointerURL { throw InjectedWriteFailure() }
+                    try data.write(to: url, options: .atomic)
+                }
+            )
+        )
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let prepared = CallbackRecorder<Bool>()
+        let state = ShortcutProfileState(
+            store: store,
+            shortcutManager: manager,
+            prepareForSwitch: {
+                prepared.record(true)
+                return DiscardedProfileSwitchDrafts()
+            }
+        )
+        _ = state.loadAtStartup()
+
+        state.switchToProfile(work.id)
+
+        // The recorder, the composer draft, and any pending import are the
+        // user's work and cannot be restored, so a switch that refuses must
+        // never have touched them.
+        #expect(prepared.isEmpty)
+        #expect(state.activeProfileID == defaultID)
+        #expect(state.errorMessage != nil)
+    }
+
 /// Reports every deletion as failed, which is what an unavailable or erroring
 /// SQLite connection does.
 final class FailingDeleteUsageTracker: UsageTracking, @unchecked Sendable {
