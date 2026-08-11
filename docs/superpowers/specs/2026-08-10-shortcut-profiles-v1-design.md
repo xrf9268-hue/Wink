@@ -551,12 +551,18 @@ A switch to profile `B`:
 stateDiagram-v2
     [*] --> Validate
     Validate --> Refused: decode fails / duplicate IDs within B
-    Validate --> Commit: B decodes and validates
-    Commit --> Applied: write Profiles/active.json (atomic)
-    Applied --> Mirrored: store→index→capture→invalidate (sync, MainActor)
-    Mirrored --> [*]: write shortcuts.json + mirror.json (best effort)
-    Refused --> [*]: nothing written, nothing applied
+    Validate --> Reverify: B decodes and validates
+    Reverify --> Refused: Profiles/B.json no longer holds those bytes
+    Reverify --> Commit: still the verified bytes
+    Commit --> Prepared: write Profiles/active.json (atomic), then the mirror
+    Prepared --> Applied: cancel drafts / dismiss HUDs
+    Applied --> [*]: store→index→capture→invalidate (sync, MainActor)
+    Refused --> [*]: nothing written, nothing applied, nothing discarded
 ```
+
+`Refused` is reachable only from the two states that write nothing, which is what makes a
+refused switch total — including for the user's in-flight work, since preparation sits on the
+far side of the commit.
 
 The pointer is written **before** memory changes, mirroring the existing
 persist-then-mutate rule in `ShortcutManager.save`. A crash therefore lands on an on-disk
@@ -674,21 +680,30 @@ lacks.
 The switch runs entirely inside `ShortcutManager`, reusing the `save(shortcuts:)` body with
 a different persistence target:
 
-1. Load and validate `B` (decode + per-profile unique IDs). Failure → refuse, apply nothing.
-2. `inputMonitoringWasRequired = captureCoordinator.inputMonitoringRequired`.
-3. Commit `active.json`.
-4. `shortcutStore.replaceAll(with: B)`.
-5. `rebuildIndex()` — **once**.
-6. `handleCaptureConfigurationChange(inputMonitoringWasRequired:)` — **once**.
-7. `appSwitcher.invalidateWindowCycleSession(reason: "profile_switched")`.
-8. `holdGestureArbiter?.reset()`; dismiss the window picker and the search palette if
-   presented; clear `interactivePanelSessionActive`.
-9. `notifyCaptureStatusChangeIfNeeded()`.
-10. Mirror + `mirror.json` (best effort).
+1. Load and validate `B` (decode + per-profile unique IDs), keeping the bytes. Failure →
+   refuse, apply nothing, discard nothing.
+2. Re-verify that `Profiles/<B>.json` still holds those bytes. Mismatch → refuse, as above.
+   **This is the last step that can abort.**
+3. Commit `active.json`, then the mirror from the carried bytes.
+4. Cancel the recorder, the composer draft, and any pending import; dismiss the HUDs
+   (`prepareForSwitch()`). Nothing before this point has destroyed anything.
+5. `inputMonitoringWasRequired = captureCoordinator.inputMonitoringRequired`.
+6. `shortcutStore.replaceAll(with: B)`.
+7. `rebuildIndex()` — **once**.
+8. `handleCaptureConfigurationChange(inputMonitoringWasRequired:)` — **once**.
+9. `appSwitcher.invalidateWindowCycleSession(reason: "profile_switched")`.
+10. `holdGestureArbiter?.reset()`; clear `interactivePanelSessionActive`.
+11. `notifyCaptureStatusChangeIfNeeded()`.
 
-Steps 4–9 are the same synchronous main-actor block `save()` already runs, in the same
+Steps 6–11 are the same synchronous main-actor block `save()` already runs, in the same
 order, which is why the profile switch inherits its proven properties instead of restating
-them. Standard, Fn+F-row, and Hyper routes are re-derived by the existing coordinator from
+them.
+
+Steps 1–3 before 4 is the point of the ordering, not an incidental detail: step 4 destroys
+work the user cannot get back, and steps 1 and 2 are the two places a switch can still be
+refused. The mirror moves up into step 3 with the pointer because it is written from the
+bytes step 2 verified — leaving it until after the apply would let it describe a payload the
+canonical file no longer holds. Standard, Fn+F-row, and Hyper routes are re-derived by the existing coordinator from
 the new set; Hyper enablement itself is global and untouched (Non-goals).
 
 > **Invariant.** At no point observable from the main actor do `ShortcutStore.shortcuts`
@@ -742,12 +757,15 @@ cannot invent one later:
 
 ### D14 — In-flight sessions and editor conflicts
 
+Every row below happens **after the commit**, in `prepareForSwitch()` — see the sequence under
+the table. "First" in these rows means first within preparation, never before the commit.
+
 | In flight when a switch is requested | Manual switch | Automatic switch (#438) |
 | --- | --- | --- |
 | Composer draft (`selectedApp` + `recordedShortcut`) | Discarded, draft cleared, switch proceeds. The user initiated it. | Deferred |
-| Live recorder (`isRecordingShortcut` / `isRecordingSearchPaletteShortcut`) | Cancelled first — both flags false, which releases the #417/#419 dispatch gate — then switch | Deferred |
+| Live recorder (`isRecordingShortcut` / `isRecordingSearchPaletteShortcut`) | Cancelled at the start of preparation — both flags false, which releases the #417/#419 dispatch gate — before the incoming set is armed | Deferred |
 | Pending recipe import preview | **Discarded**, with an explicit non-modal message in the Shortcuts tab. Applying a plan whose conflicts and IDs were computed against profile A onto profile B would be plainly wrong, so discarding is the only correct behavior; the requirement is only that it not be silent. | Deferred |
-| Window picker / search palette presented | Dismissed as part of step 8 | Deferred |
+| Window picker / search palette presented | The HUDs are dismissed in `prepareForSwitch()`; `interactivePanelSessionActive` is cleared inside the apply (D10 step 10), so the gate and the windows come down together | Deferred |
 | Hold gesture mid-flight | `holdGestureArbiter.reset()` — a gesture must not resolve into a tap or hold across the boundary, the same rule the pause transition already applies | Deferred |
 | Window cycle session | Invalidated with `reason: "profile_switched"` | Deferred |
 | Toggle session in flight | Left alone. It is a pid-scoped activation already in progress and is not a binding; killing it would strand a half-activated app. | Same |
