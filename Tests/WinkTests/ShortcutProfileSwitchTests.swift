@@ -715,4 +715,56 @@ struct ShortcutProfileRecoveryRuntimeTests {
         #expect(state.activeProfileID == defaultID)
         #expect(state.errorMessage != nil)
     }
+
+    @MainActor
+    @Test
+    func deletingAnActiveProfileWithAnUnreadableSuccessorDiscardsNothing() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+
+        let setup = harness.makeStore()
+        guard case let .ready(loaded) = setup.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        let work = try setup.createProfile(named: "Work", duplicating: nil)
+        // Default is first in list order, so deleting it falls back to Work.
+        try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(work.id))
+
+        let store = harness.makeStore()
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let prepareCount = CallbackRecorder<Bool>()
+        let state = ShortcutProfileState(
+            store: store,
+            shortcutManager: manager,
+            prepareForSwitch: {
+                prepareCount.record(true)
+                return DiscardedProfileSwitchDrafts()
+            }
+        )
+        _ = state.loadAtStartup()
+
+        // The delete throws on the unreadable successor, so the same rule the
+        // switch path follows applies: plan first, discard only once the
+        // operation can proceed.
+        state.deleteProfile(defaultID)
+
+        #expect(prepareCount.isEmpty)
+        #expect(state.activeProfileID == defaultID)
+        #expect(state.profiles.count == 2)
+        #expect(state.errorMessage != nil)
+    }
 }

@@ -1396,9 +1396,29 @@ final class ShortcutProfileStore {
         return current.profiles[index]
     }
 
-    func deleteProfile(_ profileID: UUID) throws -> DeleteOutcome {
+    /// Everything a delete needs to know before it is allowed to touch
+    /// anything: that the profile exists, that it is not the last one, which
+    /// shortcut ids only it holds, and — when it is the active profile — that
+    /// the successor is actually loadable.
+    ///
+    /// Separated from the delete for the same reason activation is: the caller
+    /// discards the recorder, the composer draft, and any pending import
+    /// before an active-profile delete, and an unreadable successor makes that
+    /// delete throw. Validating first means work is only discarded for an
+    /// operation that can proceed.
+    struct DeletionPlan: Sendable {
+        let profileID: UUID
+        let index: Int
+        let exclusivelyOwnedShortcutIDs: [UUID]
+        let wasActive: Bool
+        /// The successor and its payload, already read. Passing it forward
+        /// rather than re-reading keeps this to one read of that file.
+        let successor: (id: UUID, shortcuts: [AppShortcut])?
+    }
+
+    func planDeletion(of profileID: UUID) throws -> DeletionPlan {
         guard let layout else { throw StoreError.storageUnavailable }
-        guard var current = manifest else { throw StoreError.manifestQuarantined }
+        guard let current = manifest else { throw StoreError.manifestQuarantined }
         guard let index = current.profiles.firstIndex(where: { $0.id == profileID }) else {
             throw StoreError.profileNotFound(profileID)
         }
@@ -1409,6 +1429,38 @@ final class ShortcutProfileStore {
         let exclusivelyOwned = removedShortcutIDs.filter { !ownership.isRetainedElsewhere($0) }
 
         let wasActive = (pointedProfileID ?? locator.currentActiveProfileID()) == profileID
+        var successor: (id: UUID, shortcuts: [AppShortcut])?
+        if wasActive {
+            // The preceding entry in the visible list order, or the first
+            // entry when the deleted profile was first. Deterministic, and it
+            // matches what the user is looking at; `modifiedAt` was rejected
+            // because ties are possible.
+            let successorIndex = index == 0 ? 1 : index - 1
+            let successorID = current.profiles[successorIndex].id
+            successor = (successorID, try shortcuts(in: successorID))
+        }
+
+        return DeletionPlan(
+            profileID: profileID,
+            index: index,
+            exclusivelyOwnedShortcutIDs: exclusivelyOwned,
+            wasActive: wasActive,
+            successor: successor
+        )
+    }
+
+    func deleteProfile(_ profileID: UUID) throws -> DeleteOutcome {
+        try deleteProfile(planDeletion(of: profileID))
+    }
+
+    func deleteProfile(_ plan: DeletionPlan) throws -> DeleteOutcome {
+        guard let layout else { throw StoreError.storageUnavailable }
+        guard var current = manifest else { throw StoreError.manifestQuarantined }
+        let profileID = plan.profileID
+        let index = plan.index
+        let exclusivelyOwned = plan.exclusivelyOwnedShortcutIDs
+        let wasActive = plan.wasActive
+
         // What the locator held before this operation. Restoring it verbatim
         // matters when the pointed profile's data was unreadable: it was nil
         // then, and putting the id back would send later saves into a profile
@@ -1417,22 +1469,16 @@ final class ShortcutProfileStore {
         var newActiveProfileID: UUID?
         var newActiveShortcuts: [AppShortcut]?
 
-        if wasActive {
-            // The preceding entry in the visible list order, or the first
-            // entry when the deleted profile was first. Deterministic, and it
-            // matches what the user is looking at; `modifiedAt` was rejected
-            // because ties are possible.
-            let successorIndex = index == 0 ? 1 : index - 1
-            let successorID = current.profiles[successorIndex].id
+        if wasActive, let successor = plan.successor {
             // Commit the pointer BEFORE the manifest: a crash in between then
             // leaves a pointer that still names a profile the manifest lists,
             // i.e. a fully consistent state where the delete simply did not
             // take. The reverse order would leave a dangling pointer.
-            newActiveShortcuts = try shortcuts(in: successorID)
-            try commitActivePointer(successorID, layout: layout)
-            pointedProfileID = successorID
-            locator.setActiveProfileID(successorID)
-            newActiveProfileID = successorID
+            newActiveShortcuts = successor.shortcuts
+            try commitActivePointer(successor.id, layout: layout)
+            pointedProfileID = successor.id
+            locator.setActiveProfileID(successor.id)
+            newActiveProfileID = successor.id
         }
 
         current.profiles.remove(at: index)

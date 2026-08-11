@@ -345,10 +345,23 @@ final class ShortcutProfileState {
             deletesPointedProfile = false
         }
         let switchesActive = profileID == activeProfileID || deletesPointedProfile
+
+        // Planned BEFORE anything is discarded, exactly as a switch is. An
+        // active-profile delete whose successor cannot be read throws, and
+        // running `prepareForSwitch()` first would take the recorder, the
+        // composer draft, and any pending import with it for nothing.
+        let plan: ShortcutProfileStore.DeletionPlan
+        do {
+            plan = try store.planDeletion(of: profileID)
+        } catch {
+            errorMessage = userFacingMessage(for: error)
+            return
+        }
+
         let discarded = switchesActive ? prepareForSwitch() : DiscardedProfileSwitchDrafts()
 
         do {
-            let outcome = try store.deleteProfile(profileID)
+            let outcome = try store.deleteProfile(plan)
             profiles = outcome.profiles
             // Only when the profile is actually gone. On the unrecoverable
             // path the manifest still lists it and its file survives, so
