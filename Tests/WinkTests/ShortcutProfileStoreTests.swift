@@ -2002,7 +2002,56 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
-    func activationMirrorsTheBytesItValidatedRatherThanRereadingThem() throws {
+    func activationRefusesWhenTheCanonicalBytesChangedUnderIt() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        let validated = """
+        [ { "id" : "77777777-7777-7777-7777-777777777777", "appName" : "Mail",
+            "bundleIdentifier" : "com.apple.mail", "keyEquivalent" : "m",
+            "modifierFlags" : [ "command" ], "isEnabled" : true, "futureMember" : "kept" } ]
+        """
+        try harness.writeRaw(validated, to: harness.layout.profileDataURL(work.id))
+
+        let payload = try store.loadProfileForActivation(work.id)
+        let mirrorBefore = harness.data(at: harness.layout.mirrorURL)
+
+        // Validation and commit are not adjacent — `prepareForSwitch()` runs
+        // between them — so another process can land a write in the gap.
+        // Committing anyway would arm and mirror a payload the canonical file
+        // no longer holds, and the next launch would silently arm the other.
+        let replacement = """
+        [ { "id" : "88888888-8888-8888-8888-888888888888", "appName" : "Replaced",
+            "bundleIdentifier" : "com.example.replaced", "keyEquivalent" : "z",
+            "modifierFlags" : [ "command" ], "isEnabled" : true } ]
+        """
+        try harness.writeRaw(replacement, to: harness.layout.profileDataURL(work.id))
+
+        #expect(throws: ShortcutProfileStore.StoreError.profileChangedDuringOperation(id: work.id)) {
+            try store.commitActivation(work.id, payload: payload)
+        }
+
+        // A refused switch changes nothing: the pointer never moved, and the
+        // mirror still describes the profile that is actually armed.
+        #expect(store.locator.currentActiveProfileID() == defaultID)
+        #expect(harness.data(at: harness.layout.mirrorURL) == mirrorBefore)
+        #expect(
+            harness.diagnostics.values.contains {
+                $0.contains("PROFILE_TRACE_PROFILE_CHANGED_DURING_OPERATION")
+            }
+        )
+    }
+
+    @Test
+    func anUnchangedProfileActivatesAndMirrorsTheValidatedBytes() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
         try harness.writeLegacyShortcuts([makeTestShortcut()])
@@ -2014,30 +2063,49 @@ struct ShortcutProfileMirrorTests {
         }
         let work = try store.createProfile(named: "Work", duplicating: nil)
         let validated = """
-        [ { "id" : "77777777-7777-7777-7777-777777777777", "appName" : "Mail",
+        [ { "id" : "99999999-9999-9999-9999-999999999999", "appName" : "Mail",
             "bundleIdentifier" : "com.apple.mail", "keyEquivalent" : "m",
             "modifierFlags" : [ "command" ], "isEnabled" : true, "futureMember" : "kept" } ]
         """
         try harness.writeRaw(validated, to: harness.layout.profileDataURL(work.id))
 
         let payload = try store.loadProfileForActivation(work.id)
-
-        // Another process replaces the file between validation and commit. A
-        // commit that re-read would mirror THESE bytes while the runtime is
-        // about to arm the ones it validated.
-        try harness.writeRaw(
-            """
-            [ { "id" : "88888888-8888-8888-8888-888888888888", "appName" : "Replaced",
-                "bundleIdentifier" : "com.example.replaced", "keyEquivalent" : "z",
-                "modifierFlags" : [ "command" ], "isEnabled" : true } ]
-            """,
-            to: harness.layout.profileDataURL(work.id)
-        )
-
         try store.commitActivation(work.id, payload: payload)
 
+        // Canonical, armed, and mirrored are the same bytes — including the
+        // member `AppShortcut` does not model, which a re-encode would drop.
+        #expect(store.locator.currentActiveProfileID() == work.id)
         #expect(harness.data(at: harness.layout.mirrorURL) == Data(validated.utf8))
-        #expect(payload.shortcuts.first?.appName == "Mail")
+        #expect(harness.data(at: harness.layout.profileDataURL(work.id)) == Data(validated.utf8))
+    }
+
+    @Test
+    func deletingRefusesWhenTheSuccessorChangedUnderThePlan() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        _ = try store.activateProfile(work.id)
+
+        // Deleting Work falls back to Default, whose file is then replaced in
+        // the same window a switch has.
+        let plan = try store.planDeletion(of: work.id)
+        try PersistenceService.encodeShortcuts([makeTestShortcut(appName: "Replaced")])
+            .write(to: harness.layout.profileDataURL(defaultID), options: .atomic)
+
+        #expect(throws: ShortcutProfileStore.StoreError.profileChangedDuringOperation(id: defaultID)) {
+            _ = try store.deleteProfile(plan)
+        }
+        // Nothing was committed: the profile is still listed and still active.
+        #expect(store.manifest?.profile(id: work.id) != nil)
+        #expect(store.locator.currentActiveProfileID() == work.id)
     }
 
     @Test

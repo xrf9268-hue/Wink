@@ -590,6 +590,11 @@ final class ShortcutProfileState {
                 localized: "That profile’s shortcuts could not be read, so Wink did not switch to it. A copy of the unreadable file was kept.",
                 bundle: WinkResourceBundle.bundle
             )
+        case .profileChangedDuringOperation:
+            return String(
+                localized: "That profile changed while Wink was switching to it, so nothing was applied. Try again.",
+                bundle: WinkResourceBundle.bundle
+            )
         case let .nameRejected(violation):
             switch violation {
             case .empty:

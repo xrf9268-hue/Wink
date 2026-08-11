@@ -117,6 +117,7 @@ final class ShortcutProfileStore {
         case profileLimitReached(limit: Int)
         case cannotDeleteLastProfile
         case manifestQuarantined
+        case profileChangedDuringOperation(id: UUID)
 
         var errorDescription: String? {
             switch self {
@@ -128,6 +129,8 @@ final class ShortcutProfileStore {
                 return "Profile not found: id=\(id.uuidString)"
             case let .profileUnreadable(id, reason):
                 return "Profile could not be read: id=\(id.uuidString) reason=\(reason)"
+            case let .profileChangedDuringOperation(id):
+                return "Profile changed while it was being applied: id=\(id.uuidString)"
             case let .nameRejected(violation):
                 return "Profile name rejected: \(violation)"
             case let .profileLimitReached(limit):
@@ -1267,8 +1270,37 @@ final class ShortcutProfileStore {
     /// validated. The payload is passed in rather than re-read for the same
     /// reason migration reads once: a second read of the same path can observe
     /// a different file, and this one would commit the pointer for it.
+    /// Fails when `Profiles/<profileID>.json` no longer holds `expected`.
+    ///
+    /// Validation and commit are not adjacent: `prepareForSwitch()` runs
+    /// between them, cancelling the recorder and dismissing panels, so the
+    /// window is real work rather than a few instructions. If another process
+    /// rewrites the profile in that window, committing anyway would arm and
+    /// mirror a payload the canonical file no longer contains — the runtime
+    /// would claim to be on that profile while running something it does not
+    /// hold, and the next launch would silently arm the other one.
+    ///
+    /// This narrows the window rather than closing it; nothing short of a lock
+    /// can close it, and the file is not Wink's to lock. What it guarantees is
+    /// that a switch never COMMITS a payload it already knows is superseded.
+    private func verifyCanonicalPayload(
+        _ expected: Data,
+        profileID: UUID,
+        layout: ShortcutProfileLayout
+    ) throws {
+        guard let current = try? Data(contentsOf: layout.profileDataURL(profileID)) else {
+            throw StoreError.profileUnreadable(id: profileID, reason: "data file disappeared before it could be applied")
+        }
+        guard Self.digest(current) == Self.digest(expected) else {
+            log("PROFILE_TRACE_PROFILE_CHANGED_DURING_OPERATION id=\(profileID.uuidString)")
+            throw StoreError.profileChangedDuringOperation(id: profileID)
+        }
+    }
+
     func commitActivation(_ profileID: UUID, payload: ValidatedProfilePayload) throws {
         guard let layout else { throw StoreError.storageUnavailable }
+        // Before the pointer moves, so a refused switch changes nothing at all.
+        try verifyCanonicalPayload(payload.bytes, profileID: profileID, layout: layout)
         try commitActivePointer(profileID, layout: layout)
         pointedProfileID = profileID
         locator.setActiveProfileID(profileID)
@@ -1505,6 +1537,10 @@ final class ShortcutProfileStore {
         var newActiveShortcuts: [AppShortcut]?
 
         if wasActive, let successor = plan.successor {
+            // Same window as a switch, and for the same reason: the plan was
+            // built before `prepareForSwitch()` ran. Checked before the pointer
+            // moves, so a refused delete leaves everything as it was.
+            try verifyCanonicalPayload(successor.bytes, profileID: successor.id, layout: layout)
             // Commit the pointer BEFORE the manifest: a crash in between then
             // leaves a pointer that still names a profile the manifest lists,
             // i.e. a fully consistent state where the delete simply did not
