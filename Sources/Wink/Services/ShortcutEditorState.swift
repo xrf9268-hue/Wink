@@ -124,6 +124,10 @@ final class ShortcutEditorState {
     /// "no" for the single-store case; production wires it to the profile
     /// store, which answers fail-closed.
     private let isShortcutRetainedByAnotherProfile: @MainActor (UUID) -> Bool
+    /// Claims and releases a usage deletion across the actor hop, so an import
+    /// cannot admit the id in between. Defaults to a no-op for the tests and
+    /// callers that have no profile store behind them.
+    private let reserveUsageDeletion: @MainActor (UUID, Bool) -> Void
     private let shortcutValidator = ShortcutValidator()
     private let recipeCodec: WinkRecipeCodec
     private let recipeImportPlanner: WinkRecipeImportPlanner
@@ -139,6 +143,7 @@ final class ShortcutEditorState {
         recipeTransferClient: RecipeTransferClient = .live,
         appBundleLocator: AppBundleLocator = AppBundleLocator(),
         isShortcutRetainedByAnotherProfile: @escaping @MainActor (UUID) -> Bool = { _ in false },
+        reserveUsageDeletion: @escaping @MainActor (UUID, Bool) -> Void = { _, _ in },
         onShortcutConfigurationChange: @escaping @MainActor () -> Void = {}
     ) {
         self.shortcutStore = shortcutStore
@@ -149,6 +154,7 @@ final class ShortcutEditorState {
         self.recipeTransferClient = recipeTransferClient
         self.appBundleLocator = appBundleLocator
         self.isShortcutRetainedByAnotherProfile = isShortcutRetainedByAnotherProfile
+        self.reserveUsageDeletion = reserveUsageDeletion
         self.onShortcutConfigurationChange = onShortcutConfigurationChange
         self.shortcuts = shortcutStore.shortcuts
         observeShortcutStore()
@@ -363,10 +369,16 @@ final class ShortcutEditorState {
             Task { await refreshUsageCounts() }
             return
         }
-        Task {
+        // Claimed BEFORE the hop. Ownership was decided on the main actor just
+        // above, and the deletion lands on another actor later; without this an
+        // import could admit the id in between and end up with a live shortcut
+        // whose history is erased a moment later.
+        reserveUsageDeletion(id, true)
+        Task { [reserveUsageDeletion] in
             // Best effort here: this deletion is not journalled, because the
             // shortcut row it belongs to is gone from the profile either way.
             _ = await usageTracker.deleteUsage(shortcutId: id)
+            await MainActor.run { reserveUsageDeletion(id, false) }
             await refreshUsageCounts()
         }
     }

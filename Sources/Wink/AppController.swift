@@ -173,6 +173,14 @@ final class AppController {
         isShortcutRetainedByAnotherProfile: { [weak self] id in
             self?.profileStore.isShortcutRetainedByAnotherProfile(id) ?? false
         },
+        reserveUsageDeletion: { [weak self] id, claim in
+            guard let self else { return }
+            if claim {
+                self.profileStore.reserveUsageDeletions([id])
+            } else {
+                self.profileStore.releaseUsageDeletions([id])
+            }
+        },
         onShortcutConfigurationChange: { [weak self] in
             self?.appPreferences.refreshPermissions()
         }

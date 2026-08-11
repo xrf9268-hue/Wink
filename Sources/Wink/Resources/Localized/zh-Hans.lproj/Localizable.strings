@@ -568,6 +568,8 @@
 	<string>Wink 找不到其登录项配置。这通常表示安装或打包出现问题。</string>
 	<key>Wink is registered to launch at login, but macOS still needs your approval in Login Items.</key>
 	<string>Wink 已注册为登录启动项，但 macOS 仍需要你在“登录项”中批准。</string>
+	<key>Wink is still clearing usage history for a deleted profile. Try again in a moment.</key>
+	<string>Wink 仍在清除已删除配置的使用记录。请稍后再试。</string>
 	<key>Wink needs Accessibility access to route global shortcuts.</key>
 	<string>Wink 需要辅助功能权限才能路由全局快捷键。</string>
 	<key>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</key>

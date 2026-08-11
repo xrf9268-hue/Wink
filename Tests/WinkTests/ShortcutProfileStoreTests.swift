@@ -1880,6 +1880,54 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func anImportIsRefusedWhileThoseIDsAreBeingDeleted() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        let shared = makeTestShortcut()
+        try harness.writeLegacyShortcuts([shared])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        _ = try store.activateProfile(work.id)
+
+        try harness.writeLegacyShortcuts([shared])
+        try harness.writeRaw(
+            """
+            {"schemaVersion": 1, "profileID": "\(defaultID.uuidString)", "sha256": "\(ShortcutProfileStore.digest(Data("stale".utf8)))"}
+            """,
+            to: harness.layout.mirrorDescriptorURL
+        )
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        guard let mirror = after.foreignMirror else {
+            Issue.record("expected an outside edit to be reported")
+            return
+        }
+
+        // The drain has claimed this id and is mid-hop to the tracker actor.
+        // Admitting it now yields a live shortcut whose history is erased a
+        // moment later, which nothing can undo — so the import waits instead.
+        reloaded.reserveUsageDeletions([shared.id])
+        #expect(throws: ShortcutProfileStore.StoreError.usageDeletionInFlight) {
+            _ = try reloaded.adoptForeignMirror(mirror)
+        }
+
+        // Once the deletion has landed, the same import proceeds.
+        reloaded.releaseUsageDeletions([shared.id])
+        #expect(throws: Never.self) {
+            _ = try reloaded.adoptForeignMirror(mirror)
+        }
+    }
+
+    @Test
     func aJournalledDeletionIsRecheckedAgainstTheProfilesThatExistNow() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

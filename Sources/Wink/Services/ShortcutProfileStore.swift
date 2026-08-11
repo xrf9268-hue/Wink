@@ -171,6 +171,7 @@ final class ShortcutProfileStore {
         case cannotDeleteLastProfile
         case manifestQuarantined
         case profileChangedDuringOperation(id: UUID)
+        case usageDeletionInFlight
 
         var errorDescription: String? {
             switch self {
@@ -184,6 +185,8 @@ final class ShortcutProfileStore {
                 return "Profile could not be read: id=\(id.uuidString) reason=\(reason)"
             case let .profileChangedDuringOperation(id):
                 return "Profile changed while it was being applied: id=\(id.uuidString)"
+            case .usageDeletionInFlight:
+                return "Usage history for one of these shortcuts is still being removed"
             case let .nameRejected(violation):
                 return "Profile name rejected: \(violation)"
             case let .profileLimitReached(limit):
@@ -1325,6 +1328,29 @@ final class ShortcutProfileStore {
         return ShortcutOwnership(idsHeldElsewhere: ids, isComplete: isComplete)
     }
 
+    /// Shortcut ids whose usage rows are being deleted right now.
+    ///
+    /// Ownership is decided on the main actor and the deletion runs on the
+    /// `UsageTracker` actor, so there is a suspension between them — and the
+    /// main actor is free to run other work across it. Without this, an import
+    /// admitting one of these ids mid-flight produces a live shortcut whose
+    /// history is erased a moment later, which no recovery can undo.
+    private var usageDeletionsInFlight: Set<UUID> = []
+
+    /// Claims `ids` for deletion. Every path that can make a shortcut id live
+    /// again must consult `isUsageDeletionInFlight` before admitting it.
+    func reserveUsageDeletions(_ ids: [UUID]) {
+        usageDeletionsInFlight.formUnion(ids)
+    }
+
+    func releaseUsageDeletions(_ ids: [UUID]) {
+        usageDeletionsInFlight.subtract(ids)
+    }
+
+    func isUsageDeletionInFlight(_ ids: [UUID]) -> Bool {
+        !usageDeletionsInFlight.isDisjoint(with: ids)
+    }
+
     /// Convenience for the single-shortcut deletion path.
     func isShortcutRetainedByAnotherProfile(_ shortcutID: UUID) -> Bool {
         guard let activeProfileID = locator.currentActiveProfileID() else { return false }
@@ -1874,6 +1900,14 @@ final class ShortcutProfileStore {
     /// the active one, so the caller can apply them to the runtime.
     @discardableResult
     func adoptForeignMirror(_ mirror: ForeignMirror) throws -> [AppShortcut]? {
+        // Admitting an id whose rows are being deleted right now would leave a
+        // live shortcut with its history erased moments later. Refusing is
+        // recoverable — the offer stays and the drain finishes in milliseconds
+        // — while the deletion is not.
+        if let incoming = mirror.shortcuts, isUsageDeletionInFlight(incoming.map(\.id)) {
+            log("PROFILE_TRACE_IMPORT_REFUSED reason=usage_deletion_in_flight")
+            throw StoreError.usageDeletionInFlight
+        }
         guard let layout else { throw StoreError.storageUnavailable }
         guard manifest?.profile(id: mirror.profileID) != nil else {
             throw StoreError.profileNotFound(mirror.profileID)

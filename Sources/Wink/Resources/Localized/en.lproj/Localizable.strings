@@ -564,6 +564,8 @@
 	<string>Wink couldn't find its login item configuration. This usually points to an installation or packaging problem.</string>
 	<key>Wink is registered to launch at login, but macOS still needs your approval in Login Items.</key>
 	<string>Wink is registered to launch at login, but macOS still needs your approval in Login Items.</string>
+	<key>Wink is still clearing usage history for a deleted profile. Try again in a moment.</key>
+	<string>Wink is still clearing usage history for a deleted profile. Try again in a moment.</string>
 	<key>Wink needs Accessibility access to route global shortcuts.</key>
 	<string>Wink needs Accessibility access to route global shortcuts.</string>
 	<key>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</key>

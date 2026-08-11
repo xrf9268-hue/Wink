@@ -4840,6 +4840,23 @@
         }
       }
     },
+    "Wink is still clearing usage history for a deleted profile. Try again in a moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink is still clearing usage history for a deleted profile. Try again in a moment."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 仍在清除已删除配置的使用记录。请稍后再试。"
+          }
+        }
+      }
+    },
     "Wink needs Accessibility access to route global shortcuts.": {
       "extractionState": "manual",
       "localizations": {

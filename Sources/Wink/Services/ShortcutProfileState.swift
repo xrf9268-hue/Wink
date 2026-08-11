@@ -183,7 +183,12 @@ final class ShortcutProfileState {
             usageDrainTask = nil
             return
         }
+        // Claimed BEFORE the hop, released after. The ownership answer is only
+        // true as of this moment on the main actor, and the deletion lands on
+        // another actor later.
+        store.reserveUsageDeletions(deletable)
         usageDrainTask = Task { [weak self] in
+            defer { Task { @MainActor in self?.store.releaseUsageDeletions(deletable) } }
             // Only the ids whose rows are confirmed gone leave the journal. A
             // failed delete keeps its entry so the next launch retries it —
             // clearing it would strand the rows with no record that they were
@@ -617,6 +622,11 @@ final class ShortcutProfileState {
         case .profileChangedDuringOperation:
             return String(
                 localized: "That profile changed while Wink was switching to it, so nothing was applied. Try again.",
+                bundle: WinkResourceBundle.bundle
+            )
+        case .usageDeletionInFlight:
+            return String(
+                localized: "Wink is still clearing usage history for a deleted profile. Try again in a moment.",
                 bundle: WinkResourceBundle.bundle
             )
         case let .nameRejected(violation):
