@@ -3954,6 +3954,23 @@
         }
       }
     },
+    "The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除该配置，且 Wink 无法撤销此前已经完成的切换。你现在使用的是“%@”。"
+          }
+        }
+      }
+    },
     "This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.": {
       "extractionState": "manual",
       "localizations": {

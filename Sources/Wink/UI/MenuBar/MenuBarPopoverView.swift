@@ -113,6 +113,11 @@ final class MenuBarPopoverModel {
 
     func switchToProfile(_ profileID: UUID) {
         profileState.switchToProfile(profileID)
+        // `shortcutRows` is a cached snapshot built at init and on appear.
+        // The profile name updates through observation, so without this the
+        // popover would show the new profile's name above the outgoing
+        // profile's shortcuts until it is reopened.
+        refresh()
     }
 
     var shortcutsPaused: Bool {

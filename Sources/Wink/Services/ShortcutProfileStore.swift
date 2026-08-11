@@ -675,6 +675,12 @@ final class ShortcutProfileStore {
         }
 
         guard let descriptor else {
+            // "Leave it alone" only protects these bytes until the next
+            // ordinary save rewrites the mirror. Unlike the quarantine paths,
+            // nothing here preserved a copy first, so an older build's edits
+            // could be lost with no trace. Copy them beside the original now,
+            // which makes every later overwrite non-destructive.
+            preserveUnknownMirror(mirrorData, digest: mirrorDigest, layout: layout)
             log("PROFILE_TRACE_MIRROR_UNKNOWN active=\(activeProfileID.uuidString) reason=no_descriptor")
             return nil
         }
@@ -696,6 +702,7 @@ final class ShortcutProfileStore {
         // resurrect exactly what D9 refuses to adopt. Unknown provenance:
         // leave both files alone.
         guard manifest?.profile(id: descriptor.profileID) != nil else {
+            preserveUnknownMirror(mirrorData, digest: mirrorDigest, layout: layout)
             log("PROFILE_TRACE_MIRROR_UNKNOWN active=\(activeProfileID.uuidString) reason=descriptor_profile_deleted")
             return nil
         }
@@ -705,6 +712,22 @@ final class ShortcutProfileStore {
             profileID: descriptor.profileID,
             shortcuts: try? JSONDecoder().decode([AppShortcut].self, from: mirrorData)
         )
+    }
+
+    /// Copies a `shortcuts.json` Wink cannot attribute, so a later save can
+    /// overwrite the mirror without destroying whatever wrote it. Named by
+    /// content digest: relaunching with the same unattributable bytes rewrites
+    /// the same path with identical content instead of accumulating copies.
+    private func preserveUnknownMirror(_ data: Data, digest: String, layout: ShortcutProfileLayout) {
+        let url = layout.appDirectory
+            .appendingPathComponent("shortcuts.unknown-\(digest.prefix(12)).json")
+        guard !fileManager.fileExists(atPath: url.path) else { return }
+        do {
+            try writeClient.write(data, url)
+            log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVED path=\(url.path)")
+        } catch {
+            log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVE_FAILED reason=\(error.localizedDescription)")
+        }
     }
 
     private func loadMirrorDescriptor(layout: ShortcutProfileLayout) -> ShortcutProfileMirrorDescriptor? {
@@ -952,6 +975,11 @@ final class ShortcutProfileStore {
         /// Shortcut IDs that existed only in the deleted profile, so their
         /// usage history can be removed without touching another profile's.
         var exclusivelyOwnedShortcutIDs: [UUID]
+        /// Set when the delete itself failed but the active-profile switch it
+        /// had already committed could not be undone — the durable pointer
+        /// names the successor, so the caller must apply it and report this
+        /// rather than claim nothing changed.
+        var unrecoverableSwitchReason: String?
     }
 
     @discardableResult
@@ -1063,20 +1091,37 @@ final class ShortcutProfileStore {
         }
 
         current.profiles.remove(at: index)
+        var unrecoverableSwitchReason: String?
         do {
             try commitManifest(current, layout: layout)
-        } catch {
-            // The pointer is already committed and the locator already moved,
-            // but the caller will not apply the successor because this throws.
+        } catch let manifestError {
+            // The pointer is already committed and the locator already moved.
             // Left as is, the runtime would keep serving the deleted profile's
             // bindings while every subsequent save landed in the successor's
-            // file — overwriting a profile the user never switched to. Undo
-            // the half-applied switch so the failure is total.
-            if let previousActiveProfileID = wasActive ? profileID : nil {
-                try? commitActivePointer(previousActiveProfileID, layout: layout)
-                locator.setActiveProfileID(previousActiveProfileID)
+            // file — overwriting a profile the user never switched to.
+            guard wasActive else { throw manifestError }
+
+            // Undo the half-applied switch so the failure is total.
+            var rolledBack = true
+            do {
+                try commitActivePointer(profileID, layout: layout)
+            } catch {
+                rolledBack = false
             }
-            throw error
+
+            guard !rolledBack else {
+                locator.setActiveProfileID(profileID)
+                throw manifestError
+            }
+
+            // Whatever failed the manifest write — a full or read-only volume
+            // — can fail this write too. `active.json` durably names the
+            // successor now, so claiming a total rollback would be a lie the
+            // next relaunch immediately exposes. The only state with no
+            // divergence between memory and disk is to accept the switch and
+            // report it.
+            unrecoverableSwitchReason = manifestError.localizedDescription
+            log("PROFILE_TRACE_DELETE_ROLLBACK_FAILED id=\(profileID.uuidString) active=\(newActiveProfileID?.uuidString ?? "none")")
         }
         manifest = current
 
@@ -1098,7 +1143,8 @@ final class ShortcutProfileStore {
             profiles: current.profiles,
             newActiveProfileID: newActiveProfileID,
             newActiveShortcuts: newActiveShortcuts,
-            exclusivelyOwnedShortcutIDs: exclusivelyOwned
+            exclusivelyOwnedShortcutIDs: exclusivelyOwned,
+            unrecoverableSwitchReason: unrecoverableSwitchReason
         )
     }
 
@@ -1155,6 +1201,18 @@ final class ShortcutProfileStore {
 
         try writeProfileData(shortcuts, profileID: mirror.profileID, layout: layout)
         log("PROFILE_TRACE_FOREIGN_MIRROR_ADOPTED profile=\(mirror.profileID.uuidString) shortcuts=\(shortcuts.count)")
+
+        // Startup clears the locator when the active profile's data file is
+        // missing, and then offers that file as an importable mirror. Writing
+        // it repaired the profile, so finish the recovery here: re-commit the
+        // pointer and hand the shortcuts back. Without this the import reports
+        // success while the runtime stays at zero armed shortcuts until the
+        // next relaunch.
+        if locator.currentActiveProfileID() == nil,
+           manifest?.profile(id: mirror.profileID) != nil,
+           fileManager.fileExists(atPath: layout.profileDataURL(mirror.profileID).path) {
+            return try activateProfile(mirror.profileID)
+        }
 
         // The mirror always describes the ACTIVE profile. Importing into an
         // inactive one must not leave that profile's bindings in the file the

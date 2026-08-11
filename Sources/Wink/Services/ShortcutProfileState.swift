@@ -267,6 +267,18 @@ final class ShortcutProfileState {
                 onProfileApplied()
             }
 
+            if outcome.unrecoverableSwitchReason != nil {
+                // The delete failed, but the switch it had already committed
+                // could not be undone. Memory now matches the durable pointer,
+                // which is the only state that cannot surprise the user later.
+                errorMessage = String(
+                    localized: "The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “\(activeProfile?.name ?? "")”.",
+                    bundle: WinkResourceBundle.bundle
+                )
+                statusMessage = discarded.isEmpty ? nil : discardedMessage(discarded)
+                return
+            }
+
             // Only IDs this profile exclusively owned: a shortcut that still
             // exists in another profile keeps its history.
             if let usageTracker, !outcome.exclusivelyOwnedShortcutIDs.isEmpty {
@@ -282,6 +294,12 @@ final class ShortcutProfileState {
             statusMessage = discarded.isEmpty ? nil : discardedMessage(discarded)
         } catch {
             errorMessage = userFacingMessage(for: error)
+            // The drafts were cleared before the store was asked, so a failure
+            // here must still say what went — otherwise the UI reports that
+            // nothing changed while the user's recording is gone.
+            if !discarded.isEmpty {
+                statusMessage = discardedMessage(discarded)
+            }
         }
     }
 
@@ -307,6 +325,16 @@ final class ShortcutProfileState {
         guard let mirror = pendingForeignMirror else { return }
         do {
             if let adopted = try store.adoptForeignMirror(mirror) {
+                // The store re-commits the pointer when this import is what
+                // repaired an unloadable active profile, so clearing the
+                // recovery state here is what turns the banner off and puts
+                // the profile back in the picker.
+                activeProfileID = mirror.profileID
+                unreadableProfileIDs.remove(mirror.profileID)
+                if case .activeProfileUnreadable = recovery {
+                    recovery = .none
+                    profiles = store.manifest?.profiles ?? profiles
+                }
                 shortcutManager.applyLoadedShortcuts(adopted, source: .profileSwitch)
                 onProfileApplied()
             }

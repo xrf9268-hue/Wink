@@ -818,6 +818,53 @@ struct ShortcutProfileCRUDTests {
     }
 
     @Test
+    func aFailedRollbackAcceptsTheSwitchRatherThanClaimingItUndidIt() throws {
+        let (harness, store, loaded) = try readyStore()
+        defer { harness.cleanup() }
+
+        let second = try store.createProfile(named: "Second", duplicating: nil)
+
+        // A persistent storage failure: the manifest write AND the rollback
+        // write both fail, which is the realistic shape of a full or
+        // read-only volume.
+        let manifestURL = harness.layout.manifestURL
+        let pointerURL = harness.layout.activePointerURL
+        // Counted across isolation domains: the write client is @Sendable.
+        let pointerWrites = CallbackRecorder<Int>()
+        let failing = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                if url == manifestURL { throw InjectedWriteFailure() }
+                if url == pointerURL {
+                    pointerWrites.record(1)
+                    // The first pointer write is the delete's own commit; the
+                    // second is the rollback, which must also fail.
+                    if pointerWrites.count > 1 { throw InjectedWriteFailure() }
+                }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        _ = failing.load()
+
+        let outcome = try failing.deleteProfile(loaded.activeProfileID)
+
+        // Not a claimed total rollback: the durable pointer names the
+        // successor, so memory says so too and the caller is told.
+        #expect(outcome.unrecoverableSwitchReason != nil)
+        #expect(outcome.newActiveProfileID == second.id)
+        #expect(failing.locator.currentActiveProfileID() == second.id)
+        #expect(harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_DELETE_ROLLBACK_FAILED") })
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        // A relaunch agrees with what the user was told.
+        #expect(after.activeProfileID == second.id)
+    }
+
+    @Test
     func ownershipFailsClosedWhenASiblingProfileCannotBeRead() throws {
         let (harness, store, loaded) = try readyStore()
         defer { harness.cleanup() }
@@ -1213,6 +1260,46 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func importingTheResumableMirrorRestoresThePointerAndArmsTheProfile() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        let legacy = [makeTestShortcut()]
+        try harness.writeLegacyShortcuts(legacy)
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // The interrupted-migration shape: metadata landed, data did not.
+        try FileManager.default.removeItem(at: harness.layout.profileDataURL(loaded.activeProfileID))
+
+        let reloaded = harness.makeStore()
+        guard case let .activeProfileUnreadable(_, activeProfileID, _, importableMirror) = reloaded.load() else {
+            Issue.record("expected activeProfileUnreadable")
+            return
+        }
+        let mirror = try #require(importableMirror)
+        #expect(reloaded.locator.currentActiveProfileID() == nil)
+
+        let adopted = try reloaded.adoptForeignMirror(mirror)
+
+        // The import repaired the profile, so recovery must finish here rather
+        // than leaving zero armed shortcuts until the next relaunch.
+        #expect(adopted == legacy)
+        #expect(reloaded.locator.currentActiveProfileID() == activeProfileID)
+
+        let third = harness.makeStore()
+        guard case let .ready(after) = third.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        #expect(after.activeShortcuts == legacy)
+        #expect(after.foreignMirror == nil)
+    }
+
+    @Test
     func aDescriptorNamingADeletedProfileIsUnknownProvenanceNotAForeignEdit() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
@@ -1245,6 +1332,42 @@ struct ShortcutProfileMirrorTests {
 
         #expect(after.foreignMirror == nil)
         #expect(harness.diagnostics.values.contains { $0.contains("descriptor_profile_deleted") })
+    }
+
+    @Test
+    func anUnattributableMirrorIsCopiedBeforeAnyLaterSaveCanOverwriteIt() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+
+        let unreadable = "{ half a shortcuts file"
+        try harness.writeRawLegacyShortcuts(unreadable)
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        let reloaded = harness.makeStore()
+        guard case .ready = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // "Left alone" only protects these bytes until the next save rewrites
+        // the mirror. A copy makes every later overwrite non-destructive.
+        let copies = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(copies.count == 1)
+        let copyURL = harness.directory.appendingPathComponent(copies[0])
+        #expect(harness.data(at: copyURL) == Data(unreadable.utf8))
+        #expect(harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVED") })
+
+        // Relaunching with the same bytes must not accumulate copies.
+        let third = harness.makeStore()
+        _ = third.load()
+        let copiesAgain = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(copiesAgain.count == 1)
     }
 
     @Test

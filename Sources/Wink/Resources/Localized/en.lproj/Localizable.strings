@@ -460,6 +460,8 @@
 	<string>The file no longer matches what Wink last wrote, and its contents could not be read. Wink has changed nothing.</string>
 	<key>The last automatic update check failed: %@</key>
 	<string>The last automatic update check failed: %@</string>
+	<key>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</key>
+	<string>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</string>
 	<key>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</key>
 	<string>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</string>
 	<key>Time saved</key>
