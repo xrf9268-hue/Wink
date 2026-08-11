@@ -249,11 +249,17 @@ launch (active profile = A_now, whose shortcuts are already loaded)
          ├─ no USABLE mirror.json   → UNKNOWN PROVENANCE. Leave BOTH files alone and log.
          │    (absent, unreadable, or an unsupported schemaVersion — all three
          │     mean the same thing here: nothing to compare against.)
+         ├─ digest matches          → STALE. Preserve a copy, then rewrite from
+         │                             A_now silently. No banner. Checked BEFORE
+         │                             membership: after deleting active A with a
+         │                             failed mirror refresh, the mirror and its
+         │                             descriptor both name a profile the manifest
+         │                             no longer lists, and those bytes are still
+         │                             Wink'''s own — they need repairing, not
+         │                             abandoning on the deleted configuration.
          ├─ P is not in the manifest → UNKNOWN PROVENANCE. Leave both files alone.
          │    (the import action would have no destination, and recreating P
          │     is exactly what D9 refuses to do with an orphan.)
-         ├─ digest matches          → STALE. Preserve a copy, then rewrite from
-         │                             A_now silently. No banner.
          └─ digest does not match    → NOT OURS. Load A_now normally, surface a
                                       non-modal banner naming P (mirror.json's profile)
                                       and BOTH possible causes:
