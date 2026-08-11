@@ -3988,6 +3988,23 @@
         }
       }
     },
+    "There is no active profile to keep yet. Import the file first, or choose a profile.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There is no active profile to keep yet. Import the file first, or choose a profile."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前还没有可保留的当前配置。请先导入该文件，或选择一个配置。"
+          }
+        }
+      }
+    },
     "This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.": {
       "extractionState": "manual",
       "localizations": {

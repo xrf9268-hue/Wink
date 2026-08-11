@@ -218,6 +218,14 @@ final class ShortcutProfileStore {
     /// what blocks every mutation until the user chooses to recover.
     private(set) var manifest: ShortcutProfileManifest?
 
+    /// The profile `active.json` names, whether or not its data could be
+    /// loaded. The locator is deliberately cleared when the data is
+    /// unreadable — it decides where saves go, and there is nowhere safe to
+    /// send them — but "which profile is the pointer on" is a different
+    /// question, and deletion has to ask that one or it will remove the
+    /// pointed profile without committing a successor.
+    private(set) var pointedProfileID: UUID?
+
     init(
         directoryProvider: @escaping @Sendable () -> URL? = { StoragePaths.appSupportDirectory() },
         fileManager: FileManager = .default,
@@ -282,6 +290,7 @@ final class ShortcutProfileStore {
     func load() -> LoadState {
         guard let layout else {
             manifest = nil
+            pointedProfileID = nil
             locator.setActiveProfileID(nil)
             return .storageUnavailable
         }
@@ -324,12 +333,14 @@ final class ShortcutProfileStore {
         let pointer = resolveActivePointer(layout: layout, manifest: decodedManifest)
         switch pointer {
         case let .resolved(profileID):
+            pointedProfileID = profileID
             return loadActiveProfile(
                 layout: layout,
                 manifest: decodedManifest,
                 activeProfileID: profileID
             )
         case let .ambiguous(preservedCopyPath):
+            pointedProfileID = nil
             locator.setActiveProfileID(nil)
             log("PROFILE_TRACE_ACTIVE_AMBIGUOUS profiles=\(decodedManifest.profiles.count)")
             return .activeProfileAmbiguous(
@@ -541,6 +552,7 @@ final class ShortcutProfileStore {
         }
 
         manifest = ShortcutProfileManifest(profiles: [profile])
+        pointedProfileID = profileID
         locator.setActiveProfileID(profileID)
 
         if !legacySourceUnreadable {
@@ -929,6 +941,13 @@ final class ShortcutProfileStore {
         guard manifest?.profile(id: profileID) != nil else {
             throw StoreError.profileNotFound(profileID)
         }
+        // `PersistenceService.load()` returns [] for a file that does not
+        // exist — correct for a first launch, wrong here. Without this check
+        // a missing profile reads as an empty one, and "validate before
+        // commit" would happily commit a pointer to a profile that is gone.
+        guard fileManager.fileExists(atPath: layout.profileDataURL(profileID).path) else {
+            throw StoreError.profileUnreadable(id: profileID, reason: "data file is missing")
+        }
         do {
             return try profilePersistenceService(for: layout.profileDataURL(profileID)).load()
         } catch {
@@ -993,6 +1012,7 @@ final class ShortcutProfileStore {
 
         let shortcuts = try self.shortcuts(in: profileID)
         try commitActivePointer(profileID, layout: layout)
+        pointedProfileID = profileID
         locator.setActiveProfileID(profileID)
         writeMirrorForActiveProfile(shortcuts, profileID: profileID, layout: layout)
         return shortcuts
@@ -1156,7 +1176,7 @@ final class ShortcutProfileStore {
         let ownership = shortcutOwnership(excluding: profileID)
         let exclusivelyOwned = removedShortcutIDs.filter { !ownership.isRetainedElsewhere($0) }
 
-        let wasActive = locator.currentActiveProfileID() == profileID
+        let wasActive = (pointedProfileID ?? locator.currentActiveProfileID()) == profileID
         var newActiveProfileID: UUID?
         var newActiveShortcuts: [AppShortcut]?
 
@@ -1173,6 +1193,7 @@ final class ShortcutProfileStore {
             // take. The reverse order would leave a dangling pointer.
             newActiveShortcuts = try shortcuts(in: successorID)
             try commitActivePointer(successorID, layout: layout)
+            pointedProfileID = successorID
             locator.setActiveProfileID(successorID)
             newActiveProfileID = successorID
         }
@@ -1196,6 +1217,7 @@ final class ShortcutProfileStore {
             }
 
             guard !rolledBack else {
+                pointedProfileID = profileID
                 locator.setActiveProfileID(profileID)
                 throw manifestError
             }
@@ -1278,6 +1300,7 @@ final class ShortcutProfileStore {
         try commitActivePointer(profile.id, layout: layout)
 
         manifest = ShortcutProfileManifest(profiles: [profile])
+        pointedProfileID = profile.id
         locator.setActiveProfileID(profile.id)
         // Every other active-profile transition refreshes the mirror; without
         // it the E2E harness and a downgraded build would keep reading the
@@ -1362,10 +1385,16 @@ final class ShortcutProfileStore {
 
     /// Keeps the profile and overwrites the externally modified file. Only the
     /// derived copy is rewritten; no profile data changes.
-    func discardForeignMirror(activeShortcuts: [AppShortcut]) {
-        guard let layout, let activeProfileID = locator.currentActiveProfileID() else { return }
+    /// Returns false when there is no active profile to rewrite the mirror
+    /// from — the interrupted-migration state. The caller must keep offering
+    /// the import in that case rather than clearing the only recovery the user
+    /// has.
+    @discardableResult
+    func discardForeignMirror(activeShortcuts: [AppShortcut]) -> Bool {
+        guard let layout, let activeProfileID = locator.currentActiveProfileID() else { return false }
         writeMirrorForActiveProfile(activeShortcuts, profileID: activeProfileID, layout: layout)
         log("PROFILE_TRACE_FOREIGN_MIRROR_DISCARDED profile=\(activeProfileID.uuidString)")
+        return true
     }
 
     // MARK: - Diagnostics helpers

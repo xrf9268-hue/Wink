@@ -468,6 +468,8 @@
 	<string>上次自动检查更新失败：%@</string>
 	<key>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</key>
 	<string>无法删除该配置，且 Wink 无法撤销此前已经完成的切换。你现在使用的是“%@”。</string>
+	<key>There is no active profile to keep yet. Import the file first, or choose a profile.</key>
+	<string>目前还没有可保留的当前配置。请先导入该文件，或选择一个配置。</string>
 	<key>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</key>
 	<string>这通常意味着旧版本的 Wink 修改过它，也可能发生在意外关机之后。Wink 目前还未做任何改动。</string>
 	<key>Time saved</key>

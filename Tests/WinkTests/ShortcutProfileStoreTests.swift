@@ -1148,6 +1148,56 @@ struct ShortcutProfileCRUDTests {
     }
 
     @Test
+    func aMissingDataFileIsNotTreatedAsAnEmptyProfile() throws {
+        let (harness, store, loaded) = try readyStore()
+        defer { harness.cleanup() }
+
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        try FileManager.default.removeItem(at: harness.layout.profileDataURL(work.id))
+
+        // `PersistenceService.load()` returns [] for a file that does not
+        // exist, which is right on a first launch and wrong here: a missing
+        // profile must not read as an empty one, or "validate before commit"
+        // commits a pointer to a profile that is gone.
+        #expect(throws: (any Error).self) {
+            _ = try store.shortcuts(in: work.id)
+        }
+        #expect(throws: (any Error).self) {
+            _ = try store.activateProfile(work.id)
+        }
+        #expect(store.locator.currentActiveProfileID() == loaded.activeProfileID)
+    }
+
+    @Test
+    func deletingAnUnreadableActiveProfileStillCommitsASuccessor() throws {
+        let (harness, store, loaded) = try readyStore()
+        defer { harness.cleanup() }
+
+        let second = try store.createProfile(named: "Second", duplicating: nil)
+        try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(loaded.activeProfileID))
+
+        let reloaded = harness.makeStore()
+        guard case .activeProfileUnreadable = reloaded.load() else {
+            Issue.record("expected activeProfileUnreadable")
+            return
+        }
+        // The locator is intentionally empty — there is nowhere safe to save
+        // — but the durable pointer still names this profile, so deleting it
+        // must commit a successor rather than leave a dangling pointer.
+        #expect(reloaded.locator.currentActiveProfileID() == nil)
+
+        let outcome = try reloaded.deleteProfile(loaded.activeProfileID)
+        #expect(outcome.newActiveProfileID == second.id)
+
+        let third = harness.makeStore()
+        guard case let .ready(after) = third.load() else {
+            Issue.record("expected a ready load state — a dangling pointer would be ambiguous recovery")
+            return
+        }
+        #expect(after.activeProfileID == second.id)
+    }
+
+    @Test
     func deletingAProfileRemovesItsDataFile() throws {
         let (harness, store, _) = try readyStore()
         defer { harness.cleanup() }
@@ -1277,6 +1327,31 @@ struct ShortcutProfileMirrorTests {
         }
         #expect(final.activeShortcuts == foreign)
         #expect(final.foreignMirror == nil)
+    }
+
+    @Test
+    func discardIsRefusedWhileTheOnlyProfileIsStillUnusable() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        try FileManager.default.removeItem(at: harness.layout.profileDataURL(loaded.activeProfileID))
+
+        let reloaded = harness.makeStore()
+        guard case .activeProfileUnreadable = reloaded.load() else {
+            Issue.record("expected activeProfileUnreadable")
+            return
+        }
+
+        // Nothing to keep: there is no active profile whose bindings could
+        // replace the file, and clearing the offer would remove the user's
+        // only way back.
+        #expect(reloaded.discardForeignMirror(activeShortcuts: []) == false)
     }
 
     @Test

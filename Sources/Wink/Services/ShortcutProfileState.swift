@@ -377,9 +377,25 @@ final class ShortcutProfileState {
         }
     }
 
+    /// True only when there is an active profile whose bindings could replace
+    /// the file. During the interrupted-migration recovery there is not, so
+    /// the UI must not offer this — the import is the user's only way back.
+    var canDiscardForeignMirror: Bool {
+        activeProfileID != nil
+    }
+
     func discardPendingForeignMirror(activeShortcuts: [AppShortcut]) {
         guard pendingForeignMirror != nil else { return }
-        store.discardForeignMirror(activeShortcuts: activeShortcuts)
+        guard store.discardForeignMirror(activeShortcuts: activeShortcuts) else {
+            // Nothing was written, so the mirror stays on offer. Clearing it
+            // here would remove the only recovery available while the profile
+            // is still unusable.
+            errorMessage = String(
+                localized: "There is no active profile to keep yet. Import the file first, or choose a profile.",
+                bundle: WinkResourceBundle.bundle
+            )
+            return
+        }
         pendingForeignMirror = nil
         errorMessage = nil
     }

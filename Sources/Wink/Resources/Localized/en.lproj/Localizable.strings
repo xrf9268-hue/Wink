@@ -464,6 +464,8 @@
 	<string>The last automatic update check failed: %@</string>
 	<key>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</key>
 	<string>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</string>
+	<key>There is no active profile to keep yet. Import the file first, or choose a profile.</key>
+	<string>There is no active profile to keep yet. Import the file first, or choose a profile.</string>
 	<key>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</key>
 	<string>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</string>
 	<key>Time saved</key>

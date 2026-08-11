@@ -218,8 +218,10 @@ struct ProfileBar: View {
                             profileState.adoptPendingForeignMirror()
                         }
                     }
-                    WinkButton(String(localized: "Keep this profile", bundle: WinkResourceBundle.bundle)) {
-                        profileState.discardPendingForeignMirror(activeShortcuts: activeShortcuts)
+                    if profileState.canDiscardForeignMirror {
+                        WinkButton(String(localized: "Keep this profile", bundle: WinkResourceBundle.bundle)) {
+                            profileState.discardPendingForeignMirror(activeShortcuts: activeShortcuts)
+                        }
                     }
                 }
             }
