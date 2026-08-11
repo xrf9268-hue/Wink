@@ -2109,6 +2109,47 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func preservationCopiesAreFlushedBeforeTheOverwriteTheyAuthorize() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        let durablePaths = CallbackRecorder<String>()
+        let plainPaths = CallbackRecorder<String>()
+        let recording = ShortcutProfileStore.WriteClient(
+            write: { data, url in
+                plainPaths.record(url.lastPathComponent)
+                try data.write(to: url, options: .atomic)
+            },
+            writeDurable: { data, url in
+                durablePaths.record(url.lastPathComponent)
+                try data.write(to: url, options: .atomic)
+            }
+        )
+
+        // An outside edit, so the next save has to preserve before overwriting.
+        try harness.writeRawLegacyShortcuts("[ { \"appName\" : \"EditedOutside\" } ]")
+        let saving = harness.makeStore(writeClient: recording)
+        guard case .ready = saving.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        try saving.makeActiveProfilePersistenceService().save([makeTestShortcut(appName: "Mail")])
+
+        // `.atomic` is a rename, not a barrier: without the flush the mirror
+        // replacement can reach disk while the copy authorizing it does not,
+        // and those bytes cannot be reconstructed by any recovery.
+        #expect(durablePaths.values.contains { $0.hasPrefix("shortcuts.unknown-") })
+        #expect(!plainPaths.values.contains { $0.hasPrefix("shortcuts.unknown-") })
+    }
+
+    @Test
     func aMirrorWriteWithNoReadablePayloadRefusesRatherThanReencoding() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

@@ -102,9 +102,62 @@ final class ShortcutProfileStore {
     /// one recovery row.
     struct WriteClient: Sendable {
         let write: @Sendable (Data, URL) throws -> Void
+        /// Writes and does not return until the bytes are on stable storage.
+        ///
+        /// Used for the copies that AUTHORIZE a destructive overwrite. D7
+        /// deliberately adds no fsync barriers to the metadata commits, on the
+        /// grounds that every on-disk combination has a defined reading and
+        /// recovery is therefore total. That argument does not extend here: a
+        /// preservation copy exists precisely because its contents cannot be
+        /// reconstructed, so if the overwrite lands and the copy does not,
+        /// nothing can recover it. `.atomic` is a rename, and a rename is not
+        /// a barrier — the two writes can reach disk in either order.
+        let writeDurable: @Sendable (Data, URL) throws -> Void
 
-        static let live = WriteClient { data, url in
-            try data.write(to: url, options: .atomic)
+        // writeDurable defaults to nil and resolves in the body: CI's Swift
+        // 6.1.2 SILGen crashes on non-trivial init default arguments.
+        init(
+            write: @escaping @Sendable (Data, URL) throws -> Void,
+            writeDurable: (@Sendable (Data, URL) throws -> Void)? = nil
+        ) {
+            self.write = write
+            self.writeDurable = writeDurable ?? write
+        }
+
+        static let live = WriteClient(
+            write: { data, url in
+                try data.write(to: url, options: .atomic)
+            },
+            writeDurable: { data, url in
+                try data.write(to: url, options: .atomic)
+                try WriteClient.flushToStableStorage(url)
+            }
+        )
+
+        /// `F_FULLFSYNC` rather than `fsync`: on Apple platforms `fsync` only
+        /// hands the blocks to the drive, which may still hold them in a
+        /// volatile cache. The containing directory is synced too, because the
+        /// file arrived by rename and an unsynced directory can lose the entry
+        /// even when the file's own blocks are durable.
+        static func flushToStableStorage(_ url: URL) throws {
+            func failure(_ reason: String) -> StoreError {
+                StoreError.writeFailed(path: url.path, reason: reason)
+            }
+
+            let fd = open(url.path, O_RDONLY)
+            guard fd >= 0 else { throw failure("could not reopen the preserved copy to flush it") }
+            defer { close(fd) }
+            guard fcntl(fd, F_FULLFSYNC) != -1 else {
+                throw failure("could not flush the preserved copy to stable storage")
+            }
+
+            let directory = url.deletingLastPathComponent()
+            let dfd = open(directory.path, O_RDONLY)
+            guard dfd >= 0 else { throw failure("could not open the containing directory to flush it") }
+            defer { close(dfd) }
+            guard fsync(dfd) != -1 else {
+                throw failure("could not flush the containing directory")
+            }
         }
     }
 
@@ -904,7 +957,10 @@ final class ShortcutProfileStore {
             .appendingPathComponent("shortcuts.unknown-\(digest.prefix(12)).json")
         guard !fileManager.fileExists(atPath: url.path) else { return true }
         do {
-            try writeClient.write(data, url)
+            // Durable: this copy is what makes the following overwrite legal,
+            // so it has to be on disk before that overwrite, not merely
+            // submitted ahead of it.
+            try writeClient.writeDurable(data, url)
             log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVED path=\(url.path)")
             return true
         } catch {
@@ -1032,7 +1088,7 @@ final class ShortcutProfileStore {
                     .appendingPathComponent("shortcuts.unknown-\(existingDigest.prefix(12)).json")
                 if !FileManager.default.fileExists(atPath: copyURL.path) {
                     do {
-                        try writeClient.write(existing, copyURL)
+                        try writeClient.writeDurable(existing, copyURL)
                         diagnosticClient.log("PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVED path=\(copyURL.path)")
                     } catch {
                         // "Preserve before overwriting" is not advice, it is
@@ -1879,7 +1935,12 @@ final class ShortcutProfileStore {
             .appendingPathComponent("\(baseName).load-failure-\(backupIDProvider()).\(pathExtension)")
 
         do {
-            try writeClient.write(data, backupURL)
+            // Durable for the same reason as the mirror copy: `recoverManifest`
+            // replaces the quarantined file, and it is allowed to do so only
+            // because this copy exists. Every other caller merely records a
+            // payload it is leaving alone, where the sync costs nothing that
+            // matters.
+            try writeClient.writeDurable(data, backupURL)
             return backupURL.path
         } catch {
             log("Failed to preserve rejected profile payload: path=\(originalURL.path) reason=\(error.localizedDescription)")
