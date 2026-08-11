@@ -1182,6 +1182,23 @@
         }
       }
     },
+    "Dismiss": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "知道了"
+          }
+        }
+      }
+    },
     "Download and install new versions in the background.": {
       "extractionState": "manual",
       "localizations": {
@@ -4636,6 +4653,23 @@
         }
       }
     },
+    "Wink could not read your previous shortcuts file": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink could not read your previous shortcuts file"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 无法读取你之前的快捷键文件"
+          }
+        }
+      }
+    },
     "Wink could not read your profile list": {
       "extractionState": "manual",
       "localizations": {
@@ -4785,6 +4819,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Wink 需要辅助功能权限才能路由全局快捷键。"
+          }
+        }
+      }
+    },
+    "Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 以一个空配置启动。旧文件未被改动，仍可修复或导入。"
           }
         }
       }

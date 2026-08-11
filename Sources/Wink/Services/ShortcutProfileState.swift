@@ -34,6 +34,11 @@ final class ShortcutProfileState {
         /// without guessing. The user must pick; nothing is auto-selected.
         case activeProfileAmbiguous(preservedCopyPath: String?)
         case activeProfileUnreadable(profileID: UUID, preservedCopyPath: String?)
+        /// The store is healthy and an empty Default profile exists, but the
+        /// legacy shortcuts file could not be read during first-run migration.
+        /// Non-blocking: Wink is usable, but the user must be told rather than
+        /// shown an apparently ordinary empty install.
+        case legacyMigrationFailed(preservedCopyPath: String?)
     }
 
     private(set) var profiles: [ShortcutProfile] = []
@@ -97,7 +102,15 @@ final class ShortcutProfileState {
     /// automatic switch. A manual switch may discard the user's drafts because
     /// the user asked for it; an automatic one must defer.
     var canApplyExternalSwitch: Bool {
-        isMutable && recovery == .none && !hasUnsavedEditorWork()
+        // The legacy-migration notice is informational, so it must not block
+        // automation the way an unresolved active-profile state does.
+        let blockedByRecovery: Bool
+        switch recovery {
+        case .none, .legacyMigrationFailed: blockedByRecovery = false
+        case .storageUnavailable, .manifestUnreadable, .activeProfileAmbiguous, .activeProfileUnreadable:
+            blockedByRecovery = true
+        }
+        return isMutable && !blockedByRecovery && !hasUnsavedEditorWork()
     }
 
     // MARK: - Startup
@@ -149,7 +162,14 @@ final class ShortcutProfileState {
         orphanProfileIDs = loaded.orphanProfileIDs
         duplicateShortcutIDs = loaded.duplicateShortcutIDs
         pendingForeignMirror = loaded.foreignMirror
-        recovery = .none
+        // A migration that could not read the legacy file leaves a healthy but
+        // EMPTY configuration. Reporting .none here would present the user's
+        // vanished shortcuts as an ordinary fresh install.
+        if let failure = loaded.legacyMigrationFailure {
+            recovery = .legacyMigrationFailed(preservedCopyPath: failure.preservedCopyPath)
+        } else {
+            recovery = .none
+        }
     }
 
     private func reset(recovery: Recovery) {
@@ -304,6 +324,14 @@ final class ShortcutProfileState {
     }
 
     // MARK: - Recovery actions
+
+    /// Clears the non-blocking legacy-migration notice. The preserved file is
+    /// left exactly where it is — dismissing the banner acknowledges it, it
+    /// does not discard anything.
+    func dismissLegacyMigrationNotice() {
+        guard case .legacyMigrationFailed = recovery else { return }
+        recovery = .none
+    }
 
     func recoverFromUnreadableManifest() {
         do {

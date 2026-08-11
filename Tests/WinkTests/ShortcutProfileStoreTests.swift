@@ -129,6 +129,26 @@ struct ShortcutProfileMigrationTests {
     }
 
     @Test
+    func anUnreadableLegacyFileIsReportedRatherThanShownAsAFreshInstall() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeRawLegacyShortcuts("{ not a shortcut array")
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // The store is healthy, but the user's previous configuration was
+        // never consciously recovered or discarded — presenting this as an
+        // ordinary empty install would hide that their shortcuts vanished.
+        #expect(loaded.activeShortcuts.isEmpty)
+        #expect(loaded.legacyMigrationFailure != nil)
+        #expect(loaded.legacyMigrationFailure?.preservedCopyPath != nil)
+    }
+
+    @Test
     func migrationIsSkippedOnceAManifestExists() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
@@ -854,14 +874,22 @@ struct ShortcutProfileCRUDTests {
         #expect(outcome.newActiveProfileID == second.id)
         #expect(failing.locator.currentActiveProfileID() == second.id)
         #expect(harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_DELETE_ROLLBACK_FAILED") })
+        // Nothing was deleted: the durable manifest still lists the profile,
+        // so the in-memory list must not claim otherwise and the data file
+        // must survive.
+        #expect(outcome.profiles.contains { $0.id == loaded.activeProfileID })
+        #expect(outcome.exclusivelyOwnedShortcutIDs.isEmpty)
+        #expect(harness.profileDataFileIDs().contains(loaded.activeProfileID))
 
         let reloaded = harness.makeStore()
         guard case let .ready(after) = reloaded.load() else {
             Issue.record("expected a ready load state")
             return
         }
-        // A relaunch agrees with what the user was told.
+        // A relaunch agrees with what the user was told: switched, not deleted.
         #expect(after.activeProfileID == second.id)
+        #expect(after.profiles.count == 2)
+        #expect(after.unreadableProfileIDs.isEmpty)
     }
 
     @Test
@@ -893,6 +921,80 @@ struct ShortcutProfileCRUDTests {
         // Nothing is reported as exclusively owned while an unreadable profile
         // could still be holding those IDs.
         #expect(outcome.exclusivelyOwnedShortcutIDs.isEmpty)
+    }
+
+    @Test
+    func adoptionInstallsTheOriginalBytesSoUnmodelledMembersSurvive() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // An older build wrote a file this build only partly models.
+        let foreignBytes = """
+        [
+          {
+            "appName" : "Mail",
+            "bundleIdentifier" : "com.apple.mail",
+            "futureField" : { "kind" : "something-new" },
+            "id" : "44444444-4444-4444-4444-444444444444",
+            "isEnabled" : true,
+            "keyEquivalent" : "m",
+            "modifierFlags" : [ "command" ]
+          }
+        ]
+        """
+        try harness.writeRawLegacyShortcuts(foreignBytes)
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load(), let mirror = after.foreignMirror else {
+            Issue.record("expected a foreign mirror")
+            return
+        }
+
+        _ = try reloaded.adoptForeignMirror(mirror)
+
+        // Re-encoding would have dropped the member this import exists to
+        // rescue.
+        let installed = try #require(harness.data(at: harness.layout.profileDataURL(loaded.activeProfileID)))
+        #expect(installed == Data(foreignBytes.utf8))
+        #expect(String(decoding: installed, as: UTF8.self).contains("futureField"))
+    }
+
+    @Test
+    func aMirrorWithDuplicateShortcutIDsIsNotOfferedForImport() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // Valid JSON, invalid content: importing it would publish duplicate
+        // rows and leave a file the strict loader quarantines next launch.
+        try PersistenceService
+            .encodeShortcuts(makeDuplicateShortcutIDFixture())
+            .write(to: harness.layout.mirrorURL, options: .atomic)
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load(), let mirror = after.foreignMirror else {
+            Issue.record("expected a foreign mirror")
+            return
+        }
+
+        // Only the keep-and-overwrite side is offered.
+        #expect(mirror.shortcuts == nil)
+        #expect(throws: (any Error).self) {
+            _ = try reloaded.adoptForeignMirror(mirror)
+        }
     }
 
     @Test

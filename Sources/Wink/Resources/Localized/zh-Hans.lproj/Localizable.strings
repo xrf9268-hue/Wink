@@ -138,6 +138,8 @@
 	<string>要删除“%@”吗？</string>
 	<key>Disabled</key>
 	<string>已禁用</string>
+	<key>Dismiss</key>
+	<string>知道了</string>
 	<key>Download and install new versions in the background.</key>
 	<string>在后台下载并安装新版本。</string>
 	<key>Downloading Update</key>
@@ -544,6 +546,8 @@
 	<string>Wink 无法访问其存储文件夹，因此无法更改配置。</string>
 	<key>Wink checks for updates automatically and asks before downloading.</key>
 	<string>Wink 会自动检查更新，并在下载前征求你的同意。</string>
+	<key>Wink could not read your previous shortcuts file</key>
+	<string>Wink 无法读取你之前的快捷键文件</string>
 	<key>Wink could not read your profile list</key>
 	<string>Wink 无法读取你的配置列表</string>
 	<key>Wink could not read your profile list, so nothing can be changed until you recover it.</key>
@@ -562,6 +566,8 @@
 	<string>Wink 已注册为登录启动项，但 macOS 仍需要你在“登录项”中批准。</string>
 	<key>Wink needs Accessibility access to route global shortcuts.</key>
 	<string>Wink 需要辅助功能权限才能路由全局快捷键。</string>
+	<key>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</key>
+	<string>Wink 以一个空配置启动。旧文件未被改动，仍可修复或导入。</string>
 	<key>Wink: Permission Lost</key>
 	<string>Wink：权限丢失</string>
 	<key>You can have at most %lld profiles.</key>

@@ -134,6 +134,8 @@
 	<string>Delete “%@”?</string>
 	<key>Disabled</key>
 	<string>Disabled</string>
+	<key>Dismiss</key>
+	<string>Dismiss</string>
 	<key>Download and install new versions in the background.</key>
 	<string>Download and install new versions in the background.</string>
 	<key>Downloading Update</key>
@@ -540,6 +542,8 @@
 	<string>Wink cannot reach its storage folder, so profiles cannot be changed.</string>
 	<key>Wink checks for updates automatically and asks before downloading.</key>
 	<string>Wink checks for updates automatically and asks before downloading.</string>
+	<key>Wink could not read your previous shortcuts file</key>
+	<string>Wink could not read your previous shortcuts file</string>
 	<key>Wink could not read your profile list</key>
 	<string>Wink could not read your profile list</string>
 	<key>Wink could not read your profile list, so nothing can be changed until you recover it.</key>
@@ -558,6 +562,8 @@
 	<string>Wink is registered to launch at login, but macOS still needs your approval in Login Items.</string>
 	<key>Wink needs Accessibility access to route global shortcuts.</key>
 	<string>Wink needs Accessibility access to route global shortcuts.</string>
+	<key>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</key>
+	<string>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</string>
 	<key>Wink: Permission Lost</key>
 	<string>Wink: Permission Lost</string>
 	<key>You can have at most %lld profiles.</key>

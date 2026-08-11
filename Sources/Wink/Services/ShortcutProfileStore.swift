@@ -150,6 +150,10 @@ final class ShortcutProfileStore {
         /// `nil` when the foreign bytes do not decode, in which case only
         /// "keep the profile and overwrite the file" is offered.
         var shortcuts: [AppShortcut]?
+        /// The bytes exactly as they were read. Adoption installs these rather
+        /// than a re-encoding of `shortcuts`, so JSON members this build does
+        /// not model survive the import — the same rule migration follows.
+        var rawBytes: Data?
     }
 
     struct LoadedProfiles: Equatable, Sendable {
@@ -165,6 +169,16 @@ final class ShortcutProfileStore {
         /// still enforced; only Insights attribution merges.
         var duplicateShortcutIDs: Set<UUID>
         var foreignMirror: ForeignMirror?
+        /// Set when first-run migration could not read the legacy
+        /// `shortcuts.json`. The store itself is healthy and an empty Default
+        /// profile exists, but the user's previous configuration was never
+        /// consciously recovered or discarded, so this is surfaced rather than
+        /// presented as an ordinary empty install.
+        var legacyMigrationFailure: LegacyMigrationFailure?
+    }
+
+    struct LegacyMigrationFailure: Equatable, Sendable {
+        var preservedCopyPath: String?
     }
 
     /// The total interpretation of the four on-disk files. Every state maps to
@@ -470,7 +484,7 @@ final class ShortcutProfileStore {
             return nil
         }
         log("PROFILE_TRACE_MIGRATION_RESUMABLE id=\(activeProfileID.uuidString) shortcuts=\(shortcuts.count)")
-        return ForeignMirror(profileID: activeProfileID, shortcuts: shortcuts)
+        return ForeignMirror(profileID: activeProfileID, shortcuts: shortcuts, rawBytes: data)
     }
 
     // MARK: - Migration
@@ -492,6 +506,7 @@ final class ShortcutProfileStore {
         /// bytes for the fresh-install case where there is no source.
         var migratedBytes: Data?
         var legacySourceUnreadable = false
+        var legacyMigrationFailure: LegacyMigrationFailure?
 
         if fileManager.fileExists(atPath: layout.mirrorURL.path) {
             do {
@@ -503,6 +518,9 @@ final class ShortcutProfileStore {
                 // file that still holds the user's (possibly hand-repairable)
                 // data, so the mirror write is skipped below.
                 legacySourceUnreadable = true
+                legacyMigrationFailure = LegacyMigrationFailure(
+                    preservedCopyPath: preservedCopyPath(from: error)
+                )
                 log("PROFILE_TRACE_MIGRATION_SOURCE_UNREADABLE reason=\(error.localizedDescription)")
             }
         }
@@ -539,7 +557,8 @@ final class ShortcutProfileStore {
                 unreadableProfileIDs: [],
                 orphanProfileIDs: orphanProfileIDs(layout: layout, manifest: ShortcutProfileManifest(profiles: [profile])),
                 duplicateShortcutIDs: [],
-                foreignMirror: nil
+                foreignMirror: nil,
+                legacyMigrationFailure: legacyMigrationFailure
             )
         )
     }
@@ -708,9 +727,16 @@ final class ShortcutProfileStore {
         }
 
         log("PROFILE_TRACE_FOREIGN_MIRROR profile=\(descriptor.profileID.uuidString)")
+        // A payload with duplicate shortcut IDs is not importable: writing it
+        // would publish duplicate rows into the runtime and leave a file the
+        // strict loader quarantines on the next launch, arming nothing. Offer
+        // only the keep-and-overwrite side for those bytes.
+        let decoded = (try? JSONDecoder().decode([AppShortcut].self, from: mirrorData))
+            .flatMap { Set($0.map(\.id)).count == $0.count ? $0 : nil }
         return ForeignMirror(
             profileID: descriptor.profileID,
-            shortcuts: try? JSONDecoder().decode([AppShortcut].self, from: mirrorData)
+            shortcuts: decoded,
+            rawBytes: mirrorData
         )
     }
 
@@ -1091,7 +1117,6 @@ final class ShortcutProfileStore {
         }
 
         current.profiles.remove(at: index)
-        var unrecoverableSwitchReason: String?
         do {
             try commitManifest(current, layout: layout)
         } catch let manifestError {
@@ -1120,8 +1145,21 @@ final class ShortcutProfileStore {
             // next relaunch immediately exposes. The only state with no
             // divergence between memory and disk is to accept the switch and
             // report it.
-            unrecoverableSwitchReason = manifestError.localizedDescription
             log("PROFILE_TRACE_DELETE_ROLLBACK_FAILED id=\(profileID.uuidString) active=\(newActiveProfileID?.uuidString ?? "none")")
+
+            // Stop here. The durable manifest still lists the profile, so
+            // publishing the reduced list in memory — or unlinking the data
+            // file, which can succeed even on a volume that refused the
+            // metadata writes — would make the profile vanish for this session
+            // and come back unreadable after a relaunch, while the UI said the
+            // delete failed. Nothing was deleted; only the switch stuck.
+            return DeleteOutcome(
+                profiles: manifest?.profiles ?? current.profiles,
+                newActiveProfileID: newActiveProfileID,
+                newActiveShortcuts: newActiveShortcuts,
+                exclusivelyOwnedShortcutIDs: [],
+                unrecoverableSwitchReason: manifestError.localizedDescription
+            )
         }
         manifest = current
 
@@ -1143,8 +1181,7 @@ final class ShortcutProfileStore {
             profiles: current.profiles,
             newActiveProfileID: newActiveProfileID,
             newActiveShortcuts: newActiveShortcuts,
-            exclusivelyOwnedShortcutIDs: exclusivelyOwned,
-            unrecoverableSwitchReason: unrecoverableSwitchReason
+            exclusivelyOwnedShortcutIDs: exclusivelyOwned
         )
     }
 
@@ -1198,8 +1235,21 @@ final class ShortcutProfileStore {
         guard let shortcuts = mirror.shortcuts else {
             throw StoreError.profileUnreadable(id: mirror.profileID, reason: "foreign mirror does not decode")
         }
+        // `writeProfileBytes` bypasses `PersistenceService`'s validation by
+        // design (it exists to preserve bytes), so uniqueness is enforced here
+        // rather than trusted from the decode.
+        guard Set(shortcuts.map(\.id)).count == shortcuts.count else {
+            throw StoreError.profileUnreadable(id: mirror.profileID, reason: "duplicate shortcut id")
+        }
 
-        try writeProfileData(shortcuts, profileID: mirror.profileID, layout: layout)
+        // Install the ORIGINAL bytes when they are available: re-encoding
+        // would drop members this build does not model, which is exactly what
+        // this import is meant to rescue.
+        if let rawBytes = mirror.rawBytes {
+            try writeProfileBytes(rawBytes, profileID: mirror.profileID, layout: layout)
+        } else {
+            try writeProfileData(shortcuts, profileID: mirror.profileID, layout: layout)
+        }
         log("PROFILE_TRACE_FOREIGN_MIRROR_ADOPTED profile=\(mirror.profileID.uuidString) shortcuts=\(shortcuts.count)")
 
         // Startup clears the locator when the active profile's data file is

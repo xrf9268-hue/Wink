@@ -18,7 +18,10 @@ struct ProfileBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if profileState.recovery == .none {
+            // Every blocking recovery state hides the selector; the
+            // legacy-migration notice does not, because Wink is fully usable
+            // and the user still needs to be able to switch profiles.
+            if profileState.isMutable {
                 selector
             }
             recoveryBanner
@@ -128,6 +131,26 @@ struct ProfileBar: View {
                 )
             ) {
                 profilePickerMenu
+            }
+
+        case let .legacyMigrationFailed(preservedCopyPath):
+            WinkBanner(
+                kind: .warn,
+                title: String(
+                    localized: "Wink could not read your previous shortcuts file",
+                    bundle: WinkResourceBundle.bundle
+                ),
+                message: preservedMessage(
+                    String(
+                        localized: "Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.",
+                        bundle: WinkResourceBundle.bundle
+                    ),
+                    preservedCopyPath: preservedCopyPath
+                )
+            ) {
+                WinkButton(String(localized: "Dismiss", bundle: WinkResourceBundle.bundle)) {
+                    profileState.dismissLegacyMigrationNotice()
+                }
             }
 
         case let .activeProfileUnreadable(profileID, preservedCopyPath):
