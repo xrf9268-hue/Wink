@@ -759,24 +759,43 @@ cannot invent one later:
 > profile whose *successor* is unreadable. Discarding first and failing second is the one
 > ordering with no upside: the user loses the recording and does not get the switch.
 >
-> So both paths validate before they discard. `loadProfileForActivation` / `planDeletion`
-> perform every check that can refuse the operation and write nothing; `commitActivation` /
-> `deleteProfile(plan)` then commit. The validated payload is carried forward rather than
-> re-read, because reading the same path twice can observe two different files — the same rule
-> migration follows when it decodes the exact buffer it copies.
+> So the order is: **everything that can refuse runs first and writes nothing, the commit
+> happens, and only then is anything discarded.**
 >
-> **The carried bytes are re-verified at the commit, not trusted.** Validation and commit are
-> not adjacent — `prepareForSwitch()` runs between them — so the gap is real work rather than
-> a few instructions, and an external write lands in it easily enough to matter. Committing
-> regardless leaves three files disagreeing: the pointer names P, the runtime and mirror hold
-> what was validated, and P's own file holds something else, so the session runs a payload P
-> does not contain and the next launch silently arms the other one. Both the switch and the
-> active-profile delete therefore re-read the canonical file immediately before the pointer
-> moves and **refuse** when it no longer matches, which keeps a refused operation total.
+> ```text
+> loadProfileForActivation / planDeletion   validate; write nothing; refuse here costs nothing
+> commitActivation / deleteProfile(plan)    re-verify, then commit  <- LAST ABORT POINT
+> ---------------------------------------   past here nothing can abort
+> prepareForSwitch()                        cancel recorder / draft / import, dismiss panels
+> applyLoadedShortcuts(_, .profileSwitch)   arm the incoming set
+> ```
+>
+> **Preparation is deliberately AFTER the commit.** An earlier draft of this design put it
+> between validation and commit, which reads naturally — dismiss the UI, then switch — and is
+> wrong: the commit can still refuse, and by then the recorder, the composer draft, and any
+> pending import are already gone. Moving validation earlier does not fix it, because the
+> re-check below exists precisely to run as late as possible. The destructive step is what
+> has to move.
+>
+> Between the commit and the apply the runtime is still on the outgoing set. That is the same
+> persist-then-mutate ordering an ordinary save already uses: the pointer leads memory and
+> never lags it.
+>
+> **The carried bytes are re-verified at the commit, not trusted.** An external write can land
+> between validation and commit. Committing regardless leaves three files disagreeing: the
+> pointer names P, the runtime and mirror hold what was validated, and P's own file holds
+> something else, so the session runs a payload P does not contain and the next launch
+> silently arms the other one. Both the switch and the active-profile delete therefore re-read
+> the canonical file immediately before the pointer moves and **refuse** when it no longer
+> matches, which is what keeps a refused operation total.
 >
 > This narrows the window rather than closing it. Nothing short of a lock closes it and the
 > file is not Wink's to lock; what is guaranteed is that an operation never COMMITS a payload
 > it already knows is superseded.
+>
+> Startup follows the same rule for the same reason: it reads the active profile once and
+> hands those bytes to the mirror classification, rather than letting the classification
+> re-read a file an external writer may have replaced in between.
 >
 > **Carried forward means the bytes, not just the rows.** The commit also writes the compat
 > mirror, so handing it only the decoded array sends it back to the file for bytes and reopens
@@ -786,8 +805,9 @@ cannot invent one later:
 > unreadable profile file **refuses** — the re-encode it used to fall back on ran exactly when
 > the file could not be read, and produced a mirror with every unmodelled member stripped.
 >
-> This cannot be made total. A write can still fail after the drafts are gone, so the failure
-> message says what was discarded rather than reporting that nothing changed.
+> With preparation after the commit there is no failure path left that can discard drafts and
+> then refuse. The message that reports what was discarded stays, because a *successful*
+> switch still needs to say what it took.
 
 ### D15 — Search Palette trigger is per-profile
 
@@ -927,7 +947,7 @@ packaged-app validation.
 | V8b | Exclusivity fails closed | Make a remaining profile unreadable → delete another profile → assert **no** usage deletion is issued, for any ID |
 | V9 | Editor conflicts | Switch during recorder / composer draft / pending import; assert D14's row-by-row outcome |
 | V9c | A payload that changed under the operation is refused | Replace the target profile's file between validation and commit, for both a switch and an active-profile delete; assert the throw, that the pointer did not move, and that the mirror was not written |
-| V9b | A refusable operation discards nothing | Switch to a profile with an unreadable data file, and delete an active profile whose successor is unreadable; assert `prepareForSwitch` was never called, the active profile is unchanged, and the error is surfaced |
+| V9b | A refusable operation discards nothing | Switch to a profile with an unreadable data file, delete an active profile whose successor is unreadable, and fail the pointer write so the refusal comes from the COMMIT rather than validation; assert `prepareForSwitch` was never called in any of them, the active profile is unchanged, and the error is surfaced |
 | V10 | Foreign-edit detection | Rewrite `shortcuts.json` out of band → relaunch → assert banner state and that nothing was written until a choice was made |
 | V10b | Stale mirror is not mistaken for a foreign edit | Fail the mirror write during a switch **and** during a same-profile save → relaunch each → assert the mirror is rewritten from the live profile with **no** banner |
 | V10i | Ordinary saves accumulate no copies | Save five times in a row; assert no `shortcuts.unknown-*.json` exists — preserving Wink's own superseded output per save would be unbounded |
