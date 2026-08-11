@@ -15,6 +15,7 @@ struct GeneralTabView: View {
 
     var preferences: AppPreferences
     @Bindable var editor: ShortcutEditorState
+    @Bindable var diagnostics: DiagnosticsState
 
     var body: some View {
         let importPreviewActive = editor.pendingRecipeImport != nil
@@ -61,6 +62,8 @@ struct GeneralTabView: View {
                         )
                     }
                 }
+
+                DiagnosticsSection(diagnostics: diagnostics)
 
                 WinkCard {
                     VStack(alignment: .leading, spacing: 0) {

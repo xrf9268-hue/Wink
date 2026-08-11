@@ -184,7 +184,11 @@ struct LayoutRegressionTests {
         defer { context.harness.cleanup() }
 
         let hostingView = makeHostingView(
-            GeneralTabView(preferences: context.preferences, editor: context.editor),
+            GeneralTabView(
+                preferences: context.preferences,
+                editor: context.editor,
+                diagnostics: makeInertDiagnosticsState()
+            ),
             size: NSSize(width: 700, height: 560)
         )
 
@@ -210,7 +214,11 @@ struct LayoutRegressionTests {
         // is unchanged and still targets keyboardCard specifically —
         // widening the viewport doesn't relax it.
         let hostingView = makeHostingView(
-            GeneralTabView(preferences: context.preferences, editor: context.editor),
+            GeneralTabView(
+                preferences: context.preferences,
+                editor: context.editor,
+                diagnostics: makeInertDiagnosticsState()
+            ),
             size: NSSize(width: 700, height: 900)
         )
 
@@ -597,6 +605,7 @@ struct LayoutRegressionTests {
             SettingsView(
                 editor: context.editor,
                 preferences: context.preferences,
+                diagnostics: makeInertDiagnosticsState(),
                 insightsViewModel: context.insightsViewModel,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider,
@@ -847,7 +856,11 @@ struct LayoutRegressionTests {
         // LazyVStack that only materializes rows near the viewport (see
         // generalKeyboardCardMatchesDesignRowDensity).
         let hostingView = makeHostingView(
-            GeneralTabView(preferences: context.preferences, editor: context.editor),
+            GeneralTabView(
+                preferences: context.preferences,
+                editor: context.editor,
+                diagnostics: makeInertDiagnosticsState()
+            ),
             size: NSSize(width: 700, height: 900)
         )
         let field = descendants(in: hostingView).compactMap { $0 as? RecorderField }.first

@@ -16,6 +16,8 @@
 	<string>%@，以及另外 %lld 个应用在过去 7 天内均未被触发。</string>
 	<key>%lld activations</key>
 	<string>%lld 次触发</string>
+	<key>%lld files, %@ in total.</key>
+	<string>共 %lld 个文件，%@。</string>
 	<key>%lld standard shortcut bindings failed to register. Check logs for the blocked key combinations.</key>
 	<string>有 %lld 个标准快捷键绑定注册失败。请查看日志以了解被阻止的组合键。</string>
 	<key>%lld× past 7 days</key>
@@ -50,6 +52,8 @@
 	<string>该应用正在运行</string>
 	<key>App unavailable</key>
 	<string>应用不可用</string>
+	<key>Application names and bundle identifiers are included. They are what make a report useful, and they reveal which apps you have shortcuts for.</key>
+	<string>应用名称和 Bundle ID 会包含在内。它们让报告有价值，同时也会暴露你为哪些应用设置了快捷键。</string>
 	<key>Apps you switch to often that have no shortcut yet. Add one in Shortcuts.</key>
 	<string>你经常切换但尚未设置快捷键的应用。可以在“快捷键”中添加。</string>
 	<key>Assumes ~3 seconds per activation.</key>
@@ -80,6 +84,8 @@
 	<string>检查、下载进度和安装现在都在这里完成 — 不再需要单独的更新对话框。</string>
 	<key>Choose an app…</key>
 	<string>选择一个应用…</string>
+	<key>Choose where to save the diagnostics folder.</key>
+	<string>选择诊断信息文件夹的保存位置。</string>
 	<key>Clear</key>
 	<string>清除</string>
 	<key>Click to record</key>
@@ -100,6 +106,8 @@
 	<string>连续每天至少触发一次的天数。</string>
 	<key>Contacting the update feed…</key>
 	<string>正在联系更新服务器…</string>
+	<key>Could not write the diagnostics: %@</key>
+	<string>无法写入诊断信息：%@</string>
 	<key>Couldn't find this app. Rebind it to restore the shortcut.</key>
 	<string>找不到此应用。请重新绑定以恢复快捷键。</string>
 	<key>Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.</key>
@@ -114,6 +122,8 @@
 	<string>默认</string>
 	<key>Delete Shortcut</key>
 	<string>删除快捷键</string>
+	<key>Diagnostics</key>
+	<string>诊断信息</string>
 	<key>Disabled</key>
 	<string>已禁用</string>
 	<key>Download and install new versions in the background.</key>
@@ -132,6 +142,12 @@
 	<string>拖动以重新排序</string>
 	<key>Enable All Shortcuts</key>
 	<string>启用所有快捷键</string>
+	<key>Everything stays on this Mac. Wink shows you the contents before you save them, and never uploads anything.</key>
+	<string>所有内容都留在这台 Mac 上。保存前 Wink 会先让你看到全部内容，并且不会上传任何东西。</string>
+	<key>Export</key>
+	<string>导出</string>
+	<key>Export Diagnostics</key>
+	<string>导出诊断信息</string>
 	<key>Exported %lld shortcuts to %@</key>
 	<string>已将 %lld 个快捷键导出到 %@</string>
 	<key>Export…</key>
@@ -266,6 +282,8 @@
 	<string>当前快捷键配置不需要此权限。</string>
 	<key>Not used yet</key>
 	<string>尚未使用</string>
+	<key>Nothing is uploaded. The export is written where you choose and Wink sends no part of it anywhere.</key>
+	<string>不会上传任何内容。导出文件只写入你选择的位置，Wink 不会把其中任何部分发送到别处。</string>
 	<key>OK</key>
 	<string>好</string>
 	<key>Open Login Items Settings</key>
@@ -300,6 +318,8 @@
 	<string>退出 Wink</string>
 	<key>Ready</key>
 	<string>就绪</string>
+	<key>Recent Wink activity, with user name, home path, and secrets removed.</key>
+	<string>最近的 Wink 活动记录，已移除用户名、个人文件夹路径和机密信息。</string>
 	<key>Recently Used</key>
 	<string>最近使用</string>
 	<key>Recording…</key>
@@ -322,12 +342,18 @@
 	<string>全局快捷键所需权限</string>
 	<key>Requires at least one modifier (⌘⌥⌃⇧)</key>
 	<string>至少需要一个修饰键（⌘⌥⌃⇧）</string>
+	<key>Reveal Log</key>
+	<string>显示日志</string>
 	<key>Review</key>
 	<string>查看</string>
 	<key>Routes global shortcuts.</key>
 	<string>用于路由全局快捷键。</string>
 	<key>Running</key>
 	<string>运行中</string>
+	<key>Saved %lld files to %@.</key>
+	<string>已将 %lld 个文件存储到 %@。</string>
+	<key>Save…</key>
+	<string>存储…</string>
 	<key>Search Palette</key>
 	<string>搜索面板</string>
 	<key>Search apps...</key>
@@ -338,6 +364,8 @@
 	<string>搜索快捷键</string>
 	<key>Settings…</key>
 	<string>设置…</string>
+	<key>Share what Wink knows</key>
+	<string>分享 Wink 掌握的信息</string>
 	<key>Shareable shortcut sets</key>
 	<string>可分享的快捷键集合</string>
 	<key>Shortcut</key>
@@ -390,6 +418,10 @@
 	<string>设置中的开关即刻生效：后台检查与下载，随你开启或关闭。</string>
 	<key>The last automatic update check failed: %@</key>
 	<string>上次自动检查更新失败：%@</string>
+	<key>There is no diagnostic log yet. Use Wink for a moment and try again.</key>
+	<string>目前还没有诊断日志。先使用 Wink 一段时间后再试。</string>
+	<key>This log was missing or could not be read when the export was created.</key>
+	<string>创建此导出时，该日志缺失或无法读取。</string>
 	<key>Time saved</key>
 	<string>节省时间</string>
 	<key>Tip: hold</key>
@@ -456,6 +488,8 @@
 	<string>Wink %@ 已是最新版本。</string>
 	<key>Wink Update</key>
 	<string>Wink 更新</string>
+	<key>Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.</key>
+	<string>Wink 与 macOS 版本、Wink 的签名方式，以及当前哪些快捷键通道已就绪。</string>
 	<key>Wink checks for updates automatically and asks before downloading.</key>
 	<string>Wink 会自动检查更新，并在下载前征求你的同意。</string>
 	<key>Wink couldn't disable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
@@ -474,6 +508,8 @@
 	<string>已是最新版本</string>
 	<key>Your Shortcuts · %lld</key>
 	<string>我的快捷键 · %lld</string>
+	<key>Your user name and home folder path are removed, as are passwords, tokens, and web addresses' query strings.</key>
+	<string>你的用户名和个人文件夹路径会被移除，密码、令牌和网址中的查询参数同样会被移除。</string>
 	<key>for a Hyper shortcut.</key>
 	<string>即可触发 Hyper 快捷键。</string>
 	<key>to act as</key>

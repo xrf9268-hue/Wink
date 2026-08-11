@@ -14,6 +14,8 @@
 	<string>%@ versus the previous period.</string>
 	<key>%@, and %lld more have not been activated in the past 7 days.</key>
 	<string>%@, and %lld more have not been activated in the past 7 days.</string>
+	<key>%lld files, %@ in total.</key>
+	<string>%lld files, %@ in total.</string>
 	<key>%lld× past 7 days</key>
 	<string>%lld× past 7 days</string>
 	<key>%lld× this period</key>
@@ -46,6 +48,8 @@
 	<string>App is currently running</string>
 	<key>App unavailable</key>
 	<string>App unavailable</string>
+	<key>Application names and bundle identifiers are included. They are what make a report useful, and they reveal which apps you have shortcuts for.</key>
+	<string>Application names and bundle identifiers are included. They are what make a report useful, and they reveal which apps you have shortcuts for.</string>
 	<key>Apps you switch to often that have no shortcut yet. Add one in Shortcuts.</key>
 	<string>Apps you switch to often that have no shortcut yet. Add one in Shortcuts.</string>
 	<key>Assumes ~3 seconds per activation.</key>
@@ -76,6 +80,8 @@
 	<string>Checking, download progress, and installs now happen right here — no more separate update dialogs.</string>
 	<key>Choose an app…</key>
 	<string>Choose an app…</string>
+	<key>Choose where to save the diagnostics folder.</key>
+	<string>Choose where to save the diagnostics folder.</string>
 	<key>Clear</key>
 	<string>Clear</string>
 	<key>Click to record</key>
@@ -96,6 +102,8 @@
 	<string>Consecutive days with at least one activation.</string>
 	<key>Contacting the update feed…</key>
 	<string>Contacting the update feed…</string>
+	<key>Could not write the diagnostics: %@</key>
+	<string>Could not write the diagnostics: %@</string>
 	<key>Couldn't find this app. Rebind it to restore the shortcut.</key>
 	<string>Couldn't find this app. Rebind it to restore the shortcut.</string>
 	<key>Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.</key>
@@ -110,6 +118,8 @@
 	<string>Default</string>
 	<key>Delete Shortcut</key>
 	<string>Delete Shortcut</string>
+	<key>Diagnostics</key>
+	<string>Diagnostics</string>
 	<key>Disabled</key>
 	<string>Disabled</string>
 	<key>Download and install new versions in the background.</key>
@@ -128,6 +138,12 @@
 	<string>Drag to reorder</string>
 	<key>Enable All Shortcuts</key>
 	<string>Enable All Shortcuts</string>
+	<key>Everything stays on this Mac. Wink shows you the contents before you save them, and never uploads anything.</key>
+	<string>Everything stays on this Mac. Wink shows you the contents before you save them, and never uploads anything.</string>
+	<key>Export</key>
+	<string>Export</string>
+	<key>Export Diagnostics</key>
+	<string>Export Diagnostics</string>
 	<key>Exported %lld shortcuts to %@</key>
 	<string>Exported %lld shortcuts to %@</string>
 	<key>Export…</key>
@@ -262,6 +278,8 @@
 	<string>Not required for the current shortcut configuration.</string>
 	<key>Not used yet</key>
 	<string>Not used yet</string>
+	<key>Nothing is uploaded. The export is written where you choose and Wink sends no part of it anywhere.</key>
+	<string>Nothing is uploaded. The export is written where you choose and Wink sends no part of it anywhere.</string>
 	<key>OK</key>
 	<string>OK</string>
 	<key>Open Login Items Settings</key>
@@ -296,6 +314,8 @@
 	<string>Quit Wink</string>
 	<key>Ready</key>
 	<string>Ready</string>
+	<key>Recent Wink activity, with user name, home path, and secrets removed.</key>
+	<string>Recent Wink activity, with user name, home path, and secrets removed.</string>
 	<key>Recently Used</key>
 	<string>Recently Used</string>
 	<key>Recording…</key>
@@ -318,12 +338,18 @@
 	<string>Required for global shortcuts</string>
 	<key>Requires at least one modifier (⌘⌥⌃⇧)</key>
 	<string>Requires at least one modifier (⌘⌥⌃⇧)</string>
+	<key>Reveal Log</key>
+	<string>Reveal Log</string>
 	<key>Review</key>
 	<string>Review</string>
 	<key>Routes global shortcuts.</key>
 	<string>Routes global shortcuts.</string>
 	<key>Running</key>
 	<string>Running</string>
+	<key>Saved %lld files to %@.</key>
+	<string>Saved %lld files to %@.</string>
+	<key>Save…</key>
+	<string>Save…</string>
 	<key>Search Palette</key>
 	<string>Search Palette</string>
 	<key>Search apps...</key>
@@ -334,6 +360,8 @@
 	<string>Search shortcuts</string>
 	<key>Settings…</key>
 	<string>Settings…</string>
+	<key>Share what Wink knows</key>
+	<string>Share what Wink knows</string>
 	<key>Shareable shortcut sets</key>
 	<string>Shareable shortcut sets</string>
 	<key>Shortcut</key>
@@ -386,6 +414,10 @@
 	<string>The Settings toggle is live: background checks and downloads, on or off.</string>
 	<key>The last automatic update check failed: %@</key>
 	<string>The last automatic update check failed: %@</string>
+	<key>There is no diagnostic log yet. Use Wink for a moment and try again.</key>
+	<string>There is no diagnostic log yet. Use Wink for a moment and try again.</string>
+	<key>This log was missing or could not be read when the export was created.</key>
+	<string>This log was missing or could not be read when the export was created.</string>
 	<key>Time saved</key>
 	<string>Time saved</string>
 	<key>Tip: hold</key>
@@ -452,6 +484,8 @@
 	<string>Wink %@ is the latest version.</string>
 	<key>Wink Update</key>
 	<string>Wink Update</string>
+	<key>Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.</key>
+	<string>Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.</string>
 	<key>Wink checks for updates automatically and asks before downloading.</key>
 	<string>Wink checks for updates automatically and asks before downloading.</string>
 	<key>Wink couldn't disable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
@@ -470,6 +504,8 @@
 	<string>You're Up to Date</string>
 	<key>Your Shortcuts · %lld</key>
 	<string>Your Shortcuts · %lld</string>
+	<key>Your user name and home folder path are removed, as are passwords, tokens, and web addresses' query strings.</key>
+	<string>Your user name and home folder path are removed, as are passwords, tokens, and web addresses' query strings.</string>
 	<key>for a Hyper shortcut.</key>
 	<string>for a Hyper shortcut.</string>
 	<key>to act as</key>
