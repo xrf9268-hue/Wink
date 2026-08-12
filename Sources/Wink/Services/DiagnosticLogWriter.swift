@@ -60,6 +60,20 @@ final class DiagnosticLogWriter: @unchecked Sendable {
         }
     }
 
+    /// Runs `body` on the writer's own queue after synchronizing the handle —
+    /// a consistent SNAPSHOT boundary, not just a flush. A flush that returns
+    /// before the reads begin leaves a window where the next queued write
+    /// crosses the rotation threshold: the reader can then see the active
+    /// file before rotation moves it AND the freshly rotated backup after —
+    /// the same history twice — or catch the primary mid-rename. Inside this
+    /// block no queued write or rotation can interleave.
+    func withSnapshot<T>(_ body: () -> T) -> T {
+        queue.sync {
+            try? handle?.synchronize()
+            return body()
+        }
+    }
+
     func rotateIfNeeded() {
         queue.sync {
             rotateIfNeededLocked()

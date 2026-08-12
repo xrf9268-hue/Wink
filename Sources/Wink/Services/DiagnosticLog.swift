@@ -27,5 +27,13 @@ enum DiagnosticLog: Sendable {
         writer.flush()
     }
 
+    /// Runs `body` as a consistent snapshot: on the writer's queue, after a
+    /// synchronize, with no queued write or rotation able to interleave. The
+    /// export reads BOTH log files inside one of these — a flush alone
+    /// leaves a window where the next write's rotation tears the pair.
+    static func withSnapshot<T>(_ body: () -> T) -> T {
+        writer.withSnapshot(body)
+    }
+
     static func logFileURL() -> URL { logURL }
 }

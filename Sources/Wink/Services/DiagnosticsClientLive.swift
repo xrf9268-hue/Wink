@@ -112,14 +112,16 @@ enum DiagnosticsClientLive {
     // Deliberately NOT @MainActor: `prepareExport` runs this detached, and
     // the body needs nothing actor-bound — a queue barrier and file reads.
     private static func readLogs() -> [(name: String, contents: String?)] {
-        // `DiagnosticLog.log()` queues its write asynchronously, so the last
-        // few lines of the current session can still be sitting on the
-        // writer's queue at the moment Export is pressed. Reading the file
-        // straight through without this barrier would race that queue and
-        // produce an export that is missing exactly the events a user is
-        // most likely exporting to show someone.
-        DiagnosticLog.flush()
-        return collectLogs(primaryURL: DiagnosticLog.logFileURL(), fileManager: .default)
+        // BOTH reads happen inside the writer's snapshot block: `log()` is
+        // fire-and-forget, so lines can still sit on the queue at Export
+        // time — and a bare flush is not enough, because the next queued
+        // write can cross the rotation threshold between the flush and the
+        // reads, letting the export see the active file before the rename
+        // AND the fresh backup after it (the same history twice), or catch
+        // the primary mid-rotation. Inside the snapshot nothing interleaves.
+        DiagnosticLog.withSnapshot {
+            collectLogs(primaryURL: DiagnosticLog.logFileURL(), fileManager: .default)
+        }
     }
 
     /// Reads the active log plus its rotated backup (`debug.log.1`) when one

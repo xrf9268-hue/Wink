@@ -125,6 +125,31 @@ func flushMakesEveryQueuedWriteVisibleToAnImmediateRead() throws {
 // MARK: - Rotated backup inclusion (#461 finding 3)
 
 @Test
+func aSnapshotReadCannotInterleaveWithAQueuedRotation() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("debug.log")
+    // A tiny cap and check interval so ordinary lines cross the rotation
+    // threshold.
+    let writer = DiagnosticLogWriter(fileURL: url, maxFileSize: 64, rotationCheckInterval: 32)
+
+    // Queue enough writes that a rotation is pending behind the snapshot.
+    for index in 0..<32 {
+        writer.log("line \(index) padding-padding-padding")
+    }
+    // The snapshot must observe ONE consistent state of the pair: whatever
+    // it reads, the combined content never contains a line twice.
+    let combined: String = writer.withSnapshot {
+        let primary = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        let rotated = (try? String(contentsOf: URL(fileURLWithPath: url.path + ".1"), encoding: .utf8)) ?? ""
+        return rotated + primary
+    }
+    let lines = combined.split(separator: "\n").map(String.init)
+    #expect(Set(lines).count == lines.count, "a torn snapshot duplicates history")
+}
+
+@Test
 func collectLogsIncludesTheRotatedBackupWhenOneExists() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
