@@ -262,18 +262,20 @@ struct DiagnosticsRedactor: Sendable {
         // scan position before failing on `:`, which is quadratic in line
         // length (measured on `a.a.a.…` probe lines). Real schemes are a
         // handful of characters; 64 is generous headroom.
-        // Everything from `://` to the token's LAST `@`. Structural
-        // precision lost this fight: a DECODED value can put `@`s and even
-        // `/`s inside what was user-info (`user:p@ss@host`,
-        // `user:p/secret@host`), and any boundary short of the final `@`
-        // exported part of a password. The over-redaction cost is contained
-        // by ordering: the query rule runs FIRST, so a legitimate
-        // `?next=a@b.com` is already inside the query marker before this
-        // rule looks, and only query-less `://…@` tokens — rare in this
-        // log's domain, and exactly where credentials hide — pay the
-        // host-eating price. Whitespace and quotes still bound the token.
+        // Everything from `://` to the LINE's last `@`. Structural
+        // precision lost this fight in stages: a DECODED value can put
+        // `@`s, `/`s, and now literal SPACES inside what was user-info
+        // (`user:p@ss@host`, `user:p/secret@host`, `user:p secret@host`),
+        // and any boundary short of the final `@` exported part of a
+        // password. The over-redaction cost is contained by ordering and
+        // domain: the query rule runs FIRST (a legitimate `?next=a@b.com`
+        // is already inside the query marker before this rule looks), and
+        // the URL in this log's lines is the final element — so the
+        // remaining price, prose after a query-less URL being folded into
+        // the marker when an `@` follows, lands on rare lines and in the
+        // cheap direction. Quotes still bound the region.
         value.replacingOccurrences(
-            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+://)[^\s"']*@"#,
+            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+://)[^"']*@"#,
             with: "$1\(Self.marker)@",
             options: .regularExpression
         )

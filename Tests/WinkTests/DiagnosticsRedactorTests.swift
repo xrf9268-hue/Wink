@@ -122,10 +122,12 @@ struct DiagnosticsRedactorTests {
         let userOnly = redactor().redact(line: "GET https://bob@example.com/path ok")
         #expect(userOnly.contains("https://\(DiagnosticsRedactor.marker)@example.com/path"))
 
-        // A URL with no user-info is untouched, and a bare email address is
-        // not an authority — no `://` precedes it.
-        let plain = redactor().redact(line: "GET https://example.com/path from bob@example.com")
-        #expect(plain == "GET https://example.com/path from bob@example.com")
+        // A bare email with no URL on the line is not an authority — no
+        // `://` precedes it — and stays untouched. (An email FOLLOWING a
+        // query-less URL is folded into the user-info marker since the
+        // decoded-whitespace hardening: the cheap direction.)
+        let plain = redactor().redact(line: "mailed bob@example.com about it")
+        #expect(plain == "mailed bob@example.com about it")
     }
 
     @Test
@@ -158,6 +160,13 @@ struct DiagnosticsRedactorTests {
         let slashed = redactor().redact(line: "URL: toggle ignored, no installed app for https://user:p/secret@example.com")
         #expect(!slashed.contains("secret"))
         #expect(slashed.contains("https://\(DiagnosticsRedactor.marker)@example.com"))
+
+        // And a decoded SPACE: the region runs to the line'''s last @, so
+        // whitespace introduced by upstream decoding cannot split the
+        // credential out of the match.
+        let spacedInfo = redactor().redact(line: "URL: toggle ignored, no installed app for https://user:p secret@example.com")
+        #expect(!spacedInfo.contains("secret"))
+        #expect(spacedInfo.contains("https://\(DiagnosticsRedactor.marker)@example.com"))
         let queryAt = redactor().redact(line: "opened https://example.com/?next=a@b.com")
         #expect(queryAt.contains("https://example.com/?\(DiagnosticsRedactor.marker)"))
     }
