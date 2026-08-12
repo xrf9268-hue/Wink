@@ -359,17 +359,22 @@ final class ShortcutManager {
     /// first (`save(shortcuts:)` above, or the profile store's active-pointer
     /// commit), preserving the persist-then-mutate rule in both directions.
     func applyLoadedShortcuts(_ shortcuts: [AppShortcut], source: ApplySource) {
-        // Before anything is replaced. A provider callback accepted under the
-        // outgoing set may already be queued on the main actor, and in-memory
-        // consistency does not reach it: the structures below move
-        // synchronously, but that event was admitted before they did.
-        MatchedShortcutDelivery.bindingGeneration.advance()
         let inputMonitoringWasRequired = captureCoordinator.inputMonitoringRequired
         shortcutStore.replaceAll(with: shortcuts)
         rebuildIndex()
         handleCaptureConfigurationChange(
             inputMonitoringWasRequired: inputMonitoringWasRequired
         )
+        // AFTER the providers hold the incoming sets, not before anything is
+        // replaced: every event accepted during the transition — matched
+        // against the OUTGOING sets on the tap thread — must still carry the
+        // OLD generation so the delivery guard drops it. Advancing first
+        // opened a window where such an event sampled the new value, passed
+        // the guard, and resolved through the incoming trigger index. The
+        // trade runs in the safe direction: an event matched against the
+        // NEW sets in the instant before this line is dropped too — one
+        // missed keypress during a switch, never a wrong dispatch.
+        MatchedShortcutDelivery.bindingGeneration.advance()
         if source.dropsInFlightGestures {
             holdGestureArbiter?.reset()
         }
