@@ -133,7 +133,12 @@ final class DiagnosticsState {
 
     /// Writes exactly the package the user was shown.
     func confirmExport() {
-        guard let package = preview, saving == nil else { return }
+        // Guarded PER GENERATION, not by "any save in flight": a save to a
+        // stalled volume must not make a REPLACEMENT preview's Save button a
+        // silent no-op — the directory claim is create-based, so concurrent
+        // saves land in sibling folders without merging. Only a duplicate
+        // click on the SAME preview is a no-op.
+        guard let package = preview, !inFlightSaveGenerations.contains(previewGeneration) else { return }
         do {
             // The panel is modal and main-actor by nature; only the WRITES
             // hop off — saving onto a slow external or network-backed volume
@@ -146,11 +151,13 @@ final class DiagnosticsState {
             }
             let writePackage = client.writePackage
             let generation = previewGeneration
+            inFlightSaveGenerations.insert(generation)
             saving = Task { [weak self] in
                 let outcome: Result<URL, Error> = await Task.detached(priority: .userInitiated) {
                     Result { try writePackage(directory, package) }
                 }.value
                 guard let self else { return }
+                self.inFlightSaveGenerations.remove(generation)
                 switch outcome {
                 case let .success(written):
                     // Cleared only when the sheet still shows the GENERATION
@@ -190,7 +197,9 @@ final class DiagnosticsState {
                         )
                     }
                 }
-                self.saving = nil
+                if self.inFlightSaveGenerations.isEmpty {
+                    self.saving = nil
+                }
             }
         } catch {
             feedback = .error(
@@ -202,9 +211,15 @@ final class DiagnosticsState {
         }
     }
 
-    /// The in-flight save; also the re-entrancy guard against a double
-    /// Save click racing two writes into sibling folders.
+    /// The LATEST in-flight save, for the test hook. Re-entrancy is guarded
+    /// per generation instead: an old save stalled on a slow volume must not
+    /// disable a replacement preview's Save.
     private var saving: Task<Void, Never>?
+
+    /// Preview generations with a save still running. Membership is what
+    /// makes a duplicate click on the SAME preview a no-op while a newer
+    /// preview stays actionable.
+    private var inFlightSaveGenerations: Set<UInt64> = []
 
     /// Bumped every time a preview is published or dismissed. A slow save's
     /// completion compares against the value it was confirmed under, so it

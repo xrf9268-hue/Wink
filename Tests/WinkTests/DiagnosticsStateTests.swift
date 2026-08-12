@@ -13,8 +13,23 @@ struct DiagnosticsStateTests {
         var writeFails = false
         var logExists = true
         /// When set, `writePackage` blocks on this until the test signals —
-        /// a deterministic stand-in for a slow external volume.
-        var writeGate: DispatchSemaphore?
+        /// a deterministic stand-in for a slow external volume. Taken
+        /// ONCE, under a lock: the blocked save reads it from a detached
+        /// thread at execution time, and a later save must not race the
+        /// test's reset of the field.
+        private let gateLock = NSLock()
+        private var writeGateStorage: DispatchSemaphore?
+        var writeGate: DispatchSemaphore? {
+            get { gateLock.lock(); defer { gateLock.unlock() }; return writeGateStorage }
+            set { gateLock.lock(); defer { gateLock.unlock() }; writeGateStorage = newValue }
+        }
+        func takeGate() -> DispatchSemaphore? {
+            gateLock.lock()
+            defer { gateLock.unlock() }
+            let gate = writeGateStorage
+            writeGateStorage = nil
+            return gate
+        }
     }
 
     private func makeState(
@@ -69,7 +84,7 @@ struct DiagnosticsStateTests {
                 },
                 writePackage: { url, package in
                     struct InjectedWriteFailure: Error {}
-                    recorder.writeGate?.wait()
+                    recorder.takeGate()?.wait()
                     if recorder.writeFails { throw InjectedWriteFailure() }
                     recorder.written.append((url, package))
                     return url
@@ -238,6 +253,38 @@ struct DiagnosticsStateTests {
         #expect(state.preview == newer)
         #expect(state.feedback?.isError == false)
         #expect(recorder.written.count == 1)
+    }
+
+    @Test
+    func aStalledSaveDoesNotDisableAReplacementPreviewsSave() async {
+        let recorder = Recorder()
+        let state = makeState(recorder: recorder)
+
+        // The old save stalls on its volume. The user cancels, prepares a
+        // replacement, and presses Save — which must WORK: the directory
+        // claim is create-based, so concurrent saves land in siblings, and
+        // only a duplicate click on the SAME preview is a no-op.
+        let gate = DispatchSemaphore(value: 0)
+        state.prepareExport()
+        await state.waitForExportPreparationForTesting()
+        recorder.writeGate = gate
+        state.confirmExport()
+
+        state.cancelExport()
+        state.prepareExport()
+        await state.waitForExportPreparationForTesting()
+        #expect(state.preview != nil)
+
+        state.confirmExport()
+        await state.waitForExportCompletionForTesting()
+
+        // The replacement's save completed while the old one is still
+        // blocked; its own generation matched, so its sheet closed.
+        #expect(recorder.written.count == 1)
+        #expect(state.preview == nil)
+        #expect(state.feedback?.isError == false)
+
+        gate.signal()
     }
 
     @Test

@@ -191,6 +191,28 @@ func anExportNeverMergesIntoAnExistingFolder() throws {
 }
 
 @Test
+func aFailedEntryWriteRemovesTheClaimedFolder() throws {
+    let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: parent) }
+
+    // The second entry's name routes into a nonexistent subdirectory, so
+    // its write throws after the first entry landed — the fills-mid-export
+    // shape. A reported failure must not leave a folder with the expected
+    // name holding a shareable partial package.
+    let destination = parent.appendingPathComponent("Wink-diagnostics-20260812-000000", isDirectory: true)
+    let package = DiagnosticsPackage(entries: [
+        .init(name: "report.md", summary: "summary", contents: "fresh report"),
+        .init(name: "missing/debug.log", summary: "summary", contents: "log"),
+    ])
+
+    #expect(throws: (any Error).self) {
+        _ = try DiagnosticsClientLive.write(package, to: destination)
+    }
+    #expect(!FileManager.default.fileExists(atPath: destination.path))
+}
+
+@Test
 func anExportToAFreshNameUsesThatNameUnchanged() throws {
     let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)

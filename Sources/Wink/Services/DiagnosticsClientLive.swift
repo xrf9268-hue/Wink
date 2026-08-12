@@ -190,9 +190,19 @@ enum DiagnosticsClientLive {
     /// pure filesystem work, directly testable against a temp directory.
     static func write(_ package: DiagnosticsPackage, to directory: URL) throws -> URL {
         let destination = try claimUniqueDestination(for: directory)
-        for entry in package.entries {
-            try Data(entry.contents.utf8)
-                .write(to: destination.appendingPathComponent(entry.name), options: .atomic)
+        do {
+            for entry in package.entries {
+                try Data(entry.contents.utf8)
+                    .write(to: destination.appendingPathComponent(entry.name), options: .atomic)
+            }
+        } catch {
+            // All or nothing: a volume that fills mid-export would otherwise
+            // leave a folder with the expected name holding only the earlier
+            // entries — a shareable partial package the reported failure
+            // just disclaimed — and the retry would land beside it as a
+            // confusable suffixed sibling.
+            try? FileManager.default.removeItem(at: destination)
+            throw error
         }
         return destination
     }
