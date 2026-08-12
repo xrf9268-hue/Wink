@@ -2111,6 +2111,43 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aSymlinkedSourceProfileDoesNotLicenseSkippingPreservation() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let profileA = loaded.activeProfileID
+        let mirrorBytes = try #require(harness.data(at: harness.layout.mirrorURL))
+        let profileB = try store.createProfile(named: "Work", duplicating: nil)
+
+        // A's data file becomes a SYMLINK to the mirror — a manual repair
+        // gone sideways. The ordinary A→B exemption ("the source profile
+        // still holds these exact bytes, nothing to lose") must not fire:
+        // it would skip the preservation copy, and the switch's mirror
+        // overwrite would then take the old bytes AND the source profile
+        // with it, since the link resolves to whatever the mirror holds.
+        let dataURL = harness.layout.profileDataURL(profileA)
+        try FileManager.default.removeItem(at: dataURL)
+        try FileManager.default.createSymbolicLink(at: dataURL, withDestinationURL: harness.layout.mirrorURL)
+
+        _ = try store.activateProfile(profileB.id)
+
+        // The switch committed, and the bytes the symlink can no longer
+        // vouch for were preserved first.
+        let copies = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(copies.count == 1)
+        if let copy = copies.first {
+            #expect(harness.data(at: harness.directory.appendingPathComponent(copy)) == mirrorBytes)
+        }
+    }
+
+    @Test
     func aSymlinkedPreservationCandidateIsNeverTrustedAsACopy() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

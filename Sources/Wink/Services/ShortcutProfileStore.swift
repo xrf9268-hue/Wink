@@ -1092,6 +1092,7 @@ final class ShortcutProfileStore {
     }
 
     nonisolated private static func mirrorIsHeldByItsSourceProfile(
+        _ mirrorData: Data,
         digest mirrorDigest: String,
         descriptor: ShortcutProfileMirrorDescriptor?,
         layout: ShortcutProfileLayout
@@ -1099,11 +1100,15 @@ final class ShortcutProfileStore {
         // A descriptor that does not claim these bytes cannot vouch for where
         // they came from, so it cannot license skipping the copy either.
         guard let descriptor, descriptor.sha256 == mirrorDigest else { return false }
-        guard let source = try? Data(contentsOf: layout.profileDataURL(descriptor.profileID)) else {
-            // Deleted or moved on: these bytes are the last copy.
-            return false
-        }
-        return digest(source) == mirrorDigest
+        // Through `fileHolds`, not a bare read: this exemption asserts that
+        // an INDEPENDENT copy of the mirror bytes exists in the source
+        // profile's file, and a `Profiles/<id>.json` that is a symbolic link
+        // to shortcuts.json "holds" them only by resolving through to the
+        // very file the skipped preservation would let the next switch
+        // replace — losing the bytes and corrupting the source profile in
+        // one write. Same rule as the candidate check: regular file or it
+        // does not count, and otherwise these bytes are the last copy.
+        return fileHolds(mirrorData, at: layout.profileDataURL(descriptor.profileID))
     }
 
     /// Every profile carries a name the create and rename paths would accept.
@@ -1134,6 +1139,7 @@ final class ShortcutProfileStore {
         layout: ShortcutProfileLayout
     ) -> Bool {
         guard !Self.mirrorIsHeldByItsSourceProfile(
+            data,
             digest: digest,
             descriptor: descriptor,
             layout: layout
@@ -1240,6 +1246,7 @@ final class ShortcutProfileStore {
             // exact bytes: an ordinary A→B switch. There is nothing to lose, so
             // copying here would only accumulate junk beside the real files.
             let isHeldByItsSourceProfile = mirrorIsHeldByItsSourceProfile(
+                existing,
                 digest: existingDigest,
                 descriptor: descriptor,
                 layout: layout
