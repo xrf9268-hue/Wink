@@ -468,6 +468,8 @@
 	<string>该配置的快捷键无法读取，因此 Wink 没有切换过去。无法读取的文件已保留一份副本。</string>
 	<key>The Settings toggle is live: background checks and downloads, on or off.</key>
 	<string>设置中的开关即刻生效：后台检查与下载，随你开启或关闭。</string>
+	<key>The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again.</key>
+	<string>改动已导入，但 Wink 未能完成切换到修复后的配置。请再试一次导入。</string>
 	<key>The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.</key>
 	<string>改动已导入，但 shortcuts.json 兼容文件未能重写。请再试一次导入。</string>
 	<key>The file no longer matches what Wink last wrote, and its contents could not be read. Wink has changed nothing.</key>
@@ -476,6 +478,8 @@
 	<string>上次自动检查更新失败：%@</string>
 	<key>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</key>
 	<string>无法删除该配置，且 Wink 无法撤销此前已经完成的切换。你现在使用的是“%@”。</string>
+	<key>The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.</key>
+	<string>shortcuts.json 兼容文件暂时未能重写；下次成功保存时会刷新它。</string>
 	<key>There is no active profile to keep yet. Import the file first, or choose a profile.</key>
 	<string>目前还没有可保留的当前配置。请先导入该文件，或选择一个配置。</string>
 	<key>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</key>

@@ -480,15 +480,23 @@ final class ShortcutProfileState {
 
     func recoverFromUnreadableManifest() {
         do {
-            let recovered = try store.recoverManifest()
+            let (recovered, mirrorRestored) = try store.recoverManifest()
             apply(recovered)
             shortcutManager.applyLoadedShortcuts(recovered.activeShortcuts, source: .profileSwitch)
             onProfileApplied()
             errorMessage = nil
-            statusMessage = String(
+            let base = String(
                 localized: "Started a new profile list. Your unreadable file was kept alongside it.",
                 bundle: WinkResourceBundle.bundle
             )
+            // Recovery completed — it is the only way out of quarantine and
+            // the mirror is derived data — but claiming FULL success while
+            // shortcuts.json still holds the pre-recovery bindings would
+            // hide that the E2E harness and a downgraded build keep reading
+            // them until a later save rewrites the file.
+            statusMessage = mirrorRestored
+                ? base
+                : "\(base) \(String(localized: "The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.", bundle: WinkResourceBundle.bundle))"
         } catch {
             errorMessage = userFacingMessage(for: error)
         }
@@ -703,6 +711,13 @@ final class ShortcutProfileState {
             // rewrite is owed, and retrying completes the remainder.
             return String(
                 localized: "The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.",
+                bundle: WinkResourceBundle.bundle
+            )
+        case .importCommittedButActivationIncomplete:
+            // Same honesty rule, earlier boundary: the repaired data file is
+            // on disk; only the activation is owed.
+            return String(
+                localized: "The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again.",
                 bundle: WinkResourceBundle.bundle
             )
         case let .nameRejected(violation):

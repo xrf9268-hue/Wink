@@ -3988,6 +3988,23 @@
         }
       }
     },
+    "The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改动已导入，但 Wink 未能完成切换到修复后的配置。请再试一次导入。"
+          }
+        }
+      }
+    },
     "The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.": {
       "extractionState": "manual",
       "localizations": {
@@ -4052,6 +4069,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法删除该配置，且 Wink 无法撤销此前已经完成的切换。你现在使用的是“%@”。"
+          }
+        }
+      }
+    },
+    "The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "shortcuts.json 兼容文件暂时未能重写；下次成功保存时会刷新它。"
           }
         }
       }

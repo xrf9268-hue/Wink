@@ -179,6 +179,11 @@ final class ShortcutProfileStore {
         /// retry completes the remainder rather than repeating the whole
         /// operation.
         case importCommittedButMirrorNotRestored
+        /// The import repaired the profile's data file, but the activation
+        /// that finishes the recovery (the pointer commit, or what follows
+        /// it) failed. Same honesty rule as the mirror case: the canonical
+        /// payload IS on disk, and a retry finishes the remainder.
+        case importCommittedButActivationIncomplete
 
         var errorDescription: String? {
             switch self {
@@ -198,6 +203,8 @@ final class ShortcutProfileStore {
                 return "The file was changed again after this offer was captured"
             case .importCommittedButMirrorNotRestored:
                 return "The import landed but the compatibility file could not be rewritten"
+            case .importCommittedButActivationIncomplete:
+                return "The import landed but activating the repaired profile did not finish"
             case let .nameRejected(violation):
                 return "Profile name rejected: \(violation)"
             case let .profileLimitReached(limit):
@@ -1920,7 +1927,7 @@ final class ShortcutProfileStore {
     /// The single explicit action that overwrites a quarantined manifest.
     /// Safe because a byte-identical copy was preserved first; this re-attempts
     /// that preservation in case the earlier attempt failed.
-    func recoverManifest() throws -> LoadedProfiles {
+    func recoverManifest() throws -> (loaded: LoadedProfiles, mirrorRestored: Bool) {
         guard let layout else { throw StoreError.storageUnavailable }
 
         // The UI promises the unreadable file was kept. If it cannot be kept,
@@ -1986,17 +1993,27 @@ final class ShortcutProfileStore {
                 layout: layout
             )
         }
-        writeMirrorForActiveProfile(profileID: profile.id, layout: layout)
+        let mirrorRestored = writeMirrorForActiveProfile(profileID: profile.id, layout: layout)
+        if !mirrorRestored {
+            // Recovery itself must still complete — it is the only way out
+            // of quarantine, and the mirror is derived data — but the caller
+            // has to know: until a later successful rewrite, the E2E harness
+            // and a downgraded build keep reading the pre-recovery bindings.
+            log("PROFILE_TRACE_RECOVERY_MIRROR_STALE id=\(profile.id.uuidString)")
+        }
         log("PROFILE_TRACE_RECOVERED id=\(profile.id.uuidString)")
 
-        return LoadedProfiles(
-            profiles: [profile],
-            activeProfileID: profile.id,
-            activeShortcuts: [],
-            unreadableProfileIDs: [],
-            orphanProfileIDs: orphanProfileIDs(layout: layout, manifest: ShortcutProfileManifest(profiles: [profile])),
-            duplicateShortcutIDs: [],
-            foreignMirror: nil
+        return (
+            LoadedProfiles(
+                profiles: [profile],
+                activeProfileID: profile.id,
+                activeShortcuts: [],
+                unreadableProfileIDs: [],
+                orphanProfileIDs: orphanProfileIDs(layout: layout, manifest: ShortcutProfileManifest(profiles: [profile])),
+                duplicateShortcutIDs: [],
+                foreignMirror: nil
+            ),
+            mirrorRestored
         )
     }
 
@@ -2073,7 +2090,17 @@ final class ShortcutProfileStore {
         if locator.currentActiveProfileID() == nil,
            manifest?.profile(id: mirror.profileID) != nil,
            fileManager.fileExists(atPath: layout.profileDataURL(mirror.profileID).path) {
-            let adopted = try activateProfile(mirror.profileID)
+            let adopted: [AppShortcut]?
+            do {
+                adopted = try activateProfile(mirror.profileID)
+            } catch {
+                // The data file above is already repaired: reporting this as
+                // an ordinary writeFailed would tell the user nothing was
+                // changed, which is false, and hide that a retry only needs
+                // to finish the activation.
+                log("PROFILE_TRACE_IMPORT_ACTIVATION_INCOMPLETE profile=\(mirror.profileID.uuidString)")
+                throw StoreError.importCommittedButActivationIncomplete
+            }
             // The activation's own mirror write follows SWITCH semantics —
             // a refused rewrite is tolerated because a stale mirror is
             // attributable and silently repairable next launch. An IMPORT

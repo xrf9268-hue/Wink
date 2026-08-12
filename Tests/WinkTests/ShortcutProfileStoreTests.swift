@@ -500,7 +500,7 @@ struct ShortcutProfileRecoveryTests {
             return
         }
 
-        let recovered = try store.recoverManifest()
+        let recovered = try store.recoverManifest().loaded
         #expect(recovered.profiles.count == 1)
         #expect(recovered.activeShortcuts.isEmpty)
         #expect(!harness.loadFailureCopies(in: harness.layout.profilesDirectory).isEmpty)
@@ -812,7 +812,7 @@ struct ShortcutProfileCRUDTests {
             Issue.record("expected manifestUnreadable")
             return
         }
-        let recovered = try reloaded.recoverManifest()
+        let recovered = try reloaded.recoverManifest().loaded
 
         // Without this the E2E harness and a downgraded build would keep
         // reading the pre-recovery bindings until some later save repaired it.
@@ -3028,6 +3028,90 @@ struct ShortcutProfileMirrorTests {
         #expect(
             harness.diagnostics.values.contains {
                 $0.contains("PROFILE_TRACE_IMPORT_MIRROR_NOT_RESTORED")
+            }
+        )
+    }
+
+    @Test
+    func aResumableImportWhoseActivationFailsReportsThePartialCommit() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        let legacy = [makeTestShortcut()]
+        try harness.writeLegacyShortcuts(legacy)
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        try FileManager.default.removeItem(at: harness.layout.profileDataURL(loaded.activeProfileID))
+
+        // The adopting store's pointer write fails: the data file is already
+        // repaired by then, so reporting an ordinary writeFailed would tell
+        // the user nothing was changed — which is false — and hide that a
+        // retry only needs to finish the activation.
+        let pointerURL = harness.layout.activePointerURL
+        let reloaded = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient(
+                write: { data, url in
+                    struct InjectedWriteFailure: Error {}
+                    if url == pointerURL { throw InjectedWriteFailure() }
+                    try data.write(to: url, options: .atomic)
+                }
+            )
+        )
+        guard case let .activeProfileUnreadable(_, activeProfileID, _, importableMirror) = reloaded.load() else {
+            Issue.record("expected activeProfileUnreadable")
+            return
+        }
+        let mirror = try #require(importableMirror)
+
+        do {
+            _ = try reloaded.adoptForeignMirror(mirror)
+            Issue.record("expected the partial commit to be reported")
+        } catch let error as ShortcutProfileStore.StoreError {
+            guard case .importCommittedButActivationIncomplete = error else {
+                Issue.record("expected importCommittedButActivationIncomplete, got \(error)")
+                return
+            }
+        }
+        #expect(harness.data(at: harness.layout.profileDataURL(activeProfileID)) == mirror.rawBytes)
+    }
+
+    @Test
+    func recoveryReportsAStaleMirrorInsteadOfClaimingFullSuccess() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        let store = harness.makeStore()
+        _ = store.load()
+        try harness.writeRaw("{ truncated", to: harness.layout.manifestURL)
+
+        let reloaded = harness.makeStore()
+        guard case .manifestUnreadable = reloaded.load() else {
+            Issue.record("expected manifestUnreadable")
+            return
+        }
+
+        // The compat file is present but unreadable, so its rewrite is
+        // refused. Recovery must still complete — it is the only way out of
+        // quarantine — but the caller has to know the mirror is stale.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: harness.layout.mirrorURL.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644],
+                ofItemAtPath: harness.layout.mirrorURL.path
+            )
+        }
+
+        let (recovered, mirrorRestored) = try reloaded.recoverManifest()
+        #expect(mirrorRestored == false)
+        #expect(recovered.profiles.count == 1)
+        #expect(
+            harness.diagnostics.values.contains {
+                $0.contains("PROFILE_TRACE_RECOVERY_MIRROR_STALE")
             }
         )
     }

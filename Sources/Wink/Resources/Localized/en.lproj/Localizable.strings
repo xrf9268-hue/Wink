@@ -464,6 +464,8 @@
 	<string>That profile’s shortcuts could not be read, so Wink did not switch to it. A copy of the unreadable file was kept.</string>
 	<key>The Settings toggle is live: background checks and downloads, on or off.</key>
 	<string>The Settings toggle is live: background checks and downloads, on or off.</string>
+	<key>The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again.</key>
+	<string>The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again.</string>
 	<key>The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.</key>
 	<string>The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.</string>
 	<key>The file no longer matches what Wink last wrote, and its contents could not be read. Wink has changed nothing.</key>
@@ -472,6 +474,8 @@
 	<string>The last automatic update check failed: %@</string>
 	<key>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</key>
 	<string>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</string>
+	<key>The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.</key>
+	<string>The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.</string>
 	<key>There is no active profile to keep yet. Import the file first, or choose a profile.</key>
 	<string>There is no active profile to keep yet. Import the file first, or choose a profile.</string>
 	<key>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</key>
