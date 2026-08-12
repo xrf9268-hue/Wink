@@ -76,11 +76,19 @@ struct DiagnosticsSection: View {
 /// The approval step. It lists every file that will be written, its size, and
 /// what it contains — and states the three things a user would otherwise only
 /// discover after sharing the export.
+///
+/// Contents are shown, not just summarized: the Diagnostics card promises the
+/// user can verify what leaves the machine before it does, and a name plus a
+/// byte count cannot be checked for a redaction miss. Entries are selectable
+/// rather than all expanded at once so a multi-file package (report, current
+/// log, rotated log) stays scannable instead of turning into one long scroll.
 struct DiagnosticsPreviewSheet: View {
     @Environment(\.winkPalette) private var palette
 
     let package: DiagnosticsPackage
     @Bindable var diagnostics: DiagnosticsState
+
+    @State private var selectedEntryID: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -95,7 +103,7 @@ struct DiagnosticsPreviewSheet: View {
             .font(WinkType.labelSmall)
             .foregroundStyle(palette.textSecondary)
 
-            List(package.entries) { entry in
+            List(package.entries, selection: $selectedEntryID) { entry in
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
                         Text(entry.name)
@@ -114,7 +122,9 @@ struct DiagnosticsPreviewSheet: View {
                 .padding(.vertical, 2)
                 .accessibilityElement(children: .combine)
             }
-            .frame(minHeight: 150)
+            .frame(minHeight: 110, maxHeight: 130)
+
+            contentsPane
 
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(DiagnosticsPackage.disclosures, id: \.self) { disclosure in
@@ -150,7 +160,66 @@ struct DiagnosticsPreviewSheet: View {
             }
         }
         .padding(18)
-        .frame(width: 520)
+        .frame(width: 560)
+        .onAppear {
+            // Nothing is selected on first appearance; default to the first
+            // entry so the contents pane below is never blank, and so the
+            // list's own highlight agrees with what it is showing.
+            if selectedEntryID == nil {
+                selectedEntryID = package.entries.first?.id
+            }
+        }
+    }
+
+    /// The entry the contents pane below currently shows. Falls back to the
+    /// first entry — before a selection is made, and if a stale id ever
+    /// pointed at an entry that is no longer in this package — rather than
+    /// going blank.
+    private var displayedEntry: DiagnosticsPackage.Entry? {
+        Self.displayedEntry(for: selectedEntryID, in: package)
+    }
+
+    /// `nonisolated` deliberately: this is pure selection logic with no UI
+    /// affinity, and leaving it to inherit `DiagnosticsPreviewSheet`'s
+    /// implicit `@MainActor` isolation (from its `View` conformance) would
+    /// force every caller — including plain, non-`@MainActor` unit tests —
+    /// through an actor hop for no reason.
+    nonisolated static func displayedEntry(
+        for selection: String?,
+        in package: DiagnosticsPackage
+    ) -> DiagnosticsPackage.Entry? {
+        if let selection, let match = package.entries.first(where: { $0.id == selection }) {
+            return match
+        }
+        return package.entries.first
+    }
+
+    @ViewBuilder
+    private var contentsPane: some View {
+        if let entry = displayedEntry {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Contents of \(entry.name)", bundle: WinkResourceBundle.bundle)
+                    .font(WinkType.labelSmall)
+                    .foregroundStyle(palette.textTertiary)
+
+                ScrollView {
+                    Text(entry.contents)
+                        .font(WinkType.monoSmall)
+                        .foregroundStyle(palette.textPrimary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                }
+                .frame(height: 180)
+                .background(palette.fieldBg)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(palette.fieldBorder)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 
     private var byteCountText: String {

@@ -909,6 +909,23 @@
         }
       }
     },
+    "Contents of %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contents of %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的内容"
+          }
+        }
+      }
+    },
     "Could not write the diagnostics: %@": {
       "extractionState": "manual",
       "localizations": {

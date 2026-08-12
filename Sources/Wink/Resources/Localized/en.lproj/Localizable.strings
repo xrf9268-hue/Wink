@@ -102,6 +102,8 @@
 	<string>Consecutive days with at least one activation.</string>
 	<key>Contacting the update feed…</key>
 	<string>Contacting the update feed…</string>
+	<key>Contents of %@</key>
+	<string>Contents of %@</string>
 	<key>Could not write the diagnostics: %@</key>
 	<string>Could not write the diagnostics: %@</string>
 	<key>Couldn't find this app. Rebind it to restore the shortcut.</key>

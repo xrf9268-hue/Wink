@@ -106,6 +106,8 @@
 	<string>连续每天至少触发一次的天数。</string>
 	<key>Contacting the update feed…</key>
 	<string>正在联系更新服务器…</string>
+	<key>Contents of %@</key>
+	<string>%@ 的内容</string>
 	<key>Could not write the diagnostics: %@</key>
 	<string>无法写入诊断信息：%@</string>
 	<key>Couldn't find this app. Rebind it to restore the shortcut.</key>
