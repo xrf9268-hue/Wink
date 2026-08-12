@@ -1632,6 +1632,12 @@ final class ShortcutProfileStore {
         /// names the successor, so the caller must apply it and report this
         /// rather than claim nothing changed.
         var unrecoverableSwitchReason: String?
+        /// False when the compat rewrite was needed and refused: the delete
+        /// itself committed — it cannot be blocked on derived data — but the
+        /// caller must not claim full success while shortcuts.json keeps
+        /// exposing the deleted profile's bindings. Same contract as
+        /// `recoverManifest`.
+        var mirrorRestored: Bool = true
     }
 
     @discardableResult
@@ -1899,8 +1905,9 @@ final class ShortcutProfileStore {
             // and the locator are on the successor now, and leaving the compat
             // file describing the former active profile would point the E2E
             // harness and a downgraded build at bindings nothing is running.
+            var stuckMirrorRestored = true
             if let newActiveProfileID, let newActiveShortcuts {
-                writeMirrorForActiveProfile(bytes: plan.successor?.bytes, profileID: newActiveProfileID, layout: layout)
+                stuckMirrorRestored = writeMirrorForActiveProfile(bytes: plan.successor?.bytes, profileID: newActiveProfileID, layout: layout)
             }
 
             // Stop here. The durable manifest still lists the profile, so
@@ -1914,13 +1921,18 @@ final class ShortcutProfileStore {
                 newActiveProfileID: newActiveProfileID,
                 newActiveShortcuts: newActiveShortcuts,
                 exclusivelyOwnedShortcutIDs: [],
-                unrecoverableSwitchReason: manifestError.localizedDescription
+                unrecoverableSwitchReason: manifestError.localizedDescription,
+                mirrorRestored: stuckMirrorRestored
             )
         }
         manifest = current
 
+        var mirrorRestored = true
         if let newActiveProfileID, let newActiveShortcuts {
-            writeMirrorForActiveProfile(bytes: plan.successor?.bytes, profileID: newActiveProfileID, layout: layout)
+            mirrorRestored = writeMirrorForActiveProfile(bytes: plan.successor?.bytes, profileID: newActiveProfileID, layout: layout)
+            if !mirrorRestored {
+                log("PROFILE_TRACE_DELETE_MIRROR_STALE active=\(newActiveProfileID.uuidString)")
+            }
         }
 
         // Best effort: a failed unlink leaves an orphan, which is reported on
@@ -1937,7 +1949,8 @@ final class ShortcutProfileStore {
             profiles: current.profiles,
             newActiveProfileID: newActiveProfileID,
             newActiveShortcuts: newActiveShortcuts,
-            exclusivelyOwnedShortcutIDs: exclusivelyOwned
+            exclusivelyOwnedShortcutIDs: exclusivelyOwned,
+            mirrorRestored: mirrorRestored
         )
     }
 

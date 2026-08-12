@@ -923,6 +923,58 @@ struct ShortcutProfileRecoveryRuntimeTests {
 
     @MainActor
     @Test
+    func deletingTheActiveProfileWithAnUnreadableMirrorReportsTheStaleCompatFile() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+        let setup = harness.makeStore()
+        guard case let .ready(loaded) = setup.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        _ = try setup.createProfile(named: "Work", duplicating: nil)
+
+        let store = harness.makeStore()
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let state = ShortcutProfileState(store: store, shortcutManager: manager)
+        _ = state.loadAtStartup()
+
+        // The compat file is present but unreadable, so the successor's
+        // mirror rewrite is refused. The delete itself must still commit —
+        // the mirror is derived data — but claiming full success would hide
+        // that shortcuts.json keeps exposing the deleted profile's bindings.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: harness.layout.mirrorURL.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644],
+                ofItemAtPath: harness.layout.mirrorURL.path
+            )
+        }
+
+        state.deleteProfile(defaultID)
+
+        #expect(state.profiles.count == 1)
+        #expect(state.errorMessage == nil)
+        #expect(state.statusMessage != nil)
+    }
+
+    @MainActor
+    @Test
     func aDissolvedOfferUnmarksTheProfileItsFirstAttemptRepaired() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

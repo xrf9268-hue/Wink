@@ -449,6 +449,19 @@ final class ShortcutProfileState {
                 onProfileApplied()
             }
 
+            // Same contract as manifest recovery: the delete cannot be
+            // blocked on derived data, but full success must not be claimed
+            // while shortcuts.json keeps exposing the deleted profile's
+            // bindings to the E2E harness and downgraded builds.
+            let mirrorCaveat: String? = outcome.mirrorRestored ? nil : String(
+                localized: "The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.",
+                bundle: WinkResourceBundle.bundle
+            )
+            let deleteStatus = [
+                discarded.isEmpty ? nil : discardedMessage(discarded),
+                mirrorCaveat,
+            ].compactMap { $0 }.joined(separator: " ")
+
             if outcome.unrecoverableSwitchReason != nil {
                 // The delete failed, but the switch it had already committed
                 // could not be undone. Memory now matches the durable pointer,
@@ -457,14 +470,14 @@ final class ShortcutProfileState {
                     localized: "The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “\(activeProfile?.name ?? "")”.",
                     bundle: WinkResourceBundle.bundle
                 )
-                statusMessage = discarded.isEmpty ? nil : discardedMessage(discarded)
+                statusMessage = deleteStatus.isEmpty ? nil : deleteStatus
                 return
             }
 
             drainPendingUsageDeletions()
 
             errorMessage = nil
-            statusMessage = discarded.isEmpty ? nil : discardedMessage(discarded)
+            statusMessage = deleteStatus.isEmpty ? nil : deleteStatus
         } catch {
             errorMessage = userFacingMessage(for: error)
             // The drafts were cleared before the store was asked, so a failure
