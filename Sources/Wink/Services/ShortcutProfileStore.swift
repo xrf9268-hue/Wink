@@ -905,8 +905,7 @@ final class ShortcutProfileStore {
         return Self.foreignMirrorOffer(profileID: descriptor.profileID, bytes: mirrorData)
     }
 
-    /// The ONE construction rule for an importable offer, shared by detection
-    /// and the post-refusal refresh so the two cannot drift: shortcuts are
+    /// The ONE construction rule for an importable offer: shortcuts are
     /// attached only when the bytes decode with unique ids. A payload with
     /// duplicate shortcut IDs is not importable — writing it would publish
     /// duplicate rows into the runtime and leave a file the strict loader
@@ -919,15 +918,38 @@ final class ShortcutProfileStore {
     }
 
     /// Rebuilds a pending offer from the file as it is NOW, after
-    /// `adoptForeignMirror` refused a stale one. The target profile is kept
-    /// from the original offer: the target is a property of the descriptor or
-    /// recovery flow that created the offer, not of the drifted bytes. Returns
-    /// nil when the file is gone or unreadable — there is nothing left to
-    /// offer, and `writeMirror`'s own guards protect whatever appears next.
+    /// `adoptForeignMirror` refused a stale one — by re-running the FULL
+    /// startup classification, not by attaching the new bytes to the stale
+    /// offer's target. The distinction is load-bearing: after a partial
+    /// inactive-profile import (profile data written, the active profile's
+    /// bytes restored to the mirror, only the descriptor write failed), the
+    /// file now holds the ACTIVE profile's payload. A refresh that kept the
+    /// old inactive target would offer to "import" the active profile's
+    /// bytes into it — and a retry would overwrite that profile's data with
+    /// the wrong payload. Classification recognizes the bytes as current,
+    /// repairs the descriptor, and dissolves the offer instead. Its other
+    /// side effects (preserve-before-overwrite, stale repair) are the same
+    /// startup semantics a relaunch would apply.
+    ///
+    /// In the interrupted-migration recovery there is no active profile to
+    /// classify against; the offer is rebuilt by the same constructor that
+    /// flow used originally, keeping its target.
     func refreshedForeignMirrorOffer(replacing stale: ForeignMirror) -> ForeignMirror? {
-        guard let layout, let bytes = try? Data(contentsOf: layout.mirrorURL) else { return nil }
+        guard let layout else { return nil }
         log("PROFILE_TRACE_FOREIGN_MIRROR_REFRESHED profile=\(stale.profileID.uuidString)")
-        return Self.foreignMirrorOffer(profileID: stale.profileID, bytes: bytes)
+        guard let activeProfileID = locator.currentActiveProfileID() else {
+            return resumableLegacyMirror(layout: layout, activeProfileID: stale.profileID)
+        }
+        guard let activeBytes = try? Data(contentsOf: layout.profileDataURL(activeProfileID)) else {
+            // The active profile's own file is unreadable: classification is
+            // impossible and nothing here may write. Startup owns that state.
+            return nil
+        }
+        return detectForeignMirror(
+            layout: layout,
+            activeProfileID: activeProfileID,
+            activeBytes: activeBytes
+        )
     }
 
     /// Copies a `shortcuts.json` Wink cannot attribute, so a later save can
@@ -1998,7 +2020,19 @@ final class ShortcutProfileStore {
         // E2E harness and a downgraded build read.
         guard let activeProfileID = locator.currentActiveProfileID() else { return nil }
         if activeProfileID == mirror.profileID {
-            writeMirrorForActiveProfile(bytes: mirror.rawBytes, profileID: activeProfileID, layout: layout)
+            // Same rule as the inactive branch below: the import itself
+            // landed, but reporting success while the compat file could not
+            // be rewritten (the preflight deliberately lets an unreadable
+            // file through, and `writeMirror` then refuses to replace it)
+            // would clear the banner while the E2E harness and a downgraded
+            // build keep reading a file that misrepresents the profile.
+            guard writeMirrorForActiveProfile(bytes: mirror.rawBytes, profileID: activeProfileID, layout: layout) else {
+                log("PROFILE_TRACE_IMPORT_MIRROR_NOT_RESTORED active=\(activeProfileID.uuidString)")
+                throw StoreError.writeFailed(
+                    path: layout.mirrorURL.path,
+                    reason: "imported the profile but could not rewrite the compatibility file"
+                )
+            }
             return shortcuts
         }
 

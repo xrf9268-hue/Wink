@@ -1645,6 +1645,104 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aRefreshedOfferDissolvesWhenTheMirrorNowMatchesTheActiveProfile() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        _ = store.load()
+        let foreign = [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        try harness.writeLegacyShortcuts(foreign)
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load(), let mirror = after.foreignMirror else {
+            Issue.record("expected a foreign mirror")
+            return
+        }
+
+        // The mirror ends up holding the ACTIVE profile's own bytes — the
+        // state a partially failed inactive-profile import leaves behind
+        // (profile data imported, active bytes restored, only the descriptor
+        // write lost). A refresh that attached these bytes to the stale
+        // offer's target would present the active profile's payload as an
+        // importable foreign edit, and a retry would overwrite the target
+        // with it. Full reclassification recognizes the bytes as current and
+        // dissolves the offer instead.
+        let activeBytes = try #require(harness.data(at: harness.layout.profileDataURL(after.activeProfileID)))
+        try activeBytes.write(to: harness.layout.mirrorURL)
+
+        #expect(throws: ShortcutProfileStore.StoreError.foreignMirrorChangedSinceOffer) {
+            try reloaded.adoptForeignMirror(mirror)
+        }
+        #expect(reloaded.refreshedForeignMirrorOffer(replacing: mirror) == nil)
+
+        // Reclassification also repaired the descriptor, so the next launch
+        // agrees there is nothing foreign here.
+        let third = harness.makeStore()
+        guard case let .ready(final) = third.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        #expect(final.foreignMirror == nil)
+    }
+
+    @Test
+    func anActiveImportThatCannotRewriteTheMirrorReportsThePartialFailure() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        _ = store.load()
+        let foreign = [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        try harness.writeLegacyShortcuts(foreign)
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load(), let mirror = after.foreignMirror else {
+            Issue.record("expected a foreign mirror")
+            return
+        }
+
+        // Present but unreadable AFTER the offer was captured: the preflight
+        // deliberately proceeds (nothing readable to diff against), the
+        // canonical import lands, and the compat rewrite is refused by
+        // `writeMirror`'s own present-but-unreadable guard. Reporting success
+        // would clear the banner while the compat file misrepresents the
+        // profile to the E2E harness and downgraded builds.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: harness.layout.mirrorURL.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644],
+                ofItemAtPath: harness.layout.mirrorURL.path
+            )
+        }
+
+        do {
+            _ = try reloaded.adoptForeignMirror(mirror)
+            Issue.record("expected the partial failure to be reported")
+        } catch let error as ShortcutProfileStore.StoreError {
+            guard case .writeFailed = error else {
+                Issue.record("expected writeFailed, got \(error)")
+                return
+            }
+        }
+
+        // The import itself landed — only the compat rewrite is owed.
+        #expect(
+            harness.data(at: harness.layout.profileDataURL(after.activeProfileID)) == mirror.rawBytes
+        )
+        #expect(
+            harness.diagnostics.values.contains {
+                $0.contains("PROFILE_TRACE_IMPORT_MIRROR_NOT_RESTORED")
+            }
+        )
+    }
+
+    @Test
     func adoptionProceedsWhenTheFileVanishedAfterTheOffer() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
