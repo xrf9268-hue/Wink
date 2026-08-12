@@ -610,7 +610,7 @@
         <article class="chapter" id="troubleshooting">
           <p class="eyebrow">10 · 按了没反应</p>
           <h2>什么都没发生。原因在这。</h2>
-          <p>快捷键没反应，是三种情况之一，而它们不是一回事：捕获可能被<strong>暂停</strong>了——有意为之；可能 macOS 收回了<strong>权限</strong>；也可能这个快捷键走的<strong>通道</strong>没就绪。菜单栏的状态标签会告诉你是哪一种。</p>
+          <p>快捷键没反应，是三种情况之一，而它们不是一回事：捕获可能被<strong>暂停</strong>了——有意为之；可能 macOS 收回了<strong>权限</strong>；也可能这个快捷键走的<strong>通道</strong>没就绪。菜单栏胶囊只会直接点名第一类——<strong>Paused</strong>、<strong>Limited · Secure Input</strong>——它不监视权限和 Carbon 注册，所以 <strong>Ready</strong> 不能排除后两类。胶囊显示 Ready 而组合键依然没反应时，看<em>哪些</em>快捷键失灵了。</p>
           <div class="list">
             <div class="list-row">
               <span class="term">胶囊显示 Paused</span>
@@ -622,7 +622,7 @@
             </div>
             <div class="list-row">
               <span class="term">全部失灵</span>
-              <span class="desc">先看「系统设置 → 隐私与安全性 → 辅助功能」。如果 Wink 已列出且开关是打开的，把它<strong>关掉再打开</strong>——失效的授权从外面看和有效的一模一样。</span>
+              <span class="desc">对症下药要看你的快捷键走什么通道，而不是看死了几个。如果你绑的全在 Hyper 层或 Fn 行，一个被撤销的<strong>输入监控</strong>就能全部杀掉——先查它，路径同上一行。普通修饰键组合走 Carbon，依赖<strong>辅助功能</strong>：去「系统设置 → 隐私与安全性」检查，如果 Wink 已列出且开关是打开的，把它<strong>关掉再打开</strong>——失效的授权从外面看和有效的一模一样。想要证据而不是猜测，上文的诊断导出会直接列出每条通道的就绪状态。</span>
             </div>
             <div class="list-row">
               <span class="term">更新之后</span>

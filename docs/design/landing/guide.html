@@ -610,7 +610,7 @@
         <article class="chapter" id="troubleshooting">
           <p class="eyebrow">10 · when a chord does nothing</p>
           <h2>Nothing happened. Here's why.</h2>
-          <p>A shortcut that does nothing means one of three things, and they are not the same problem. Capture may be <strong>paused</strong> — on purpose. macOS may have withdrawn a <strong>permission</strong>. Or the <strong>route</strong> that shortcut travels may not be ready. The menu bar pill tells you which.</p>
+          <p>A shortcut that does nothing means one of three things, and they are not the same problem. Capture may be <strong>paused</strong> — on purpose. macOS may have withdrawn a <strong>permission</strong>. Or the <strong>route</strong> that shortcut travels may not be ready. The menu bar pill names the first kind outright — <strong>Paused</strong>, <strong>Limited · Secure Input</strong> — but it does not watch permissions or Carbon registration, so <strong>Ready</strong> does not clear those. When the pill reads Ready and a chord still does nothing, go by <em>which</em> shortcuts died.</p>
           <div class="list">
             <div class="list-row">
               <span class="term">the pill says Paused</span>
@@ -622,7 +622,7 @@
             </div>
             <div class="list-row">
               <span class="term">all of them died</span>
-              <span class="desc">Check Accessibility first, in System Settings → Privacy &amp; Security. If Wink is listed and switched on, switch it <strong>off and on again</strong> — a stale grant looks identical to a live one from the outside.</span>
+              <span class="desc">Match the remedy to what your shortcuts ride, not to the count. If everything you bound lives on the Hyper layer or Fn-row keys, one revoked <strong>Input Monitoring</strong> takes out all of it — check that first, same path as above. Plain modifier chords ride Carbon through <strong>Accessibility</strong>: check it in System Settings → Privacy &amp; Security, and if Wink is listed and switched on, switch it <strong>off and on again</strong> — a stale grant looks identical to a live one from the outside. For certainty instead of guessing, the diagnostics export above names each route's readiness directly.</span>
             </div>
             <div class="list-row">
               <span class="term">after an update</span>
