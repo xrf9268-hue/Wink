@@ -526,9 +526,12 @@ final class ShortcutProfileState {
 
     /// Clears the non-blocking legacy-migration notice. The preserved file is
     /// left exactly where it is — dismissing the banner acknowledges it, it
-    /// does not discard anything.
+    /// does not discard anything. The acknowledgement also clears the
+    /// manifest's persisted record; without that, the notice would return on
+    /// every launch after being dismissed.
     func dismissLegacyMigrationNotice() {
         guard case .legacyMigrationFailed = recovery else { return }
+        store.acknowledgeLegacyMigrationFailure()
         recovery = .none
     }
 

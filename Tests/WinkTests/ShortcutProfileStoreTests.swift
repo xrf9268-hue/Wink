@@ -149,6 +149,65 @@ struct ShortcutProfileMigrationTests {
     }
 
     @Test
+    func theMigrationFailureNoticeSurvivesARelaunchUntilAcknowledged() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeRawLegacyShortcuts("{ not a shortcut array")
+
+        let store = harness.makeStore()
+        guard case let .ready(first) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let preserved = first.legacyMigrationFailure?.preservedCopyPath
+        #expect(preserved != nil)
+
+        // The migration committed a manifest, so the next launch skips
+        // migrate() entirely — the notice must be re-derived, not lost:
+        // the user's configuration is still unrecovered, and a generic
+        // caveat is not the surface for that.
+        let relaunched = harness.makeStore()
+        guard case let .ready(second) = relaunched.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        #expect(second.legacyMigrationFailure != nil)
+        #expect(second.legacyMigrationFailure?.preservedCopyPath == preserved)
+
+        // A REFUSED acknowledgement must not throw — dismissal is an
+        // acknowledgement, not a data operation — and the safe direction is
+        // the notice returning on the next launch.
+        let manifestURL = harness.layout.manifestURL
+        let failing = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                guard url != manifestURL else { throw InjectedWriteFailure() }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        guard case .ready = failing.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        failing.acknowledgeLegacyMigrationFailure()
+        guard case let .ready(afterRefused) = harness.makeStore().load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        #expect(afterRefused.legacyMigrationFailure != nil)
+
+        // Dismissing through a healthy store is durable: the notice stays
+        // gone across the next launch.
+        relaunched.acknowledgeLegacyMigrationFailure()
+        let acknowledged = harness.makeStore()
+        guard case let .ready(third) = acknowledged.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        #expect(third.legacyMigrationFailure == nil)
+    }
+
+    @Test
     func migrationIsSkippedOnceAManifestExists() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

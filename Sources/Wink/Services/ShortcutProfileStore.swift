@@ -632,7 +632,14 @@ final class ShortcutProfileStore {
                 orphanProfileIDs: integrity.orphans,
                 duplicateShortcutIDs: integrity.duplicateShortcutIDs,
                 foreignMirror: foreignMirror,
-                compatMirrorStale: !mirrorHealthy
+                compatMirrorStale: !mirrorHealthy,
+                // Re-derived from the manifest on every launch: the failed
+                // migration never runs again, so this record is the only
+                // thing keeping the lost-shortcuts notice alive until the
+                // user dismisses it.
+                legacyMigrationFailure: manifest.legacyMigrationFailure.map {
+                    LegacyMigrationFailure(preservedCopyPath: $0.preservedCopyPath)
+                }
             )
         )
     }
@@ -698,13 +705,24 @@ final class ShortcutProfileStore {
             }
         }
 
+        // The failure travels IN the committed manifest, not just in the
+        // returned load state: this commit is what makes every later launch
+        // skip migrate(), so it must also carry the evidence that migration
+        // did not actually recover anything — otherwise a relaunch presents
+        // the vanished configuration as an ordinary empty install.
+        let migratedManifest = ShortcutProfileManifest(
+            profiles: [profile],
+            legacyMigrationFailure: legacyMigrationFailure.map {
+                ShortcutProfileManifest.LegacyMigrationFailureRecord(preservedCopyPath: $0.preservedCopyPath)
+            }
+        )
         do {
             if let migratedBytes {
                 try writeProfileBytes(migratedBytes, profileID: profileID, layout: layout)
             } else {
                 try writeProfileData(migrated, profileID: profileID, layout: layout)
             }
-            try commitManifest(ShortcutProfileManifest(profiles: [profile]), layout: layout)
+            try commitManifest(migratedManifest, layout: layout)
             try commitActivePointer(profileID, layout: layout)
         } catch {
             manifest = nil
@@ -713,7 +731,7 @@ final class ShortcutProfileStore {
             return .storageUnavailable
         }
 
-        manifest = ShortcutProfileManifest(profiles: [profile])
+        manifest = migratedManifest
         pointedProfileID = profileID
         locator.setActiveProfileID(profileID)
 
@@ -1828,6 +1846,21 @@ final class ShortcutProfileStore {
         try commitManifest(current, layout: layout)
         manifest = current
         return current.profiles[index]
+    }
+
+    /// Clears the persisted legacy-migration notice. Best-effort by design:
+    /// dismissal is an acknowledgement, not a data operation, so a refused
+    /// manifest rewrite must not block it — the worst outcome is the notice
+    /// returning on the next launch, which errs in the safe direction.
+    func acknowledgeLegacyMigrationFailure() {
+        guard let layout, var current = manifest, current.legacyMigrationFailure != nil else { return }
+        current.legacyMigrationFailure = nil
+        do {
+            try commitManifest(current, layout: layout)
+            manifest = current
+        } catch {
+            log("PROFILE_TRACE_MIGRATION_NOTICE_ACK_DEFERRED reason=\(error.localizedDescription)")
+        }
     }
 
     /// Everything a delete needs to know before it is allowed to touch

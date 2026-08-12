@@ -141,15 +141,30 @@ struct ShortcutProfileManifest: Codable, Equatable, Sendable {
     /// needed to recompute exclusivity is gone with it. Optional so a manifest
     /// without it stays valid.
     var pendingUsageDeletions: [UUID]?
+    /// Set when first-run migration could not read the legacy
+    /// `shortcuts.json`. Carried in the manifest because the failure would
+    /// otherwise exist only in the returned load state: migration never runs
+    /// again once a manifest exists, so a relaunch would replace the
+    /// dedicated lost-shortcuts notice with, at most, a generic mirror
+    /// caveat while the user's configuration is still unrecovered. Cleared
+    /// when the user dismisses the notice. Optional so a manifest without it
+    /// stays valid.
+    var legacyMigrationFailure: LegacyMigrationFailureRecord?
+
+    struct LegacyMigrationFailureRecord: Codable, Equatable, Sendable {
+        var preservedCopyPath: String?
+    }
 
     init(
         schemaVersion: Int = ShortcutProfileManifest.currentSchemaVersion,
         profiles: [ShortcutProfile],
-        pendingUsageDeletions: [UUID]? = nil
+        pendingUsageDeletions: [UUID]? = nil,
+        legacyMigrationFailure: LegacyMigrationFailureRecord? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.profiles = profiles
         self.pendingUsageDeletions = pendingUsageDeletions
+        self.legacyMigrationFailure = legacyMigrationFailure
     }
 
     func profile(id: UUID) -> ShortcutProfile? {
