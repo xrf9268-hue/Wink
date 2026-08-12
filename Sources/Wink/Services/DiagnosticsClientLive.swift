@@ -97,7 +97,12 @@ enum DiagnosticsClientLive {
             hyperKeyEnabled: preferences.hyperKeyEnabled,
             shortcutCount: shortcuts.count,
             enabledShortcutCount: shortcuts.filter(\.isEnabled).count,
-            launchAtLoginStatus: preferences.launchAtLoginEnabled ? "enabled" : "disabled"
+            // The full status, not `launchAtLoginEnabled`: that boolean
+            // collapses `.requiresApproval` and `.notFound` into the same
+            // "disabled" report, even though one means "go approve it in
+            // System Settings" and the other means "macOS never saw this
+            // registration," which are different troubleshooting paths.
+            launchAtLoginStatus: preferences.launchAtLoginStatus.diagnosticName
         )
     }
 

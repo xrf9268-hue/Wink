@@ -21,6 +21,26 @@ func requiresApprovalIsNotTreatedAsFullyEnabled() {
 }
 
 @Test
+func diagnosticNameKeepsRequiresApprovalAndNotFoundDistinctFromDisabled() {
+    // `.requiresApproval` and `.notFound` both read as `isEnabled == false`,
+    // but a diagnostics report must not collapse them into the same
+    // "disabled" string — they point a support conversation at different
+    // fixes (approve the login item vs. reinstall/re-register it).
+    #expect(LaunchAtLoginStatus.enabled.diagnosticName == "enabled")
+    #expect(LaunchAtLoginStatus.requiresApproval.diagnosticName == "requires_approval")
+    #expect(LaunchAtLoginStatus.disabled.diagnosticName == "disabled")
+    #expect(LaunchAtLoginStatus.notFound.diagnosticName == "not_found")
+
+    let allNames = Set([
+        LaunchAtLoginStatus.enabled,
+        .requiresApproval,
+        .disabled,
+        .notFound,
+    ].map(\.diagnosticName))
+    #expect(allNames.count == 4)
+}
+
+@Test
 func notFoundOutsideApplicationsRequiresAppInstallation() {
     let service = LaunchAtLoginService(client: .init(
         status: { .notFound },
