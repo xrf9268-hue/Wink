@@ -93,3 +93,55 @@ func explicitRotateIfNeededMovesFileAndLetsNextWriteContinue() throws {
     #expect(current.contains("post-rotate"))
     #expect(!current.contains("line-0-"))
 }
+
+// MARK: - Rotated backup inclusion (#461 finding 3)
+
+@Test
+func collectLogsIncludesTheRotatedBackupWhenOneExists() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let primaryURL = directory.appendingPathComponent("debug.log")
+    try "current session".write(to: primaryURL, atomically: true, encoding: .utf8)
+    let backupURL = directory.appendingPathComponent("debug.log.1")
+    try "earlier session".write(to: backupURL, atomically: true, encoding: .utf8)
+
+    let logs = DiagnosticsClientLive.collectLogs(primaryURL: primaryURL, fileManager: .default)
+
+    #expect(logs.count == 2)
+    #expect(logs[0].name == "debug.log")
+    #expect(logs[0].contents == "current session")
+    #expect(logs[1].name == "debug.log.1")
+    #expect(logs[1].contents == "earlier session")
+}
+
+@Test
+func collectLogsOmitsTheBackupEntryWhenNoRotationHasHappened() throws {
+    // The common case: most exports never see a rotation, so an export must
+    // not carry a permanent "debug.log.1 was missing" note that trains users
+    // to ignore real gaps.
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let primaryURL = directory.appendingPathComponent("debug.log")
+    try "current session".write(to: primaryURL, atomically: true, encoding: .utf8)
+
+    let logs = DiagnosticsClientLive.collectLogs(primaryURL: primaryURL, fileManager: .default)
+
+    #expect(logs.count == 1)
+    #expect(logs[0].name == "debug.log")
+}
+
+@Test
+func collectLogsReportsAMissingPrimaryLogWithoutThrowing() {
+    // A log that cannot be read is a diagnostic in its own right — collectLogs
+    // must not throw or crash when the primary file does not exist.
+    let missingURL = URL(fileURLWithPath: "/tmp/wink-diagnostics-test-\(UUID().uuidString)/debug.log")
+
+    let logs = DiagnosticsClientLive.collectLogs(primaryURL: missingURL, fileManager: .default)
+
+    #expect(logs.count == 1)
+    #expect(logs[0].contents == nil)
+}

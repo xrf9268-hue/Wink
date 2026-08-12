@@ -111,8 +111,34 @@ enum DiagnosticsClientLive {
     /// because the thing it is collecting is broken.
     @MainActor
     private static func readLogs() -> [(name: String, contents: String?)] {
-        let url = DiagnosticLog.logFileURL()
-        return [(name: url.lastPathComponent, contents: try? String(contentsOf: url, encoding: .utf8))]
+        collectLogs(primaryURL: DiagnosticLog.logFileURL(), fileManager: .default)
+    }
+
+    /// Reads the active log plus its rotated backup (`debug.log.1`) when one
+    /// exists. `DiagnosticLogWriter` rotates the active file once it crosses
+    /// its size cap, and `AppController.start()` can trigger that rotation
+    /// moments before writing a fresh startup line — so an export taken
+    /// right after rotation but before the file grows again would silently
+    /// drop the entire earlier session if only `debug.log` were read. The
+    /// backup is only added when it is actually there: most exports never
+    /// rotate, and always listing a backup entry that does not exist would
+    /// train users to ignore a "missing" note that is normal rather than a
+    /// real gap.
+    ///
+    /// Free of `@MainActor`/AppKit so it can be exercised directly in tests
+    /// against a temporary directory, unlike the rest of this file.
+    static func collectLogs(primaryURL: URL, fileManager: FileManager) -> [(name: String, contents: String?)] {
+        var logs: [(name: String, contents: String?)] = [
+            (name: primaryURL.lastPathComponent, contents: try? String(contentsOf: primaryURL, encoding: .utf8)),
+        ]
+        let rotatedURL = URL(fileURLWithPath: primaryURL.path + ".1")
+        if fileManager.fileExists(atPath: rotatedURL.path) {
+            logs.append((
+                name: rotatedURL.lastPathComponent,
+                contents: try? String(contentsOf: rotatedURL, encoding: .utf8)
+            ))
+        }
+        return logs
     }
 
     // MARK: - Effects
