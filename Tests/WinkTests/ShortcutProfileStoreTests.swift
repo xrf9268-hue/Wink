@@ -1946,6 +1946,63 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aStaleDescriptorWhoseRepairFailsIsDroppedAndReportsTheCaveat() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // The tail of a partial A→B switch: the mirror already holds the
+        // active profile's bytes, but the descriptor still names another
+        // profile with that profile's digest.
+        let otherProfileID = UUID()
+        try harness.writeRaw(
+            "{\"schemaVersion\": 1, \"profileID\": \"\(otherProfileID.uuidString)\", \"sha256\": \"deadbeef\"}",
+            to: harness.layout.mirrorDescriptorURL
+        )
+
+        // The descriptor repair is owed, and its write fails.
+        let descriptorURL = harness.layout.mirrorDescriptorURL
+        let failing = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                guard url != descriptorURL else { throw InjectedWriteFailure() }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        guard case let .ready(after) = failing.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // The refused repair reports the same caveat as every other refused
+        // mirror write, and the descriptor that could not be corrected is no
+        // longer on disk to vouch: a later out-of-band edit now classifies
+        // as unknown provenance instead of being offered for import into
+        // whatever profile the stale descriptor happened to name.
+        #expect(after.compatMirrorStale)
+        #expect(after.foreignMirror == nil)
+        #expect(!FileManager.default.fileExists(atPath: descriptorURL.path))
+        #expect(harness.diagnostics.values.contains { $0.contains("PROFILE_TRACE_MIRROR_DESCRIPTOR_REPAIR_FAILED") })
+
+        // With the write path healthy again the retry succeeds: the missing
+        // descriptor re-enters the repair condition, is recreated honest,
+        // and the caveat clears.
+        let healthy = harness.makeStore()
+        guard case let .ready(recovered) = healthy.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        #expect(!recovered.compatMirrorStale)
+        #expect(FileManager.default.fileExists(atPath: descriptorURL.path))
+    }
+
+    @Test
     func unmodelledJSONMembersDoNotMakeAByteIdenticalMirrorLookStale() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

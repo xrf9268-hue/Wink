@@ -853,7 +853,8 @@ final class ShortcutProfileStore {
     /// bytes the user may still be able to repair by hand.
     /// `mirrorHealthy` is false when a startup repair was owed and refused
     /// (a missing compat file that could not be written, an unreadable one,
-    /// or a stale one whose repair failed or deferred): startup stays
+    /// a stale one whose repair failed or deferred, or a current one whose
+    /// stale descriptor could not be corrected): startup stays
     /// `.ready` — the mirror is derived data — but the caller surfaces the
     /// same caveat every other mirror-rewriting path reports.
     private func detectForeignMirror(
@@ -890,11 +891,28 @@ final class ShortcutProfileStore {
         if mirrorDigest == Self.digest(activeBytes) {
             // Current. Keep the descriptor honest so a later comparison
             // attributes correctly; the mirror bytes themselves are already
-            // right, so this rewrite is a no-op on content — a refusal here
-            // leaves a usable mirror and only a stale descriptor, which is
-            // not the user-facing staleness the caveat describes.
+            // right, so this rewrite is a no-op on content.
             if descriptor?.profileID != activeProfileID || descriptor?.sha256 != mirrorDigest {
-                writeMirrorForActiveProfile(bytes: activeBytes, profileID: activeProfileID, layout: layout)
+                guard writeMirrorForActiveProfile(bytes: activeBytes, profileID: activeProfileID, layout: layout) else {
+                    // The bytes are usable, but a stale descriptor that could
+                    // not be corrected must not stay authoritative: after a
+                    // partial A→B switch it still names A, and if an older
+                    // build later edits the mirror, the next launch would
+                    // attribute that edit to A and offer to import B-derived
+                    // changes into the wrong profile. A decoded descriptor is
+                    // this lineage's own metadata, so dropping it is safe and
+                    // demotes the file to unknown provenance — which asks
+                    // nothing and preserves everything. An UNDECODABLE one may
+                    // be a newer build's; it cannot vouch for anything here,
+                    // so it is left for that build to find. Either way the
+                    // owed repair was refused, and that reports the same
+                    // caveat as every other refused mirror write.
+                    if descriptor != nil {
+                        try? fileManager.removeItem(at: layout.mirrorDescriptorURL)
+                    }
+                    log("PROFILE_TRACE_MIRROR_DESCRIPTOR_REPAIR_FAILED describedProfile=\(descriptor?.profileID.uuidString ?? "none") active=\(activeProfileID.uuidString)")
+                    return (nil, false)
+                }
             }
             return (nil, true)
         }
