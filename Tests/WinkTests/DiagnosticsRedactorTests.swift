@@ -396,6 +396,25 @@ struct DiagnosticsRedactorTests {
     }
 
     @Test
+    func decodedHostlessValuesWithWhitespaceStillRedactTheirQueries() {
+        // WinkURLCommand accepts arbitrary decoded bundle values, so the
+        // missing-app path can log a hostless form whose opaque part holds
+        // decoded spaces. The prose defense is the colon-hugging first
+        // character, not a whitespace boundary.
+        let line = redactor().redact(
+            line: "no app matched custom:foo bar?fullName=Bob Smith"
+        )
+        #expect(!line.contains("fullName"))
+        #expect(!line.contains("Bob"))
+        #expect(line.contains("custom:foo bar?"))
+
+        // The fully hostless form (nothing between the colon and the query)
+        // keeps working: the pre-query region is allowed to be empty.
+        let bare = redactor().redact(line: "rejected wink:?token=abc123")
+        #expect(!bare.contains("abc123"))
+    }
+
+    @Test
     func aProseColonWithALaterQuestionMarkDoesNotArmTheQueryRule() {
         // Whitespace is the one boundary the pre-query region keeps: a
         // prose colon followed by a question mark further down the line

@@ -313,27 +313,24 @@ struct DiagnosticsRedactor: Sendable {
         // direction — and a second URL on the same line is simply consumed
         // into the same marker.
         //
-        // TWO passes, split by what defends against a prose colon. An
-        // AUTHORITY form is anchored by `://`, which prose never produces —
-        // so its pre-query region crosses everything up to the first `?`
-        // (a decoded path legally holds spaces and quotes: `/a b?…`,
-        // `/a"b?…`, and each excluded character has become a bypass). A
-        // HOSTLESS form (`wink:unknown?…`) has only the colon, so it keeps
-        // the whitespace boundary — that is what stops `note: done? yes`
-        // from arming the rule mid-sentence — and decoded spaces cannot
-        // reach it: only inner web URLs, which carry `//`, are decoded and
-        // re-logged with their punctuation live.
-        value
-            .replacingOccurrences(
-                of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+://[^?]*)\?.*$"#,
-                with: "$1?\(Self.marker)",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+:(?://)?[^\s?]*)\?.*$"#,
-                with: "$1?\(Self.marker)",
-                options: .regularExpression
-            )
+        // The pre-query region is either empty (the fully hostless
+        // `wink:?token=…`) or starts with a NON-WHITESPACE character and
+        // then crosses everything to the first `?`. The non-whitespace
+        // first character is the entire prose defense — a prose colon is
+        // followed by whitespace (`note: done? yes` stays disarmed), while
+        // a URL's opaque part hugs its colon — and nothing else bounds the
+        // region: decoded values legally hold spaces, quotes, and every
+        // character this rule ever excluded (`/a b?…`, `/a"b?…`,
+        // `custom:foo bar?…` — WinkURLCommand accepts arbitrary decoded
+        // bundle values, so hostless forms carry decoded spaces too, and
+        // each exclusion in turn became a bypass). A colon-hugging token
+        // with a later `?` (`ratio:3 done? yes`) over-redacts its tail —
+        // the cheap direction.
+        value.replacingOccurrences(
+            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+:(?://)?(?:[^\s?][^?]*+)?)\?.*$"#,
+            with: "$1?\(Self.marker)",
+            options: .regularExpression
+        )
     }
 
     /// Truncates by **character**, never by byte or UTF-16 unit, so a
