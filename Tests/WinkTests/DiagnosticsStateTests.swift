@@ -257,8 +257,10 @@ struct DiagnosticsStateTests {
         state.confirmExport()
 
         state.cancelExport()
+        // writeGate cleared so the NEW preview's eventual save (not taken in
+        // this test) would not block; writeFails stays set — the blocked
+        // write consults it only after the gate releases.
         recorder.writeGate = nil
-        recorder.writeFails = false
         state.prepareExport()
         await state.waitForExportPreparationForTesting()
         let newer = state.preview
