@@ -401,11 +401,22 @@ final class ShortcutProfileState {
                 // The outside-edit banner addresses a profile by id, so once
                 // that profile is gone its "Import into <name>" action can only
                 // fail with profileNotFound, and the name it renders has no
-                // profile to come from. Dropping the offer loses nothing: the
-                // edited bytes are still in shortcuts.json, and the next write
-                // preserves them beside it rather than overwriting silently.
+                // profile to come from. Dropping the offer loses no BYTES —
+                // the next overwrite preserves them beside the file — but it
+                // must not leave the compat file describing a deleted
+                // profile: the E2E harness and a downgraded build would keep
+                // reading its bindings until some unrelated save. An
+                // inactive delete writes no mirror of its own, so restore it
+                // here; an active delete already rewrote it from the
+                // successor. Best-effort — the delete has committed and
+                // cannot be blocked on mirror hygiene; a refusal is traced
+                // inside the store and startup classifies the leftover as
+                // unknown provenance, a defined reading.
                 if pendingForeignMirror?.profileID == profileID {
                     pendingForeignMirror = nil
+                    if outcome.newActiveProfileID == nil {
+                        store.restoreMirrorToActiveProfile()
+                    }
                 }
             }
 
@@ -543,14 +554,16 @@ final class ShortcutProfileState {
                 unreadableProfileIDs.remove(mirror.profileID)
             }
             if pendingForeignMirror == nil {
-                // Reclassification found nothing foreign left — the file
-                // already matches the active profile (the partially failed
-                // import's repair completed, or the edit was reverted).
-                // "Review it and try again" with no banner and no action
-                // would be an instruction pointing at nothing.
+                // Reclassification dissolved the offer. That covers more
+                // than one resolved state (the bytes match the active
+                // profile; or their provenance is unknown and a copy was
+                // preserved), so the message claims only what every nil
+                // path shares: nothing importable remains, and nothing was
+                // silently discarded. "Review it and try again" with no
+                // banner would be an instruction pointing at nothing.
                 errorMessage = nil
                 statusMessage = String(
-                    localized: "That file changed again — and it now matches your profile, so there is nothing left to import.",
+                    localized: "That file changed again — Wink re-checked it, and there is nothing left to import.",
                     bundle: WinkResourceBundle.bundle
                 )
             } else {
@@ -682,6 +695,14 @@ final class ShortcutProfileState {
             // the error ever surfaces through another path.
             return String(
                 localized: "That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.",
+                bundle: WinkResourceBundle.bundle
+            )
+        case .importCommittedButMirrorNotRestored:
+            // The OPPOSITE of writeFailed's "nothing was changed": the
+            // import's canonical writes landed, only the compatibility
+            // rewrite is owed, and retrying completes the remainder.
+            return String(
+                localized: "The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.",
                 bundle: WinkResourceBundle.bundle
             )
         case let .nameRejected(violation):

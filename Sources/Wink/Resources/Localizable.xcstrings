@@ -3903,19 +3903,19 @@
         }
       }
     },
-    "That file changed again — and it now matches your profile, so there is nothing left to import.": {
+    "That file changed again — Wink re-checked it, and there is nothing left to import.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "That file changed again — and it now matches your profile, so there is nothing left to import."
+            "value": "That file changed again — Wink re-checked it, and there is nothing left to import."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "该文件又被修改了——现在它和你的配置一致，没有可导入的内容了。"
+            "value": "该文件又被修改了——Wink 重新核查过，已经没有可导入的内容。"
           }
         }
       }
@@ -3984,6 +3984,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "设置中的开关即刻生效：后台检查与下载，随你开启或关闭。"
+          }
+        }
+      }
+    },
+    "The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改动已导入，但 shortcuts.json 兼容文件未能重写。请再试一次导入。"
           }
         }
       }

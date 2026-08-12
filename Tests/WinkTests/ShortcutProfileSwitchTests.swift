@@ -863,6 +863,66 @@ struct ShortcutProfileRecoveryRuntimeTests {
 
     @MainActor
     @Test
+    func deletingTheOfferTargetRestoresTheMirrorToTheActiveProfile() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+        let setup = harness.makeStore()
+        guard case let .ready(loaded) = setup.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        let work = try setup.createProfile(named: "Work", duplicating: nil)
+        _ = try setup.activateProfile(work.id)
+
+        // Crash-window switch back to Default so the descriptor keeps naming
+        // Work, then an external edit — the offer now targets INACTIVE Work.
+        let mirrorURL = harness.layout.mirrorURL
+        let failing = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient(
+                write: { data, url in
+                    struct InjectedWriteFailure: Error {}
+                    if url == mirrorURL { throw InjectedWriteFailure() }
+                    try data.write(to: url, options: .atomic)
+                }
+            )
+        )
+        _ = failing.load()
+        _ = try failing.activateProfile(defaultID)
+        try harness.writeLegacyShortcuts([terminalShortcut()])
+
+        let store = harness.makeStore()
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let state = ShortcutProfileState(store: store, shortcutManager: manager)
+        _ = state.loadAtStartup()
+        #expect(state.pendingForeignMirror?.profileID == work.id)
+
+        // Deleting the target drops the offer — and must not leave the
+        // compat file describing a deleted profile for the E2E harness and
+        // downgraded builds to read until some unrelated save.
+        state.deleteProfile(work.id)
+
+        #expect(state.pendingForeignMirror == nil)
+        #expect(
+            harness.data(at: mirrorURL)
+                == harness.data(at: harness.layout.profileDataURL(defaultID))
+        )
+    }
+
+    @MainActor
+    @Test
     func aDissolvedOfferUnmarksTheProfileItsFirstAttemptRepaired() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

@@ -173,6 +173,12 @@ final class ShortcutProfileStore {
         case profileChangedDuringOperation(id: UUID)
         case usageDeletionInFlight
         case foreignMirrorChangedSinceOffer
+        /// The import's canonical writes landed; only the compatibility
+        /// rewrite was refused. Distinct from `writeFailed` because the
+        /// user-facing meaning is opposite: something WAS changed, and a
+        /// retry completes the remainder rather than repeating the whole
+        /// operation.
+        case importCommittedButMirrorNotRestored
 
         var errorDescription: String? {
             switch self {
@@ -190,6 +196,8 @@ final class ShortcutProfileStore {
                 return "Usage history for one of these shortcuts is still being removed"
             case .foreignMirrorChangedSinceOffer:
                 return "The file was changed again after this offer was captured"
+            case .importCommittedButMirrorNotRestored:
+                return "The import landed but the compatibility file could not be rewritten"
             case let .nameRejected(violation):
                 return "Profile name rejected: \(violation)"
             case let .profileLimitReached(limit):
@@ -934,6 +942,20 @@ final class ShortcutProfileStore {
     /// In the interrupted-migration recovery there is no active profile to
     /// classify against; the offer is rebuilt by the same constructor that
     /// flow used originally, keeping its target.
+    /// Rewrites the compat mirror from the ACTIVE profile's strict payload.
+    /// For flows that invalidate a foreign offer without an import — deleting
+    /// the profile the offer targeted — so the file the E2E harness and a
+    /// downgraded build read does not keep describing a profile that no
+    /// longer exists. Best-effort by contract: the caller's operation has
+    /// already committed and cannot be blocked on mirror hygiene; a refusal
+    /// is traced by the write path and startup classifies the leftover as
+    /// unknown provenance.
+    @discardableResult
+    func restoreMirrorToActiveProfile() -> Bool {
+        guard let layout, let activeProfileID = locator.currentActiveProfileID() else { return false }
+        return writeMirrorForActiveProfile(profileID: activeProfileID, layout: layout)
+    }
+
     func refreshedForeignMirrorOffer(replacing stale: ForeignMirror) -> ForeignMirror? {
         guard let layout else { return nil }
         log("PROFILE_TRACE_FOREIGN_MIRROR_REFRESHED profile=\(stale.profileID.uuidString)")
@@ -946,10 +968,17 @@ final class ShortcutProfileStore {
         // Classifying against raw bytes here would let a malformed canonical
         // file drive the stale-repair branch and overwrite a usable compat
         // copy with the malformed payload — a write startup would never make.
-        // Unloadable active profile → classification impossible, nothing may
-        // write; startup owns that state.
         guard let payload = try? profilePayload(in: activeProfileID) else {
-            return nil
+            // Classification UNAVAILABLE is not "nothing foreign remains":
+            // dissolving here would silently drop a still-valid outside edit
+            // because the canonical file went bad — the one moment that edit
+            // may be the user's best copy. Rebuild a same-target offer from
+            // the file as it is (construction only, nothing written; the
+            // adoption gates re-check everything, and cross-profile
+            // ownership fails closed while a sibling is unreadable). A
+            // vanished file has nothing left to offer.
+            guard let bytes = try? Data(contentsOf: layout.mirrorURL) else { return nil }
+            return Self.foreignMirrorOffer(profileID: stale.profileID, bytes: bytes)
         }
         return detectForeignMirror(
             layout: layout,
@@ -1100,8 +1129,15 @@ final class ShortcutProfileStore {
         let data: Data
         if let bytes {
             data = bytes
-        } else if let raw = try? Data(contentsOf: layout.profileDataURL(profileID)) {
-            data = raw
+        } else if let payload = try? profilePayload(in: profileID) {
+            // STRICT, not a raw read: this arm serves "keep this profile"
+            // and the post-import restore, and copying a canonical file that
+            // has gone malformed (or grown duplicate ids) into the mirror
+            // would report success while the next launch quarantines the
+            // profile and arms nothing — with the only good copy tucked in
+            // an unadvertised preservation file. Refusing keeps the caller's
+            // failure path honest instead.
+            data = payload.bytes
         } else {
             log("PROFILE_TRACE_MIRROR_FAILED reason=profile_unreadable")
             return false
@@ -2042,16 +2078,16 @@ final class ShortcutProfileStore {
             // a refused rewrite is tolerated because a stale mirror is
             // attributable and silently repairable next launch. An IMPORT
             // cannot borrow that tolerance: it is about to clear the offer,
-            // so the same checked rewrite the other two branches make runs
-            // here too, and a refusal is reported rather than swallowed.
-            // (When the activation's write already landed, this rewrite is
-            // byte-identical and the guard sees Wink's own payload.)
-            guard writeMirrorForActiveProfile(bytes: mirror.rawBytes, profileID: mirror.profileID, layout: layout) else {
+            // so the check the other two branches make runs here too.
+            // VERIFIED rather than re-written: when the activation's write
+            // already landed, writing again could only manufacture a fresh
+            // transient failure for an operation that has fully succeeded.
+            let mirrorLanded = (try? Data(contentsOf: layout.mirrorURL))
+                .map { Self.digest($0) == Self.digest(mirror.rawBytes) } ?? false
+            guard mirrorLanded
+                || writeMirrorForActiveProfile(bytes: mirror.rawBytes, profileID: mirror.profileID, layout: layout) else {
                 log("PROFILE_TRACE_IMPORT_MIRROR_NOT_RESTORED active=\(mirror.profileID.uuidString)")
-                throw StoreError.writeFailed(
-                    path: layout.mirrorURL.path,
-                    reason: "imported the profile but could not rewrite the compatibility file"
-                )
+                throw StoreError.importCommittedButMirrorNotRestored
             }
             return adopted
         }
@@ -2069,10 +2105,7 @@ final class ShortcutProfileStore {
             // build keep reading a file that misrepresents the profile.
             guard writeMirrorForActiveProfile(bytes: mirror.rawBytes, profileID: activeProfileID, layout: layout) else {
                 log("PROFILE_TRACE_IMPORT_MIRROR_NOT_RESTORED active=\(activeProfileID.uuidString)")
-                throw StoreError.writeFailed(
-                    path: layout.mirrorURL.path,
-                    reason: "imported the profile but could not rewrite the compatibility file"
-                )
+                throw StoreError.importCommittedButMirrorNotRestored
             }
             return shortcuts
         }
@@ -2084,10 +2117,7 @@ final class ShortcutProfileStore {
         // on screen to say so.
         guard writeMirrorForActiveProfile(profileID: activeProfileID, layout: layout) else {
             log("PROFILE_TRACE_IMPORT_MIRROR_NOT_RESTORED active=\(activeProfileID.uuidString)")
-            throw StoreError.writeFailed(
-                path: layout.mirrorURL.path,
-                reason: "imported the profile but could not restore the active profile's compat file"
-            )
+            throw StoreError.importCommittedButMirrorNotRestored
         }
         return nil
     }

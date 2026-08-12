@@ -454,8 +454,8 @@
 	<string>Target app</string>
 	<key>That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.</key>
 	<string>That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.</string>
-	<key>That file changed again — and it now matches your profile, so there is nothing left to import.</key>
-	<string>That file changed again — and it now matches your profile, so there is nothing left to import.</string>
+	<key>That file changed again — Wink re-checked it, and there is nothing left to import.</key>
+	<string>That file changed again — Wink re-checked it, and there is nothing left to import.</string>
 	<key>That profile changed while Wink was switching to it, so nothing was applied. Try again.</key>
 	<string>That profile changed while Wink was switching to it, so nothing was applied. Try again.</string>
 	<key>That profile no longer exists.</key>
@@ -464,6 +464,8 @@
 	<string>That profile’s shortcuts could not be read, so Wink did not switch to it. A copy of the unreadable file was kept.</string>
 	<key>The Settings toggle is live: background checks and downloads, on or off.</key>
 	<string>The Settings toggle is live: background checks and downloads, on or off.</string>
+	<key>The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.</key>
+	<string>The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.</string>
 	<key>The file no longer matches what Wink last wrote, and its contents could not be read. Wink has changed nothing.</key>
 	<string>The file no longer matches what Wink last wrote, and its contents could not be read. Wink has changed nothing.</string>
 	<key>The last automatic update check failed: %@</key>

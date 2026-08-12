@@ -1750,8 +1750,8 @@ struct ShortcutProfileMirrorTests {
             _ = try reloaded.adoptForeignMirror(mirror)
             Issue.record("expected the partial failure to be reported")
         } catch let error as ShortcutProfileStore.StoreError {
-            guard case .writeFailed = error else {
-                Issue.record("expected writeFailed, got \(error)")
+            guard case .importCommittedButMirrorNotRestored = error else {
+                Issue.record("expected importCommittedButMirrorNotRestored, got \(error)")
                 return
             }
         }
@@ -3016,8 +3016,8 @@ struct ShortcutProfileMirrorTests {
             _ = try reloaded.adoptForeignMirror(mirror)
             Issue.record("expected the partial failure to be reported")
         } catch let error as ShortcutProfileStore.StoreError {
-            guard case .writeFailed = error else {
-                Issue.record("expected writeFailed, got \(error)")
+            guard case .importCommittedButMirrorNotRestored = error else {
+                Issue.record("expected importCommittedButMirrorNotRestored, got \(error)")
                 return
             }
         }
@@ -3052,11 +3052,46 @@ struct ShortcutProfileMirrorTests {
         // quarantine this profile before detection ever saw its bytes; a
         // refresh classifying against the RAW bytes instead would let the
         // stale-repair branch overwrite a usable compat copy with the
-        // malformed payload — a write startup would never make.
+        // malformed payload — a write startup would never make. And it must
+        // not DISSOLVE either: classification being unavailable is not
+        // "nothing foreign remains", and the outside edit may be the user's
+        // best copy at exactly this moment. A same-target offer is rebuilt
+        // from the file, with nothing written.
         try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(after.activeProfileID))
         let mirrorBytesBefore = harness.data(at: harness.layout.mirrorURL)
 
-        #expect(reloaded.refreshedForeignMirrorOffer(replacing: mirror) == nil)
+        let refreshed = reloaded.refreshedForeignMirrorOffer(replacing: mirror)
+        #expect(refreshed?.profileID == mirror.profileID)
+        #expect(refreshed?.rawBytes == mirrorBytesBefore)
+        #expect(harness.data(at: harness.layout.mirrorURL) == mirrorBytesBefore)
+    }
+
+    @Test
+    func discardRefusesToCopyAMalformedActiveProfileIntoTheMirror() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        let store = harness.makeStore()
+        _ = store.load()
+        let foreign = [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        try harness.writeLegacyShortcuts(foreign)
+
+        let reloaded = harness.makeStore()
+        guard case .ready = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // "Keep this profile" copies the ACTIVE payload over the outside
+        // edit. If that payload has gone malformed since startup, copying it
+        // would report success while the next launch quarantines the profile
+        // and arms nothing — with the outside edit's only advertised copy
+        // gone. The strict read refuses instead, and the offer survives.
+        let activeID = try #require(reloaded.locator.currentActiveProfileID())
+        try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(activeID))
+        let mirrorBytesBefore = harness.data(at: harness.layout.mirrorURL)
+
+        #expect(reloaded.discardForeignMirror(activeShortcuts: []) == false)
         #expect(harness.data(at: harness.layout.mirrorURL) == mirrorBytesBefore)
     }
 

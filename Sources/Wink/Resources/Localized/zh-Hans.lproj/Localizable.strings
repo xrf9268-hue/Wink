@@ -458,8 +458,8 @@
 	<string>目标应用</string>
 	<key>That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.</key>
 	<string>该文件在 Wink 首次发现改动后又被修改了。现在显示的是最新版本——请确认后重试。</string>
-	<key>That file changed again — and it now matches your profile, so there is nothing left to import.</key>
-	<string>该文件又被修改了——现在它和你的配置一致，没有可导入的内容了。</string>
+	<key>That file changed again — Wink re-checked it, and there is nothing left to import.</key>
+	<string>该文件又被修改了——Wink 重新核查过，已经没有可导入的内容。</string>
 	<key>That profile changed while Wink was switching to it, so nothing was applied. Try again.</key>
 	<string>Wink 正在切换到该配置时它发生了改动，因此未应用任何更改。请重试。</string>
 	<key>That profile no longer exists.</key>
@@ -468,6 +468,8 @@
 	<string>该配置的快捷键无法读取，因此 Wink 没有切换过去。无法读取的文件已保留一份副本。</string>
 	<key>The Settings toggle is live: background checks and downloads, on or off.</key>
 	<string>设置中的开关即刻生效：后台检查与下载，随你开启或关闭。</string>
+	<key>The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.</key>
+	<string>改动已导入，但 shortcuts.json 兼容文件未能重写。请再试一次导入。</string>
 	<key>The file no longer matches what Wink last wrote, and its contents could not be read. Wink has changed nothing.</key>
 	<string>该文件与 Wink 上次写入的内容不一致，且其内容无法读取。Wink 未做任何改动。</string>
 	<key>The last automatic update check failed: %@</key>
