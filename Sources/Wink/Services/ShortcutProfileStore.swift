@@ -2092,12 +2092,34 @@ final class ShortcutProfileStore {
            fileManager.fileExists(atPath: layout.profileDataURL(mirror.profileID).path) {
             let adopted: [AppShortcut]?
             do {
-                adopted = try activateProfile(mirror.profileID)
-            } catch {
+                // The EXACT imported payload, never a re-read: between
+                // `writeProfileBytes` above and this commit, another writer
+                // can replace the file, and activating a re-read would apply
+                // payload B while the mirror below is verified against A —
+                // runtime and compat diverging under a success banner.
+                // `commitActivation`'s canonical recheck (the same one every
+                // explicit switch runs) turns that race into
+                // `profileChangedDuringOperation` instead.
+                try commitActivation(
+                    mirror.profileID,
+                    payload: ValidatedProfilePayload(shortcuts: shortcuts, bytes: mirror.rawBytes)
+                )
+                adopted = shortcuts
+            } catch let error as StoreError {
+                if case .profileChangedDuringOperation = error {
+                    // Nothing was activated and the file no longer holds the
+                    // imported payload — "the import landed" would be false.
+                    // The error's own message (changed underneath, try again)
+                    // is the honest one.
+                    throw error
+                }
                 // The data file above is already repaired: reporting this as
                 // an ordinary writeFailed would tell the user nothing was
                 // changed, which is false, and hide that a retry only needs
                 // to finish the activation.
+                log("PROFILE_TRACE_IMPORT_ACTIVATION_INCOMPLETE profile=\(mirror.profileID.uuidString)")
+                throw StoreError.importCommittedButActivationIncomplete
+            } catch {
                 log("PROFILE_TRACE_IMPORT_ACTIVATION_INCOMPLETE profile=\(mirror.profileID.uuidString)")
                 throw StoreError.importCommittedButActivationIncomplete
             }
