@@ -12,6 +12,9 @@ struct DiagnosticsStateTests {
         var cancelPanel = false
         var writeFails = false
         var logExists = true
+        /// When set, `writePackage` blocks on this until the test signals —
+        /// a deterministic stand-in for a slow external volume.
+        var writeGate: DispatchSemaphore?
     }
 
     private func makeState(
@@ -66,6 +69,7 @@ struct DiagnosticsStateTests {
                 },
                 writePackage: { url, package in
                     struct InjectedWriteFailure: Error {}
+                    recorder.writeGate?.wait()
                     if recorder.writeFails { throw InjectedWriteFailure() }
                     recorder.written.append((url, package))
                     return url
@@ -203,6 +207,37 @@ struct DiagnosticsStateTests {
 
         #expect(state.feedback?.isError == true)
         #expect(state.preview == previewed)
+    }
+
+    @Test
+    func anOldSaveCompletionDoesNotClearANewerPreview() async {
+        let recorder = Recorder()
+        let state = makeState(recorder: recorder)
+
+        // Save onto a "slow volume": the write blocks until released. The
+        // user cancels the sheet, prepares a NEW preview, and only then does
+        // the old save land — its completion must not dismiss the sheet the
+        // user is now reading.
+        let gate = DispatchSemaphore(value: 0)
+        state.prepareExport()
+        await state.waitForExportPreparationForTesting()
+        recorder.writeGate = gate
+        state.confirmExport()
+
+        state.cancelExport()
+        recorder.writeGate = nil
+        state.prepareExport()
+        await state.waitForExportPreparationForTesting()
+        let newer = state.preview
+        #expect(newer != nil)
+
+        gate.signal()
+        await state.waitForExportCompletionForTesting()
+
+        // The old save completed and says so; the newer preview is intact.
+        #expect(state.preview == newer)
+        #expect(state.feedback?.isError == false)
+        #expect(recorder.written.count == 1)
     }
 
     @Test

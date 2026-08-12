@@ -106,6 +106,7 @@ final class DiagnosticsState {
             // saw the sheet close — publishing now would reopen it.
             guard let self, !Task.isCancelled else { return }
             self.preview = package
+            self.previewGeneration &+= 1
             self.preparation = nil
         }
     }
@@ -127,6 +128,7 @@ final class DiagnosticsState {
         preparation?.cancel()
         preparation = nil
         preview = nil
+        previewGeneration &+= 1
     }
 
     /// Writes exactly the package the user was shown.
@@ -143,6 +145,7 @@ final class DiagnosticsState {
                 return
             }
             let writePackage = client.writePackage
+            let generation = previewGeneration
             saving = Task { [weak self] in
                 let outcome: Result<URL, Error> = await Task.detached(priority: .userInitiated) {
                     Result { try writePackage(directory, package) }
@@ -150,7 +153,18 @@ final class DiagnosticsState {
                 guard let self else { return }
                 switch outcome {
                 case let .success(written):
-                    self.preview = nil
+                    // Cleared only when the sheet still shows the GENERATION
+                    // this save was confirmed from. On a slow volume the
+                    // user may have cancelled and prepared a new preview
+                    // meanwhile — dismissing that one on the old save's
+                    // completion would close a sheet the user is reading.
+                    // Generation, not package value: two previews built in
+                    // the same second are value-equal and would alias. The
+                    // feedback is published either way: the save DID
+                    // complete.
+                    if self.previewGeneration == generation {
+                        self.preview = nil
+                    }
                     self.feedback = .success(
                         String(
                             localized: "Saved \(package.entries.count) files to \(written.lastPathComponent).",
@@ -158,9 +172,9 @@ final class DiagnosticsState {
                         )
                     )
                 case let .failure(error):
-                    // The preview stays up so the user can retry a different
-                    // folder without rebuilding — and without the contents
-                    // changing under them between the two attempts.
+                    // The originating preview stays up so the user can retry
+                    // a different folder without rebuilding; a NEWER preview
+                    // is left exactly as it is for the same reason.
                     self.feedback = .error(
                         String(
                             localized: "Could not write the diagnostics: \(error.localizedDescription)",
@@ -183,6 +197,12 @@ final class DiagnosticsState {
     /// The in-flight save; also the re-entrancy guard against a double
     /// Save click racing two writes into sibling folders.
     private var saving: Task<Void, Never>?
+
+    /// Bumped every time a preview is published or dismissed. A slow save's
+    /// completion compares against the value it was confirmed under, so it
+    /// can never dismiss a NEWER preview — package values cannot carry that
+    /// identity, because two previews built in the same second are equal.
+    private var previewGeneration: UInt64 = 0
 
     /// Lets a test await the published save outcome without polling.
     func waitForExportCompletionForTesting() async {

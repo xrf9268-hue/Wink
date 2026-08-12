@@ -201,6 +201,14 @@ struct DiagnosticsRedactorTests {
         // that merely CONTAINS a core mid-word does not fire.
         #expect(redactor().redact(line: "usersession=42abc") == "usersession=42abc")
         #expect(redactor().redact(line: "reSign=on") == "reSign=on")
+
+        // Acronym-prefixed forms: the core is preceded by an UPPERCASE
+        // letter, which neither the non-alphanumeric boundary nor the
+        // lowercase→uppercase seam can see.
+        for line in ["clientIDToken=abc123", "JWTToken=abc123", "APIToken: abc123"] {
+            let out = redactor().redact(line: line)
+            #expect(!out.contains("abc123"), "leaked: \(line) → \(out)")
+        }
     }
 
     @Test
