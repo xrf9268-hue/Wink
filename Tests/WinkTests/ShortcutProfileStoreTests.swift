@@ -2111,6 +2111,62 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aHalfDurablePreservationIsRemovedRatherThanTrustedOnRetry() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let first = harness.makeStore()
+        guard case let .ready(loaded) = first.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let profileID = loaded.activeProfileID
+        let mirrorBytes = try #require(harness.data(at: harness.layout.mirrorURL))
+        try PersistenceService.encodeShortcuts([makeTestShortcut(appName: "Advanced")])
+            .write(to: harness.layout.profileDataURL(profileID), options: .atomic)
+
+        // The durable write CREATES the candidate and then fails at its
+        // flush stage. Byte equality on a retry would treat that unflushed
+        // file as a completed durable copy, authorize the mirror overwrite,
+        // and let a power loss discard the only remaining copy.
+        let halfDurable = ShortcutProfileStore.WriteClient(
+            write: { data, url in try data.write(to: url, options: .atomic) },
+            writeDurable: { data, url in
+                struct InjectedFlushFailure: Error {}
+                try data.write(to: url, options: .atomic)
+                throw InjectedFlushFailure()
+            }
+        )
+        let store = harness.makeStore(writeClient: halfDurable)
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // Deferred — and the half-durable candidate is GONE, so nothing can
+        // find it byte-identical and trust it later.
+        #expect(harness.data(at: harness.layout.mirrorURL) == mirrorBytes)
+        let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(leftovers.isEmpty)
+
+        // A healthy retry then preserves for real and completes the repair.
+        let retry = harness.makeStore()
+        guard case .ready = retry.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let copies = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(copies.count == 1)
+        #expect(
+            harness.data(at: harness.layout.mirrorURL)
+                == harness.data(at: harness.layout.profileDataURL(profileID))
+        )
+    }
+
+    @Test
     func anImportIsRefusedWhileThoseIDsAreBeingDeleted() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

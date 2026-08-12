@@ -1041,7 +1041,25 @@ final class ShortcutProfileStore {
             layout.appDirectory.appendingPathComponent("shortcuts.unknown-\(dataDigest).json"),
         ]
         for candidate in candidates {
-            if fileHolds(data, at: candidate) { return true }
+            if fileHolds(data, at: candidate) {
+                // Byte equality proves CONTENT, not durability: a durable
+                // write that failed at its flush stage — this launch's,
+                // caught below, or a previous launch's — leaves a file whose
+                // rename may not be on stable storage. A copy AUTHORIZES an
+                // overwrite, so the barrier runs again before an existing
+                // candidate is accepted; re-flushing an already-flushed file
+                // is a cheap no-op on a healthy volume, and a volume that
+                // cannot flush must not authorize anything.
+                do {
+                    try WriteClient.flushToStableStorage(candidate)
+                    return true
+                } catch {
+                    let message = "PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVE_FAILED reason=reflush_failed"
+                    logger.error("\(message, privacy: .public)")
+                    diagnosticClient.log(message)
+                    return false
+                }
+            }
             guard !FileManager.default.fileExists(atPath: candidate.path) else { continue }
             do {
                 try writeClient.writeDurable(data, candidate)
@@ -1051,6 +1069,10 @@ final class ShortcutProfileStore {
                 let message = "PROFILE_TRACE_MIRROR_UNKNOWN_PRESERVE_FAILED reason=\(error.localizedDescription)"
                 logger.error("\(message, privacy: .public)")
                 diagnosticClient.log(message)
+                // A failed durable write must not leave a byte-identical
+                // candidate behind for the next attempt to find, trust, and
+                // authorize an overwrite with.
+                try? FileManager.default.removeItem(at: candidate)
                 return false
             }
         }
