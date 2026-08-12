@@ -53,6 +53,16 @@ costs a bot review cycle and pollutes the PR timeline.
      (clean pass, common on re-reviews).
   A watcher that only checks two of the three will misread "still
   running" and waste a quota round on a duplicate trigger.
+- PAGINATE the listings the watcher reads. REST
+  `gh api …/pulls/N/reviews` returns 30 per page, and `.[-1]` on an
+  unpaginated response is the last item of the FIRST page — the oldest
+  window, not the newest. #460 accumulated 70 review objects across its
+  rounds; an unpaginated watcher read "no verdict yet" for 55 minutes
+  after the review had landed on the current head, and the duplicate
+  re-trigger it prompted cost a quota round. Always `--paginate` on
+  REST listings; page GraphQL connections via
+  `pageInfo { hasNextPage endCursor }`; filter by author + timestamp,
+  never by position.
 - After pushing fixes: reply on each thread with the commit hash and what
   changed, resolve the thread, and trigger a fresh round. Repeat until a
   clean pass on the current head commit. Never resolve a thread whose fix
