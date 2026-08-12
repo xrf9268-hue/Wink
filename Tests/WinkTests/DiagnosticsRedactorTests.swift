@@ -171,6 +171,14 @@ struct DiagnosticsRedactorTests {
         let spaced = redactor().redact(line: "opened with password=abc, def; ghi status=ok")
         #expect(!spaced.contains("abc") && !spaced.contains("def") && !spaced.contains("ghi"))
         #expect(spaced.hasSuffix("status=ok"))
+
+        // Closing punctuation follows the same rule: consumed inside a
+        // secret, surviving when it genuinely delimits.
+        let closer = redactor().redact(line: "password=abc)def")
+        #expect(!closer.contains("def"))
+        let delimited = redactor().redact(line: "(password=abc) status=ok")
+        #expect(!delimited.contains("abc"))
+        #expect(delimited.hasSuffix(") status=ok"))
     }
 
     @Test

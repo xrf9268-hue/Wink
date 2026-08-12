@@ -197,16 +197,19 @@ struct DiagnosticsRedactor: Sendable {
         }
         // key=value / key: value / "key": "value". The unquoted arm consumes
         // the first token unconditionally, then each further chunk — across
-        // spaces, commas, and semicolons alike — only when it does not
-        // itself look like a `key=`/`key:` label. Every fixed-boundary
-        // choice had a counterexample: stopping at the first space exported
-        // most of `password: correct horse battery staple`, stopping at
-        // punctuation exported `,def` of `password=abc,def`, and consuming
-        // everything ate the `status=200 route=hyper` fields that make a
-        // log line worth reading. A secret is chunks; a sibling field is a
-        // label; the lookahead tells them apart. All possessive — the match
-        // ends at the value, so nothing ever needs giving back.
-        let pattern = #"(?i)("?\#(Self.sensitiveKeyPattern)"?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;)}\]"']++(?:[\s,;]++(?![\w.-]+\s*[:=])[^\s,;)}\]"']++)*+)"#
+        // spaces, commas, semicolons, closing brackets, and quotes alike —
+        // only when it does not itself look like a `key=`/`key:` label.
+        // Every fixed-boundary choice had a counterexample: stopping at the
+        // first space exported most of `password: correct horse battery
+        // staple`, stopping at punctuation exported `,def` and `)def`, and
+        // consuming everything ate the `status=200 route=hyper` fields that
+        // make a log line worth reading. A secret is chunks; a sibling
+        // field is a label; the lookahead tells them apart — and a closer
+        // that genuinely delimits (`(password=abc) status=ok`) survives
+        // because the lookahead stops the match before consuming it. All
+        // possessive — the match ends at the value, so nothing ever needs
+        // giving back.
+        let pattern = #"(?i)("?\#(Self.sensitiveKeyPattern)"?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;)}\]"']++(?:[\s,;)}\]"']++(?![\w.-]+\s*[:=])[^\s,;)}\]"']++)*+)"#
         value = value.replacingOccurrences(
             of: pattern,
             with: "$1\(Self.marker)",
