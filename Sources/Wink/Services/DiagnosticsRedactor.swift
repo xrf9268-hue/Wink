@@ -40,13 +40,19 @@ struct DiagnosticsRedactor: Sendable {
         "session", "signature", "sig",
     ]
 
-    /// One alternation with optional separator-attached affixes on both
-    /// sides. Built once; the cores above are patterns, not literals. The
-    /// leading lookbehind stops a mid-word start: without it `usersession=`
-    /// would match from `session` and fire on a label the separator rule
-    /// exists to exclude.
+    /// One alternation with a separator-attached SUFFIX only. There is no
+    /// prefix group, deliberately twice over: the lookbehind already admits a
+    /// core mid-compound (`AWS_SECRET_…` matches AT `SECRET`, preceded by
+    /// `_`), with the unmatched `AWS_` simply staying put in the output while
+    /// the value is what gets replaced — and a prefix group was the measured
+    /// quadratic hot spot (~130ms per 2,000-char `a.a.a.…signatureX=` line,
+    /// re-scanned greedily from every start position). The lookbehind is also
+    /// what stops a mid-word start: `usersession=` cannot fire from
+    /// `session`, because `r` is alphanumeric. The suffix quantifiers are
+    /// possessive — an iteration that matched never needs giving back, since
+    /// the `[:=]` tail cannot overlap `[_.-][A-Za-z0-9]`.
     private static let sensitiveKeyPattern =
-        #"(?<![A-Za-z0-9])(?:[A-Za-z0-9]+[_.-])*(?:"# + sensitiveKeyCores.joined(separator: "|") + #")(?:[_.-][A-Za-z0-9]+)*"#
+        #"(?<![A-Za-z0-9])(?:"# + sensitiveKeyCores.joined(separator: "|") + #")(?:[_.-][A-Za-z0-9]++)*+"#
 
     /// Header-shaped keys whose value runs to the end of the line and can
     /// contain spaces (`Authorization: Bearer …`). Stopping at the first
@@ -79,11 +85,22 @@ struct DiagnosticsRedactor: Sendable {
         // decode pass covers the accidental case (a legitimately encoded URL
         // in the log); decode LOOPS are out of scope — an adversary crafting
         // log content to survive one decode already writes to the log and
-        // owns the machine. Decoded newlines and NULs flatten to spaces so an
-        // embedded %0A cannot fake extra lines. Decoding never grows the
-        // string.
-        if value.contains("%"), let decoded = value.removingPercentEncoding, decoded != value {
-            value = String(decoded.map { $0.isNewline || $0 == "\0" ? " " : $0 })
+        // owns the machine. Decoded per RUN of escapes, not per line:
+        // `removingPercentEncoding` is all-or-nothing, so one bare `%`
+        // elsewhere in the line — `?progress=50%` — would keep every valid
+        // escape encoded and defeat the pass. Decoded newlines and NULs
+        // flatten to spaces so an embedded %0A cannot fake extra lines.
+        // Decoding never grows the string.
+        if value.contains("%") {
+            if let regex = try? NSRegularExpression(pattern: #"(?:%[0-9A-Fa-f]{2})+"#) {
+                let matches = regex.matches(in: value, range: NSRange(value.startIndex..., in: value)).reversed()
+                for match in matches {
+                    guard let range = Range(match.range, in: value) else { continue }
+                    guard let decoded = String(value[range]).removingPercentEncoding else { continue }
+                    let flattened = String(decoded.map { $0.isNewline || $0 == "\0" ? " " : $0 })
+                    value.replaceSubrange(range, with: flattened)
+                }
+            }
         }
         value = redactingHomePaths(value)
         value = redactingLabelledSecrets(value)
@@ -206,8 +223,13 @@ struct DiagnosticsRedactor: Sendable {
     /// with it, since a name in an authority is identifying even when it is
     /// not this account's. The host stays: it is what makes the line useful.
     private func redactingURLUserInfo(_ value: String) -> String {
+        // The scheme quantifier is BOUNDED and possessive: an unbounded
+        // `[a-zA-Z0-9+.-]*` consumes a whole separator-heavy line at every
+        // scan position before failing on `:`, which is quadratic in line
+        // length (measured on `a.a.a.…` probe lines). Real schemes are a
+        // handful of characters; 64 is generous headroom.
         value.replacingOccurrences(
-            of: #"([a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s"'@]+@"#,
+            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+://)[^/\s"'@]+@"#,
             with: "$1\(Self.marker)@",
             options: .regularExpression
         )
@@ -223,8 +245,10 @@ struct DiagnosticsRedactor: Sendable {
     /// `:` and `?` must be free of spaces — and over-redacting the rare
     /// `ratio:3?x` token is the cheap direction for a redactor to be wrong in.
     private func redactingURLQueries(_ value: String) -> String {
+        // Scheme bounded and possessive for the same quadratic-scan reason
+        // as the user-info rule above.
         value.replacingOccurrences(
-            of: #"([a-zA-Z][a-zA-Z0-9+.-]*:(?://)?[^\s"'?]*)\?[^\s"']*"#,
+            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+:(?://)?[^\s"'?]*)\?[^\s"']*"#,
             with: "$1?\(Self.marker)",
             options: .regularExpression
         )

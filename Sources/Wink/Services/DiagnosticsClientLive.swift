@@ -218,7 +218,14 @@ enum DiagnosticsClientLive {
             do {
                 try fileManager.createDirectory(at: candidate, withIntermediateDirectories: false)
                 return candidate
-            } catch let error as CocoaError where error.code == .fileWriteFileExists {
+            } catch {
+                // Collision detection by SEMANTICS, not error code: the
+                // existing-directory failure has surfaced as different
+                // CocoaError/NSError codes across macOS releases, and a
+                // missed bridging turns "try the next sibling" into a thrown
+                // export. If the candidate exists now, someone holds it —
+                // move on; anything else is a real failure.
+                guard fileManager.fileExists(atPath: candidate.path) else { throw error }
                 continue
             }
         }

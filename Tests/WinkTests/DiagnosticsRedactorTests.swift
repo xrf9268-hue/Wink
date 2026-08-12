@@ -201,6 +201,39 @@ struct DiagnosticsRedactorTests {
         #expect(!line.contains("%2F"))
     }
 
+    @Test
+    func aBarePercentElsewhereDoesNotDefeatTheDecode() {
+        // removingPercentEncoding is all-or-nothing per string: one bare `%`
+        // ("50%") used to keep every valid escape on the line encoded and
+        // invisible to the rules. Escapes are decoded per RUN instead.
+        let line = redactor().redact(line: "wink:open/%2FUsers%2Falice done: 50% complete")
+        #expect(!line.lowercased().contains("alice"))
+        #expect(line.contains("50% complete"))
+    }
+
+    @Test
+    func separatorHeavyLinesRedactInLinearTime() {
+        // The measured pathological shape: separator-heavy near-miss labels
+        // made the old prefix group re-scan from every start position
+        // (~130ms per 2,000-char line, near-quadratic). Asserted as a
+        // SCALING RATIO rather than a wall-clock ceiling — absolute timings
+        // flake under parallel test load, but 8× the input costing far more
+        // than 8× the time is machine-independent evidence of superlinear
+        // rescanning. Linear ≈ 8×, the old quadratic ≈ 64×; the bound leaves
+        // room for noise on both sides.
+        func measure(_ repeats: Int) -> TimeInterval {
+            let line = String(repeating: "a.", count: repeats) + "signatureX zz"
+            let redactor = redactor()
+            _ = redactor.redact(line: line) // warm-up: regex compile
+            let started = Date()
+            for _ in 0..<3 { _ = redactor.redact(line: line) }
+            return Date().timeIntervalSince(started)
+        }
+        let small = max(measure(500), 0.000_1)
+        let large = measure(4_000)
+        #expect(large / small < 24)
+    }
+
     // MARK: - Secrets
 
     @Test
