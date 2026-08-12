@@ -39,7 +39,7 @@ func makeInertDiagnosticsState() -> DiagnosticsState {
             readLogs: { [] },
             revealLog: { false },
             chooseExportDirectory: { _ in nil },
-            writePackage: { _, _ in },
+            writePackage: { url, _ in url },
             now: { Date(timeIntervalSince1970: 0) }
         )
     )

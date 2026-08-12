@@ -22,7 +22,10 @@ final class DiagnosticsState {
         /// Returns the chosen destination folder, or `nil` if the user
         /// cancelled. Cancelling is not an error.
         var chooseExportDirectory: @MainActor (_ suggestedName: String) throws -> URL?
-        var writePackage: @MainActor (_ directory: URL, _ package: DiagnosticsPackage) throws -> Void
+        /// Returns the directory it actually wrote — the implementation may
+        /// pick a unique sibling rather than merge into an existing folder,
+        /// and the success message must name the folder the files are in.
+        var writePackage: @MainActor (_ directory: URL, _ package: DiagnosticsPackage) throws -> URL
         var now: @MainActor () -> Date
     }
 
@@ -97,11 +100,11 @@ final class DiagnosticsState {
                 preview = nil
                 return
             }
-            try client.writePackage(directory, package)
+            let written = try client.writePackage(directory, package)
             preview = nil
             feedback = .success(
                 String(
-                    localized: "Saved \(package.entries.count) files to \(directory.lastPathComponent).",
+                    localized: "Saved \(package.entries.count) files to \(written.lastPathComponent).",
                     bundle: WinkResourceBundle.bundle
                 )
             )
@@ -126,52 +129,5 @@ final class DiagnosticsState {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         return "Wink-diagnostics-\(formatter.string(from: date))"
-    }
-}
-
-extension DiagnosticsState.Client {
-    /// The live wiring. Kept out of `DiagnosticsState` so nothing in the flow
-    /// can reach AppKit or the filesystem except through this one value.
-    @MainActor
-    static func live(
-        environment: @escaping @MainActor () -> DiagnosticsPackageBuilder.Environment,
-        runtime: @escaping @MainActor () -> DiagnosticsPackageBuilder.Runtime
-    ) -> DiagnosticsState.Client {
-        DiagnosticsState.Client(
-            environment: environment,
-            runtime: runtime,
-            readLogs: {
-                let primary = DiagnosticLog.logFileURL()
-                let rotated = URL(fileURLWithPath: primary.path + ".1")
-                return [
-                    (primary.lastPathComponent, try? String(contentsOf: primary, encoding: .utf8)),
-                    (rotated.lastPathComponent, try? String(contentsOf: rotated, encoding: .utf8)),
-                ]
-            },
-            revealLog: {
-                let url = DiagnosticLog.logFileURL()
-                guard FileManager.default.fileExists(atPath: url.path) else { return false }
-                NSWorkspace.shared.activateFileViewerSelecting([url])
-                return true
-            },
-            chooseExportDirectory: { suggestedName in
-                let panel = NSSavePanel()
-                panel.canCreateDirectories = true
-                panel.nameFieldStringValue = suggestedName
-                panel.prompt = String(localized: "Export", bundle: WinkResourceBundle.bundle)
-                guard panel.runModal() == .OK, let url = panel.url else { return nil }
-                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-                return url
-            },
-            writePackage: { directory, package in
-                for entry in package.entries {
-                    try Data(entry.contents.utf8).write(
-                        to: directory.appendingPathComponent(entry.name),
-                        options: .atomic
-                    )
-                }
-            },
-            now: Date.init
-        )
     }
 }

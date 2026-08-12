@@ -163,6 +163,50 @@ func collectLogsOmitsTheBackupEntryWhenNoRotationHasHappened() throws {
 }
 
 @Test
+func anExportNeverMergesIntoAnExistingFolder() throws {
+    let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: parent) }
+
+    // The folder from an earlier export, holding a file the CURRENT package
+    // no longer contains. Merging would leave it inside the folder the user
+    // shares — data the preview never showed.
+    let destination = parent.appendingPathComponent("Wink-diagnostics-20260812-010203", isDirectory: true)
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    let stale = destination.appendingPathComponent("debug.log.1")
+    try "earlier session, absent from the new preview".write(to: stale, atomically: true, encoding: .utf8)
+
+    let package = DiagnosticsPackage(entries: [
+        .init(name: "report.md", summary: "summary", contents: "fresh report"),
+    ])
+    let written = try DiagnosticsClientLive.write(package, to: destination)
+
+    // A unique sibling, containing exactly the previewed entries.
+    #expect(written != destination)
+    #expect(written.lastPathComponent == "Wink-diagnostics-20260812-010203-2")
+    let names = try FileManager.default.contentsOfDirectory(atPath: written.path).sorted()
+    #expect(names == ["report.md"])
+    // And the earlier export was left exactly as it was.
+    #expect(try String(contentsOf: stale, encoding: .utf8) == "earlier session, absent from the new preview")
+}
+
+@Test
+func anExportToAFreshNameUsesThatNameUnchanged() throws {
+    let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: parent) }
+
+    let destination = parent.appendingPathComponent("Wink-diagnostics-20260812-010203", isDirectory: true)
+    let package = DiagnosticsPackage(entries: [
+        .init(name: "report.md", summary: "summary", contents: "fresh report"),
+    ])
+    let written = try DiagnosticsClientLive.write(package, to: destination)
+
+    #expect(written == destination)
+    #expect(try String(contentsOf: destination.appendingPathComponent("report.md"), encoding: .utf8) == "fresh report")
+}
+
+@Test
 func collectLogsReportsAMissingPrimaryLogWithoutThrowing() {
     // A log that cannot be read is a diagnostic in its own right — collectLogs
     // must not throw or crash when the primary file does not exist.

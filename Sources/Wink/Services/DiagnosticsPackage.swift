@@ -168,7 +168,9 @@ struct DiagnosticsPackageBuilder: Sendable {
         lines.append("")
         if status.secureInputActive {
             lines.append("Secure Input is engaged right now. While it is, macOS withholds key")
-            lines.append("events from the Hyper route — this is expected, not a Wink failure,")
+            lines.append("events from every tap-dependent route — Hyper chords AND standard")
+            lines.append("Fn+F-row bindings, whose observer fails closed. Carbon-registered")
+            lines.append("standard chords keep working. This is expected, not a Wink failure,")
             lines.append("and it ends when the secure field or prompt is dismissed.")
             lines.append("")
         }

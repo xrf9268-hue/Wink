@@ -176,11 +176,39 @@ enum DiagnosticsClientLive {
         return directory.appendingPathComponent(suggestedName, isDirectory: true)
     }
 
-    private static func write(_ package: DiagnosticsPackage, to directory: URL) throws {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    /// Writes into a directory that did not exist before this call, and
+    /// returns it. Never merges into an existing folder: the suggested name
+    /// has second resolution, so two rapid exports (or a clock rollback)
+    /// resolve to the same path, and a silent reuse would leave files from
+    /// the earlier export — an older `debug.log.1`, say — inside the folder
+    /// the user shares, carrying data the preview never showed. A unique
+    /// sibling keeps both exports complete instead of failing the second one
+    /// for having clicked twice.
+    ///
+    /// Internal rather than private for the same reason as `collectLogs`:
+    /// pure filesystem work, directly testable against a temp directory.
+    static func write(_ package: DiagnosticsPackage, to directory: URL) throws -> URL {
+        let destination = uniqueDestination(for: directory)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         for entry in package.entries {
             try Data(entry.contents.utf8)
-                .write(to: directory.appendingPathComponent(entry.name), options: .atomic)
+                .write(to: destination.appendingPathComponent(entry.name), options: .atomic)
         }
+        return destination
+    }
+
+    /// `name`, `name-2`, `name-3`, … — the first sibling that does not exist
+    /// yet. The UUID tail is an unreachable-in-practice backstop that keeps
+    /// the loop bounded without a throw path nothing could handle better.
+    private static func uniqueDestination(for directory: URL) -> URL {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: directory.path) else { return directory }
+        let parent = directory.deletingLastPathComponent()
+        let base = directory.lastPathComponent
+        for counter in 2...9_999 {
+            let candidate = parent.appendingPathComponent("\(base)-\(counter)", isDirectory: true)
+            if !fileManager.fileExists(atPath: candidate.path) { return candidate }
+        }
+        return parent.appendingPathComponent("\(base)-\(UUID().uuidString)", isDirectory: true)
     }
 }

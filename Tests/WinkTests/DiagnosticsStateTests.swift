@@ -68,6 +68,7 @@ struct DiagnosticsStateTests {
                     struct InjectedWriteFailure: Error {}
                     if recorder.writeFails { throw InjectedWriteFailure() }
                     recorder.written.append((url, package))
+                    return url
                 },
                 now: { Date(timeIntervalSince1970: 1_770_000_000) }
             )

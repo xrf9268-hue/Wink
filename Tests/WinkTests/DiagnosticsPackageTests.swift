@@ -87,6 +87,12 @@ struct DiagnosticsPackageTests {
         )
         #expect(engaged.entries[0].contents.contains("Secure Input is engaged right now"))
         #expect(engaged.entries[0].contents.contains("not a Wink failure"))
+        // Both tap-dependent routes, by name: blaming only Hyper sends a
+        // user whose Fn+F-row binding stopped working off toward Carbon
+        // registration, the one route Secure Input does NOT touch.
+        #expect(engaged.entries[0].contents.contains("Hyper chords AND standard"))
+        #expect(engaged.entries[0].contents.contains("Fn+F-row bindings"))
+        #expect(engaged.entries[0].contents.contains("Carbon-registered"))
     }
 
     @Test
