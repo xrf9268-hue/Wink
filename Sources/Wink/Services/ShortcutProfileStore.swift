@@ -1372,27 +1372,46 @@ final class ShortcutProfileStore {
         return ShortcutOwnership(idsHeldElsewhere: ids, isComplete: isComplete)
     }
 
-    /// Shortcut ids whose usage rows are being deleted right now.
+    /// Shortcut ids whose usage rows are being deleted right now, with a
+    /// claim COUNT per id.
     ///
     /// Ownership is decided on the main actor and the deletion runs on the
     /// `UsageTracker` actor, so there is a suspension between them — and the
     /// main actor is free to run other work across it. Without this, an import
     /// admitting one of these ids mid-flight produces a live shortcut whose
     /// history is erased a moment later, which no recovery can undo.
-    private var usageDeletionsInFlight: Set<UUID> = []
+    ///
+    /// Counted, not a set: claimants can overlap. Two profile deletions in
+    /// quick succession each drain the journal, and the journal still lists
+    /// the first drain's ids until that drain finishes — so both tasks
+    /// legitimately claim them. With set semantics the first release would
+    /// remove the second task's claim, reopening the import window while its
+    /// `deleteUsage` is still in flight; a count only clears an id when every
+    /// claimant has released it.
+    private var usageDeletionsInFlight: [UUID: Int] = [:]
 
     /// Claims `ids` for deletion. Every path that can make a shortcut id live
     /// again must consult `isUsageDeletionInFlight` before admitting it.
+    /// Claims nest: each reserve needs its own release.
     func reserveUsageDeletions(_ ids: [UUID]) {
-        usageDeletionsInFlight.formUnion(ids)
+        for id in ids {
+            usageDeletionsInFlight[id, default: 0] += 1
+        }
     }
 
     func releaseUsageDeletions(_ ids: [UUID]) {
-        usageDeletionsInFlight.subtract(ids)
+        for id in ids {
+            guard let count = usageDeletionsInFlight[id] else { continue }
+            if count <= 1 {
+                usageDeletionsInFlight[id] = nil
+            } else {
+                usageDeletionsInFlight[id] = count - 1
+            }
+        }
     }
 
     func isUsageDeletionInFlight(_ ids: [UUID]) -> Bool {
-        !usageDeletionsInFlight.isDisjoint(with: ids)
+        ids.contains { usageDeletionsInFlight[$0] != nil }
     }
 
     /// Convenience for the single-shortcut deletion path.

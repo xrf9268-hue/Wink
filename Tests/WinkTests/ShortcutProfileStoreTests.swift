@@ -1602,6 +1602,31 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func usageDeletionClaimsNestAcrossOverlappingDrains() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        let store = harness.makeStore()
+        _ = store.load()
+
+        let id = UUID()
+        // Two drains can hold the same journalled id at once — the journal
+        // keeps listing it until the FIRST drain finishes, so a second
+        // deletion's drain legitimately claims it again. Set semantics would
+        // let the first release erase the second claim, reopening the import
+        // window while that drain's deleteUsage is still in flight.
+        store.reserveUsageDeletions([id])
+        store.reserveUsageDeletions([id])
+        store.releaseUsageDeletions([id])
+        #expect(store.isUsageDeletionInFlight([id]))
+        store.releaseUsageDeletions([id])
+        #expect(!store.isUsageDeletionInFlight([id]))
+        // Releasing with no claim outstanding stays a no-op.
+        store.releaseUsageDeletions([id])
+        #expect(!store.isUsageDeletionInFlight([id]))
+    }
+
+    @Test
     func adoptionRefusesWhenTheFileChangedAgainAfterTheOffer() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

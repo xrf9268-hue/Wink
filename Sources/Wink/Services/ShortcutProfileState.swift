@@ -493,6 +493,7 @@ final class ShortcutProfileState {
             // picker disabling a profile that is now perfectly loadable, until
             // the next relaunch says otherwise.
             unreadableProfileIDs.remove(mirror.profileID)
+            var discarded = DiscardedProfileSwitchDrafts()
             if let adopted {
                 // The store re-commits the pointer when this import is what
                 // repaired an unloadable active profile, so clearing the
@@ -503,15 +504,25 @@ final class ShortcutProfileState {
                     recovery = .none
                     profiles = store.manifest?.profiles ?? profiles
                 }
+                // The runtime set is about to be replaced wholesale, exactly
+                // as a switch replaces it — so the same preparation applies,
+                // in the same commit-then-prepare order (D14): a recorder,
+                // composer draft, or recipe preview was computed against the
+                // PRE-import bindings, and saving it into the imported
+                // profile would land stale conflict decisions and minted ids.
+                discarded = prepareForSwitch()
                 shortcutManager.applyLoadedShortcuts(adopted, source: .profileSwitch)
                 onProfileApplied()
             }
             pendingForeignMirror = nil
             errorMessage = nil
-            statusMessage = String(
+            let imported = String(
                 localized: "Imported the changes made outside Wink.",
                 bundle: WinkResourceBundle.bundle
             )
+            statusMessage = discarded.isEmpty
+                ? imported
+                : "\(imported) \(discardedMessage(discarded))"
         } catch ShortcutProfileStore.StoreError.foreignMirrorChangedSinceOffer {
             // The file was written again between the offer and the click, so
             // the store refused to roll it back. Replace the stale offer with
@@ -520,6 +531,16 @@ final class ShortcutProfileState {
             // edit until relaunch.
             pendingForeignMirror = pendingForeignMirror.flatMap {
                 store.refreshedForeignMirrorOffer(replacing: $0)
+            }
+            // A FIRST attempt can have repaired the target's data file and
+            // then thrown at the mirror restore; this retry then dissolves
+            // the offer (the file now matches the active profile) and nothing
+            // else would ever unmark the repaired profile until relaunch —
+            // every picker keeps disabling a profile that loads fine. Probe
+            // with the same strict read startup classifies with.
+            if unreadableProfileIDs.contains(mirror.profileID),
+               (try? store.shortcuts(in: mirror.profileID)) != nil {
+                unreadableProfileIDs.remove(mirror.profileID)
             }
             errorMessage = String(
                 localized: "That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.",

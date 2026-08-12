@@ -813,6 +813,125 @@ struct ShortcutProfileRecoveryRuntimeTests {
         #expect(tracker.attempts.values.contains(shared.id))
         #expect(store.pendingUsageDeletions() == [shared.id])
     }
+
+    @MainActor
+    @Test
+    func importingIntoTheActiveProfileDiscardsStaleDraftsFirst() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+        _ = harness.makeStore().load()
+        // An older build rewrites the compat file behind Wink's back.
+        try harness.writeLegacyShortcuts([terminalShortcut()])
+
+        let store = harness.makeStore()
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let prepared = CallbackRecorder<Bool>()
+        let state = ShortcutProfileState(
+            store: store,
+            shortcutManager: manager,
+            prepareForSwitch: {
+                prepared.record(true)
+                return DiscardedProfileSwitchDrafts()
+            }
+        )
+        _ = state.loadAtStartup()
+        #expect(state.pendingForeignMirror != nil)
+
+        // The import replaces the runtime set exactly as a switch does, so
+        // the same preparation runs, in the same commit-then-prepare order:
+        // a recorder, composer draft, or recipe preview computed against the
+        // PRE-import bindings must not survive to be saved into the imported
+        // profile.
+        state.adoptPendingForeignMirror()
+
+        #expect(prepared.count == 1)
+        #expect(state.pendingForeignMirror == nil)
+        #expect(state.errorMessage == nil)
+    }
+
+    @MainActor
+    @Test
+    func aDissolvedOfferUnmarksTheProfileItsFirstAttemptRepaired() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+        let setup = harness.makeStore()
+        guard case let .ready(loaded) = setup.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        let work = try setup.createProfile(named: "Work", duplicating: nil)
+        _ = try setup.activateProfile(work.id)
+
+        // Crash window of the Work→Default switch: the pointer moves back,
+        // the mirror write fails, and the descriptor keeps naming Work — the
+        // state that makes a later foreign edit's offer target the INACTIVE
+        // profile.
+        let mirrorURL = harness.layout.mirrorURL
+        let failing = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient(
+                write: { data, url in
+                    struct InjectedWriteFailure: Error {}
+                    if url == mirrorURL { throw InjectedWriteFailure() }
+                    try data.write(to: url, options: .atomic)
+                }
+            )
+        )
+        _ = failing.load()
+        _ = try failing.activateProfile(defaultID)
+
+        // An older build rewrites the file, and Work's own data file is
+        // unreadable — the state the import offer exists to repair.
+        try harness.writeLegacyShortcuts([terminalShortcut()])
+        try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(work.id))
+
+        let store = harness.makeStore()
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let state = ShortcutProfileState(store: store, shortcutManager: manager)
+        _ = state.loadAtStartup()
+        #expect(state.pendingForeignMirror?.profileID == work.id)
+        #expect(state.unreadableProfileIDs.contains(work.id))
+
+        // What a partially failed first attempt leaves on disk: Work's data
+        // repaired with the offered bytes, the active profile's bytes
+        // restored to the compat file, nothing else updated.
+        let foreignBytes = try #require(state.pendingForeignMirror?.rawBytes)
+        try foreignBytes.write(to: harness.layout.profileDataURL(work.id))
+        let activeBytes = try #require(harness.data(at: harness.layout.profileDataURL(defaultID)))
+        try activeBytes.write(to: mirrorURL)
+
+        // The retry: refused for drift, dissolved by reclassification — and
+        // the profile the first attempt repaired must come back readable
+        // without a relaunch, or every picker keeps disabling it.
+        state.adoptPendingForeignMirror()
+
+        #expect(state.pendingForeignMirror == nil)
+        #expect(!state.unreadableProfileIDs.contains(work.id))
+    }
 }
 
     @MainActor
