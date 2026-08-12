@@ -81,6 +81,23 @@ struct DiagnosticsRedactorTests {
     }
 
     @Test
+    func anOrdinaryUserNameInsideACompoundTokenIsStillRedacted() {
+        // The macOS default hostname is the user's own name plus a possessive
+        // — `yvans-MacBook-Pro.local` — and tokens like `alice123` are the
+        // name too. A boundary rule would skip both because a letter or digit
+        // follows, so names of three or more characters keep the plain
+        // substring match: for a redactor, a missed disclosure is worse than
+        // eating a word that happened to contain one.
+        let hostname = redactor().redact(line: "resolved host alices-MacBook-Pro.local")
+        #expect(!hostname.lowercased().contains("alice"))
+        #expect(hostname.contains(DiagnosticsRedactor.marker))
+
+        let compound = redactor().redact(line: "backup volume alice123 mounted")
+        #expect(!compound.lowercased().contains("alice"))
+        #expect(compound.contains(DiagnosticsRedactor.marker))
+    }
+
+    @Test
     func aSingleCharacterUserNameIsRedactedOnlyAtTokenBoundaries() {
         let redactor = DiagnosticsRedactor(homeDirectoryPath: "/Users/a", userName: "a")
 

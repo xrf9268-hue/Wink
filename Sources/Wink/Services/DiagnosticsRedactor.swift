@@ -98,19 +98,25 @@ struct DiagnosticsRedactor: Sendable {
     /// display name, a URL. Applied after path rules so it does not fight
     /// them.
     ///
-    /// Boundary-aware rather than a plain substring match: a bare
-    /// `\#(escaped)` would either have to skip short names entirely (a
-    /// 1-2 character name matches inside all sorts of ordinary words — "al"
-    /// is "sign-al", "norm-al") or, if applied unconditionally, redact those
-    /// same ordinary words into noise. Requiring that neither side of the
-    /// match be a letter or digit gets both right: a short name is still
-    /// caught when it stands alone as a path component, URL segment, or log
-    /// token (`/al/`, `by al `, `user=al&`), but never when it is merely
-    /// part of a longer word.
+    /// Two strategies by length, because the failure directions differ. A
+    /// name of three or more characters is redacted as a plain substring,
+    /// maximum recall: the name buried inside a compound token is still the
+    /// user's name — `yvans-MacBook-Pro.local`, `yvan123` — and for a
+    /// redactor a missed disclosure is worse than redacting a word that
+    /// happened to contain one. A 1–2 character name cannot use that rule
+    /// ("al" is inside "signal", "normal", "already" — the output would be
+    /// noise), so it is matched at token boundaries instead: caught when it
+    /// stands alone as a path component, URL segment, or log token (`/al/`,
+    /// `by al `, `user=al&`), never when it is merely part of a longer word.
+    /// Skipping short names entirely — the previous rule — left them
+    /// disclosed even standing alone, despite the preview's unconditional
+    /// claim that the username is removed.
     private func redactingUserName(_ value: String) -> String {
         guard !userName.isEmpty else { return value }
         let escaped = NSRegularExpression.escapedPattern(for: userName)
-        let pattern = #"(?<![A-Za-z0-9])\#(escaped)(?![A-Za-z0-9])"#
+        let pattern = userName.count >= 3
+            ? escaped
+            : #"(?<![A-Za-z0-9])\#(escaped)(?![A-Za-z0-9])"#
         return value.replacingOccurrences(
             of: pattern,
             with: Self.marker,
