@@ -1010,6 +1010,15 @@ final class ShortcutProfileStore {
     /// which is a deliberate discard of exactly those bytes.
     /// Whether `url` exists and holds exactly `expected`.
     nonisolated private static func fileHolds(_ expected: Data, at url: URL) -> Bool {
+        // lstat semantics first: a candidate that is a symbolic link can
+        // "hold" the right bytes only by resolving THROUGH to the mirror
+        // itself, and the authorization this check feeds is "an INDEPENDENT
+        // copy exists" — an alias is the opposite. Requiring a regular file
+        // is the property that matters: atomic-rename replacement keeps a
+        // hard link safe (the old inode keeps the old bytes), while a
+        // symlink, FIFO, or anything else never counts as a copy.
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              attributes[.type] as? FileAttributeType == .typeRegular else { return false }
         guard let current = try? Data(contentsOf: url) else { return false }
         return digest(current) == digest(expected)
     }

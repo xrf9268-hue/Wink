@@ -2111,6 +2111,50 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aSymlinkedPreservationCandidateIsNeverTrustedAsACopy() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let first = harness.makeStore()
+        guard case let .ready(loaded) = first.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let profileID = loaded.activeProfileID
+        let mirrorBytes = try #require(harness.data(at: harness.layout.mirrorURL))
+        try PersistenceService.encodeShortcuts([makeTestShortcut(appName: "Advanced")])
+            .write(to: harness.layout.profileDataURL(profileID), options: .atomic)
+
+        // A digest-named candidate that is a SYMLINK to the mirror "holds"
+        // the right bytes only by resolving through to the file about to be
+        // overwritten — the opposite of an independent copy. Following it
+        // would authorize the overwrite and lose the outside edit the
+        // moment the mirror is replaced.
+        let digestPrefix = sha256Hex(mirrorBytes).prefix(12)
+        let alias = harness.directory.appendingPathComponent("shortcuts.unknown-\(digestPrefix).json")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: harness.layout.mirrorURL)
+
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // The alias was skipped, an INDEPENDENT copy landed under the
+        // full-digest fallback name, and only then was the repair made.
+        let entries = (try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path))?
+            .filter { $0.hasPrefix("shortcuts.unknown-") } ?? []
+        #expect(entries.count == 2)
+        let fullName = "shortcuts.unknown-\(sha256Hex(mirrorBytes)).json"
+        #expect(harness.data(at: harness.directory.appendingPathComponent(fullName)) == mirrorBytes)
+        #expect(
+            harness.data(at: harness.layout.mirrorURL)
+                == harness.data(at: harness.layout.profileDataURL(profileID))
+        )
+    }
+
+    @Test
     func aHalfDurablePreservationIsRemovedRatherThanTrustedOnRetry() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
