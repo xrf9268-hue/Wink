@@ -915,6 +915,36 @@ struct ShortcutProfileCRUDTests {
     }
 
     @Test
+    func modifiedAtIsAMetadataTimestampContentSavesNeverTouchIt() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let clock = MutableBox(Date(timeIntervalSince1970: 1_770_000_000))
+        let store = harness.makeStore(dateProvider: { clock.value })
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let before = try #require(store.manifest?.profile(id: loaded.activeProfileID)).modifiedAt
+
+        // A content save's write order is data → mirror → descriptor, with no
+        // manifest write (D2/D3): modifiedAt tracks metadata edits, and a save
+        // that bumped it would put the profile list on every save's failure
+        // path for a value nothing reads.
+        clock.value += 100
+        let persistence = store.makeActiveProfilePersistenceService()
+        try persistence.save([makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")])
+        #expect(store.manifest?.profile(id: loaded.activeProfileID)?.modifiedAt == before)
+
+        // A rename's primary effect is already a manifest commit; modifiedAt
+        // rides that commit, adding no write of its own.
+        clock.value += 100
+        _ = try store.renameProfile(loaded.activeProfileID, to: "Personal")
+        #expect(store.manifest?.profile(id: loaded.activeProfileID)?.modifiedAt == clock.value)
+    }
+
+    @Test
     func theProfileCapIsEnforced() throws {
         let (harness, store, _) = try readyStore()
         defer { harness.cleanup() }
