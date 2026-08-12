@@ -2087,9 +2087,15 @@ final class ShortcutProfileStore {
         // pointer and hand the shortcuts back. Without this the import reports
         // success while the runtime stays at zero armed shortcuts until the
         // next relaunch.
+        // Whether this import must FINISH A RECOVERY is decided by the
+        // missing locator alone. The old fileExists precondition here let an
+        // external deletion between writeProfileBytes and this line fall
+        // through to the nil-active-profile return — a success report, a
+        // cleared offer, and zero shortcuts armed. With the precondition
+        // gone, the canonical recheck inside commitActivation reads the file
+        // itself and reports the disappearance as a refusal.
         if locator.currentActiveProfileID() == nil,
-           manifest?.profile(id: mirror.profileID) != nil,
-           fileManager.fileExists(atPath: layout.profileDataURL(mirror.profileID).path) {
+           manifest?.profile(id: mirror.profileID) != nil {
             let adopted: [AppShortcut]?
             do {
                 // The EXACT imported payload, never a re-read: between
@@ -2111,6 +2117,13 @@ final class ShortcutProfileStore {
                     // imported payload — "the import landed" would be false.
                     // The error's own message (changed underneath, try again)
                     // is the honest one.
+                    throw error
+                }
+                if case .profileUnreadable = error {
+                    // The canonical recheck found the file gone or unreadable
+                    // — the pre-pointer refusal for an external DELETION in
+                    // the same window. Same rule: nothing was activated, so
+                    // the refusal speaks for itself.
                     throw error
                 }
                 // The data file above is already repaired: reporting this as

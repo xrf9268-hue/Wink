@@ -3127,6 +3127,54 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aRecoveryImportWhoseFileVanishesRefusesInsteadOfReportingSuccess() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let dataURL = harness.layout.profileDataURL(loaded.activeProfileID)
+        try FileManager.default.removeItem(at: dataURL)
+
+        // The write client plays an external DELETER: the repaired file is
+        // removed inside the window between writeProfileBytes and the
+        // activation commit. The old fileExists precondition made this fall
+        // through to a success report with zero shortcuts armed; the
+        // canonical recheck refuses instead.
+        let reloaded = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient(
+                write: { data, url in
+                    if url == dataURL {
+                        try data.write(to: url, options: .atomic)
+                        try FileManager.default.removeItem(at: url)
+                    } else {
+                        try data.write(to: url, options: .atomic)
+                    }
+                }
+            )
+        )
+        guard case let .activeProfileUnreadable(_, _, _, importableMirror) = reloaded.load() else {
+            Issue.record("expected activeProfileUnreadable")
+            return
+        }
+        let mirror = try #require(importableMirror)
+
+        do {
+            _ = try reloaded.adoptForeignMirror(mirror)
+            Issue.record("expected the vanished file to refuse activation")
+        } catch let error as ShortcutProfileStore.StoreError {
+            guard case .profileUnreadable = error else {
+                Issue.record("expected profileUnreadable, got \(error)")
+                return
+            }
+        }
+        #expect(reloaded.locator.currentActiveProfileID() == nil)
+    }
+
+    @Test
     func recoveryReportsAStaleMirrorInsteadOfClaimingFullSuccess() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
