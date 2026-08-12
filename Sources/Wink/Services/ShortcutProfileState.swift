@@ -404,6 +404,7 @@ final class ShortcutProfileState {
             // path the manifest still lists it and its file survives, so
             // marking it readable would hide the one piece of state that
             // tells the user what is wrong with it.
+            var offerMirrorRestored = true
             if outcome.unrecoverableSwitchReason == nil {
                 unreadableProfileIDs.remove(profileID)
                 // The outside-edit banner addresses a profile by id, so once
@@ -423,7 +424,11 @@ final class ShortcutProfileState {
                 if pendingForeignMirror?.profileID == profileID {
                     pendingForeignMirror = nil
                     if outcome.newActiveProfileID == nil {
-                        store.restoreMirrorToActiveProfile()
+                        // The result feeds the same caveat the store-side
+                        // rewrite does: clearing the offer with the restore
+                        // refused would leave shortcuts.json exposing the
+                        // deleted profile's bindings with no warning.
+                        offerMirrorRestored = store.restoreMirrorToActiveProfile()
                     }
                 }
             }
@@ -452,8 +457,11 @@ final class ShortcutProfileState {
             // Same contract as manifest recovery: the delete cannot be
             // blocked on derived data, but full success must not be claimed
             // while shortcuts.json keeps exposing the deleted profile's
-            // bindings to the E2E harness and downgraded builds.
-            let mirrorCaveat: String? = outcome.mirrorRestored ? nil : String(
+            // bindings to the E2E harness and downgraded builds. Both
+            // rewrites count — the store's successor rewrite on an active
+            // delete, and the state's restore when an inactive delete
+            // dropped the offer targeting the deleted profile.
+            let mirrorCaveat: String? = (outcome.mirrorRestored && offerMirrorRestored) ? nil : String(
                 localized: "The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.",
                 bundle: WinkResourceBundle.bundle
             )
