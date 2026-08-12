@@ -614,7 +614,7 @@
           <div class="list">
             <div class="list-row">
               <span class="term">只有一部分失灵</span>
-              <span class="desc">那是通道问题，不是权限问题。普通修饰键组合（<kbd>⌃⌥K</kbd>）走 Carbon 热键；Hyper 层和 Fn 行的按键走事件监听。安全输入和「输入监控」只会挡住后一种，前一种照常工作——所以你的快捷键才会一半失灵、一半正常。</span>
+              <span class="desc">失灵的那批走的是同一条通道。普通修饰键组合（<kbd>⌃⌥K</kbd>）走 Carbon 热键；Hyper 层和 Fn 行的按键走事件监听——而事件监听有两种停摆方式，Carbon 都不受影响。如果菜单栏胶囊显示 <strong>Limited · Secure Input</strong>，是某个 App 占住了安全输入，它会自行恢复。否则去「系统设置 → 隐私与安全性」检查<strong>输入监控</strong>：那一项是真正的权限，撤销它杀掉的恰好就是走事件监听的那一半快捷键。</span>
             </div>
             <div class="list-row">
               <span class="term">全部失灵</span>
