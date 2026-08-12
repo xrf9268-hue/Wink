@@ -9,7 +9,7 @@ struct EventTapManagerOwnedSessionTests {
     @Test @MainActor
     func replacementTapFailureExecutesRetryDegradesAndStopsIdempotently() async {
         let runtime = RecordingEventTapRuntime(replacementTapFailuresPerGeneration: 2)
-        let manager = EventTapManager(runtimeFactory: runtime.factory)
+        let manager = EventTapManager(runtimeFactory: runtime.factory, bindingGeneration: BindingGeneration())
 
         #expect(manager.start { _ in true } == .started)
         let running = manager.ownershipSnapshot
@@ -44,7 +44,7 @@ struct EventTapManagerOwnedSessionTests {
     @Test @MainActor
     func replacementSourceFailureReleasesEachTapAndDegrades() async {
         let runtime = RecordingEventTapRuntime(replacementSourceFailuresPerGeneration: 2)
-        let manager = EventTapManager(runtimeFactory: runtime.factory)
+        let manager = EventTapManager(runtimeFactory: runtime.factory, bindingGeneration: BindingGeneration())
 
         #expect(manager.start { _ in true } == .started)
         await runtime.triggerRecreationThreshold()
@@ -72,7 +72,7 @@ struct EventTapManagerOwnedSessionTests {
     @Test @MainActor
     func replacementTapFailureRetriesThenRecoversWithOneOwner() async {
         let runtime = RecordingEventTapRuntime(replacementTapFailuresPerGeneration: 1)
-        let manager = EventTapManager(runtimeFactory: runtime.factory)
+        let manager = EventTapManager(runtimeFactory: runtime.factory, bindingGeneration: BindingGeneration())
 
         #expect(manager.start { _ in true } == .started)
         await runtime.triggerRecreationThreshold()
@@ -98,7 +98,7 @@ struct EventTapManagerOwnedSessionTests {
     @Test @MainActor
     func initialTapFailureStopsTwiceWithoutLeakingPartialOwner() {
         let runtime = RecordingEventTapRuntime(initialTapFailures: 1)
-        let manager = EventTapManager(runtimeFactory: runtime.factory)
+        let manager = EventTapManager(runtimeFactory: runtime.factory, bindingGeneration: BindingGeneration())
 
         #expect(manager.start { _ in true } == .failedToCreateTap)
         let failed = manager.ownershipSnapshot
@@ -117,7 +117,7 @@ struct EventTapManagerOwnedSessionTests {
     @Test @MainActor
     func initialSourceFailureStopsTwiceAndReleasesCreatedTap() {
         let runtime = RecordingEventTapRuntime(initialSourceFailures: 1)
-        let manager = EventTapManager(runtimeFactory: runtime.factory)
+        let manager = EventTapManager(runtimeFactory: runtime.factory, bindingGeneration: BindingGeneration())
 
         #expect(manager.start { _ in true } == .failedToCreateTap)
         let failed = manager.ownershipSnapshot
@@ -137,7 +137,7 @@ struct EventTapManagerOwnedSessionTests {
     @Test @MainActor
     func twentyFailStopRestartCyclesKeepExactlyOneOwnerAndReleaseAllPriorGenerations() async {
         let runtime = RecordingEventTapRuntime(replacementTapFailuresPerGeneration: 2)
-        let manager = EventTapManager(runtimeFactory: runtime.factory)
+        let manager = EventTapManager(runtimeFactory: runtime.factory, bindingGeneration: BindingGeneration())
 
         #expect(manager.start { _ in true } == .started)
         for _ in 1...20 {
@@ -183,7 +183,7 @@ struct EventTapManagerOwnedSessionTests {
     @Test @MainActor
     func callbacksCapturedFromStoppedGenerationCannotReachRestartedOwner() async {
         let runtime = RecordingEventTapRuntime()
-        let manager = EventTapManager(runtimeFactory: runtime.factory)
+        let manager = EventTapManager(runtimeFactory: runtime.factory, bindingGeneration: BindingGeneration())
         var handledCount = 0
 
         #expect(manager.start { _ in
@@ -235,7 +235,7 @@ struct EventTapManagerOwnedSessionTests {
     @Test @MainActor
     func directRestartTearsDownPartialOwnerBeforePublishingNewGeneration() {
         let runtime = RecordingEventTapRuntime()
-        let manager = EventTapManager(runtimeFactory: runtime.factory)
+        let manager = EventTapManager(runtimeFactory: runtime.factory, bindingGeneration: BindingGeneration())
 
         #expect(manager.start { _ in true } == .started)
         manager.setHyperKeyEnabled(true)

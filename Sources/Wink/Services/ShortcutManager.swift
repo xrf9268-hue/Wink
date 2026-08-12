@@ -306,23 +306,84 @@ final class ShortcutManager {
         onHoldActionTriggered?(match)
     }
 
+    /// Why a whole shortcut set is being applied. The two callers differ in
+    /// exactly two respects, and naming them here keeps both visible at the
+    /// single apply site instead of scattering flags.
+    enum ApplySource: Sendable {
+        /// An ordinary edit: add, remove, toggle, reorder, recipe import.
+        case save
+        /// The active profile changed. Every chord in the outgoing set may be
+        /// absent from the incoming one.
+        case profileSwitch
+
+        var cycleInvalidationReason: String {
+            switch self {
+            case .save: return "shortcut_configuration_changed"
+            case .profileSwitch: return "profile_switched"
+            }
+        }
+
+        /// A save keeps the existing stale-hold-degrades-to-tap behavior: the
+        /// chord almost certainly still exists, so dispatching it as a tap is
+        /// closer to the user's intent than dropping the press. A profile
+        /// switch cannot assume that — the chord may not be bound at all in
+        /// the incoming set — so a gesture straddling it is dropped, the same
+        /// rule the pause transition already applies.
+        var dropsInFlightGestures: Bool {
+            switch self {
+            case .save: return false
+            case .profileSwitch: return true
+            }
+        }
+    }
+
     /// Persists to disk first and only then updates the in-memory store, so a
     /// failed write cannot leave the running app showing state that silently
-    /// reverts on next launch (`shortcuts.json` is the canonical state).
+    /// reverts on next launch (the active profile's file is the canonical
+    /// state).
     func save(shortcuts: [AppShortcut]) throws {
-        let inputMonitoringWasRequired = captureCoordinator.inputMonitoringRequired
         try persistenceService.save(shortcuts)
+        applyLoadedShortcuts(shortcuts, source: .save)
+    }
+
+    /// Applies an already-persisted shortcut set to the live runtime.
+    ///
+    /// Runs synchronously on the main actor with no suspension point, so
+    /// there is no observable moment at which `ShortcutStore.shortcuts` and
+    /// `triggerIndex` come from different sets. That is a structural property
+    /// of the isolation, not a timing assumption — which is why a profile
+    /// switch reuses this exact block instead of growing a second capture
+    /// synchronization stack.
+    ///
+    /// The caller is responsible for having committed the new state to disk
+    /// first (`save(shortcuts:)` above, or the profile store's active-pointer
+    /// commit), preserving the persist-then-mutate rule in both directions.
+    func applyLoadedShortcuts(_ shortcuts: [AppShortcut], source: ApplySource) {
+        let inputMonitoringWasRequired = captureCoordinator.inputMonitoringRequired
         shortcutStore.replaceAll(with: shortcuts)
         rebuildIndex()
         handleCaptureConfigurationChange(
             inputMonitoringWasRequired: inputMonitoringWasRequired
         )
+        // AFTER the providers hold the incoming sets, not before anything is
+        // replaced: every event accepted during the transition — matched
+        // against the OUTGOING sets on the tap thread — must still carry the
+        // OLD generation so the delivery guard drops it. Advancing first
+        // opened a window where such an event sampled the new value, passed
+        // the guard, and resolved through the incoming trigger index. The
+        // trade runs in the safe direction: an event matched against the
+        // NEW sets in the instant before this line is dropped too — one
+        // missed keypress during a switch, never a wrong dispatch.
+        MatchedShortcutDelivery.bindingGeneration.advance()
+        if source.dropsInFlightGestures {
+            holdGestureArbiter?.reset()
+        }
         // Any configuration change may alter a shortcut's effective
         // frontmost behavior (per-shortcut override included); an
         // in-flight cycle cursor must not survive it, or a stale session
         // could steer the next gesture and qualify for the relaxed
         // cycle cooldown.
-        appSwitcher.invalidateWindowCycleSession(reason: "shortcut_configuration_changed")
+        appSwitcher.invalidateWindowCycleSession(reason: source.cycleInvalidationReason)
         // Adding/removing the first (or last) enabled Hyper shortcut starts
         // or stops the tap synchronously inside the rebuild above; without a
         // push here the cheat-sheet gate and General tab lag on the cached

@@ -120,6 +120,14 @@ final class ShortcutEditorState {
     private let usageTracker: (any UsageTracking)?
     @ObservationIgnored private var usageRefreshGeneration: UInt64 = 0
     private let onShortcutConfigurationChange: @MainActor () -> Void
+    /// Whether some OTHER profile still holds this shortcut ID. Defaults to
+    /// "no" for the single-store case; production wires it to the profile
+    /// store, which answers fail-closed.
+    private let isShortcutRetainedByAnotherProfile: @MainActor (UUID) -> Bool
+    /// Claims and releases a usage deletion across the actor hop, so an import
+    /// cannot admit the id in between. Defaults to a no-op for the tests and
+    /// callers that have no profile store behind them.
+    private let reserveUsageDeletion: @MainActor (UUID, Bool) -> Void
     private let shortcutValidator = ShortcutValidator()
     private let recipeCodec: WinkRecipeCodec
     private let recipeImportPlanner: WinkRecipeImportPlanner
@@ -134,6 +142,8 @@ final class ShortcutEditorState {
         recipeImportPlanner: WinkRecipeImportPlanner = WinkRecipeImportPlanner(),
         recipeTransferClient: RecipeTransferClient = .live,
         appBundleLocator: AppBundleLocator = AppBundleLocator(),
+        isShortcutRetainedByAnotherProfile: @escaping @MainActor (UUID) -> Bool = { _ in false },
+        reserveUsageDeletion: @escaping @MainActor (UUID, Bool) -> Void = { _, _ in },
         onShortcutConfigurationChange: @escaping @MainActor () -> Void = {}
     ) {
         self.shortcutStore = shortcutStore
@@ -143,6 +153,8 @@ final class ShortcutEditorState {
         self.recipeImportPlanner = recipeImportPlanner
         self.recipeTransferClient = recipeTransferClient
         self.appBundleLocator = appBundleLocator
+        self.isShortcutRetainedByAnotherProfile = isShortcutRetainedByAnotherProfile
+        self.reserveUsageDeletion = reserveUsageDeletion
         self.onShortcutConfigurationChange = onShortcutConfigurationChange
         self.shortcuts = shortcutStore.shortcuts
         observeShortcutStore()
@@ -296,15 +308,78 @@ final class ShortcutEditorState {
         )
     }
 
+    /// True while the user holds work that replacing the whole shortcut set
+    /// would destroy. #438's automatic (Focus-selected) profile switches must
+    /// defer on this; a manual switch may discard it, but never silently.
+    var hasUnsavedWork: Bool {
+        isRecordingShortcut
+            || isRecordingSearchPaletteShortcut
+            || pendingRecipeImport != nil
+            || recordedShortcut != nil
+            || !selectedBundleIdentifier.isEmpty
+    }
+
+    /// Clears drafts before the active profile changes, reporting what went.
+    ///
+    /// The import preview in particular *must* go: its conflict decisions and
+    /// minted IDs were computed against the outgoing profile, so applying it
+    /// to a different one would be plainly wrong. Discarding is the only
+    /// correct behavior; the requirement is that it is surfaced, not silent.
+    @discardableResult
+    func cancelDraftsForProfileSwitch() -> DiscardedProfileSwitchDrafts {
+        var discarded = DiscardedProfileSwitchDrafts()
+
+        if isRecordingShortcut || isRecordingSearchPaletteShortcut {
+            discarded.cancelledRecorder = true
+            // Clearing both flags releases the #417/#419 dispatch gate through
+            // the existing didSet, so the incoming profile's chords are live
+            // the moment the switch applies.
+            isRecordingShortcut = false
+            isRecordingSearchPaletteShortcut = false
+        }
+
+        if recordedShortcut != nil || !selectedBundleIdentifier.isEmpty || !selectedAppName.isEmpty {
+            discarded.discardedComposerDraft = true
+        }
+        resetDraft()
+        recordedSearchPaletteShortcut = nil
+
+        if pendingRecipeImport != nil {
+            discarded.discardedImportPreview = true
+            pendingRecipeImport = nil
+        }
+
+        conflictMessage = nil
+        searchPaletteConflictMessage = nil
+        return discarded
+    }
+
     func removeShortcut(id: UUID) {
         let updated = shortcuts.filter { $0.id != id }
         guard persist(updated) else { return }
         onShortcutConfigurationChange()
-        if let usageTracker {
-            Task {
-                await usageTracker.deleteUsage(shortcutId: id)
-                await refreshUsageCounts()
-            }
+        // Usage is keyed by shortcut UUID alone, and IDs can repeat across
+        // profiles when a file was hand-copied or a backup partially restored
+        // (the store reports those rather than repairing them). Deleting here
+        // must not erase history that another profile's shortcut still owns,
+        // and the check fails closed: an unreadable sibling counts as holding
+        // the ID, because a stale usage row costs nothing and a wrongly
+        // deleted history cannot be recovered.
+        guard let usageTracker, !isShortcutRetainedByAnotherProfile(id) else {
+            Task { await refreshUsageCounts() }
+            return
+        }
+        // Claimed BEFORE the hop. Ownership was decided on the main actor just
+        // above, and the deletion lands on another actor later; without this an
+        // import could admit the id in between and end up with a live shortcut
+        // whose history is erased a moment later.
+        reserveUsageDeletion(id, true)
+        Task { [reserveUsageDeletion] in
+            // Best effort here: this deletion is not journalled, because the
+            // shortcut row it belongs to is gone from the profile either way.
+            _ = await usageTracker.deleteUsage(shortcutId: id)
+            await MainActor.run { reserveUsageDeletion(id, false) }
+            await refreshUsageCounts()
         }
     }
 

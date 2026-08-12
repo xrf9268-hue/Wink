@@ -1,4 +1,11 @@
+import CryptoKit
 import Foundation
+
+/// Hex SHA-256, for tests that must predict the store's digest-derived
+/// preservation filenames without reaching into its private helpers.
+func sha256Hex(_ data: Data) -> String {
+    SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+}
 
 /// Collects values written by a callback so a test can read them from its own
 /// isolation domain.
@@ -49,4 +56,18 @@ final class CallbackRecorder<Value>: @unchecked Sendable {
 /// executed.
 func drainMainQueue() async {
     await MainActor.run {}
+}
+
+/// A `Sendable` mutable flag for injected closures, which cannot capture a
+/// `var` under strict concurrency.
+final class MutableBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: Value
+
+    init(_ value: Value) { storage = value }
+
+    var value: Value {
+        get { lock.lock(); defer { lock.unlock() }; return storage }
+        set { lock.lock(); defer { lock.unlock() }; storage = newValue }
+    }
 }

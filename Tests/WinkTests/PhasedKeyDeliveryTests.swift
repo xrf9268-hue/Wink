@@ -101,6 +101,44 @@ struct PhasedKeyDeliveryEventTapTests {
     }
 
     @Test
+    func aPhasedEdgeAcceptedUnderTheOldBindingSetIsDropped() async {
+        let keyPress = KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.command])
+        let box = EventTapBox()
+        let generation = BindingGeneration()
+        box.bindingGeneration = generation
+        let deliveries = CallbackRecorder<KeyEventPhase>()
+        box.setPhasedKeyObserver { _, phase in deliveries.record(phase) }
+
+        // Accepted under one configuration, then the whole binding set is
+        // replaced before the main queue runs the delivery. The ordinary
+        // channel's drop test, replayed on the phased channel that used to
+        // bypass the guard: letting this down edge through would start a
+        // hold gesture that resolves through the incoming profile's index.
+        box.notifyPhasedKeyEvent(keyPress, .down)
+        generation.advance()
+
+        // FIFO: the delivery block was enqueued before this drain, so a
+        // delivery that survived the guard would already be recorded.
+        await drainMainQueue()
+        #expect(deliveries.isEmpty, "a stale phased edge must not reach the gesture consumer")
+    }
+
+    @Test
+    func aPhasedEdgeWithNoInterveningApplyStillArrives() async {
+        let keyPress = KeyPress(keyCode: CGKeyCode(kVK_ANSI_A), modifiers: [.command])
+        let box = EventTapBox()
+        box.bindingGeneration = BindingGeneration()
+        let deliveries = CallbackRecorder<KeyEventPhase>()
+        box.setPhasedKeyObserver { _, phase in deliveries.record(phase) }
+
+        box.notifyPhasedKeyEvent(keyPress, .down)
+        box.notifyPhasedKeyEvent(keyPress, .up)
+
+        await drainMainQueue()
+        #expect(deliveries.values == [.down, .up], "the guard must not eat uninterrupted deliveries")
+    }
+
+    @Test
     func downThenUpArriveInOrderOnThePhasedChannel() async {
         // Ordering is the reason the phased channel hops through the main
         // dispatch queue instead of per-event Tasks: an up overtaking its

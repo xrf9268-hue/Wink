@@ -7,7 +7,7 @@ actor DelayedUsageTracker: UsageTracking {
     func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
         []
     }
-    func deleteUsage(shortcutId: UUID) {}
+    func deleteUsage(shortcutId: UUID) -> Bool { true }
     let shortcutId: UUID
 
     init(shortcutId: UUID) {
@@ -51,7 +51,7 @@ actor BoundaryCrossingUsageTracker: UsageTracking {
     func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
         []
     }
-    func deleteUsage(shortcutId: UUID) {}
+    func deleteUsage(shortcutId: UUID) -> Bool { true }
     let shortcutId: UUID
 
     init(shortcutId: UUID) {
@@ -92,7 +92,7 @@ actor TimeZoneAlignedUsageTracker: UsageTracking {
     func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
         []
     }
-    func deleteUsage(shortcutId: UUID) {}
+    func deleteUsage(shortcutId: UUID) -> Bool { true }
     let shortcutId: UUID
     let timeZone: TimeZone
 
@@ -146,7 +146,7 @@ private actor SingleShortcutUsageTracker: UsageTracking {
     }
 
     func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] { [] }
-    func deleteUsage(shortcutId: UUID) {}
+    func deleteUsage(shortcutId: UUID) -> Bool { true }
     func usageCounts(days: Int, relativeTo now: Date) async -> [UUID: Int] { [usedShortcutId: 5] }
     func dailyCounts(days: Int, relativeTo now: Date) async -> [String: [(date: String, count: Int)]] { [:] }
     func totalSwitches(days: Int, relativeTo now: Date) async -> Int { 5 }
@@ -392,7 +392,7 @@ private actor ActivationTotalsUsageTracker: UsageTracking {
     func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
         totals
     }
-    func deleteUsage(shortcutId: UUID) {}
+    func deleteUsage(shortcutId: UUID) -> Bool { true }
     func usageCounts(days: Int, relativeTo now: Date) async -> [UUID: Int] { [:] }
     func dailyCounts(days: Int, relativeTo now: Date) async -> [String: [(date: String, count: Int)]] { [:] }
     func totalSwitches(days: Int, relativeTo now: Date) async -> Int { 0 }

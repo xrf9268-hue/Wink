@@ -2,8 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>%@ (can't be read)</key>
+	<string>%@ (can't be read)</string>
 	<key>%@ Last checked %@.</key>
 	<string>%@ Last checked %@.</string>
+	<key>%@ copy</key>
+	<string>%@ copy</string>
+	<key>%@ copy %lld</key>
+	<string>%@ copy %lld</string>
 	<key>%@ has not been activated in the past 7 days.</key>
 	<string>%@ has not been activated in the past 7 days.</string>
 	<key>%@ have not been activated in the past 7 days.</key>
@@ -24,6 +30,8 @@
 	<string>30 days</string>
 	<key>7 days</key>
 	<string>7 days</string>
+	<key>A copy of the unreadable file was saved to %@.</key>
+	<string>A copy of the unreadable file was saved to %@.</string>
 	<key>A password field or secure prompt is capturing keyboard input. Hyper and Fn-based shortcuts may not fire until it ends; other standard shortcuts keep working.</key>
 	<string>A password field or secure prompt is capturing keyboard input. Hyper and Fn-based shortcuts may not fire until it ends; other standard shortcuts keep working.</string>
 	<key>Accessibility</key>
@@ -36,12 +44,16 @@
 	<string>Activations</string>
 	<key>Add App…</key>
 	<string>Add App…</string>
+	<key>Add Profile</key>
+	<string>Add Profile</string>
 	<key>Add Shortcut</key>
 	<string>Add Shortcut</string>
 	<key>All Apps</key>
 	<string>All Apps</string>
 	<key>All shortcuts are paused.</key>
 	<string>All shortcuts are paused.</string>
+	<key>Another profile already uses that name.</key>
+	<string>Another profile already uses that name.</string>
 	<key>App is currently running</key>
 	<string>App is currently running</string>
 	<key>App unavailable</key>
@@ -74,6 +86,8 @@
 	<string>Checking for updates…</string>
 	<key>Checking, download progress, and installs now happen right here — no more separate update dialogs.</key>
 	<string>Checking, download progress, and installs now happen right here — no more separate update dialogs.</string>
+	<key>Choose a profile</key>
+	<string>Choose a profile</string>
 	<key>Choose an app…</key>
 	<string>Choose an app…</string>
 	<key>Clear</key>
@@ -100,6 +114,10 @@
 	<string>Couldn't find this app. Rebind it to restore the shortcut.</string>
 	<key>Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.</key>
 	<string>Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.</string>
+	<key>Create, rename, duplicate, or delete profiles.</key>
+	<string>Create, rename, duplicate, or delete profiles.</string>
+	<key>Created the profile “%@”.</key>
+	<string>Created the profile “%@”.</string>
 	<key>Current App</key>
 	<string>Current App</string>
 	<key>Cycle</key>
@@ -108,10 +126,16 @@
 	<string>D</string>
 	<key>Default</key>
 	<string>Default</string>
+	<key>Delete Profile</key>
+	<string>Delete Profile</string>
 	<key>Delete Shortcut</key>
 	<string>Delete Shortcut</string>
+	<key>Delete “%@”?</key>
+	<string>Delete “%@”?</string>
 	<key>Disabled</key>
 	<string>Disabled</string>
+	<key>Dismiss</key>
+	<string>Dismiss</string>
 	<key>Download and install new versions in the background.</key>
 	<string>Download and install new versions in the background.</string>
 	<key>Downloading Update</key>
@@ -126,8 +150,12 @@
 	<string>Downloading… %@ of %@</string>
 	<key>Drag to reorder</key>
 	<string>Drag to reorder</string>
+	<key>Duplicate current profile</key>
+	<string>Duplicate current profile</string>
 	<key>Enable All Shortcuts</key>
 	<string>Enable All Shortcuts</string>
+	<key>Enter a profile name.</key>
+	<string>Enter a profile name.</string>
 	<key>Exported %lld shortcuts to %@</key>
 	<string>Exported %lld shortcuts to %@</string>
 	<key>Export…</key>
@@ -180,12 +208,16 @@
 	<string>Import Preview</string>
 	<key>Import and export .winkrecipe files, with usage insights in Settings.</key>
 	<string>Import and export .winkrecipe files, with usage insights in Settings.</string>
+	<key>Import into “%@”</key>
+	<string>Import into “%@”</string>
 	<key>Import or export shortcuts</key>
 	<string>Import or export shortcuts</string>
 	<key>Import preview ready: %lld ready, %lld conflicts, %lld unresolved</key>
 	<string>Import preview ready: %lld ready, %lld conflicts, %lld unresolved</string>
 	<key>Imported %lld shortcuts</key>
 	<string>Imported %lld shortcuts</string>
+	<key>Imported the changes made outside Wink.</key>
+	<string>Imported the changes made outside Wink.</string>
 	<key>Import…</key>
 	<string>Import…</string>
 	<key>Input Monitoring</key>
@@ -210,6 +242,10 @@
 	<string>Installing… Wink will relaunch shortly.</string>
 	<key>Installs when Wink quits. Click to install now.</key>
 	<string>Installs when Wink quits. Click to install now.</string>
+	<key>Its shortcuts are removed, along with the usage history of shortcuts that exist only in it. Shortcuts that also live in another profile keep their history.</key>
+	<string>Its shortcuts are removed, along with the usage history of shortcuts that exist only in it. Shortcuts that also live in another profile keep their history.</string>
+	<key>Keep this profile</key>
+	<string>Keep this profile</string>
 	<key>Last used %@</key>
 	<string>Last used %@</string>
 	<key>Last used —</key>
@@ -226,6 +262,8 @@
 	<string>Limited · Secure Input</string>
 	<key>M</key>
 	<string>M</string>
+	<key>Manage Profiles</key>
+	<string>Manage Profiles</string>
 	<key>Manage…</key>
 	<string>Manage…</string>
 	<key>Master switch for global shortcut routing.</key>
@@ -236,18 +274,28 @@
 	<string>Needed</string>
 	<key>Needed for the current shortcut configuration.</key>
 	<string>Needed for the current shortcut configuration.</string>
+	<key>New Profile</key>
+	<string>New Profile</string>
 	<key>New Shortcut</key>
 	<string>New Shortcut</string>
 	<key>New activity</key>
 	<string>New activity</string>
 	<key>New activity versus the previous period.</key>
 	<string>New activity versus the previous period.</string>
+	<key>New empty profile</key>
+	<string>New empty profile</string>
 	<key>No change</key>
 	<string>No change</string>
 	<key>No change versus the previous period.</key>
 	<string>No change versus the previous period.</string>
 	<key>No matching apps</key>
 	<string>No matching apps</string>
+	<key>No shortcuts are active and nothing can be changed until you recover.</key>
+	<string>No shortcuts are active and nothing can be changed until you recover.</string>
+	<key>No shortcuts are active. Choose the profile you want so Wink does not pick one for you.</key>
+	<string>No shortcuts are active. Choose the profile you want so Wink does not pick one for you.</string>
+	<key>No shortcuts are active. Wink did not switch to another profile on its own — choose one below.</key>
+	<string>No shortcuts are active. Wink did not switch to another profile on its own — choose one below.</string>
 	<key>No shortcuts configured</key>
 	<string>No shortcuts configured</string>
 	<key>No shortcuts match your filter</key>
@@ -292,20 +340,32 @@
 	<string>Press once to open or focus the target app, press again to hide it.</string>
 	<key>Privacy</key>
 	<string>Privacy</string>
+	<key>Profile</key>
+	<string>Profile</string>
+	<key>Profile name</key>
+	<string>Profile name</string>
+	<key>Profile names can be at most %lld characters.</key>
+	<string>Profile names can be at most %lld characters.</string>
 	<key>Quit Wink</key>
 	<string>Quit Wink</string>
 	<key>Ready</key>
 	<string>Ready</string>
 	<key>Recently Used</key>
 	<string>Recently Used</string>
+	<key>Recipes import into the active profile. Profiles stay on this Mac; recipes are how you share bindings.</key>
+	<string>Recipes import into the active profile. Profiles stay on this Mac; recipes are how you share bindings.</string>
 	<key>Recording…</key>
 	<string>Recording…</string>
+	<key>Recover</key>
+	<string>Recover</string>
 	<key>Refresh</key>
 	<string>Refresh</string>
 	<key>Release Notes</key>
 	<string>Release Notes</string>
 	<key>Remove %@</key>
 	<string>Remove %@</string>
+	<key>Rename Profile</key>
+	<string>Rename Profile</string>
 	<key>Replace Existing</key>
 	<string>Replace Existing</string>
 	<key>Request Access</key>
@@ -344,6 +404,8 @@
 	<string>Shortcut capture ready</string>
 	<key>Shortcuts</key>
 	<string>Shortcuts</string>
+	<key>Shortcuts are not loaded and changes cannot be saved. Check that your home folder is available, then relaunch Wink.</key>
+	<string>Shortcuts are not loaded and changes cannot be saved. Check that your home folder is available, then relaunch Wink.</string>
 	<key>Shortcuts paused</key>
 	<string>Shortcuts paused</string>
 	<key>Show Menu Bar Icon</key>
@@ -368,6 +430,8 @@
 	<string>Standard shortcuts failed to register. Check logs for the blocked key combinations.</string>
 	<key>Standard shortcuts ready</key>
 	<string>Standard shortcuts ready</string>
+	<key>Started a new profile list. Your unreadable file was kept alongside it.</key>
+	<string>Started a new profile list. Your unreadable file was kept alongside it.</string>
 	<key>Startup, keyboard behavior, and updates.</key>
 	<string>Startup, keyboard behavior, and updates.</string>
 	<key>Streak</key>
@@ -378,14 +442,44 @@
 	<string>Suggested shortcuts</string>
 	<key>Support</key>
 	<string>Support</string>
+	<key>Switching profiles discarded the recipe import preview, which was prepared for the previous profile.</key>
+	<string>Switching profiles discarded the recipe import preview, which was prepared for the previous profile.</string>
+	<key>Switching profiles discarded the shortcut you were about to add.</key>
+	<string>Switching profiles discarded the shortcut you were about to add.</string>
+	<key>Switching profiles stopped the shortcut recording in progress.</key>
+	<string>Switching profiles stopped the shortcut recording in progress.</string>
 	<key>System Settings &gt; Input Monitoring can lag behind live access. If the affected shortcuts work here, Wink already has the permission it needs.</key>
 	<string>System Settings &gt; Input Monitoring can lag behind live access. If the affected shortcuts work here, Wink already has the permission it needs.</string>
 	<key>Target app</key>
 	<string>Target app</string>
+	<key>That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.</key>
+	<string>That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.</string>
+	<key>That file changed again — Wink re-checked it, and there is nothing left to import.</key>
+	<string>That file changed again — Wink re-checked it, and there is nothing left to import.</string>
+	<key>That profile changed while Wink was switching to it, so nothing was applied. Try again.</key>
+	<string>That profile changed while Wink was switching to it, so nothing was applied. Try again.</string>
+	<key>That profile no longer exists.</key>
+	<string>That profile no longer exists.</string>
+	<key>That profile’s shortcuts could not be read, so Wink did not switch to it. Nothing was changed or deleted.</key>
+	<string>That profile’s shortcuts could not be read, so Wink did not switch to it. Nothing was changed or deleted.</string>
 	<key>The Settings toggle is live: background checks and downloads, on or off.</key>
 	<string>The Settings toggle is live: background checks and downloads, on or off.</string>
+	<key>The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again.</key>
+	<string>The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again.</string>
+	<key>The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.</key>
+	<string>The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.</string>
+	<key>The file no longer matches what Wink last wrote, and its contents could not be read. Wink has changed nothing.</key>
+	<string>The file no longer matches what Wink last wrote, and its contents could not be read. Wink has changed nothing.</string>
 	<key>The last automatic update check failed: %@</key>
 	<string>The last automatic update check failed: %@</string>
+	<key>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</key>
+	<string>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</string>
+	<key>The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.</key>
+	<string>The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.</string>
+	<key>There is no active profile to keep yet. Import the file first, or choose a profile.</key>
+	<string>There is no active profile to keep yet. Import the file first, or choose a profile.</string>
+	<key>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</key>
+	<string>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</string>
 	<key>Time saved</key>
 	<string>Time saved</string>
 	<key>Tip: hold</key>
@@ -400,6 +494,8 @@
 	<string>Toggle apps with global shortcuts</string>
 	<key>Type an app name and press Return to switch to it.</key>
 	<string>Type an app name and press Return to switch to it.</string>
+	<key>Unknown profile</key>
+	<string>Unknown profile</string>
 	<key>Unresolved</key>
 	<string>Unresolved</string>
 	<key>Unresolved apps without conflicts will still be imported using their recipe app name and bundle identifier.</key>
@@ -452,8 +548,24 @@
 	<string>Wink %@ is the latest version.</string>
 	<key>Wink Update</key>
 	<string>Wink Update</string>
+	<key>Wink always keeps at least one profile.</key>
+	<string>Wink always keeps at least one profile.</string>
+	<key>Wink cannot reach its storage folder</key>
+	<string>Wink cannot reach its storage folder</string>
+	<key>Wink cannot reach its storage folder, so profiles cannot be changed.</key>
+	<string>Wink cannot reach its storage folder, so profiles cannot be changed.</string>
 	<key>Wink checks for updates automatically and asks before downloading.</key>
 	<string>Wink checks for updates automatically and asks before downloading.</string>
+	<key>Wink could not read your previous shortcuts file</key>
+	<string>Wink could not read your previous shortcuts file</string>
+	<key>Wink could not read your profile list</key>
+	<string>Wink could not read your profile list</string>
+	<key>Wink could not read your profile list, so nothing can be changed until you recover it.</key>
+	<string>Wink could not read your profile list, so nothing can be changed until you recover it.</string>
+	<key>Wink could not save the change to disk, so nothing was changed.</key>
+	<string>Wink could not save the change to disk, so nothing was changed.</string>
+	<key>Wink could not tell which profile was active</key>
+	<string>Wink could not tell which profile was active</string>
 	<key>Wink couldn't disable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
 	<string>Wink couldn't disable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</string>
 	<key>Wink couldn't enable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
@@ -462,16 +574,28 @@
 	<string>Wink couldn't find its login item configuration. This usually points to an installation or packaging problem.</string>
 	<key>Wink is registered to launch at login, but macOS still needs your approval in Login Items.</key>
 	<string>Wink is registered to launch at login, but macOS still needs your approval in Login Items.</string>
+	<key>Wink is still clearing usage history for a deleted profile. Try again in a moment.</key>
+	<string>Wink is still clearing usage history for a deleted profile. Try again in a moment.</string>
 	<key>Wink needs Accessibility access to route global shortcuts.</key>
 	<string>Wink needs Accessibility access to route global shortcuts.</string>
+	<key>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</key>
+	<string>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</string>
 	<key>Wink: Permission Lost</key>
 	<string>Wink: Permission Lost</string>
+	<key>You can have at most %lld profiles.</key>
+	<string>You can have at most %lld profiles.</string>
 	<key>You're Up to Date</key>
 	<string>You're Up to Date</string>
 	<key>Your Shortcuts · %lld</key>
 	<string>Your Shortcuts · %lld</string>
+	<key>active</key>
+	<string>active</string>
+	<key>can't be read</key>
+	<string>can't be read</string>
 	<key>for a Hyper shortcut.</key>
 	<string>for a Hyper shortcut.</string>
+	<key>shortcuts.json was changed outside Wink</key>
+	<string>shortcuts.json was changed outside Wink</string>
 	<key>to act as</key>
 	<string>to act as</string>
 	<key>today</key>
@@ -482,5 +606,7 @@
 	<string>vs previous period</string>
 	<key>~3 seconds each</key>
 	<string>~3 seconds each</string>
+	<key>“%@” could not be read</key>
+	<string>“%@” could not be read</string>
 </dict>
 </plist>
