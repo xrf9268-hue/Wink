@@ -202,6 +202,20 @@ struct DiagnosticsRedactorTests {
     }
 
     @Test
+    func percentEncodedQuerySeparatorsDoNotSplitTheRedaction() {
+        // %20 decodes to a space, and the query rule stops at whitespace —
+        // so redacting only AFTER decoding would keep "?<redacted>" and leak
+        // everything past the first decoded space. The URL rules run on the
+        // raw line first, where the encoded query is one token.
+        let line = redactor().redact(
+            line: "unrecognized url: wink:unknown?email=Bob%20Smith%20%3Cbob@example.com%3E"
+        )
+        #expect(!line.contains("Smith"))
+        #expect(!line.contains("bob@example.com"))
+        #expect(line.contains("wink:unknown?\(DiagnosticsRedactor.marker)"))
+    }
+
+    @Test
     func aBarePercentElsewhereDoesNotDefeatTheDecode() {
         // removingPercentEncoding is all-or-nothing per string: one bare `%`
         // ("50%") used to keep every valid escape on the line encoded and

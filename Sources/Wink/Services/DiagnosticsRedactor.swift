@@ -91,6 +91,15 @@ struct DiagnosticsRedactor: Sendable {
         // escape encoded and defeat the pass. Decoded newlines and NULs
         // flatten to spaces so an embedded %0A cannot fake extra lines.
         // Decoding never grows the string.
+        // URL rules run on the RAW line first. The decode pass below turns
+        // %20 into literal spaces, and the query rule stops at whitespace —
+        // so a percent-encoded query (`?email=Bob%20Smith%20…`) redacted
+        // only after decoding would leak everything past the first decoded
+        // space. On the encoded form the query is one whitespace-free token
+        // and is consumed whole. Both rules run again post-decode for URLs
+        // that were themselves entirely percent-encoded.
+        value = redactingURLUserInfo(value)
+        value = redactingURLQueries(value)
         if value.contains("%") {
             if let regex = try? NSRegularExpression(pattern: #"(?:%[0-9A-Fa-f]{2})+"#) {
                 let matches = regex.matches(in: value, range: NSRange(value.startIndex..., in: value)).reversed()

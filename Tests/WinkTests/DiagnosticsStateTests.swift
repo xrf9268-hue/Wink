@@ -121,11 +121,12 @@ struct DiagnosticsStateTests {
     }
 
     @Test
-    func confirmingWithoutAPreviewIsANoOp() {
+    func confirmingWithoutAPreviewIsANoOp() async {
         let recorder = Recorder()
         let state = makeState(recorder: recorder)
 
         state.confirmExport()
+        await state.waitForExportCompletionForTesting()
 
         #expect(recorder.chosen.isEmpty)
         #expect(recorder.written.isEmpty)
@@ -142,6 +143,7 @@ struct DiagnosticsStateTests {
         await state.waitForExportPreparationForTesting()
         let previewed = try! #require(state.preview)
         state.confirmExport()
+        await state.waitForExportCompletionForTesting()
 
         #expect(recorder.written.count == 1)
         #expect(recorder.written[0].1 == previewed)
@@ -158,6 +160,7 @@ struct DiagnosticsStateTests {
         state.prepareExport()
         await state.waitForExportPreparationForTesting()
         state.confirmExport()
+        await state.waitForExportCompletionForTesting()
 
         let written = try! #require(recorder.written.first?.1)
         for entry in written.entries {
@@ -177,6 +180,7 @@ struct DiagnosticsStateTests {
         state.prepareExport()
         await state.waitForExportPreparationForTesting()
         state.confirmExport()
+        await state.waitForExportCompletionForTesting()
 
         // Reporting a cancel as an error trains users to ignore the message
         // area, which is where real failures also appear.
@@ -195,6 +199,7 @@ struct DiagnosticsStateTests {
         await state.waitForExportPreparationForTesting()
         let previewed = try! #require(state.preview)
         state.confirmExport()
+        await state.waitForExportCompletionForTesting()
 
         #expect(state.feedback?.isError == true)
         #expect(state.preview == previewed)
@@ -222,6 +227,7 @@ struct DiagnosticsStateTests {
         state.prepareExport()
         await state.waitForExportPreparationForTesting()
         state.confirmExport()
+        await state.waitForExportCompletionForTesting()
 
         #expect(recorder.written.count == 1)
         #expect(try! #require(state.feedback).isError == false)

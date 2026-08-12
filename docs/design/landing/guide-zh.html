@@ -618,7 +618,7 @@
             </div>
             <div class="list-row">
               <span class="term">只有一部分失灵</span>
-              <span class="desc">失灵的那批走的是同一条通道。普通修饰键组合（<kbd>⌃⌥K</kbd>）走 Carbon 热键；Hyper 组合键走事件监听；Fn 行绑定是混合通道——按键由 Carbon 送达，另有一个需要<strong>输入监控</strong>的窄观察器确认物理 Fn 键，两半任何一半停摆它就失灵。所以：胶囊显示 <strong>Limited · Secure Input</strong> 时，是某个 App 占住了安全输入，事件监听和 Fn 观察器同时被饿死，它会自行恢复；Hyper <em>和</em> Fn 行一起失灵，去「系统设置 → 隐私与安全性」查<strong>输入监控</strong>——那一项是真正的权限，两者都靠它；<em>只有</em> Fn 行失灵而 Hyper 正常，嫌疑在 Carbon 那一半——诊断导出会按键位列出注册失败。</span>
+              <span class="desc">失灵的那批走的是同一条通道。普通修饰键组合（<kbd>⌃⌥K</kbd>）走 Carbon 热键；Hyper 组合键走事件监听；Fn 行绑定是混合通道——按键由 Carbon 送达，另有一个需要<strong>输入监控</strong>的窄观察器确认物理 Fn 键，两半任何一半停摆它就失灵。所以：胶囊显示 <strong>Limited · Secure Input</strong> 时，是某个 App 占住了安全输入，事件监听和 Fn 观察器同时被饿死，它会自行恢复；Hyper <em>和</em> Fn 行一起失灵，去「系统设置 → 隐私与安全性」查<strong>输入监控</strong>——那一项是真正的权限，两者都靠它；<em>只有</em> Fn 行失灵而 Hyper 正常，两半都可能是元凶——Carbon 拒绝注册，或 Fn 观察器没能启动（Hyper 走的是另一个事件监听，所以它不受影响）。诊断导出会按键位列出每个失败绑定及其原因，观察器不可用时会在里面自报家门。</span>
             </div>
             <div class="list-row">
               <span class="term">全部失灵</span>

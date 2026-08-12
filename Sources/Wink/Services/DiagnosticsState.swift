@@ -29,7 +29,10 @@ final class DiagnosticsState {
         /// Returns the directory it actually wrote — the implementation may
         /// pick a unique sibling rather than merge into an existing folder,
         /// and the success message must name the folder the files are in.
-        var writePackage: @MainActor (_ directory: URL, _ package: DiagnosticsPackage) throws -> URL
+        /// `@Sendable`, not `@MainActor`: the writes run OFF the main actor
+        /// (see `confirmExport`) — a save onto a slow external or
+        /// network-backed volume must not freeze Settings for the duration.
+        var writePackage: @Sendable (_ directory: URL, _ package: DiagnosticsPackage) throws -> URL
         var now: @MainActor () -> Date
     }
 
@@ -128,26 +131,46 @@ final class DiagnosticsState {
 
     /// Writes exactly the package the user was shown.
     func confirmExport() {
-        guard let package = preview else { return }
+        guard let package = preview, saving == nil else { return }
         do {
+            // The panel is modal and main-actor by nature; only the WRITES
+            // hop off — saving onto a slow external or network-backed volume
+            // must not freeze Settings for the duration.
             guard let directory = try client.chooseExportDirectory(Self.suggestedFolderName(at: client.now())) else {
                 // Cancelling the panel is not a failure, and saying so would
                 // train users to ignore the message area.
                 preview = nil
                 return
             }
-            let written = try client.writePackage(directory, package)
-            preview = nil
-            feedback = .success(
-                String(
-                    localized: "Saved \(package.entries.count) files to \(written.lastPathComponent).",
-                    bundle: WinkResourceBundle.bundle
-                )
-            )
+            let writePackage = client.writePackage
+            saving = Task { [weak self] in
+                let outcome: Result<URL, Error> = await Task.detached(priority: .userInitiated) {
+                    Result { try writePackage(directory, package) }
+                }.value
+                guard let self else { return }
+                switch outcome {
+                case let .success(written):
+                    self.preview = nil
+                    self.feedback = .success(
+                        String(
+                            localized: "Saved \(package.entries.count) files to \(written.lastPathComponent).",
+                            bundle: WinkResourceBundle.bundle
+                        )
+                    )
+                case let .failure(error):
+                    // The preview stays up so the user can retry a different
+                    // folder without rebuilding — and without the contents
+                    // changing under them between the two attempts.
+                    self.feedback = .error(
+                        String(
+                            localized: "Could not write the diagnostics: \(error.localizedDescription)",
+                            bundle: WinkResourceBundle.bundle
+                        )
+                    )
+                }
+                self.saving = nil
+            }
         } catch {
-            // The preview stays up so the user can retry a different folder
-            // without rebuilding — and without the contents changing under
-            // them between the two attempts.
             feedback = .error(
                 String(
                     localized: "Could not write the diagnostics: \(error.localizedDescription)",
@@ -155,6 +178,15 @@ final class DiagnosticsState {
                 )
             )
         }
+    }
+
+    /// The in-flight save; also the re-entrancy guard against a double
+    /// Save click racing two writes into sibling folders.
+    private var saving: Task<Void, Never>?
+
+    /// Lets a test await the published save outcome without polling.
+    func waitForExportCompletionForTesting() async {
+        await saving?.value
     }
 
     /// Locale-stable folder name: this is a filename, so it must not change
