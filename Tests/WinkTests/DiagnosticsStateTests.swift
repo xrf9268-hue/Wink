@@ -288,6 +288,41 @@ struct DiagnosticsStateTests {
     }
 
     @Test
+    func aStaleSuccessDoesNotClearANewerAttemptsErrorBanner() async {
+        let recorder = Recorder()
+        let state = makeState(recorder: recorder)
+
+        // The old save stalls; a replacement preview's save FAILS and its
+        // error banner is showing. When the old save finally succeeds, its
+        // toast must not displace the failure the user still needs to act
+        // on — the sheet renders only error feedback.
+        let gate = DispatchSemaphore(value: 0)
+        state.prepareExport()
+        await state.waitForExportPreparationForTesting()
+        recorder.writeGate = gate
+        state.confirmExport()
+
+        state.cancelExport()
+        state.prepareExport()
+        await state.waitForExportPreparationForTesting()
+        recorder.writeFails = true
+        state.confirmExport()
+        await state.waitForExportCompletionForTesting()
+        #expect(state.feedback?.isError == true)
+
+        recorder.writeFails = false
+        gate.signal()
+        // Drain the old save: first until its write lands (recorder gains
+        // the entry), then a bounded yield window for its main-actor
+        // completion to run.
+        for _ in 0..<2_000 where recorder.written.isEmpty { await Task.yield() }
+        for _ in 0..<50 { await Task.yield() }
+
+        #expect(recorder.written.count == 1)
+        #expect(state.feedback?.isError == true)
+    }
+
+    @Test
     func anOldSaveFailureDoesNotSurfaceInsideANewerPreview() async {
         let recorder = Recorder()
         let state = makeState(recorder: recorder)

@@ -172,12 +172,19 @@ final class DiagnosticsState {
                     if self.previewGeneration == generation {
                         self.preview = nil
                     }
-                    self.feedback = .success(
-                        String(
-                            localized: "Saved \(package.entries.count) files to \(written.lastPathComponent).",
-                            bundle: WinkResourceBundle.bundle
+                    // Monotonic: an OLDER save's success may not displace a
+                    // newer attempt's feedback. The save itself still
+                    // happened — the folder is on disk — but the newest
+                    // attempt's outcome owns the message area.
+                    if generation >= self.feedbackGeneration {
+                        self.feedbackGeneration = generation
+                        self.feedback = .success(
+                            String(
+                                localized: "Saved \(package.entries.count) files to \(written.lastPathComponent).",
+                                bundle: WinkResourceBundle.bundle
+                            )
                         )
-                    )
+                    }
                 case let .failure(error):
                     // The originating preview stays up so the user can retry
                     // a different folder without rebuilding. The error is
@@ -189,6 +196,7 @@ final class DiagnosticsState {
                     // attempt's late failure has no surface left that would
                     // not lie, so it is dropped with the sheet it belonged to.
                     if self.previewGeneration == generation {
+                        self.feedbackGeneration = generation
                         self.feedback = .error(
                             String(
                                 localized: "Could not write the diagnostics: \(error.localizedDescription)",
@@ -220,6 +228,13 @@ final class DiagnosticsState {
     /// makes a duplicate click on the SAME preview a no-op while a newer
     /// preview stays actionable.
     private var inFlightSaveGenerations: Set<UInt64> = []
+
+    /// The generation whose completion last published feedback. Monotonic
+    /// gate: with concurrent saves allowed, an older stalled save's SUCCESS
+    /// toast must not overwrite a newer attempt's error banner — the sheet
+    /// renders only error feedback, so that overwrite would silently clear
+    /// the failure the user still needs to act on.
+    private var feedbackGeneration: UInt64 = 0
 
     /// Bumped every time a preview is published or dismissed. A slow save's
     /// completion compares against the value it was confirmed under, so it
