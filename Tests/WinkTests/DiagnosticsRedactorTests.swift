@@ -149,6 +149,58 @@ struct DiagnosticsRedactorTests {
         #expect(hostless.contains("wink:?\(DiagnosticsRedactor.marker)"))
     }
 
+    @Test
+    func multiWordUnquotedSecretsAreRedactedWhole() {
+        // A passphrase is words. Stopping the unquoted value at the first
+        // space redacted one word and exported the rest of the password.
+        let line = redactor().redact(line: "password: correct horse battery staple")
+        #expect(!line.contains("horse"))
+        #expect(line.contains("password: \(DiagnosticsRedactor.marker)"))
+
+        // Hard separators still bound the value, so sibling fields survive.
+        let bounded = redactor().redact(line: "token=abc123, retry=3")
+        #expect(bounded.contains("token=\(DiagnosticsRedactor.marker), retry=3"))
+    }
+
+    @Test
+    func compoundSecretLabelsAreRedacted() {
+        // Real logs carry compound labels, not bare core words.
+        let aws = redactor().redact(line: "AWS_SECRET_ACCESS_KEY=AKIA-SECRET-VALUE")
+        #expect(!aws.contains("AKIA"))
+        let header = redactor().redact(line: "x-api-key: sk-live-secret")
+        #expect(!header.contains("sk-live"))
+        let oauth = redactor().redact(line: "oauth_token=abcd1234")
+        #expect(!oauth.contains("abcd1234"))
+
+        // Affixes attach only through _ - . separators: an embedded core
+        // inside an ordinary word must not fire.
+        let design = redactor().redact(line: "design=modern layout")
+        #expect(design == "design=modern layout")
+        let author = redactor().redact(line: "author=someone else")
+        #expect(author == "author=someone else")
+        let session = redactor().redact(line: "usersession=42abc")
+        #expect(session == "usersession=42abc")
+    }
+
+    @Test
+    func spacedJWTHeadersAreStillRedacted() {
+        // base64("{ \"") begins "eyA" — exactly as valid a JWT header as the
+        // compact "eyJ" form.
+        let line = redactor().redact(line: "jwt eyAiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiIxIn0.c2ln done")
+        #expect(!line.contains("eyAiYWxn"))
+        #expect(line.contains(DiagnosticsRedactor.marker))
+        #expect(line.hasSuffix("done"))
+    }
+
+    @Test
+    func percentEncodedIdentitiesAreDecodedBeforeRedaction() {
+        // handleURLs logs rejected URLs verbatim; %2FUsers%2Falice must not
+        // hide the home path and account name from every rule.
+        let line = redactor().redact(line: "unrecognized url: wink:open/%2FUsers%2Falice%2Fsecret.txt")
+        #expect(!line.lowercased().contains("alice"))
+        #expect(!line.contains("%2F"))
+    }
+
     // MARK: - Secrets
 
     @Test

@@ -104,6 +104,23 @@ struct DiagnosticsStateTests {
     }
 
     @Test
+    func cancellingDuringPreparationSuppressesTheLatePreview() async {
+        let recorder = Recorder()
+        let state = makeState(recorder: recorder)
+
+        // Cancel while the build is still in flight: the late publish must
+        // not reopen the sheet the user just dismissed, and the guard must
+        // be free for the next attempt rather than pinned by a dead task.
+        state.prepareExport()
+        state.cancelExport()
+        #expect(state.preview == nil)
+
+        state.prepareExport()
+        await state.waitForExportPreparationForTesting()
+        #expect(state.preview != nil)
+    }
+
+    @Test
     func confirmingWithoutAPreviewIsANoOp() {
         let recorder = Recorder()
         let state = makeState(recorder: recorder)

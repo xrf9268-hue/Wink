@@ -98,7 +98,10 @@ final class DiagnosticsState {
             let package = await Task.detached(priority: .userInitiated) {
                 builder.build(environment: environment, runtime: runtime, logs: readLogs())
             }.value
-            guard let self else { return }
+            // Cancellation check AFTER the hop: cancelExport() ran while the
+            // build was in flight, already cleared the guard, and the user
+            // saw the sheet close — publishing now would reopen it.
+            guard let self, !Task.isCancelled else { return }
             self.preview = package
             self.preparation = nil
         }
@@ -114,6 +117,12 @@ final class DiagnosticsState {
     }
 
     func cancelExport() {
+        // Cancels the in-flight build too: without this, a preparation
+        // started before the cancel publishes its preview afterward —
+        // reopening the sheet the user just dismissed — while the still-set
+        // guard rejects every new prepareExport().
+        preparation?.cancel()
+        preparation = nil
         preview = nil
     }
 

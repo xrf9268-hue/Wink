@@ -189,8 +189,7 @@ enum DiagnosticsClientLive {
     /// Internal rather than private for the same reason as `collectLogs`:
     /// pure filesystem work, directly testable against a temp directory.
     static func write(_ package: DiagnosticsPackage, to directory: URL) throws -> URL {
-        let destination = uniqueDestination(for: directory)
-        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let destination = try claimUniqueDestination(for: directory)
         for entry in package.entries {
             try Data(entry.contents.utf8)
                 .write(to: destination.appendingPathComponent(entry.name), options: .atomic)
@@ -198,18 +197,33 @@ enum DiagnosticsClientLive {
         return destination
     }
 
-    /// `name`, `name-2`, `name-3`, … — the first sibling that does not exist
-    /// yet. The UUID tail is an unreachable-in-practice backstop that keeps
-    /// the loop bounded without a throw path nothing could handle better.
-    private static func uniqueDestination(for directory: URL) -> URL {
+    /// `name`, `name-2`, `name-3`, … — the first sibling this process
+    /// actually CREATES. The claim is the creation itself: an exists-check
+    /// followed by `withIntermediateDirectories: true` lets two concurrent
+    /// exports both observe the same name absent and both "succeed" into one
+    /// folder, remerging what the unique name exists to keep apart. With
+    /// `withIntermediateDirectories: false`, creation fails on an existing
+    /// directory, so exactly one claimant wins each name and the loser moves
+    /// to the next. The UUID tail is a bounded backstop; its create still
+    /// throws honestly rather than claiming blindly.
+    private static func claimUniqueDestination(for directory: URL) throws -> URL {
         let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: directory.path) else { return directory }
         let parent = directory.deletingLastPathComponent()
+        try fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
         let base = directory.lastPathComponent
-        for counter in 2...9_999 {
-            let candidate = parent.appendingPathComponent("\(base)-\(counter)", isDirectory: true)
-            if !fileManager.fileExists(atPath: candidate.path) { return candidate }
+        for counter in 1...9_999 {
+            let candidate = counter == 1
+                ? directory
+                : parent.appendingPathComponent("\(base)-\(counter)", isDirectory: true)
+            do {
+                try fileManager.createDirectory(at: candidate, withIntermediateDirectories: false)
+                return candidate
+            } catch let error as CocoaError where error.code == .fileWriteFileExists {
+                continue
+            }
         }
-        return parent.appendingPathComponent("\(base)-\(UUID().uuidString)", isDirectory: true)
+        let backstop = parent.appendingPathComponent("\(base)-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: backstop, withIntermediateDirectories: false)
+        return backstop
     }
 }

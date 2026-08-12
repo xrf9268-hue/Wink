@@ -29,12 +29,24 @@ struct DiagnosticsRedactor: Sendable {
     static let maximumLineLength = 2_000
 
     /// Keys whose value is secret whatever it looks like. Matched
-    /// case-insensitively against `key=value`, `key: value`, and `"key": "…"`.
-    private static let sensitiveKeys = [
-        "password", "passwd", "secret", "token", "apikey", "api_key",
-        "auth", "credential", "private_key", "privatekey",
-        "session", "signature", "sig", "ed_signature",
+    /// case-insensitively against `key=value`, `key: value`, and `"key": "…"`
+    /// — and against COMPOUND labels: real logs carry `AWS_SECRET_ACCESS_KEY`
+    /// and `x-api-key`, not the bare core word. Affixes attach only through
+    /// `_ - .` separators, so `design=` cannot smuggle `sig` and `author=`
+    /// cannot smuggle `auth`.
+    private static let sensitiveKeyCores = [
+        "password", "passwd", "secret", "token", "api[_-]?key",
+        "auth", "credential", "private[_-]?key",
+        "session", "signature", "sig",
     ]
+
+    /// One alternation with optional separator-attached affixes on both
+    /// sides. Built once; the cores above are patterns, not literals. The
+    /// leading lookbehind stops a mid-word start: without it `usersession=`
+    /// would match from `session` and fire on a label the separator rule
+    /// exists to exclude.
+    private static let sensitiveKeyPattern =
+        #"(?<![A-Za-z0-9])(?:[A-Za-z0-9]+[_.-])*(?:"# + sensitiveKeyCores.joined(separator: "|") + #")(?:[_.-][A-Za-z0-9]+)*"#
 
     /// Header-shaped keys whose value runs to the end of the line and can
     /// contain spaces (`Authorization: Bearer …`). Stopping at the first
@@ -61,6 +73,18 @@ struct DiagnosticsRedactor: Sendable {
     /// than it received.
     func redact(line: String) -> String {
         var value = line
+        // Percent-encoding is a disclosure vector here, not fidelity to
+        // protect: `handleURLs` logs rejected URLs verbatim, and
+        // `%2FUsers%2Falice` hides the home path from every rule below. One
+        // decode pass covers the accidental case (a legitimately encoded URL
+        // in the log); decode LOOPS are out of scope — an adversary crafting
+        // log content to survive one decode already writes to the log and
+        // owns the machine. Decoded newlines and NULs flatten to spaces so an
+        // embedded %0A cannot fake extra lines. Decoding never grows the
+        // string.
+        if value.contains("%"), let decoded = value.removingPercentEncoding, decoded != value {
+            value = String(decoded.map { $0.isNewline || $0 == "\0" ? " " : $0 })
+        }
         value = redactingHomePaths(value)
         value = redactingLabelledSecrets(value)
         value = redactingBearerTokens(value)
@@ -135,17 +159,21 @@ struct DiagnosticsRedactor: Sendable {
                 options: .regularExpression
             )
         }
-        for key in Self.sensitiveKeys {
-            let escaped = NSRegularExpression.escapedPattern(for: key)
-            // key=value / key: value / "key": "value", stopping at the first
-            // separator so the rest of the line survives.
-            let pattern = #"(?i)("?\#(escaped)"?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;)}\]]+)"#
-            value = value.replacingOccurrences(
-                of: pattern,
-                with: "$1\(Self.marker)",
-                options: .regularExpression
-            )
-        }
+        // key=value / key: value / "key": "value". The unquoted arm consumes
+        // the first token unconditionally, then each further space-separated
+        // token only when it does not itself look like a `key=`/`key:` label.
+        // Both prior behaviors were half-right: stopping at the first space
+        // redacted one word of `password: correct horse battery staple` and
+        // exported the rest, while running to a hard separator ate the
+        // `status=200 route=hyper` fields that make a log line worth reading.
+        // A passphrase is words; a sibling field is a label; the lookahead
+        // tells them apart.
+        let pattern = #"(?i)("?\#(Self.sensitiveKeyPattern)"?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;)}\]"']+(?:\s+(?![\w.-]+\s*[:=])[^\s,;)}\]"']+)*)"#
+        value = value.replacingOccurrences(
+            of: pattern,
+            with: "$1\(Self.marker)",
+            options: .regularExpression
+        )
         return value
     }
 
@@ -159,10 +187,12 @@ struct DiagnosticsRedactor: Sendable {
     }
 
     /// Three base64url segments separated by dots, starting with a JSON
-    /// header — unambiguous enough to match without a label.
+    /// header — unambiguous enough to match without a label. `ey[JA]`, not
+    /// just `eyJ`: base64("{\"") is "eyJ", but a header serialized with a
+    /// space — `{ "alg"…` — encodes to "eyA" and is exactly as valid a JWT.
     private func redactingJSONWebTokens(_ value: String) -> String {
         value.replacingOccurrences(
-            of: #"\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*"#,
+            of: #"\bey[JA][A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*"#,
             with: Self.marker,
             options: .regularExpression
         )

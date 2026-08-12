@@ -427,7 +427,7 @@
         <p class="sub">Setup, permissions, every frontmost behavior, the Hyper layer, and the <kbd>wink://</kbd> scheme — the whole thing, in the order you'll actually meet it.</p>
       </div>
       <div class="qf-row">
-        <div class="qf"><b>10</b><span>chapters, start to finish</span></div>
+        <div class="qf"><b>11</b><span>chapters, start to finish</span></div>
         <div class="qf"><b>2</b><span>permissions — one of them conditional</span></div>
         <div class="qf"><b>0</b><span>thumbnails — Screen Recording never asked</span></div>
       </div>
@@ -618,7 +618,7 @@
             </div>
             <div class="list-row">
               <span class="term">only some shortcuts died</span>
-              <span class="desc">Whatever died shares a transport. Plain modifier chords (<kbd>⌃⌥K</kbd>) ride Carbon hot keys; anything on the Hyper layer or an Fn-row key rides the event tap — and the tap has two ways to stop while Carbon keeps working. If the pill reads <strong>Limited · Secure Input</strong>, an app is holding Secure Input and it clears itself. Otherwise check <strong>Input Monitoring</strong> in System Settings → Privacy &amp; Security: that one <em>is</em> a permission, and revoking it kills exactly the tap-riding half of your shortcuts.</span>
+              <span class="desc">Whatever died shares a transport. Plain modifier chords (<kbd>⌃⌥K</kbd>) ride Carbon hot keys. Hyper chords ride the event tap. Fn-row bindings are a hybrid: Carbon delivers the press, and a narrow observer — which needs <strong>Input Monitoring</strong> — confirms the physical Fn key; either half stopping kills them. So: if the pill reads <strong>Limited · Secure Input</strong>, an app is holding Secure Input, both the tap and the Fn observer are starved, and it clears itself. If Hyper <em>and</em> Fn-row chords died together, check <strong>Input Monitoring</strong> in System Settings → Privacy &amp; Security — that one <em>is</em> a permission, and it feeds both. If <em>only</em> Fn-row chords died while Hyper still works, the Carbon half is the suspect — the diagnostics export lists registration failures by key.</span>
             </div>
             <div class="list-row">
               <span class="term">all of them died</span>
