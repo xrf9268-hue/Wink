@@ -1399,6 +1399,21 @@ final class ShortcutProfileStore {
         do {
             try writeClient.write(try metadataEncoder.encode(descriptor), layout.mirrorDescriptorURL)
         } catch {
+            // The bytes just written are the new truth, but the OLD
+            // descriptor still describes whatever was here before — after an
+            // A→B switch it still names A, and if an older build edits this
+            // mirror before the next launch repairs the pairing, startup
+            // would trust it and offer the edit for import into the wrong
+            // profile. Same rule as the startup repair: a descriptor that
+            // decodes at the current schema is this lineage's own metadata,
+            // so dropping it is safe and demotes the file to unknown
+            // provenance — which asks nothing and preserves everything. An
+            // undecodable one may be a newer build's and is left alone.
+            let prior = (try? Data(contentsOf: layout.mirrorDescriptorURL))
+                .flatMap { try? metadataDecoder.decode(ShortcutProfileMirrorDescriptor.self, from: $0) }
+            if prior?.schemaVersion == ShortcutProfileMirrorDescriptor.currentSchemaVersion {
+                try? FileManager.default.removeItem(at: layout.mirrorDescriptorURL)
+            }
             let message = "PROFILE_TRACE_MIRROR_FAILED reason=descriptor_write_failed detail=\(error.localizedDescription)"
             logger.error("\(message, privacy: .public)")
             diagnosticClient.log(message)

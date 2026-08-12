@@ -2062,6 +2062,61 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aFailedDescriptorReplacementDoesNotLeaveTheOldDescriptorVouching() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        // Healthy first launch: the descriptor honestly names Default.
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // An ordinary A→B switch whose mirror-bytes write succeeds but whose
+        // descriptor replacement fails: without the removal, A's descriptor
+        // would sit beside B's bytes — the same stale pairing the startup
+        // repair exists to fix, created at write time instead.
+        let descriptorURL = harness.layout.mirrorDescriptorURL
+        let failing = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                guard url != descriptorURL else { throw InjectedWriteFailure() }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        guard case .ready = failing.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let empty = try failing.createProfile(named: "Empty", duplicating: nil)
+        _ = try failing.activateProfile(empty.id)
+
+        // The old descriptor is gone rather than left vouching for bytes it
+        // does not describe, and the mirror holds the new profile's bytes.
+        #expect(!FileManager.default.fileExists(atPath: descriptorURL.path))
+        #expect(
+            harness.data(at: harness.layout.mirrorURL)
+                == harness.data(at: harness.layout.profileDataURL(empty.id))
+        )
+
+        // An older build's edit before the next launch now classifies as
+        // unknown provenance — preserved, no offer — instead of being
+        // offered for import into the profile the stale descriptor named.
+        try harness.writeLegacyShortcuts(
+            [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        )
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        #expect(after.foreignMirror == nil)
+        #expect(after.compatMirrorStale)
+    }
+
+    @Test
     func unmodelledJSONMembersDoNotMakeAByteIdenticalMirrorLookStale() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
