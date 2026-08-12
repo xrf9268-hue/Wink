@@ -100,7 +100,12 @@ struct DiagnosticsPackageBuilder: Sendable {
             // rather than omitted: "there is no log" is itself a diagnostic,
             // and silently dropping the entry would make the export look
             // complete when it is not.
-            let body = log.contents.map { redactor.redact(text: boundedTail(of: $0)) }
+            // Redaction runs BEFORE the tail bound. The redactor folds a
+            // legacy record's continuation lines back into one line, so the
+            // bound then counts whole records — bounding first could cut a
+            // record's timestamped label line away from its continuations,
+            // and the unlabeled fragments would export unredacted.
+            let body = log.contents.map { boundedTail(of: redactor.redact(text: $0)) }
                 ?? String(
                     localized: "This log was missing or could not be read when the export was created.",
                     bundle: WinkResourceBundle.bundle
