@@ -252,6 +252,14 @@ final class ShortcutProfileState {
         do {
             payload = try store.loadProfileForActivation(profileID)
         } catch {
+            // The startup scan and the strict loader share one rule, so a
+            // file that fails HERE (it went bad after the scan, or the scan
+            // predates a rule) joins the unreadable set the same way — the
+            // picker disables the row instead of offering a switch that
+            // fails identically forever.
+            if case ShortcutProfileStore.StoreError.profileUnreadable(let id, _) = error {
+                unreadableProfileIDs.insert(id)
+            }
             errorMessage = userFacingMessage(for: error)
             return
         }
@@ -683,8 +691,11 @@ final class ShortcutProfileState {
                 bundle: WinkResourceBundle.bundle
             )
         case .profileUnreadable:
+            // Claims only what every path shares: the file can be missing,
+            // present-but-unreadable, or quarantined with a FAILED copy —
+            // and "a copy was kept" is a promise two of those break.
             return String(
-                localized: "That profile’s shortcuts could not be read, so Wink did not switch to it. A copy of the unreadable file was kept.",
+                localized: "That profile’s shortcuts could not be read, so Wink did not switch to it. Nothing was changed or deleted.",
                 bundle: WinkResourceBundle.bundle
             )
         case .profileChangedDuringOperation:

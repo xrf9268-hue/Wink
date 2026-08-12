@@ -2111,6 +2111,33 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func anInactiveProfileWithDuplicateIDsIsMarkedUnreadableAtScan() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let setup = harness.makeStore()
+        _ = setup.load()
+        let work = try setup.createProfile(named: "Work", duplicating: nil)
+
+        // A restored or hand-edited inactive profile with two rows sharing a
+        // UUID decodes leniently, but the strict loader refuses it at
+        // activation — so the scan must apply the same within-profile
+        // uniqueness rule, or every picker enables a row that fails on
+        // every attempt until relaunch.
+        let duplicate = makeTestShortcut()
+        try PersistenceService.encodeShortcuts([duplicate, duplicate])
+            .write(to: harness.layout.profileDataURL(work.id), options: .atomic)
+
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        #expect(loaded.unreadableProfileIDs.contains(work.id))
+    }
+
+    @Test
     func aSymlinkedSourceProfileDoesNotLicenseSkippingPreservation() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

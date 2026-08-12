@@ -3954,19 +3954,19 @@
         }
       }
     },
-    "That profile’s shortcuts could not be read, so Wink did not switch to it. A copy of the unreadable file was kept.": {
+    "That profile’s shortcuts could not be read, so Wink did not switch to it. Nothing was changed or deleted.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "That profile’s shortcuts could not be read, so Wink did not switch to it. A copy of the unreadable file was kept."
+            "value": "That profile’s shortcuts could not be read, so Wink did not switch to it. Nothing was changed or deleted."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "该配置的快捷键无法读取，因此 Wink 没有切换过去。无法读取的文件已保留一份副本。"
+            "value": "无法读取该配置的快捷键，Wink 没有切换过去。任何内容都没有被修改或删除。"
           }
         }
       }

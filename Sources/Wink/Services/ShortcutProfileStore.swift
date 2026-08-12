@@ -752,6 +752,17 @@ final class ShortcutProfileStore {
                 log("PROFILE_TRACE_UNREADABLE id=\(profile.id.uuidString) reason=inactive_decode_failed preservedCopyPath=none")
                 continue
             }
+            // WITHIN-profile uniqueness is the strict loader's rule, so the
+            // scan applies it too: a lenient decode that tolerates duplicate
+            // rows would leave the profile out of the unreadable set, every
+            // picker would enable it, and activation would refuse the same
+            // file forever — a permanently selectable row that fails on
+            // every attempt.
+            guard Set(shortcuts.map(\.id)).count == shortcuts.count else {
+                report.unreadable.insert(profile.id)
+                log("PROFILE_TRACE_UNREADABLE id=\(profile.id.uuidString) reason=duplicate_shortcut_id preservedCopyPath=none")
+                continue
+            }
 
             for shortcut in shortcuts {
                 if let owner = seenShortcutIDs[shortcut.id], owner != profile.id {
