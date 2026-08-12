@@ -540,6 +540,11 @@ final class EventTapManager: EventTapManaging {
         ) { [weak self] keyPress in
             self?.handleAsync(keyPress, generation: generation)
         }
+        // The phased channel is gated by the SAME counter as onKeyPress: a
+        // hold-enabled chord accepted just before a profile switch must not
+        // land after the switch and resolve through the incoming profile's
+        // trigger index.
+        box.bindingGeneration = bindingGeneration
         box.onTapDisabled = { snapshot in
             DispatchQueue.global(qos: .utility).async {
                 DiagnosticLog.log(snapshot.logMessage)
@@ -1261,6 +1266,17 @@ final class EventTapBox: @unchecked Sendable {
     /// main dispatch queue is FIFO, sibling `Task`s are not.
     private var _onPhasedKeyEvent: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?
 
+    /// The binding-set counter the phased channel is gated by, mirroring the
+    /// `MatchedShortcutDelivery` guard on `onKeyPress`. The guard cannot live
+    /// in the wrapped observer: sampling must happen on the tap thread at the
+    /// moment the edge is accepted, and the observer runs after the main-queue
+    /// hop, where the counter already holds the incoming configuration's
+    /// value. Assigned once in `start()` before the tap is installed (the same
+    /// visibility rule as `onKeyPress`); the default instance never advances,
+    /// so a standalone box — the shape every direct box test uses — drops
+    /// nothing.
+    var bindingGeneration = BindingGeneration()
+
     func setPhasedKeyObserver(_ observer: (@MainActor @Sendable (KeyPress, KeyEventPhase) -> Void)?) {
         withLock { _onPhasedKeyEvent = observer }
     }
@@ -1268,8 +1284,23 @@ final class EventTapBox: @unchecked Sendable {
     func notifyPhasedKeyEvent(_ keyPress: KeyPress, _ phase: KeyEventPhase) {
         let observer = withLock { _onPhasedKeyEvent }
         guard let observer else { return }
+        let generation = bindingGeneration
+        let accepted = generation.current()
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
+                guard generation.current() == accepted else {
+                    // The binding set was replaced while this edge sat in the
+                    // main queue. Letting it through would start (or settle) a
+                    // gesture against the INCOMING profile's trigger index —
+                    // a keypress the user made under the old one. Dropping is
+                    // safe on both edges: the arbiter treats an unpaired up
+                    // as settled cleanup, and `applyLoadedShortcuts` already
+                    // reset any gesture a dropped down would have belonged to.
+                    DiagnosticLog.log(
+                        "SHORTCUT_TRACE_DECISION event=dropped reason=binding_generation_changed channel=phased phase=\(phase)"
+                    )
+                    return
+                }
                 observer(keyPress, phase)
             }
         }
