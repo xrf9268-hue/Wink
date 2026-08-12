@@ -128,6 +128,21 @@ struct DiagnosticsRedactorTests {
         #expect(plain == "GET https://example.com/path from bob@example.com")
     }
 
+    @Test
+    func opaqueURLQueriesAreRedactedToo() {
+        // handleURLs logs rejected URLs verbatim, and `wink:unknown?…` is a
+        // legal opaque form — no authority, no `//` — whose query carries the
+        // same kind of payload the authority form's does.
+        let opaque = redactor().redact(line: "unrecognized url: wink:unknown?email=bob@example.com")
+        #expect(!opaque.contains("bob@example.com"))
+        #expect(opaque.contains("wink:unknown?\(DiagnosticsRedactor.marker)"))
+
+        // A prose colon never reaches the query rule: the character after
+        // `:` must be non-space all the way to the `?`.
+        let prose = redactor().redact(line: "note: did the tap restart?")
+        #expect(prose == "note: did the tap restart?")
+    }
+
     // MARK: - Secrets
 
     @Test

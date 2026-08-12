@@ -17,7 +17,11 @@ final class DiagnosticsState {
         /// Log name → contents, or `nil` when it is missing or unreadable.
         /// Reading never throws: a log that cannot be read is a diagnostic in
         /// its own right and must not abort the export.
-        var readLogs: @MainActor () -> [(name: String, contents: String?)]
+        /// `@Sendable`, not `@MainActor`: log reading and the redaction pass
+        /// that follows it run OFF the main actor (see `prepareExport`), so
+        /// this closure must not touch actor-bound state. The live client
+        /// only flushes the writer's queue and reads files.
+        var readLogs: @Sendable () -> [(name: String, contents: String?)]
         var revealLog: @MainActor () -> Bool
         /// Returns the chosen destination folder, or `nil` if the user
         /// cancelled. Cancelling is not an error.
@@ -76,14 +80,37 @@ final class DiagnosticsState {
 
     /// Builds the package and shows it. Nothing is written yet — the user has
     /// to see the contents before any file leaves Wink's own storage.
+    ///
+    /// The actor-bound inputs (environment, runtime, the timestamp) are
+    /// captured here, synchronously; the file reads and the redaction pass —
+    /// twenty-odd regular-expression replacements per line, across two logs
+    /// that can each approach their size cap — run detached, so opening the
+    /// preview never blocks the Settings UI. `preview` is published back on
+    /// the main actor when the package is ready.
     func prepareExport() {
-        let builder = DiagnosticsPackageBuilder(generatedAt: client.now())
-        preview = builder.build(
-            environment: client.environment(),
-            runtime: client.runtime(),
-            logs: client.readLogs()
-        )
+        guard preparation == nil else { return }
         feedback = nil
+        let builder = DiagnosticsPackageBuilder(generatedAt: client.now())
+        let environment = client.environment()
+        let runtime = client.runtime()
+        let readLogs = client.readLogs
+        preparation = Task { [weak self] in
+            let package = await Task.detached(priority: .userInitiated) {
+                builder.build(environment: environment, runtime: runtime, logs: readLogs())
+            }.value
+            guard let self else { return }
+            self.preview = package
+            self.preparation = nil
+        }
+    }
+
+    /// The in-flight preview build, if any. Also the re-entrancy guard: a
+    /// second click while the first build runs must not race two packages.
+    private var preparation: Task<Void, Never>?
+
+    /// Lets a test await the published preview without polling.
+    func waitForExportPreparationForTesting() async {
+        await preparation?.value
     }
 
     func cancelExport() {

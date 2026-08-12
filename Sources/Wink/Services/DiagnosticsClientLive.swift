@@ -109,7 +109,8 @@ enum DiagnosticsClientLive {
     /// A log that cannot be read is itself a diagnostic, so the failure is
     /// reported as content rather than raised — an export must not abort
     /// because the thing it is collecting is broken.
-    @MainActor
+    // Deliberately NOT @MainActor: `prepareExport` runs this detached, and
+    // the body needs nothing actor-bound — a queue barrier and file reads.
     private static func readLogs() -> [(name: String, contents: String?)] {
         // `DiagnosticLog.log()` queues its write asynchronously, so the last
         // few lines of the current session can still be sitting on the

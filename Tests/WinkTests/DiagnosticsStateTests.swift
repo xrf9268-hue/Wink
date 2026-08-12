@@ -78,11 +78,12 @@ struct DiagnosticsStateTests {
     // MARK: - Nothing happens without an explicit action
 
     @Test
-    func preparingAnExportWritesNothing() {
+    func preparingAnExportWritesNothing() async {
         let recorder = Recorder()
         let state = makeState(recorder: recorder)
 
         state.prepareExport()
+        await state.waitForExportPreparationForTesting()
 
         #expect(state.preview != nil)
         #expect(recorder.written.isEmpty)
@@ -90,11 +91,12 @@ struct DiagnosticsStateTests {
     }
 
     @Test
-    func cancellingThePreviewWritesNothing() {
+    func cancellingThePreviewWritesNothing() async {
         let recorder = Recorder()
         let state = makeState(recorder: recorder)
 
         state.prepareExport()
+        await state.waitForExportPreparationForTesting()
         state.cancelExport()
 
         #expect(state.preview == nil)
@@ -115,11 +117,12 @@ struct DiagnosticsStateTests {
     // MARK: - The preview is what gets written
 
     @Test
-    func exactlyThePreviewedPackageIsWritten() {
+    func exactlyThePreviewedPackageIsWritten() async {
         let recorder = Recorder()
         let state = makeState(recorder: recorder)
 
         state.prepareExport()
+        await state.waitForExportPreparationForTesting()
         let previewed = try! #require(state.preview)
         state.confirmExport()
 
@@ -128,7 +131,7 @@ struct DiagnosticsStateTests {
     }
 
     @Test
-    func theExportedLogIsAlreadyRedacted() {
+    func theExportedLogIsAlreadyRedacted() async {
         let recorder = Recorder()
         let state = makeState(
             recorder: recorder,
@@ -136,6 +139,7 @@ struct DiagnosticsStateTests {
         )
 
         state.prepareExport()
+        await state.waitForExportPreparationForTesting()
         state.confirmExport()
 
         let written = try! #require(recorder.written.first?.1)
@@ -148,12 +152,13 @@ struct DiagnosticsStateTests {
     // MARK: - Failure paths
 
     @Test
-    func cancellingTheFolderPanelIsNotReportedAsAFailure() {
+    func cancellingTheFolderPanelIsNotReportedAsAFailure() async {
         let recorder = Recorder()
         recorder.cancelPanel = true
         let state = makeState(recorder: recorder)
 
         state.prepareExport()
+        await state.waitForExportPreparationForTesting()
         state.confirmExport()
 
         // Reporting a cancel as an error trains users to ignore the message
@@ -164,12 +169,13 @@ struct DiagnosticsStateTests {
     }
 
     @Test
-    func aFailedWriteKeepsThePreviewSoARetryExportsTheSameBytes() {
+    func aFailedWriteKeepsThePreviewSoARetryExportsTheSameBytes() async {
         let recorder = Recorder()
         recorder.writeFails = true
         let state = makeState(recorder: recorder)
 
         state.prepareExport()
+        await state.waitForExportPreparationForTesting()
         let previewed = try! #require(state.preview)
         state.confirmExport()
 
@@ -190,13 +196,14 @@ struct DiagnosticsStateTests {
     }
 
     @Test
-    func anUnreadableLogStillProducesAnExport() {
+    func anUnreadableLogStillProducesAnExport() async {
         // A log that cannot be read is a diagnostic in its own right; it must
         // not abort the export.
         let recorder = Recorder()
         let state = makeState(recorder: recorder, logs: [("debug.log", nil)])
 
         state.prepareExport()
+        await state.waitForExportPreparationForTesting()
         state.confirmExport()
 
         #expect(recorder.written.count == 1)
