@@ -2219,6 +2219,56 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aMirrorRewrittenDuringPreservationIsPreservedAgainBeforeReplacement() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        _ = harness.makeStore().load()
+
+        // First external edit, captured by the guard's initial read.
+        let foreign1 = Data(#"[ { "appName" : "Mail", "edit" : 1 } ]"#.utf8)
+        try foreign1.write(to: harness.layout.mirrorURL)
+        // Second external edit lands INSIDE the preservation window — the
+        // write client plays the concurrent writer while the durable copy
+        // of the first edit is being flushed.
+        let foreign2 = Data(#"[ { "appName" : "Mail", "edit" : 2 } ]"#.utf8)
+        let mirrorURL = harness.layout.mirrorURL
+        let fired = MutableBox(false)
+        let racing = ShortcutProfileStore.WriteClient(
+            write: { data, url in try data.write(to: url, options: .atomic) },
+            writeDurable: { data, url in
+                try data.write(to: url, options: .atomic)
+                if url.lastPathComponent.hasPrefix("shortcuts.unknown-"), !fired.value {
+                    fired.value = true
+                    try foreign2.write(to: mirrorURL)
+                }
+            }
+        )
+
+        let store = harness.makeStore(writeClient: racing)
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let updated = [makeTestShortcut(appName: "Notes", bundleIdentifier: "com.apple.notes", keyEquivalent: "n")]
+        try store.makeActiveProfilePersistenceService().save(updated)
+
+        // Without the recheck the second edit's only copy would have been
+        // replaced uninspected; with it, BOTH edits were preserved before
+        // the mirror finally took the saved payload.
+        let copies = ((try? FileManager.default.contentsOfDirectory(atPath: harness.directory.path)) ?? [])
+            .filter { $0.hasPrefix("shortcuts.unknown-") }
+            .compactMap { harness.data(at: harness.directory.appendingPathComponent($0)) }
+        #expect(copies.count == 2)
+        #expect(copies.contains(foreign1))
+        #expect(copies.contains(foreign2))
+        #expect(
+            harness.data(at: mirrorURL)
+                == harness.data(at: harness.layout.profileDataURL(try #require(store.locator.currentActiveProfileID())))
+        )
+    }
+
+    @Test
     func aHalfDurablePreservationIsRemovedRatherThanTrustedOnRetry() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

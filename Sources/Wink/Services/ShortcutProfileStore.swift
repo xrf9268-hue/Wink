@@ -1223,6 +1223,23 @@ final class ShortcutProfileStore {
         // Reading and hashing a few kilobytes on a user-initiated save is not
         // a cost worth trading a silent data loss for.
         if FileManager.default.fileExists(atPath: layout.mirrorURL.path) {
+            // Bounded loop, not a single pass: `preserveBytes` ends in a
+            // durable flush that is slow enough to be a real window, and an
+            // older build or external tool that rewrites the mirror inside
+            // it would otherwise have its NEW payload replaced without ever
+            // being inspected or preserved — only the earlier bytes were
+            // copied. After preserving, the mirror is re-read; changed bytes
+            // re-enter classification, and a file that keeps changing under
+            // the write is refused rather than raced.
+            var guardAttempts = 0
+            while true {
+            guardAttempts += 1
+            guard guardAttempts <= 3 else {
+                let message = "PROFILE_TRACE_MIRROR_WRITE_SKIPPED reason=mirror_kept_changing"
+                logger.error("\(message, privacy: .public)")
+                diagnosticClient.log(message)
+                return false
+            }
             // Present but unreadable is the case this guard exists for: the
             // directory can still accept an atomic replacement, so treating an
             // unreadable file as absent would destroy the only copy of an
@@ -1284,6 +1301,15 @@ final class ShortcutProfileStore {
                     // destroy the only copy of that edit.
                     return false
                 }
+            }
+            // Immediately before the replacement: bytes that moved during
+            // the preservation re-enter the loop and are classified and
+            // preserved as what they now are. The residual window shrinks
+            // to the digest comparison itself.
+            if let recheck = try? Data(contentsOf: layout.mirrorURL), digest(recheck) == existingDigest {
+                break
+            }
+            continue
             }
         }
 
