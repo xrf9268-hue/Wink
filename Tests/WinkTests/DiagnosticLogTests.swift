@@ -125,6 +125,32 @@ func flushMakesEveryQueuedWriteVisibleToAnImmediateRead() throws {
 // MARK: - Rotated backup inclusion (#461 finding 3)
 
 @Test
+func embeddedNewlinesCannotSplitALogRecord() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("debug.log")
+    let writer = DiagnosticLogWriter(fileURL: url)
+
+    // A decoded wink:// bundle can carry %0A; written raw it would split
+    // the record and hand the redactor an unlabeled continuation line.
+    writer.log("URL: ignored unrecognized wink:x?bundle=password=hunter2\nsecretTail")
+    writer.flush()
+
+    let contents = try String(contentsOf: url, encoding: .utf8)
+    let lines = contents.split(separator: "\n", omittingEmptySubsequences: true)
+    #expect(lines.count == 1)
+    #expect(lines[0].contains("secretTail"))
+
+    // And the redactor therefore sees the whole record as one labelled
+    // value: the continuation is inside the secret, not beside it.
+    let redacted = DiagnosticsRedactor(homeDirectoryPath: "/Users/alice", userName: "alice")
+        .redact(text: contents)
+    #expect(!redacted.contains("hunter2"))
+    #expect(!redacted.contains("secretTail"))
+}
+
+@Test
 func aSnapshotReadCannotInterleaveWithAQueuedRotation() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
