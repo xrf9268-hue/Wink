@@ -157,9 +157,20 @@ struct DiagnosticsRedactorTests {
         #expect(!line.contains("horse"))
         #expect(line.contains("password: \(DiagnosticsRedactor.marker)"))
 
-        // Hard separators still bound the value, so sibling fields survive.
+        // Separators bound the value only when they introduce another
+        // labeled field, so siblings survive…
         let bounded = redactor().redact(line: "token=abc123, retry=3")
         #expect(bounded.contains("token=\(DiagnosticsRedactor.marker), retry=3"))
+
+        // …while a secret that merely CONTAINS punctuation is consumed
+        // whole: `password=<redacted>,def` would disclose part of the
+        // credential.
+        let comma = redactor().redact(line: "password=abc,def")
+        #expect(!comma.contains("def"))
+        #expect(comma.contains("password=\(DiagnosticsRedactor.marker)"))
+        let spaced = redactor().redact(line: "opened with password=abc, def; ghi status=ok")
+        #expect(!spaced.contains("abc") && !spaced.contains("def") && !spaced.contains("ghi"))
+        #expect(spaced.hasSuffix("status=ok"))
     }
 
     @Test
