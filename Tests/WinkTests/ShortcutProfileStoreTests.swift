@@ -2219,6 +2219,56 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aRefusedMigrationMirrorWriteSurfacesTheStaleCaveat() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        // First-run migration succeeds on profile, manifest, and pointer,
+        // but the compat rewrite is refused (the mirror source file itself
+        // is the compat file, made unwritable-in-place by a failing client).
+        let mirrorURL = harness.layout.mirrorURL
+        let store = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient(
+                write: { data, url in
+                    struct InjectedWriteFailure: Error {}
+                    if url == mirrorURL { throw InjectedWriteFailure() }
+                    try data.write(to: url, options: .atomic)
+                }
+            )
+        )
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        #expect(loaded.compatMirrorStale)
+        #expect(loaded.activeShortcuts.count == 1)
+    }
+
+    @Test
+    func anUnknownProvenanceMirrorReportsTheStaleCaveat() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        _ = harness.makeStore().load()
+
+        // The mirror differs from the active profile and its descriptor is
+        // gone: deliberately left in place — but for the harness and a
+        // downgraded build the file still does not reflect the active
+        // profile, which is exactly what the caveat says.
+        try harness.writeLegacyShortcuts([makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")])
+        try FileManager.default.removeItem(at: harness.layout.mirrorDescriptorURL)
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(loaded) = reloaded.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        #expect(loaded.foreignMirror == nil)
+        #expect(loaded.compatMirrorStale)
+    }
+
+    @Test
     func anOrdinarySaveReportsARefusedMirrorRewrite() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

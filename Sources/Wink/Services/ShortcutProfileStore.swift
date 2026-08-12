@@ -717,8 +717,12 @@ final class ShortcutProfileStore {
         pointedProfileID = profileID
         locator.setActiveProfileID(profileID)
 
+        // When the legacy source was unreadable the mirror is deliberately
+        // NOT rewritten — it holds the user's unrecovered bytes, and the
+        // migration-failure banner is that state's surface, not the caveat.
+        var migrationMirrorStale = false
         if !legacySourceUnreadable {
-            writeMirrorForActiveProfile(bytes: migratedBytes, profileID: profileID, layout: layout)
+            migrationMirrorStale = !writeMirrorForActiveProfile(bytes: migratedBytes, profileID: profileID, layout: layout)
         }
 
         log("PROFILE_TRACE_MIGRATED shortcuts=\(migrated.count) source=\(layout.mirrorURL.path)")
@@ -732,6 +736,7 @@ final class ShortcutProfileStore {
                 orphanProfileIDs: orphanProfileIDs(layout: layout, manifest: ShortcutProfileManifest(profiles: [profile])),
                 duplicateShortcutIDs: [],
                 foreignMirror: nil,
+                compatMirrorStale: migrationMirrorStale,
                 legacyMigrationFailure: legacyMigrationFailure
             )
         )
@@ -902,7 +907,10 @@ final class ShortcutProfileStore {
             // which makes every later overwrite non-destructive.
             preserveUnknownMirror(mirrorData, digest: mirrorDigest, descriptor: nil, layout: layout)
             log("PROFILE_TRACE_MIRROR_UNKNOWN active=\(activeProfileID.uuidString) reason=no_descriptor")
-            return (nil, true)
+            // Deliberately left in place — but for the harness and a
+            // downgraded build the file still does not reflect the active
+            // profile, which is exactly what the caveat tells the user.
+            return (nil, false)
         }
 
         // Only the CURRENT digest counts as "Wink wrote this". Remembering the
@@ -946,7 +954,8 @@ final class ShortcutProfileStore {
         guard manifest?.profile(id: descriptor.profileID) != nil else {
             preserveUnknownMirror(mirrorData, digest: mirrorDigest, descriptor: descriptor, layout: layout)
             log("PROFILE_TRACE_MIRROR_UNKNOWN active=\(activeProfileID.uuidString) reason=descriptor_profile_deleted")
-            return (nil, true)
+            // Same reading as the no-descriptor branch above.
+            return (nil, false)
         }
 
         log("PROFILE_TRACE_FOREIGN_MIRROR profile=\(descriptor.profileID.uuidString)")
