@@ -140,10 +140,10 @@
 	<string>Delete Profile</string>
 	<key>Delete Shortcut</key>
 	<string>Delete Shortcut</string>
-	<key>Diagnostics</key>
-	<string>Diagnostics</string>
 	<key>Delete “%@”?</key>
 	<string>Delete “%@”?</string>
+	<key>Diagnostics</key>
+	<string>Diagnostics</string>
 	<key>Disabled</key>
 	<string>Disabled</string>
 	<key>Dismiss</key>
@@ -166,14 +166,14 @@
 	<string>Duplicate current profile</string>
 	<key>Enable All Shortcuts</key>
 	<string>Enable All Shortcuts</string>
+	<key>Enter a profile name.</key>
+	<string>Enter a profile name.</string>
 	<key>Everything stays on this Mac. Wink shows you the contents before you save them, and never uploads anything.</key>
 	<string>Everything stays on this Mac. Wink shows you the contents before you save them, and never uploads anything.</string>
 	<key>Export</key>
 	<string>Export</string>
 	<key>Export Diagnostics</key>
 	<string>Export Diagnostics</string>
-	<key>Enter a profile name.</key>
-	<string>Enter a profile name.</string>
 	<key>Exported %lld shortcuts to %@</key>
 	<string>Exported %lld shortcuts to %@</string>
 	<key>Export…</key>
@@ -502,16 +502,16 @@
 	<string>The file no longer matches what Wink last wrote, and its contents could not be read. Wink has changed nothing.</string>
 	<key>The last automatic update check failed: %@</key>
 	<string>The last automatic update check failed: %@</string>
-	<key>There is no diagnostic log yet. Use Wink for a moment and try again.</key>
-	<string>There is no diagnostic log yet. Use Wink for a moment and try again.</string>
-	<key>This log was missing or could not be read when the export was created.</key>
-	<string>This log was missing or could not be read when the export was created.</string>
 	<key>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</key>
 	<string>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</string>
 	<key>The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.</key>
 	<string>The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.</string>
 	<key>There is no active profile to keep yet. Import the file first, or choose a profile.</key>
 	<string>There is no active profile to keep yet. Import the file first, or choose a profile.</string>
+	<key>There is no diagnostic log yet. Use Wink for a moment and try again.</key>
+	<string>There is no diagnostic log yet. Use Wink for a moment and try again.</string>
+	<key>This log was missing or could not be read when the export was created.</key>
+	<string>This log was missing or could not be read when the export was created.</string>
 	<key>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</key>
 	<string>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</string>
 	<key>Time saved</key>
@@ -582,10 +582,10 @@
 	<string>Wink %@ is the latest version.</string>
 	<key>Wink Update</key>
 	<string>Wink Update</string>
-	<key>Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.</key>
-	<string>Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.</string>
 	<key>Wink always keeps at least one profile.</key>
 	<string>Wink always keeps at least one profile.</string>
+	<key>Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.</key>
+	<string>Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.</string>
 	<key>Wink cannot reach its storage folder</key>
 	<string>Wink cannot reach its storage folder</string>
 	<key>Wink cannot reach its storage folder, so profiles cannot be changed.</key>

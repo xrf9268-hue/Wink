@@ -144,10 +144,10 @@
 	<string>删除配置</string>
 	<key>Delete Shortcut</key>
 	<string>删除快捷键</string>
-	<key>Diagnostics</key>
-	<string>诊断信息</string>
 	<key>Delete “%@”?</key>
 	<string>要删除“%@”吗？</string>
+	<key>Diagnostics</key>
+	<string>诊断信息</string>
 	<key>Disabled</key>
 	<string>已禁用</string>
 	<key>Dismiss</key>
@@ -170,14 +170,14 @@
 	<string>复制当前配置</string>
 	<key>Enable All Shortcuts</key>
 	<string>启用所有快捷键</string>
+	<key>Enter a profile name.</key>
+	<string>请输入配置名称。</string>
 	<key>Everything stays on this Mac. Wink shows you the contents before you save them, and never uploads anything.</key>
 	<string>所有内容都留在这台 Mac 上。保存前 Wink 会先让你看到全部内容，并且不会上传任何东西。</string>
 	<key>Export</key>
 	<string>导出</string>
 	<key>Export Diagnostics</key>
 	<string>导出诊断信息</string>
-	<key>Enter a profile name.</key>
-	<string>请输入配置名称。</string>
 	<key>Exported %lld shortcuts to %@</key>
 	<string>已将 %lld 个快捷键导出到 %@</string>
 	<key>Export…</key>
@@ -506,16 +506,16 @@
 	<string>该文件与 Wink 上次写入的内容不一致，且其内容无法读取。Wink 未做任何改动。</string>
 	<key>The last automatic update check failed: %@</key>
 	<string>上次自动检查更新失败：%@</string>
-	<key>There is no diagnostic log yet. Use Wink for a moment and try again.</key>
-	<string>目前还没有诊断日志。先使用 Wink 一段时间后再试。</string>
-	<key>This log was missing or could not be read when the export was created.</key>
-	<string>创建此导出时，该日志缺失或无法读取。</string>
 	<key>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</key>
 	<string>无法删除该配置，且 Wink 无法撤销此前已经完成的切换。你现在使用的是“%@”。</string>
 	<key>The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.</key>
 	<string>shortcuts.json 兼容文件暂时未能重写；下次成功保存时会刷新它。</string>
 	<key>There is no active profile to keep yet. Import the file first, or choose a profile.</key>
 	<string>目前还没有可保留的当前配置。请先导入该文件，或选择一个配置。</string>
+	<key>There is no diagnostic log yet. Use Wink for a moment and try again.</key>
+	<string>目前还没有诊断日志。先使用 Wink 一段时间后再试。</string>
+	<key>This log was missing or could not be read when the export was created.</key>
+	<string>创建此导出时，该日志缺失或无法读取。</string>
 	<key>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</key>
 	<string>这通常意味着旧版本的 Wink 修改过它，也可能发生在意外关机之后。Wink 目前还未做任何改动。</string>
 	<key>Time saved</key>
@@ -586,10 +586,10 @@
 	<string>Wink %@ 已是最新版本。</string>
 	<key>Wink Update</key>
 	<string>Wink 更新</string>
-	<key>Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.</key>
-	<string>Wink 与 macOS 版本、Wink 的签名方式，以及当前哪些快捷键通道已就绪。</string>
 	<key>Wink always keeps at least one profile.</key>
 	<string>Wink 始终保留至少一个配置。</string>
+	<key>Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.</key>
+	<string>Wink 与 macOS 版本、Wink 的签名方式，以及当前哪些快捷键通道已就绪。</string>
 	<key>Wink cannot reach its storage folder</key>
 	<string>Wink 无法访问其存储文件夹</string>
 	<key>Wink cannot reach its storage folder, so profiles cannot be changed.</key>
