@@ -63,6 +63,14 @@ costs a bot review cycle and pollutes the PR timeline.
   REST listings; page GraphQL connections via
   `pageInfo { hasNextPage endCursor }`; filter by author + timestamp,
   never by position.
+- Author + timestamp identify a NEW verdict, not a verdict FOR THE HEAD.
+  A push between the trigger and the response leaves the verdict
+  describing the previous head. Before accepting: a review object's
+  `commit_id` must equal the current head SHA; for comment- and
+  reaction-form verdicts (which carry no commit), record the head at
+  trigger time and confirm it is unchanged. A verdict for a stale head
+  goes back to Layer 2 — re-trigger on the new head; it never satisfies
+  Layer 3's "clean pass on the HEAD commit".
 - After pushing fixes: reply on each thread with the commit hash and what
   changed, resolve the thread, and trigger a fresh round. Repeat until a
   clean pass on the current head commit. Never resolve a thread whose fix
