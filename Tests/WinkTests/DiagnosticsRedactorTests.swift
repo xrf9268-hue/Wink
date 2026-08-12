@@ -360,6 +360,37 @@ struct DiagnosticsRedactorTests {
     }
 
     @Test
+    func decodedQuotesDoNotStopEitherURLRule() {
+        // A recognized command's decoded inner URL is logged by the
+        // missing-app path, and a decoded value can legally hold a quote in
+        // user-info (`user:p"secret@host`) or in the path (`/a"b?email=…`).
+        // Quotes used to bound both regions, which disabled each rule on
+        // exactly those lines.
+        for quote in ["\"", "'"] {
+            let userInfo = redactor().redact(
+                line: "no app matched https://user:p\(quote)secret@example.com"
+            )
+            #expect(!userInfo.contains("secret"), "user-info leaked across \(quote)")
+            #expect(userInfo.contains("@example.com"))
+
+            let query = redactor().redact(
+                line: "no app matched https://example.com/a\(quote)b?email=bob@example.com"
+            )
+            #expect(!query.contains("bob"), "query leaked across \(quote)")
+        }
+    }
+
+    @Test
+    func aProseColonWithALaterQuestionMarkDoesNotArmTheQueryRule() {
+        // Whitespace is the one boundary the pre-query region keeps: a
+        // prose colon followed by a question mark further down the line
+        // must not be read as a URL query.
+        let line = redactor().redact(line: "note: was the toggle armed? yes, route=hyper")
+        #expect(line.contains("route=hyper"))
+        #expect(line.contains("was the toggle armed?"))
+    }
+
+    @Test
     func legacyEmbeddedSeparatorsDoNotStopTheToEndOfLineRules() {
         // Records written before the log writer flattened separators can
         // carry an embedded \r (or U+2028-class separator) inside one

@@ -275,18 +275,20 @@ struct DiagnosticsRedactor: Sendable {
         // handful of characters; 64 is generous headroom.
         // Everything from `://` to the LINE's last `@`. Structural
         // precision lost this fight in stages: a DECODED value can put
-        // `@`s, `/`s, and now literal SPACES inside what was user-info
-        // (`user:p@ss@host`, `user:p/secret@host`, `user:p secret@host`),
-        // and any boundary short of the final `@` exported part of a
-        // password. The over-redaction cost is contained by ordering and
-        // domain: the query rule runs FIRST (a legitimate `?next=a@b.com`
-        // is already inside the query marker before this rule looks), and
-        // the URL in this log's lines is the final element — so the
-        // remaining price, prose after a query-less URL being folded into
-        // the marker when an `@` follows, lands on rare lines and in the
-        // cheap direction. Quotes still bound the region.
+        // `@`s, `/`s, literal SPACES, and QUOTES inside what was user-info
+        // (`user:p@ss@host`, `user:p/secret@host`, `user:p secret@host`,
+        // `user:p"secret@host`), and any boundary short of the final `@`
+        // exported part of a password. No character class bounds the region
+        // anymore — every exclusion so far has become a bypass, so the rule
+        // consumes unconditionally. The over-redaction cost is contained by
+        // ordering and domain: the query rule runs FIRST (a legitimate
+        // `?next=a@b.com` is already inside the query marker before this
+        // rule looks), and the URL in this log's lines is the final element
+        // — so the remaining price, prose after a query-less URL being
+        // folded into the marker when an `@` follows, lands on rare lines
+        // and in the cheap direction.
         value.replacingOccurrences(
-            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+://)[^"']*@"#,
+            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+://).*@"#,
             with: "$1\(Self.marker)@",
             options: .regularExpression
         )
@@ -309,9 +311,13 @@ struct DiagnosticsRedactor: Sendable {
         // (`?email=Bob Smith <bob@…>`) and any whitespace boundary exports
         // its tail. A URL mid-prose over-redacts what follows — the cheap
         // direction — and a second URL on the same line is simply consumed
-        // into the same marker.
+        // into the same marker. The pre-query region crosses QUOTES: a
+        // decoded path can legally hold one (`/a"b?email=…`), and a quote
+        // boundary here disabled the rule on exactly those lines. Only
+        // whitespace still bounds it — that is what keeps a prose colon
+        // (`note: done? yes`) from arming the rule mid-sentence.
         value.replacingOccurrences(
-            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+:(?://)?[^\s"'?]*)\?.*$"#,
+            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+:(?://)?[^\s?]*)\?.*$"#,
             with: "$1?\(Self.marker)",
             options: .regularExpression
         )
