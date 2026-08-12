@@ -360,6 +360,35 @@ struct DiagnosticsRedactorTests {
     }
 
     @Test
+    func legacyEmbeddedSeparatorsDoNotStopTheToEndOfLineRules() {
+        // Records written before the log writer flattened separators can
+        // carry an embedded \r (or U+2028-class separator) inside one
+        // record. `.` and `$` refuse to cross those, which used to disable
+        // the anchored URL-query rule on exactly the lines that need it —
+        // the query before the separator exported verbatim.
+        for separator in ["\r", "\r\n", "\u{2028}", "\u{2029}", "\u{0085}", "\0"] {
+            let scalars = separator.unicodeScalars.map(\.value)
+            let line = redactor().redact(
+                line: "rejected wink:unknown?email=bob@example.com\(separator)secretTail"
+            )
+            #expect(!line.contains("bob@example.com"), "query leaked across \(scalars)")
+            #expect(!line.contains("secretTail"), "tail leaked across \(scalars)")
+        }
+    }
+
+    @Test
+    func legacyCarriageReturnNewlineSurvivesTheDocumentPath() {
+        // \r\n is one Character, so the document split on "\n" leaves it
+        // embedded inside a single line; the whole record must still redact.
+        let text = "before\nopen wink:unknown?token=abc123\r\ntail piece\nafter"
+        let output = redactor().redact(text: text)
+        #expect(!output.contains("abc123"))
+        #expect(!output.contains("tail piece"))
+        #expect(output.contains("before"))
+        #expect(output.contains("after"))
+    }
+
+    @Test
     func separatorHeavyLinesRedactInLinearTime() {
         // The measured pathological shape: separator-heavy near-miss labels
         // made the old prefix group re-scan from every start position

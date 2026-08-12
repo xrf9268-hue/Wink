@@ -89,7 +89,18 @@ struct DiagnosticsRedactor: Sendable {
     /// Redacts one line and bounds its length. Never returns a longer string
     /// than it received.
     func redact(line: String) -> String {
-        var value = line
+        // The log writer flattens embedded separators before composing a
+        // record, but `debug.log` and its rotated backup can still hold
+        // records written by builds that predate that rule. An embedded
+        // carriage return (or U+2028-class separator) survives the `\n`
+        // split above this call yet stops `.` and `$`, which would silently
+        // disable the to-end-of-line URL rules on exactly the lines that
+        // need them — so legacy separators are flattened here rather than
+        // trusting the writer's contract. One-for-one replacement (`\r\n`
+        // is a single `Character`), so the output never grows.
+        var value = line.contains(where: { $0.isNewline || $0 == "\0" })
+            ? String(line.map { $0.isNewline || $0 == "\0" ? " " : $0 })
+            : line
         // Percent-encoding is a disclosure vector here, not fidelity to
         // protect: `handleURLs` logs rejected URLs verbatim, and
         // `%2FUsers%2Falice` hides the home path from every rule below. One
