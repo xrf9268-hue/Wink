@@ -109,8 +109,8 @@ struct DiagnosticsRedactor: Sendable {
         // space. On the encoded form the query is one whitespace-free token
         // and is consumed whole. Both rules run again post-decode for URLs
         // that were themselves entirely percent-encoded.
-        value = redactingURLUserInfo(value)
         value = redactingURLQueries(value)
+        value = redactingURLUserInfo(value)
         if value.contains("%") {
             if let regex = try? NSRegularExpression(pattern: #"(?:%[0-9A-Fa-f]{2})+"#) {
                 let matches = regex.matches(in: value, range: NSRange(value.startIndex..., in: value)).reversed()
@@ -126,8 +126,8 @@ struct DiagnosticsRedactor: Sendable {
         value = redactingLabelledSecrets(value)
         value = redactingBearerTokens(value)
         value = redactingJSONWebTokens(value)
-        value = redactingURLUserInfo(value)
         value = redactingURLQueries(value)
+        value = redactingURLUserInfo(value)
         value = redactingUserName(value)
         return truncating(value)
     }
@@ -262,15 +262,18 @@ struct DiagnosticsRedactor: Sendable {
         // scan position before failing on `:`, which is quadratic in line
         // length (measured on `a.a.a.…` probe lines). Real schemes are a
         // handful of characters; 64 is generous headroom.
-        // ONE OR MORE @-terminated segments: user-info legally contains
-        // `@`-free colons but a DECODED value can carry `user:p@ss@host`,
-        // and stopping at the first `@` exported the password's tail. The
-        // authority's user-info ends at the LAST `@` before the path, which
-        // is exactly what the possessive chain consumes; the character
-        // class still cannot cross `/`, whitespace, or quotes, so a second
-        // URL or prose email later on the line starts its own match.
+        // Everything from `://` to the token's LAST `@`. Structural
+        // precision lost this fight: a DECODED value can put `@`s and even
+        // `/`s inside what was user-info (`user:p@ss@host`,
+        // `user:p/secret@host`), and any boundary short of the final `@`
+        // exported part of a password. The over-redaction cost is contained
+        // by ordering: the query rule runs FIRST, so a legitimate
+        // `?next=a@b.com` is already inside the query marker before this
+        // rule looks, and only query-less `://…@` tokens — rare in this
+        // log's domain, and exactly where credentials hide — pay the
+        // host-eating price. Whitespace and quotes still bound the token.
         value.replacingOccurrences(
-            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+://)(?:[^/\s"'@]*@)++"#,
+            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+://)[^\s"']*@"#,
             with: "$1\(Self.marker)@",
             options: .regularExpression
         )

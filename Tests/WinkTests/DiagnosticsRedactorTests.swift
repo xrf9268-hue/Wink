@@ -150,6 +150,16 @@ struct DiagnosticsRedactorTests {
         let doubled = redactor().redact(line: "URL: ignored unrecognized https://user:p@@ss@example.com")
         #expect(!doubled.contains("@@") && !doubled.contains("p@"))
         #expect(doubled.contains("https://\(DiagnosticsRedactor.marker)@example.com"))
+
+        // A decoded `/` inside what was user-info defeats any pre-path
+        // heuristic — the rule consumes to the token's LAST @ instead, and
+        // the query-first ordering keeps legitimate `?next=a@b.com` lines
+        // out of its reach.
+        let slashed = redactor().redact(line: "URL: toggle ignored, no installed app for https://user:p/secret@example.com")
+        #expect(!slashed.contains("secret"))
+        #expect(slashed.contains("https://\(DiagnosticsRedactor.marker)@example.com"))
+        let queryAt = redactor().redact(line: "opened https://example.com/?next=a@b.com")
+        #expect(queryAt.contains("https://example.com/?\(DiagnosticsRedactor.marker)"))
     }
 
     @Test
