@@ -179,6 +179,18 @@ struct DiagnosticsRedactorTests {
         let delimited = redactor().redact(line: "(password=abc) status=ok")
         #expect(!delimited.contains("abc"))
         #expect(delimited.hasSuffix(") status=ok"))
+
+        // A value that BEGINS with an unterminated quote or delimiter must
+        // not fall through every arm unmatched.
+        let unterminated = redactor().redact(line: #"logged password="hunter2"#)
+        #expect(!unterminated.contains("hunter2"))
+        let leadingComma = redactor().redact(line: "token=,abc,def")
+        #expect(!leadingComma.contains("abc") && !leadingComma.contains("def"))
+        // And a properly quoted value still takes the quoted arm, leaving
+        // siblings outside the quotes untouched.
+        let quoted = redactor().redact(line: #"password="a b" status=ok"#)
+        #expect(!quoted.contains("a b"))
+        #expect(quoted.hasSuffix("status=ok"))
     }
 
     @Test

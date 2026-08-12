@@ -195,8 +195,14 @@ struct DiagnosticsRedactor: Sendable {
                 options: .regularExpression
             )
         }
-        // key=value / key: value / "key": "value". The unquoted arm consumes
-        // the first token unconditionally, then each further chunk — across
+        // key=value / key: value / "key": "value". A PROPERLY quoted value
+        // takes the quoted arms; a value that merely BEGINS with an
+        // unterminated quote or another delimiter — `password="hunter2` —
+        // matches none of them without the leading delimiter run on the
+        // unquoted arm (greedy, deliberately not possessive: it must be able
+        // to give characters back so the first real chunk can match).
+        // The unquoted arm then consumes the first token, and each further
+        // chunk — across
         // spaces, commas, semicolons, closing brackets, and quotes alike —
         // only when it does not itself look like a `key=`/`key:` label.
         // Every fixed-boundary choice had a counterexample: stopping at the
@@ -209,7 +215,7 @@ struct DiagnosticsRedactor: Sendable {
         // because the lookahead stops the match before consuming it. All
         // possessive — the match ends at the value, so nothing ever needs
         // giving back.
-        let pattern = #"(?i)("?\#(Self.sensitiveKeyPattern)"?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;)}\]"']++(?:[\s,;)}\]"']++(?![\w.-]+\s*[:=])[^\s,;)}\]"']++)*+)"#
+        let pattern = #"(?i)("?\#(Self.sensitiveKeyPattern)"?\s*[:=]\s*)("[^"]*"|'[^']*'|[,;)}\]"']*[^\s,;)}\]"']++(?:[\s,;)}\]"']++(?![\w.-]+\s*[:=])[^\s,;)}\]"']++)*+)"#
         value = value.replacingOccurrences(
             of: pattern,
             with: "$1\(Self.marker)",
