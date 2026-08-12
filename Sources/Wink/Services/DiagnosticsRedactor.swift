@@ -196,7 +196,10 @@ struct DiagnosticsRedactor: Sendable {
             )
         }
         // key=value / key: value / "key": "value". A PROPERLY quoted value
-        // takes the quoted arms; a value that merely BEGINS with an
+        // takes the quoted arms — which are escape-aware: `"abc\"def"` must
+        // close at the final quote, not at the escaped one, or the tail of
+        // the credential walks out of the match. A value that merely BEGINS
+        // with an
         // unterminated quote or another delimiter — `password="hunter2` —
         // matches none of them without the leading delimiter run on the
         // unquoted arm (greedy, deliberately not possessive: it must be able
@@ -215,7 +218,7 @@ struct DiagnosticsRedactor: Sendable {
         // because the lookahead stops the match before consuming it. All
         // possessive — the match ends at the value, so nothing ever needs
         // giving back.
-        let pattern = #"(?i)("?\#(Self.sensitiveKeyPattern)"?\s*[:=]\s*)("[^"]*"|'[^']*'|[,;)}\]"']*[^\s,;)}\]"']++(?:[\s,;)}\]"']++(?![\w.-]+\s*[:=])[^\s,;)}\]"']++)*+)"#
+        let pattern = #"(?i)("?\#(Self.sensitiveKeyPattern)"?\s*[:=]\s*)("(?:\\.|[^"\\])*+"|'(?:\\.|[^'\\])*+'|[,;)}\]"']*[^\s,;)}\]"']++(?:[\s,;)}\]"']++(?![\w.-]+\s*[:=])[^\s,;)}\]"']++)*+)"#
         value = value.replacingOccurrences(
             of: pattern,
             with: "$1\(Self.marker)",

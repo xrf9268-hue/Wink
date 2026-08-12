@@ -191,6 +191,12 @@ struct DiagnosticsRedactorTests {
         let quoted = redactor().redact(line: #"password="a b" status=ok"#)
         #expect(!quoted.contains("a b"))
         #expect(quoted.hasSuffix("status=ok"))
+
+        // Escaped quotes stay INSIDE the quoted value: closing at the
+        // escaped one exported the credential's tail as `def"`.
+        let escaped = redactor().redact(line: #"password="abc\"def" status=ok"#)
+        #expect(!escaped.contains("abc") && !escaped.contains("def"))
+        #expect(escaped.hasSuffix("status=ok"))
     }
 
     @Test
