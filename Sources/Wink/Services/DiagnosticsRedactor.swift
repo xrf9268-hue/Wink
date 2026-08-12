@@ -311,16 +311,29 @@ struct DiagnosticsRedactor: Sendable {
         // (`?email=Bob Smith <bob@…>`) and any whitespace boundary exports
         // its tail. A URL mid-prose over-redacts what follows — the cheap
         // direction — and a second URL on the same line is simply consumed
-        // into the same marker. The pre-query region crosses QUOTES: a
-        // decoded path can legally hold one (`/a"b?email=…`), and a quote
-        // boundary here disabled the rule on exactly those lines. Only
-        // whitespace still bounds it — that is what keeps a prose colon
-        // (`note: done? yes`) from arming the rule mid-sentence.
-        value.replacingOccurrences(
-            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+:(?://)?[^\s?]*)\?.*$"#,
-            with: "$1?\(Self.marker)",
-            options: .regularExpression
-        )
+        // into the same marker.
+        //
+        // TWO passes, split by what defends against a prose colon. An
+        // AUTHORITY form is anchored by `://`, which prose never produces —
+        // so its pre-query region crosses everything up to the first `?`
+        // (a decoded path legally holds spaces and quotes: `/a b?…`,
+        // `/a"b?…`, and each excluded character has become a bypass). A
+        // HOSTLESS form (`wink:unknown?…`) has only the colon, so it keeps
+        // the whitespace boundary — that is what stops `note: done? yes`
+        // from arming the rule mid-sentence — and decoded spaces cannot
+        // reach it: only inner web URLs, which carry `//`, are decoded and
+        // re-logged with their punctuation live.
+        value
+            .replacingOccurrences(
+                of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+://[^?]*)\?.*$"#,
+                with: "$1?\(Self.marker)",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+:(?://)?[^\s?]*)\?.*$"#,
+                with: "$1?\(Self.marker)",
+                options: .regularExpression
+            )
     }
 
     /// Truncates by **character**, never by byte or UTF-16 unit, so a

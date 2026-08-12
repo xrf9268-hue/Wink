@@ -381,6 +381,21 @@ struct DiagnosticsRedactorTests {
     }
 
     @Test
+    func decodedPathWhitespaceDoesNotStopTheQueryRuleOnAuthorityForms() {
+        // An accepted command's inner web URL is decoded and re-logged with
+        // its punctuation live, and a decoded path legally holds spaces
+        // (`/a b?fullName=…`). The authority form is anchored by `://` —
+        // which prose never produces — so its pre-query region crosses
+        // whitespace to the first `?`.
+        let line = redactor().redact(
+            line: "no app matched https://example.com/a b?fullName=Bob Smith"
+        )
+        #expect(!line.contains("fullName"))
+        #expect(!line.contains("Bob"))
+        #expect(line.contains("https://example.com/a b?"))
+    }
+
+    @Test
     func aProseColonWithALaterQuestionMarkDoesNotArmTheQueryRule() {
         // Whitespace is the one boundary the pre-query region keeps: a
         // prose colon followed by a question mark further down the line
