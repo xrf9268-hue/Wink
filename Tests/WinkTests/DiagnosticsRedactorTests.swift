@@ -442,6 +442,32 @@ struct DiagnosticsRedactorTests {
     }
 
     @Test
+    func legacyEmbeddedLineFeedsRejoinTheirRecordBeforeRedaction() {
+        // Pre-upgrade records can carry a literal LF inside one record. The
+        // continuation has no timestamp — the writer's record prefix — so
+        // it rejoins its record before the per-line rules run, keeping the
+        // label connected to the tail of its value; the chunked value rule
+        // then consumes both pieces.
+        let text = "2026-08-11T09:00:00Z login password=hunter2\nsecretTail\n2026-08-11T09:00:01Z status=ready"
+        let output = redactor().redact(text: text)
+        #expect(!output.contains("hunter2"))
+        #expect(!output.contains("secretTail"))
+        #expect(output.contains("2026-08-11T09:00:01Z"))
+        #expect(output.contains("status=ready"))
+    }
+
+    @Test
+    func documentsWithoutRecordTimestampsKeepTheirLineStructure() {
+        // The continuation heuristic keys on the writer's timestamp prefix;
+        // a document without it must not collapse into one line.
+        let text = "first line\nsecond line token=abc123\nthird line"
+        let output = redactor().redact(text: text)
+        #expect(output.hasPrefix("first line\n"))
+        #expect(output.hasSuffix("\nthird line"))
+        #expect(!output.contains("abc123"))
+    }
+
+    @Test
     func legacyCarriageReturnNewlineSurvivesTheDocumentPath() {
         // \r\n is one Character, so the document split on "\n" leaves it
         // embedded inside a single line; the whole record must still redact.

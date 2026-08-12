@@ -145,9 +145,58 @@ struct DiagnosticsRedactor: Sendable {
 
     /// Redacts a whole document line by line. Line endings are normalized to
     /// `\n` so the output is byte-stable regardless of what produced the log.
+    ///
+    /// Records written before the writer flattened separators can carry a
+    /// literal LF INSIDE one record. At the document level that LF is
+    /// indistinguishable from a record boundary except by the writer's other
+    /// invariant: every record begins with an ISO8601 timestamp. A line
+    /// without one, following a record WITH one, is a continuation — split
+    /// apart it would read as an unrelated, unlabeled line no label rule can
+    /// connect to its key (`password=hunter2\nsecretTail` exported the
+    /// value's tail) — so it rejoins its record with the LF flattened to a
+    /// space, exactly what the current writer would have produced, before
+    /// the per-line rules run. The chunked value rule then consumes the
+    /// rejoined tail with the rest of the secret. Documents without the
+    /// timestamp convention (arbitrary text) never join, keeping their line
+    /// structure.
     func redact(text: String) -> String {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        return lines.map { redact(line: String($0)) }.joined(separator: "\n")
+        var records: [String] = []
+        records.reserveCapacity(lines.count)
+        // Tracked as a flag rather than re-probed: a join keeps the record's
+        // original timestamped prefix, and re-running the probe over the
+        // accumulated record would copy it once per continuation.
+        var lastIsTimestampedRecord = false
+        for (index, line) in lines.enumerated() {
+            // The trailing empty subsequence is the document's final
+            // newline, not a continuation; folding it in would append a
+            // stray space to the last record on every export.
+            let isFinalNewline = line.isEmpty && index == lines.count - 1
+            let isRecordStart = !isFinalNewline && Self.startsWithRecordTimestamp(line)
+            if !records.isEmpty, lastIsTimestampedRecord, !isRecordStart, !isFinalNewline {
+                records[records.count - 1] += " " + line
+            } else {
+                records.append(String(line))
+                lastIsTimestampedRecord = isRecordStart
+            }
+        }
+        return records.map { redact(line: $0) }.joined(separator: "\n")
+    }
+
+    /// The writer's record prefix. Liberal about fractional seconds and
+    /// offsets so formatter drift across builds cannot demote real records
+    /// to continuations of their predecessor.
+    private static let recordTimestampProbe = try? NSRegularExpression(
+        pattern: #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2}) "#
+    )
+
+    private static func startsWithRecordTimestamp<S: StringProtocol>(_ line: S) -> Bool {
+        // A probe that failed to compile must fail toward "record start":
+        // joining is the risky direction, standalone lines are the old,
+        // safe behavior.
+        guard let probe = recordTimestampProbe else { return true }
+        let value = String(line)
+        return probe.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) != nil
     }
 
     // MARK: - Rules
