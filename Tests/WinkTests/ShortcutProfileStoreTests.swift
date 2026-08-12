@@ -2062,6 +2062,84 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func anOutsideEditOfferSurvivesWinkOwnSwitchAndStillImports() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let first = harness.makeStore()
+        guard case .ready = first.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // An outside edit of the mirror, noticed at the next launch: the
+        // offer captures the edited bytes for the active profile (A).
+        try harness.writeLegacyShortcuts(
+            [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        )
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load(), let offer = loaded.foreignMirror else {
+            Issue.record("expected an importable outside-edit offer")
+            return
+        }
+
+        // The user switches to B before choosing. Wink's own rewrite puts
+        // B's bytes in the mirror — after preserving the offered ones — so
+        // the offer's snapshot no longer matches the file.
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        _ = try store.activateProfile(work.id)
+
+        // Import must still land in A rather than dissolving: the change
+        // since the offer is provably Wink's own rewrite for the active
+        // profile, and the adoption touches only A's data file.
+        let adopted = try store.adoptForeignMirror(offer)
+        #expect(adopted == nil)
+        #expect(harness.data(at: harness.layout.profileDataURL(offer.profileID)) == offer.rawBytes)
+        // The mirror keeps describing the ACTIVE profile.
+        #expect(
+            harness.data(at: harness.layout.mirrorURL)
+                == harness.data(at: harness.layout.profileDataURL(work.id))
+        )
+    }
+
+    @Test
+    func aSecondOutsideEditAfterTheOfferStillRefusesTheImport() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let first = harness.makeStore()
+        guard case .ready = first.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        try harness.writeLegacyShortcuts(
+            [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        )
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load(), let offer = loaded.foreignMirror else {
+            Issue.record("expected an importable outside-edit offer")
+            return
+        }
+
+        // The file is written AGAIN by the outside tool after the offer:
+        // no descriptor vouches for these bytes, so adopting the captured
+        // snapshot would roll the newest edit back. Still refused.
+        try harness.writeLegacyShortcuts(
+            [makeTestShortcut(appName: "Notes", bundleIdentifier: "com.apple.Notes", keyEquivalent: "n")]
+        )
+        do {
+            _ = try store.adoptForeignMirror(offer)
+            Issue.record("expected the import to be refused")
+        } catch ShortcutProfileStore.StoreError.foreignMirrorChangedSinceOffer {
+            // The refusal is the assertion.
+        } catch {
+            Issue.record("unexpected error: \(error)")
+        }
+    }
+
+    @Test
     func aFailedDescriptorReplacementDoesNotLeaveTheOldDescriptorVouching() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

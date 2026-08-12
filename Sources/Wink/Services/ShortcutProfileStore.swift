@@ -2240,8 +2240,32 @@ final class ShortcutProfileStore {
         // refreshed before it is judged.
         if let currentBytes = try? Data(contentsOf: layout.mirrorURL),
            Self.digest(currentBytes) != Self.digest(mirror.rawBytes) {
-            log("PROFILE_TRACE_IMPORT_REFUSED reason=mirror_changed_since_offer")
-            throw StoreError.foreignMirrorChangedSinceOffer
+            // EXCEPT when the intervening write is provably Wink's OWN
+            // rewrite for the ACTIVE profile and the offer targets a
+            // DIFFERENT profile: an ordinary A→B switch rewrites the mirror
+            // to B (preserving the offered bytes first — writeMirror's
+            // guard), and refusing here would dissolve the only UI path for
+            // importing A's captured edit, leaving it recoverable solely
+            // from the preservation file. That adoption installs into A's
+            // data file and leaves B's mirror exactly as it stands, so
+            // nothing rolls back. The descriptor-digest match is the same
+            // "Wink wrote these exact bytes" reading detectForeignMirror
+            // uses — an external re-edit breaks it and still refuses — and
+            // an offer for the ACTIVE profile keeps refusing outright:
+            // there the adoption WOULD roll data and mirror back over
+            // Wink's own newer payload, whose only copy is what it would
+            // overwrite.
+            let descriptor = loadMirrorDescriptor(layout: layout)
+            let activeProfileID = locator.currentActiveProfileID()
+            let ownRewriteForActive = activeProfileID != nil
+                && descriptor?.profileID == activeProfileID
+                && descriptor?.sha256 == Self.digest(currentBytes)
+                && mirror.profileID != activeProfileID
+            guard ownRewriteForActive else {
+                log("PROFILE_TRACE_IMPORT_REFUSED reason=mirror_changed_since_offer")
+                throw StoreError.foreignMirrorChangedSinceOffer
+            }
+            log("PROFILE_TRACE_IMPORT_FROM_SNAPSHOT profile=\(mirror.profileID.uuidString)")
         }
         // Admitting an id whose rows are being deleted right now would leave a
         // live shortcut with its history erased moments later. Refusing is
