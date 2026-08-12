@@ -126,7 +126,8 @@ benefit. Split, a crash during a switch can never damage the list of profiles.
   "schemaVersion": 1,
   "profiles": [
     { "id": "…UUID…", "name": "Default", "createdAt": "2026-08-10T09:00:00Z", "modifiedAt": "…" } // metadata edits only — see below
-  ]
+  ],
+  "pendingUsageDeletions": ["…UUID…"] // optional; absent ≡ empty — see below
 }
 
 // Profiles/active.json
@@ -160,6 +161,16 @@ reads. A feature that ever needs "when did the shortcuts last change" must deriv
 the data file, not from a manifest promise. Nothing in v1 displays `modifiedAt`; it is
 carried because removing a shipped schema member is a compatibility event, keeping one is
 free.
+
+**`pendingUsageDeletions` is the usage journal D3's deletion rule writes** — an array of
+shortcut UUIDs, recorded in the same commit as the profile removal that orphans them and
+cleared only after `deleteUsage` confirms the rows are gone. The member is **optional, and
+absent decodes as empty**: strict decoding rejects schemas newer than the build understands,
+not the absence of this member — a v1 manifest that predates any deletion carries no
+journal, and requiring one would invalidate every existing manifest the moment the field
+first appeared. Absent and present-but-empty are the same state; an implementation may
+normalize one to the other on its next commit but must not treat the difference as
+meaningful.
 
 > **Invariant.** A `Profiles/<id>.json` written by this build decodes to an identical
 > `[AppShortcut]` through the unmodified `PersistenceService.load()` path.
