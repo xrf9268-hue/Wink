@@ -417,6 +417,45 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **UsageTracker**: SQLite-backed daily usage aggregation off the main actor
 - **Launch-at-login status modeling**: `LaunchAtLoginStatus` preserves enabled / approval-needed / disabled / not-found states
 
+## Planned ownership boundaries
+
+Approved designs that are **not yet implemented**. Everything above this heading describes
+shipped behavior; everything in this section describes a contract that a named issue must
+still deliver. Move an entry into the body above only when its implementation lands.
+
+### Shortcut Profiles v1 (design approved — issue #437 implements)
+
+Design record: `docs/superpowers/specs/2026-08-10-shortcut-profiles-v1-design.md`.
+
+- A new `ShortcutProfileStore` owns `Application Support/Wink/Profiles/`
+  (`manifest.json` metadata list, `active.json` pointer, `mirror.json` mirror descriptor,
+  and one `<profileID>.json` data file per profile). `PersistenceService` keeps its current
+  element-level responsibility: a profile data file is byte-compatible with today's
+  `shortcuts.json` and loads through the unchanged strict/quarantine path.
+- `shortcuts.json` stops being the source of truth and becomes a **derived mirror** of the
+  active profile, written last and never read as truth by builds that understand profiles.
+  It is retained so the packaged-app E2E harness, the validation docs, and the planned
+  diagnostics bundle keep working, and so a reinstall of an older build still finds a
+  configuration.
+- `ShortcutManager` keeps sole ownership of the runtime apply path. A profile switch runs
+  the same synchronous main-actor block as `save(shortcuts:)` — store replace, one index
+  rebuild, one capture reconfiguration, cycle/hold/picker invalidation, one readiness push —
+  so no second Carbon/EventTap synchronization stack is introduced and no observable state
+  can mix one profile's store with another's trigger index.
+- The commit point for a switch is the `active.json` write, which happens **before** memory
+  changes, preserving the existing persist-then-mutate rule. Recovery is defined for every
+  combination of the four files; an unreadable configuration arms **zero** shortcuts and
+  never falls through to a different profile.
+- Shortcut UUIDs become globally unique across profiles, so `UsageTracker` keeps its v3
+  schema unchanged. Duplication mints new IDs, matching the recipe importer's existing
+  mint-on-import rule; `deleteUsage` is issued only for IDs no other profile still holds.
+- Profiles contain only `[AppShortcut]` and the per-shortcut overrides already stored on
+  each row. Hyper mapping, exception rules, launch-at-login, update settings, appearance,
+  TCC state, and diagnostic flags stay device-global and are out of scope by design.
+- The Search Palette trigger stays inside the profile's array and is therefore per-profile;
+  `.winkrecipe` continues to exclude it. Profiles are same-machine sets; recipes are the
+  transfer format, and the two terms are never used interchangeably.
+
 ## Known architectural gaps
 - No dedicated per-shortcut foreground-history stack. Current toggle-off semantics intentionally let macOS choose the next foreground app after `hide()`.
 - No test seam around event-tap capture itself (core logic is testable; tap infrastructure requires real macOS)
