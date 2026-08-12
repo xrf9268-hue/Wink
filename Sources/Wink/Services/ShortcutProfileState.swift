@@ -512,6 +512,19 @@ final class ShortcutProfileState {
                 localized: "Imported the changes made outside Wink.",
                 bundle: WinkResourceBundle.bundle
             )
+        } catch ShortcutProfileStore.StoreError.foreignMirrorChangedSinceOffer {
+            // The file was written again between the offer and the click, so
+            // the store refused to roll it back. Replace the stale offer with
+            // one built from the file as it is now — leaving the old offer up
+            // would refuse forever, and clearing it would hide the newest
+            // edit until relaunch.
+            pendingForeignMirror = pendingForeignMirror.flatMap {
+                store.refreshedForeignMirrorOffer(replacing: $0)
+            }
+            errorMessage = String(
+                localized: "That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.",
+                bundle: WinkResourceBundle.bundle
+            )
         } catch {
             errorMessage = userFacingMessage(for: error)
         }
@@ -627,6 +640,14 @@ final class ShortcutProfileState {
         case .usageDeletionInFlight:
             return String(
                 localized: "Wink is still clearing usage history for a deleted profile. Try again in a moment.",
+                bundle: WinkResourceBundle.bundle
+            )
+        case .foreignMirrorChangedSinceOffer:
+            // Normally intercepted by `adoptPendingForeignMirror`, which also
+            // refreshes the offer; this fallback keeps the message honest if
+            // the error ever surfaces through another path.
+            return String(
+                localized: "That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.",
                 bundle: WinkResourceBundle.bundle
             )
         case let .nameRejected(violation):

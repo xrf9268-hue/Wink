@@ -1369,6 +1369,10 @@ struct ShortcutProfileCRUDTests {
         // The original bytes travel with the payload; the import installs those
         // rather than a re-encoding, so an unmodelled member would survive.
         let foreignBytes = try PersistenceService.encodeShortcuts(foreign)
+        // The edit sits in the compat file itself — the only state production
+        // can produce, since every offer captures its bytes FROM that file.
+        // Adoption re-reads the file and refuses an offer whose bytes drifted.
+        try foreignBytes.write(to: harness.layout.mirrorURL)
 
         let adopted = try store.adoptForeignMirror(
             ShortcutProfileStore.ForeignMirror(profileID: work.id, shortcuts: foreign, rawBytes: foreignBytes)
@@ -1565,6 +1569,77 @@ struct ShortcutProfileMirrorTests {
         }
         #expect(final.activeShortcuts == foreign)
         #expect(final.foreignMirror == nil)
+    }
+
+    @Test
+    func adoptionRefusesWhenTheFileChangedAgainAfterTheOffer() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        _ = store.load()
+        let firstEdit = [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        try harness.writeLegacyShortcuts(firstEdit)
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load(), let mirror = after.foreignMirror else {
+            Issue.record("expected a foreign mirror")
+            return
+        }
+
+        // The other writer runs AGAIN between the offer and the user's click.
+        // Adopting the captured bytes now would roll the file back to the
+        // first edit and, on the mirror write, overwrite the second edit's
+        // only copy.
+        let secondEdit = [makeTestShortcut(appName: "Notes", bundleIdentifier: "com.apple.notes", keyEquivalent: "n")]
+        try harness.writeLegacyShortcuts(secondEdit)
+        let mirrorBytesBefore = harness.data(at: harness.layout.mirrorURL)
+        let profileBytesBefore = harness.data(at: harness.layout.profileDataURL(after.activeProfileID))
+
+        #expect(throws: ShortcutProfileStore.StoreError.foreignMirrorChangedSinceOffer) {
+            try reloaded.adoptForeignMirror(mirror)
+        }
+        // Refused means refused: the newer edit still sits in the file and
+        // the profile was not rolled back to the captured bytes.
+        #expect(harness.data(at: harness.layout.mirrorURL) == mirrorBytesBefore)
+        #expect(harness.data(at: harness.layout.profileDataURL(after.activeProfileID)) == profileBytesBefore)
+
+        // The refreshed offer targets the same profile with the newest bytes,
+        // and adopting IT succeeds — refusal is a redirect, not a dead end.
+        let refreshed = try #require(reloaded.refreshedForeignMirrorOffer(replacing: mirror))
+        #expect(refreshed.profileID == mirror.profileID)
+        #expect(refreshed.shortcuts == secondEdit)
+        let adopted = try reloaded.adoptForeignMirror(refreshed)
+        #expect(adopted == secondEdit)
+    }
+
+    @Test
+    func adoptionProceedsWhenTheFileVanishedAfterTheOffer() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let store = harness.makeStore()
+        _ = store.load()
+        let foreign = [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        try harness.writeLegacyShortcuts(foreign)
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load(), let mirror = after.foreignMirror else {
+            Issue.record("expected a foreign mirror")
+            return
+        }
+
+        // A vanished file is NOT drift: there is nothing on disk this import
+        // can destroy, and in the interrupted-migration recovery the captured
+        // bytes can be the last copy anywhere — refusing here would block the
+        // only recovery the user has.
+        try FileManager.default.removeItem(at: harness.layout.mirrorURL)
+
+        let adopted = try reloaded.adoptForeignMirror(mirror)
+        #expect(adopted == foreign)
+        #expect(harness.data(at: harness.layout.mirrorURL) == mirror.rawBytes)
     }
 
     @Test

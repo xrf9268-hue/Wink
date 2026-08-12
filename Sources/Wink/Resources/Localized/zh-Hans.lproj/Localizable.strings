@@ -456,6 +456,8 @@
 	<string>系统设置中的输入监控状态可能滞后于实际授权情况。如果相关快捷键在这里可以正常工作，说明 Wink 已获得所需权限。</string>
 	<key>Target app</key>
 	<string>目标应用</string>
+	<key>That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.</key>
+	<string>该文件在 Wink 首次发现改动后又被修改了。现在显示的是最新版本——请确认后重试。</string>
 	<key>That profile changed while Wink was switching to it, so nothing was applied. Try again.</key>
 	<string>Wink 正在切换到该配置时它发生了改动，因此未应用任何更改。请重试。</string>
 	<key>That profile no longer exists.</key>

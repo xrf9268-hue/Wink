@@ -172,6 +172,7 @@ final class ShortcutProfileStore {
         case manifestQuarantined
         case profileChangedDuringOperation(id: UUID)
         case usageDeletionInFlight
+        case foreignMirrorChangedSinceOffer
 
         var errorDescription: String? {
             switch self {
@@ -187,6 +188,8 @@ final class ShortcutProfileStore {
                 return "Profile changed while it was being applied: id=\(id.uuidString)"
             case .usageDeletionInFlight:
                 return "Usage history for one of these shortcuts is still being removed"
+            case .foreignMirrorChangedSinceOffer:
+                return "The file was changed again after this offer was captured"
             case let .nameRejected(violation):
                 return "Profile name rejected: \(violation)"
             case let .profileLimitReached(limit):
@@ -899,17 +902,32 @@ final class ShortcutProfileStore {
         }
 
         log("PROFILE_TRACE_FOREIGN_MIRROR profile=\(descriptor.profileID.uuidString)")
-        // A payload with duplicate shortcut IDs is not importable: writing it
-        // would publish duplicate rows into the runtime and leave a file the
-        // strict loader quarantines on the next launch, arming nothing. Offer
-        // only the keep-and-overwrite side for those bytes.
-        let decoded = (try? JSONDecoder().decode([AppShortcut].self, from: mirrorData))
+        return Self.foreignMirrorOffer(profileID: descriptor.profileID, bytes: mirrorData)
+    }
+
+    /// The ONE construction rule for an importable offer, shared by detection
+    /// and the post-refusal refresh so the two cannot drift: shortcuts are
+    /// attached only when the bytes decode with unique ids. A payload with
+    /// duplicate shortcut IDs is not importable — writing it would publish
+    /// duplicate rows into the runtime and leave a file the strict loader
+    /// quarantines on the next launch, arming nothing — so those bytes carry
+    /// no decoded side and the UI offers only keep-and-overwrite.
+    private static func foreignMirrorOffer(profileID: UUID, bytes: Data) -> ForeignMirror {
+        let decoded = (try? JSONDecoder().decode([AppShortcut].self, from: bytes))
             .flatMap { Set($0.map(\.id)).count == $0.count ? $0 : nil }
-        return ForeignMirror(
-            profileID: descriptor.profileID,
-            shortcuts: decoded,
-            rawBytes: mirrorData
-        )
+        return ForeignMirror(profileID: profileID, shortcuts: decoded, rawBytes: bytes)
+    }
+
+    /// Rebuilds a pending offer from the file as it is NOW, after
+    /// `adoptForeignMirror` refused a stale one. The target profile is kept
+    /// from the original offer: the target is a property of the descriptor or
+    /// recovery flow that created the offer, not of the drifted bytes. Returns
+    /// nil when the file is gone or unreadable — there is nothing left to
+    /// offer, and `writeMirror`'s own guards protect whatever appears next.
+    func refreshedForeignMirrorOffer(replacing stale: ForeignMirror) -> ForeignMirror? {
+        guard let layout, let bytes = try? Data(contentsOf: layout.mirrorURL) else { return nil }
+        log("PROFILE_TRACE_FOREIGN_MIRROR_REFRESHED profile=\(stale.profileID.uuidString)")
+        return Self.foreignMirrorOffer(profileID: stale.profileID, bytes: bytes)
     }
 
     /// Copies a `shortcuts.json` Wink cannot attribute, so a later save can
@@ -1904,6 +1922,25 @@ final class ShortcutProfileStore {
     /// the active one, so the caller can apply them to the runtime.
     @discardableResult
     func adoptForeignMirror(_ mirror: ForeignMirror) throws -> [AppShortcut]? {
+        guard let layout else { throw StoreError.storageUnavailable }
+        // The offer was captured when the edit was first noticed; the file may
+        // have been written AGAIN between then and the user's click. Adopting
+        // the captured bytes anyway would roll the disk back to the older edit
+        // — and if the later writer also refreshed the descriptor, the mirror
+        // write below would classify the newer bytes as Wink's own payload and
+        // overwrite their last copy with no preservation. Only a readable file
+        // holding different bytes refuses: a missing or unreadable file has
+        // nothing this write can destroy (`writeMirror`'s own guards keep
+        // covering those states), and in the interrupted-migration recovery
+        // the captured bytes can be the last copy anywhere, so refusing on
+        // absence would block the only recovery the user has. Checked first:
+        // every check below evaluates the offer, and a stale offer should be
+        // refreshed before it is judged.
+        if let currentBytes = try? Data(contentsOf: layout.mirrorURL),
+           Self.digest(currentBytes) != Self.digest(mirror.rawBytes) {
+            log("PROFILE_TRACE_IMPORT_REFUSED reason=mirror_changed_since_offer")
+            throw StoreError.foreignMirrorChangedSinceOffer
+        }
         // Admitting an id whose rows are being deleted right now would leave a
         // live shortcut with its history erased moments later. Refusing is
         // recoverable — the offer stays and the drain finishes in milliseconds
@@ -1912,7 +1949,6 @@ final class ShortcutProfileStore {
             log("PROFILE_TRACE_IMPORT_REFUSED reason=usage_deletion_in_flight")
             throw StoreError.usageDeletionInFlight
         }
-        guard let layout else { throw StoreError.storageUnavailable }
         guard manifest?.profile(id: mirror.profileID) != nil else {
             throw StoreError.profileNotFound(mirror.profileID)
         }
