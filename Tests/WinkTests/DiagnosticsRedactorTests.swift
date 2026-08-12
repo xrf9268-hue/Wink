@@ -263,6 +263,12 @@ struct DiagnosticsRedactorTests {
             let out = redactor().redact(line: line)
             #expect(!out.contains("abc123"), "leaked: \(line) → \(out)")
         }
+
+        // Versioned prefixes put a NUMERAL right before the camel word.
+        for line in ["oauth2Token=abc123", "s3Secret=abc123"] {
+            let out = redactor().redact(line: line)
+            #expect(!out.contains("abc123"), "leaked: \(line) → \(out)")
+        }
     }
 
     @Test

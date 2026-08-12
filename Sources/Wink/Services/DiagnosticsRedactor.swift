@@ -50,9 +50,10 @@ struct DiagnosticsRedactor: Sendable {
     /// re-scanned greedily from every start position).
     ///
     /// Boundaries: a non-alphanumeric neighbor, a lowercase→uppercase camel
-    /// seam (`clientSecret`), OR an acronym seam — uppercase followed by an
+    /// seam (`clientSecret`), an acronym seam — uppercase followed by an
     /// uppercase-then-lowercase word start (`clientIDToken`, `JWTToken`,
-    /// `APIToken`). The seam assertions live in `(?-i:…)` because the
+    /// `APIToken`) — or a digit→uppercase seam (`oauth2Token`, `s3Secret`),
+    /// since versioned prefixes put a numeral right before the camel word. The seam assertions live in `(?-i:…)` because the
     /// pattern is applied case-insensitively, and under `(?i)` the classes
     /// `[a-z]`/`[A-Z]` both match every letter — the seams would degenerate
     /// to "any two letters" and `usersession=` would fire from `session`.
@@ -60,7 +61,7 @@ struct DiagnosticsRedactor: Sendable {
     /// possessive — an iteration that matched never needs giving back, since
     /// the `[:=]` tail cannot overlap either arm's first character.
     private static let sensitiveKeyPattern =
-        #"(?:(?<![A-Za-z0-9])|(?-i:(?<=[a-z])(?=[A-Z]))|(?-i:(?<=[A-Z])(?=[A-Z][a-z])))(?:"#
+        #"(?:(?<![A-Za-z0-9])|(?-i:(?<=[a-z])(?=[A-Z]))|(?-i:(?<=[A-Z])(?=[A-Z][a-z]))|(?-i:(?<=[0-9])(?=[A-Z][a-z])))(?:"#
         + sensitiveKeyCores.joined(separator: "|")
         + #")(?:[_.-][A-Za-z0-9]++|(?-i:[A-Z][a-z0-9]*+))*+"#
 
