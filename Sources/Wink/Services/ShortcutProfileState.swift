@@ -521,16 +521,26 @@ final class ShortcutProfileState {
         recovery = .none
     }
 
-    /// The save-path member of the shared stale-mirror caveat: an ordinary
-    /// editor save commits the canonical profile and applies the new
-    /// bindings, but a refused compat rewrite must still be said out loud —
-    /// the E2E harness and downgraded builds keep reading the previous
-    /// bindings until a later successful rewrite.
-    func reportStaleMirrorAfterSave() {
-        statusMessage = String(
+    /// The save-path member of the shared stale-mirror caveat, in both
+    /// directions: a refused compat rewrite is said out loud (the E2E
+    /// harness and downgraded builds keep reading the previous bindings),
+    /// and a later successful rewrite CLEARS that warning — leaving it up
+    /// would claim a staleness the disk no longer has. Only the pure
+    /// save-path caveat auto-clears; composed messages (a delete's discard
+    /// notice with the caveat appended) describe one-time events and are
+    /// left for the user to dismiss.
+    func reportMirrorWriteOutcomeAfterSave(restored: Bool) {
+        let caveat = String(
             localized: "The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.",
             bundle: WinkResourceBundle.bundle
         )
+        if restored {
+            if statusMessage == caveat {
+                statusMessage = nil
+            }
+        } else {
+            statusMessage = caveat
+        }
     }
 
     func recoverFromUnreadableManifest() {

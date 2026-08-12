@@ -345,14 +345,14 @@ final class ShortcutProfileStore {
     /// follows profile switches via the locator and carries the mirror write
     /// as a derived copy, so `ShortcutManager.save(shortcuts:)` needs no
     /// profile knowledge at all.
-    /// `onMirrorNotRestored` fires when a save's compat rewrite was refused
-    /// — the same signal every other mirror-rewriting path reports through
-    /// its caveat. The save itself has already committed (the mirror is
-    /// derived data and never fails it), so the callback is the caller's one
-    /// chance to say the E2E harness and downgraded builds keep reading the
-    /// previous bindings until a later successful rewrite.
+    /// `onMirrorWriteOutcome` fires on every save with whether the compat
+    /// rewrite landed — the same signal every other mirror-rewriting path
+    /// reports through its caveat, in BOTH directions: a refusal is the
+    /// caller's one chance to warn (the save itself has committed; derived
+    /// data never fails it), and a later success is what lets the caller
+    /// clear a warning that no longer describes the disk.
     func makeActiveProfilePersistenceService(
-        onMirrorNotRestored: (@Sendable () -> Void)? = nil
+        onMirrorWriteOutcome: (@Sendable (Bool) -> Void)? = nil
     ) -> PersistenceService {
         let locator = self.locator
         let directoryProvider = self.directoryProvider
@@ -376,9 +376,7 @@ final class ShortcutProfileStore {
                     writeClient: writeClient,
                     diagnosticClient: diagnosticClient
                 )
-                if !restored {
-                    onMirrorNotRestored?()
-                }
+                onMirrorWriteOutcome?(restored)
             }
         )
     }

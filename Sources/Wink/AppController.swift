@@ -34,9 +34,9 @@ final class AppController {
     /// profile state's shared stale-mirror caveat — the save itself has
     /// already committed and is never failed by derived data.
     private lazy var persistenceService = profileStore.makeActiveProfilePersistenceService(
-        onMirrorNotRestored: { [weak self] in
+        onMirrorWriteOutcome: { [weak self] restored in
             Task { @MainActor [weak self] in
-                self?.profileState.reportStaleMirrorAfterSave()
+                self?.profileState.reportMirrorWriteOutcomeAfterSave(restored: restored)
             }
         }
     )

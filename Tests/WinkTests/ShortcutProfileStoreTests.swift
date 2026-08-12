@@ -2243,16 +2243,25 @@ struct ShortcutProfileMirrorTests {
             )
         }
 
-        let refused = MutableBox(false)
+        let outcomes = CallbackRecorder<Bool>()
         let persistence = store.makeActiveProfilePersistenceService(
-            onMirrorNotRestored: { refused.value = true }
+            onMirrorWriteOutcome: { outcomes.record($0) }
         )
         try persistence.save([makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")])
 
-        #expect(refused.value)
+        #expect(outcomes.values == [false])
         // The canonical save itself committed regardless.
         let activeID = try #require(store.locator.currentActiveProfileID())
         #expect((try? store.shortcuts(in: activeID))?.count == 1)
+
+        // Storage recovers: the next save reports success so the caller can
+        // CLEAR a warning that no longer describes the disk.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o644],
+            ofItemAtPath: harness.layout.mirrorURL.path
+        )
+        try persistence.save([makeTestShortcut(appName: "Notes", bundleIdentifier: "com.apple.notes", keyEquivalent: "n")])
+        #expect(outcomes.values == [false, true])
     }
 
     @Test
