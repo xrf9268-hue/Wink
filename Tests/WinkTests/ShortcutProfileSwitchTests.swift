@@ -539,6 +539,54 @@ struct ShortcutProfileRecoveryRuntimeTests {
     }
 
     @Test
+    func aProfileSwitchDoesNotClearTheLegacyMigrationNotice() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeRawLegacyShortcuts("{ not a shortcut array")
+
+        let store = harness.makeStore()
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let state = ShortcutProfileState(store: store, shortcutManager: manager)
+        _ = state.loadAtStartup()
+        guard case .legacyMigrationFailed = state.recovery else {
+            Issue.record("expected the legacy migration notice after an unreadable legacy file")
+            return
+        }
+
+        // Switching profiles resolves active-profile recovery states, but
+        // the migration failure is not about the active profile: the
+        // manifest still records it, and clearing it here would hide the
+        // warning for the session only for it to return at next launch.
+        state.createProfile(named: "Work", duplicatingActiveProfile: false)
+        guard let work = state.profiles.first(where: { $0.name == "Work" }) else {
+            Issue.record("expected the created profile to be listed")
+            return
+        }
+        state.switchToProfile(work.id)
+        #expect(state.activeProfileID == work.id)
+        guard case .legacyMigrationFailed = state.recovery else {
+            Issue.record("expected the legacy migration notice to survive the switch")
+            return
+        }
+
+        // Explicit dismissal is what clears it — durably.
+        state.dismissLegacyMigrationNotice()
+        #expect(state.recovery == .none)
+        #expect(store.manifest?.legacyMigrationFailure == nil)
+    }
+
+    @Test
     func anAmbiguousActivePointerArmsNothingAndNeverAutoSelects() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

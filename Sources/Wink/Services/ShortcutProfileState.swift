@@ -291,7 +291,15 @@ final class ShortcutProfileState {
         let discarded = prepareForSwitch()
         activeProfileID = profileID
         unreadableProfileIDs.remove(profileID)
-        recovery = .none
+        // A successful switch resolves the ACTIVE-PROFILE recovery states
+        // (an ambiguous pointer, an unreadable active profile) — but the
+        // legacy-migration notice is not about the active profile: the
+        // manifest still records the unresolved failure, and clearing it
+        // here would hide the warning for the rest of the session only for
+        // it to return at the next launch. It clears by explicit dismissal.
+        if case .legacyMigrationFailed = recovery {} else {
+            recovery = .none
+        }
         // The same synchronous main-actor apply an ordinary save performs, so
         // no observable state mixes the outgoing store with the incoming index.
         shortcutManager.applyLoadedShortcuts(payload.shortcuts, source: .profileSwitch)

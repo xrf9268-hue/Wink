@@ -1289,7 +1289,7 @@ final class ShortcutProfileStore {
         // made while Wink is running, so every overwrite has to re-check.
         // Reading and hashing a few kilobytes on a user-initiated save is not
         // a cost worth trading a silent data loss for.
-        if FileManager.default.fileExists(atPath: layout.mirrorURL.path) {
+        do {
             // Bounded loop, not a single pass: `preserveBytes` ends in a
             // durable flush that is slow enough to be a real window, and an
             // older build or external tool that rewrites the mirror inside
@@ -1306,6 +1306,16 @@ final class ShortcutProfileStore {
                 logger.error("\(message, privacy: .public)")
                 diagnosticClient.log(message)
                 return false
+            }
+            // Absence is re-tested on EVERY pass, never decided once up
+            // front: a mirror an older build or external tool creates
+            // between an absence check and the replacement below would
+            // otherwise skip this loop entirely and be destroyed unread. A
+            // file that appears re-enters classification as what it now is,
+            // and the residual window shrinks to the same final-comparison
+            // width the always-present case has.
+            guard FileManager.default.fileExists(atPath: layout.mirrorURL.path) else {
+                break
             }
             // Present but unreadable is the case this guard exists for: the
             // directory can still accept an atomic replacement, so treating an
