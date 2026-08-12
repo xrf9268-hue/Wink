@@ -241,6 +241,38 @@ struct DiagnosticsStateTests {
     }
 
     @Test
+    func anOldSaveFailureDoesNotSurfaceInsideANewerPreview() async {
+        let recorder = Recorder()
+        let state = makeState(recorder: recorder)
+
+        // The slow save FAILS after the user has moved on to a new preview.
+        // An error renders inside whatever sheet is showing, and the newer
+        // preview was never saved — it must not display a failure it did not
+        // have.
+        let gate = DispatchSemaphore(value: 0)
+        state.prepareExport()
+        await state.waitForExportPreparationForTesting()
+        recorder.writeGate = gate
+        recorder.writeFails = true
+        state.confirmExport()
+
+        state.cancelExport()
+        recorder.writeGate = nil
+        recorder.writeFails = false
+        state.prepareExport()
+        await state.waitForExportPreparationForTesting()
+        let newer = state.preview
+        #expect(newer != nil)
+
+        gate.signal()
+        await state.waitForExportCompletionForTesting()
+
+        #expect(state.preview == newer)
+        #expect(state.feedback?.isError != true)
+        #expect(recorder.written.isEmpty)
+    }
+
+    @Test
     func revealReportsAMissingLogInsteadOfFailingSilently() {
         let recorder = Recorder()
         recorder.logExists = false

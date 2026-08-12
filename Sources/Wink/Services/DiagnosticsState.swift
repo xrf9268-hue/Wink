@@ -173,14 +173,22 @@ final class DiagnosticsState {
                     )
                 case let .failure(error):
                     // The originating preview stays up so the user can retry
-                    // a different folder without rebuilding; a NEWER preview
-                    // is left exactly as it is for the same reason.
-                    self.feedback = .error(
-                        String(
-                            localized: "Could not write the diagnostics: \(error.localizedDescription)",
-                            bundle: WinkResourceBundle.bundle
+                    // a different folder without rebuilding. The error is
+                    // generation-gated where the success toast is not: "Saved
+                    // N files to X" is context-free and true whenever it
+                    // fires, but an error RENDERS INSIDE whatever sheet is
+                    // showing — and a newer preview that was never saved must
+                    // not display a failure it did not have. A cancelled
+                    // attempt's late failure has no surface left that would
+                    // not lie, so it is dropped with the sheet it belonged to.
+                    if self.previewGeneration == generation {
+                        self.feedback = .error(
+                            String(
+                                localized: "Could not write the diagnostics: \(error.localizedDescription)",
+                                bundle: WinkResourceBundle.bundle
+                            )
                         )
-                    )
+                    }
                 }
                 self.saving = nil
             }
