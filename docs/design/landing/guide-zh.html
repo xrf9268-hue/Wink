@@ -427,7 +427,7 @@
         <p class="sub">安装、权限、每一种前台行为、Hyper 层，以及 <kbd>wink://</kbd> 协议——完整讲一遍，按你真正会遇到它们的顺序。</p>
       </div>
       <div class="qf-row">
-        <div class="qf"><b>10</b><span>章节，从头到尾</span></div>
+        <div class="qf"><b>11</b><span>章节，从头到尾</span></div>
         <div class="qf"><b>2</b><span>项权限——其中一项视情况而定</span></div>
         <div class="qf"><b>0</b><span>张缩略图——从不请求屏幕录制权限</span></div>
       </div>
@@ -449,6 +449,7 @@
         <a href="#insights">07 · 洞察</a>
         <a href="#quiet">08 · 静默</a>
         <a href="#sharing">09 · 分享</a>
+        <a href="#troubleshooting">10 · 没反应</a>
         <a href="#extras" class="toc-extra">还有，顺带一提</a>
       </nav>
 
@@ -602,6 +603,44 @@
             <div class="dim">wink://pause · wink://resume — 同样的用法</div>
           </div>
           <p>始终用 <kbd>open -g</kbd> 调用它。单纯的 <kbd>open</kbd> 会先激活 Wink 来投递这个 URL，这会让你真正的目标应用被判定成"不在前台"，把每一次切换都变成单纯的激活；<kbd>-g</kbd> 能让 Wink 留在后台，这样切换看到的才是真实的前台状态。自动化触发遵守和真实按键一样的按应用冷却时间，但从不计入洞察。</p>
+        </article>
+
+
+        <!-- 10 -->
+        <article class="chapter" id="troubleshooting">
+          <p class="eyebrow">10 · 按了没反应</p>
+          <h2>什么都没发生。原因在这。</h2>
+          <p>快捷键没反应，是三种情况之一，而它们不是一回事：捕获可能被<strong>暂停</strong>了——有意为之；可能 macOS 收回了<strong>权限</strong>；也可能这个快捷键走的<strong>通道</strong>没就绪。菜单栏胶囊只会直接点名第一类——<strong>Paused</strong>、<strong>Limited · Secure Input</strong>——它不监视权限和 Carbon 注册，所以 <strong>Ready</strong> 不能排除后两类。胶囊显示 Ready 而组合键依然没反应时，看<em>哪些</em>快捷键失灵了。</p>
+          <div class="list">
+            <div class="list-row">
+              <span class="term">胶囊显示 Paused</span>
+              <span class="desc">什么都没坏——捕获是被有意关掉的，暂停期间所有快捷键都会停。要么你在菜单栏手动暂停了 Wink，要么当前前台 App 在<strong>「在例外 App 中暂停」</strong>列表里（虚拟机和远程桌面默认就在列表中），这时胶囊会点名它：<strong>Paused · Parallels Desktop</strong>。从菜单栏恢复，或把该 App 移出列表。只要还显示 Paused，去折腾权限或通道都不会有任何变化。</span>
+            </div>
+            <div class="list-row">
+              <span class="term">只有一部分失灵</span>
+              <span class="desc">失灵的那批走的是同一条通道。普通修饰键组合（<kbd>⌃⌥K</kbd>）走 Carbon 热键；Hyper 组合键走事件监听；Fn 行绑定是混合通道——按键由 Carbon 送达，另有一个需要<strong>输入监控</strong>的窄观察器确认物理 Fn 键，两半任何一半停摆它就失灵。所以：胶囊显示 <strong>Limited · Secure Input</strong> 时，是某个 App 占住了安全输入，事件监听和 Fn 观察器同时被饿死，它会自行恢复；Hyper <em>和</em> Fn 行一起失灵，去「系统设置 → 隐私与安全性」查<strong>输入监控</strong>——那一项是真正的权限，两者都靠它；<em>只有</em> Fn 行失灵而 Hyper 正常，两半都可能是元凶——Carbon 拒绝注册，或 Fn 观察器没能启动（Hyper 走的是另一个事件监听，所以它不受影响）。诊断导出会按键位列出每个失败绑定及其原因，观察器不可用时会在里面自报家门。</span>
+            </div>
+            <div class="list-row">
+              <span class="term">全部失灵</span>
+              <span class="desc">对症下药要看你的快捷键走什么通道，而不是看死了几个。如果你绑的全在 Hyper 层或 Fn 行，一个被撤销的<strong>输入监控</strong>就能全部杀掉——先查它，路径同上一行。普通修饰键组合走 Carbon，依赖<strong>辅助功能</strong>：去「系统设置 → 隐私与安全性」检查，如果 Wink 已列出且开关是打开的，把它<strong>关掉再打开</strong>——失效的授权从外面看和有效的一模一样。想要证据而不是猜测，上文的诊断导出会直接列出每条通道的就绪状态。</span>
+            </div>
+            <div class="list-row">
+              <span class="term">更新之后</span>
+              <span class="desc">macOS 把权限绑定在 App 的<strong>签名</strong>上，而不是名称或路径。签名方式和你当初授权时不同的构建，在 TCC 眼里就是另一个 App，两个权限都要重新授予。已公证也改变不了这一点——公证管的是 Gatekeeper 让不让它打开，TCC 管的是打开之后能做什么，两者互不相干。诊断导出里会写明签名方式，方便你判断自己在跑哪种构建。</span>
+            </div>
+            <div class="list-row">
+              <span class="term">只在某个 App 里失灵</span>
+              <span class="desc">那个 App 多半占用了安全输入——密码框、锁屏、远程桌面。状态标签会显示 <strong>Limited · Secure Input</strong>，并会自行恢复。如果那是你长时间使用的虚拟机或远程桌面，把它加进<strong>「在例外应用中暂停」</strong>，比硬碰硬省事。</span>
+            </div>
+            <div class="list-row">
+              <span class="term">App 被移动或删除了</span>
+              <span class="desc">Wink 绑定的是 Bundle ID 而不是路径，所以移动 App 没问题。删除就不行了：那一行会保留并标记为「应用不可用」，不会悄悄地对着一个空位触发。</span>
+            </div>
+          </div>
+          <p class="lead-chips">如果以上都解释不了，把证据带上：</p>
+          <p><strong>设置 → 通用 → 诊断信息</strong>里有<strong>显示日志</strong>和<strong>导出…</strong>。导出会在写入<em>之前</em>把每个文件和其中的全部内容展示给你，除非你自己发出去，否则不会离开这台 Mac。</p>
+          <p>你的用户名、个人文件夹路径、密码、令牌，以及网址中的查询参数都会被移除。应用名称和 Bundle ID 会<em>保留</em>——正是它们让报告有阅读价值，同时也会暴露你为哪些应用设置了快捷键。分享前先看一眼预览。</p>
+          <p>提交问题时，有用的报告很短：Wink 版本、macOS 版本、你按了什么、期待发生什么、属于哪一类快捷键，再附上导出。</p>
         </article>
 
         <!-- closing -->

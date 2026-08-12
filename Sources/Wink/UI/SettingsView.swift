@@ -89,6 +89,7 @@ struct SettingsView: View {
     @Bindable var editor: ShortcutEditorState
     var profileState: ShortcutProfileState
     var preferences: AppPreferences
+    @Bindable var diagnostics: DiagnosticsState
     var insightsViewModel: InsightsViewModel
     var appListProvider: AppListProvider
     var shortcutStatusProvider: ShortcutStatusProvider
@@ -189,7 +190,7 @@ struct SettingsView: View {
         case .insights:
             InsightsTabView(viewModel: insightsViewModel)
         case .general:
-            GeneralTabView(preferences: preferences, editor: editor)
+            GeneralTabView(preferences: preferences, editor: editor, diagnostics: diagnostics)
         }
     }
 }

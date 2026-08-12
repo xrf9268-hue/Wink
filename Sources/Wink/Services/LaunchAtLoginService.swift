@@ -13,6 +13,21 @@ enum LaunchAtLoginStatus: Equatable {
     var isEnabled: Bool {
         self == .enabled
     }
+
+    /// Stable, non-localized identifier for diagnostics. `.requiresApproval`
+    /// and `.notFound` both collapse to `launchAtLoginEnabled == false`, but
+    /// they mean different things to a support conversation — one needs the
+    /// user to approve the login item in System Settings, the other means
+    /// the OS has never registered it at all — so diagnostics must carry the
+    /// full status rather than that boolean projection.
+    var diagnosticName: String {
+        switch self {
+        case .enabled: "enabled"
+        case .requiresApproval: "requires_approval"
+        case .disabled: "disabled"
+        case .notFound: "not_found"
+        }
+    }
 }
 
 enum LaunchAtLoginAvailability: String, Equatable {

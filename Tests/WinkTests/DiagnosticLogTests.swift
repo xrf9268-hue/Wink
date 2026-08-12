@@ -93,3 +93,200 @@ func explicitRotateIfNeededMovesFileAndLetsNextWriteContinue() throws {
     #expect(current.contains("post-rotate"))
     #expect(!current.contains("line-0-"))
 }
+
+// MARK: - Flush barrier before export reads the log (#461 finding 4)
+
+@Test
+func flushMakesEveryQueuedWriteVisibleToAnImmediateRead() throws {
+    // Mirrors what a diagnostics export needs: log() queues its write on the
+    // writer's private queue and returns immediately, so a read taken right
+    // after the last log() call — with no sleep, no delay — must still see
+    // every one of them once flush() returns. flush() is the only thing
+    // standing between the last enqueued write and the read.
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let fileURL = directory.appendingPathComponent("debug.log")
+    let writer = DiagnosticLogWriter(fileURL: fileURL, maxFileSize: .max)
+
+    for index in 0..<200 {
+        writer.log("event-\(index)")
+    }
+    writer.flush()
+
+    let contents = try String(contentsOf: fileURL, encoding: .utf8)
+    let lines = contents.split(separator: "\n")
+
+    #expect(lines.count == 200)
+    #expect(lines.contains { $0.contains("event-199") })
+}
+
+// MARK: - Rotated backup inclusion (#461 finding 3)
+
+@Test
+func embeddedNewlinesCannotSplitALogRecord() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("debug.log")
+    let writer = DiagnosticLogWriter(fileURL: url)
+
+    // A decoded wink:// bundle can carry %0A; written raw it would split
+    // the record and hand the redactor an unlabeled continuation line.
+    writer.log("URL: ignored unrecognized wink:x?bundle=password=hunter2\nsecretTail")
+    writer.flush()
+
+    let contents = try String(contentsOf: url, encoding: .utf8)
+    let lines = contents.split(separator: "\n", omittingEmptySubsequences: true)
+    #expect(lines.count == 1)
+    #expect(lines[0].contains("secretTail"))
+
+    // And the redactor therefore sees the whole record as one labelled
+    // value: the continuation is inside the secret, not beside it.
+    let redacted = DiagnosticsRedactor(homeDirectoryPath: "/Users/alice", userName: "alice")
+        .redact(text: contents)
+    #expect(!redacted.contains("hunter2"))
+    #expect(!redacted.contains("secretTail"))
+}
+
+@Test
+func aSnapshotReadCannotInterleaveWithAQueuedRotation() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("debug.log")
+    // A tiny cap and check interval so ordinary lines cross the rotation
+    // threshold.
+    let writer = DiagnosticLogWriter(fileURL: url, maxFileSize: 64, rotationCheckInterval: 32)
+
+    // Queue enough writes that a rotation is pending behind the snapshot.
+    for index in 0..<32 {
+        writer.log("line \(index) padding-padding-padding")
+    }
+    // The snapshot must observe ONE consistent state of the pair: whatever
+    // it reads, the combined content never contains a line twice.
+    let combined: String = writer.withSnapshot {
+        let primary = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        let rotated = (try? String(contentsOf: URL(fileURLWithPath: url.path + ".1"), encoding: .utf8)) ?? ""
+        return rotated + primary
+    }
+    let lines = combined.split(separator: "\n").map(String.init)
+    #expect(Set(lines).count == lines.count, "a torn snapshot duplicates history")
+}
+
+@Test
+func collectLogsIncludesTheRotatedBackupWhenOneExists() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let primaryURL = directory.appendingPathComponent("debug.log")
+    try "current session".write(to: primaryURL, atomically: true, encoding: .utf8)
+    let backupURL = directory.appendingPathComponent("debug.log.1")
+    try "earlier session".write(to: backupURL, atomically: true, encoding: .utf8)
+
+    let logs = DiagnosticsClientLive.collectLogs(primaryURL: primaryURL, fileManager: .default)
+
+    #expect(logs.count == 2)
+    #expect(logs[0].name == "debug.log")
+    #expect(logs[0].contents == "current session")
+    #expect(logs[1].name == "debug.log.1")
+    #expect(logs[1].contents == "earlier session")
+}
+
+@Test
+func collectLogsOmitsTheBackupEntryWhenNoRotationHasHappened() throws {
+    // The common case: most exports never see a rotation, so an export must
+    // not carry a permanent "debug.log.1 was missing" note that trains users
+    // to ignore real gaps.
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let primaryURL = directory.appendingPathComponent("debug.log")
+    try "current session".write(to: primaryURL, atomically: true, encoding: .utf8)
+
+    let logs = DiagnosticsClientLive.collectLogs(primaryURL: primaryURL, fileManager: .default)
+
+    #expect(logs.count == 1)
+    #expect(logs[0].name == "debug.log")
+}
+
+@Test
+func anExportNeverMergesIntoAnExistingFolder() throws {
+    let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: parent) }
+
+    // The folder from an earlier export, holding a file the CURRENT package
+    // no longer contains. Merging would leave it inside the folder the user
+    // shares — data the preview never showed.
+    let destination = parent.appendingPathComponent("Wink-diagnostics-20260812-010203", isDirectory: true)
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+    let stale = destination.appendingPathComponent("debug.log.1")
+    try "earlier session, absent from the new preview".write(to: stale, atomically: true, encoding: .utf8)
+
+    let package = DiagnosticsPackage(entries: [
+        .init(name: "report.md", summary: "summary", contents: "fresh report"),
+    ])
+    let written = try DiagnosticsClientLive.write(package, to: destination)
+
+    // A unique sibling, containing exactly the previewed entries.
+    #expect(written != destination)
+    #expect(written.lastPathComponent == "Wink-diagnostics-20260812-010203-2")
+    let names = try FileManager.default.contentsOfDirectory(atPath: written.path).sorted()
+    #expect(names == ["report.md"])
+    // And the earlier export was left exactly as it was.
+    #expect(try String(contentsOf: stale, encoding: .utf8) == "earlier session, absent from the new preview")
+}
+
+@Test
+func aFailedEntryWriteRemovesTheClaimedFolder() throws {
+    let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: parent) }
+
+    // The second entry's name routes into a nonexistent subdirectory, so
+    // its write throws after the first entry landed — the fills-mid-export
+    // shape. A reported failure must not leave a folder with the expected
+    // name holding a shareable partial package.
+    let destination = parent.appendingPathComponent("Wink-diagnostics-20260812-000000", isDirectory: true)
+    let package = DiagnosticsPackage(entries: [
+        .init(name: "report.md", summary: "summary", contents: "fresh report"),
+        .init(name: "missing/debug.log", summary: "summary", contents: "log"),
+    ])
+
+    #expect(throws: (any Error).self) {
+        _ = try DiagnosticsClientLive.write(package, to: destination)
+    }
+    #expect(!FileManager.default.fileExists(atPath: destination.path))
+}
+
+@Test
+func anExportToAFreshNameUsesThatNameUnchanged() throws {
+    let parent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: parent) }
+
+    let destination = parent.appendingPathComponent("Wink-diagnostics-20260812-010203", isDirectory: true)
+    let package = DiagnosticsPackage(entries: [
+        .init(name: "report.md", summary: "summary", contents: "fresh report"),
+    ])
+    let written = try DiagnosticsClientLive.write(package, to: destination)
+
+    #expect(written == destination)
+    #expect(try String(contentsOf: destination.appendingPathComponent("report.md"), encoding: .utf8) == "fresh report")
+}
+
+@Test
+func collectLogsReportsAMissingPrimaryLogWithoutThrowing() {
+    // A log that cannot be read is a diagnostic in its own right — collectLogs
+    // must not throw or crash when the primary file does not exist.
+    let missingURL = URL(fileURLWithPath: "/tmp/wink-diagnostics-test-\(UUID().uuidString)/debug.log")
+
+    let logs = DiagnosticsClientLive.collectLogs(primaryURL: missingURL, fileManager: .default)
+
+    #expect(logs.count == 1)
+    #expect(logs[0].contents == nil)
+}

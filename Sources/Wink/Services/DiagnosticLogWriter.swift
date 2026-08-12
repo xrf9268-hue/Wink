@@ -33,7 +33,15 @@ final class DiagnosticLogWriter: @unchecked Sendable {
     func log(_ message: String) {
         let timestamp = Date()
         queue.async { [self] in
-            let line = "\(formatter.string(from: timestamp)) \(message)\n"
+            // A record IS one line — that contract is what every reader,
+            // the redactor included, keys on. An externally decoded value
+            // (a wink:// bundle carrying %0A) can arrive with embedded
+            // separators; written raw, it splits the record and the
+            // continuation reads as an unrelated, unlabeled line that no
+            // labelled-secret rule can see. Flattened at the source, every
+            // consumer sees the whole record.
+            let flattened = message.map { $0.isNewline || $0 == "\0" ? " " : $0 }
+            let line = "\(formatter.string(from: timestamp)) \(String(flattened))\n"
             guard let data = line.data(using: .utf8) else { return }
             guard let handle = ensureHandle() else { return }
             do {
@@ -57,6 +65,20 @@ final class DiagnosticLogWriter: @unchecked Sendable {
     func flush() {
         queue.sync {
             try? handle?.synchronize()
+        }
+    }
+
+    /// Runs `body` on the writer's own queue after synchronizing the handle —
+    /// a consistent SNAPSHOT boundary, not just a flush. A flush that returns
+    /// before the reads begin leaves a window where the next queued write
+    /// crosses the rotation threshold: the reader can then see the active
+    /// file before rotation moves it AND the freshly rotated backup after —
+    /// the same history twice — or catch the primary mid-rename. Inside this
+    /// block no queued write or rotation can interleave.
+    func withSnapshot<T>(_ body: () -> T) -> T {
+        queue.sync {
+            try? handle?.synchronize()
+            return body()
         }
     }
 

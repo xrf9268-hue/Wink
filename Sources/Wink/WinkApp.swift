@@ -42,6 +42,7 @@ struct WinkApp: App {
                 editor: services.editor,
                 profileState: services.profileState,
                 preferences: services.preferences,
+                diagnostics: services.diagnostics,
                 insightsViewModel: services.insightsViewModel,
                 appListProvider: services.appListProvider,
                 shortcutStatusProvider: services.shortcutStatusProvider,

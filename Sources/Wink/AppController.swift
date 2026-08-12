@@ -7,6 +7,7 @@ final class AppController {
         let editor: ShortcutEditorState
         let profileState: ShortcutProfileState
         let preferences: AppPreferences
+        let diagnostics: DiagnosticsState
         let insightsViewModel: InsightsViewModel
         let appListProvider: AppListProvider
         let shortcutStatusProvider: ShortcutStatusProvider
@@ -269,10 +270,17 @@ final class AppController {
         shortcutStore: shortcutStore
     )
     private lazy var appListProvider = AppListProvider()
+    private lazy var diagnosticsState = DiagnosticsState(
+        client: DiagnosticsClientLive.make(
+            preferences: appPreferences,
+            shortcutStore: shortcutStore
+        )
+    )
     private lazy var settingsSceneServicesStorage = SettingsSceneServices(
         editor: shortcutEditor,
         profileState: profileState,
         preferences: appPreferences,
+        diagnostics: diagnosticsState,
         insightsViewModel: insightsViewModel,
         appListProvider: appListProvider,
         shortcutStatusProvider: settingsShortcutStatusProvider,

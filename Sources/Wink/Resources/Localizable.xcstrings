@@ -183,6 +183,23 @@
         }
       }
     },
+    "%lld files, %@ in total.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld files, %@ in total."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "共 %lld 个文件，%@。"
+          }
+        }
+      }
+    },
     "%lld standard shortcut bindings failed to register. Check logs for the blocked key combinations.": {
       "extractionState": "manual",
       "localizations": {
@@ -535,6 +552,23 @@
         }
       }
     },
+    "Application names and bundle identifiers are included. They are what make a report useful, and they reveal which apps you have shortcuts for.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Application names and bundle identifiers are included. They are what make a report useful, and they reveal which apps you have shortcuts for."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "应用名称和 Bundle ID 会包含在内。它们让报告有价值，同时也会暴露你为哪些应用设置了快捷键。"
+          }
+        }
+      }
+    },
     "Apps you switch to often that have no shortcut yet. Add one in Shortcuts.": {
       "extractionState": "manual",
       "localizations": {
@@ -807,6 +841,23 @@
         }
       }
     },
+    "Choose where to save the diagnostics folder.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose where to save the diagnostics folder."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择诊断信息文件夹的保存位置。"
+          }
+        }
+      }
+    },
     "Clear": {
       "extractionState": "manual",
       "localizations": {
@@ -973,6 +1024,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在联系更新服务器…"
+          }
+        }
+      }
+    },
+    "Contents of %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contents of %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 的内容"
+          }
+        }
+      }
+    },
+    "Could not write the diagnostics: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not write the diagnostics: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法写入诊断信息：%@"
           }
         }
       }
@@ -1161,6 +1246,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "要删除“%@”吗？"
+          }
+        }
+      }
+    },
+    "Diagnostics": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostics"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "诊断信息"
           }
         }
       }
@@ -1365,6 +1467,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "请输入配置名称。"
+          }
+        }
+      }
+    },
+    "Everything stays on this Mac. Wink shows you the contents before you save them, and never uploads anything.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything stays on this Mac. Wink shows you the contents before you save them, and never uploads anything."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有内容都留在这台 Mac 上。保存前 Wink 会先让你看到全部内容，并且不会上传任何东西。"
+          }
+        }
+      }
+    },
+    "Export": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出"
+          }
+        }
+      }
+    },
+    "Export Diagnostics": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export Diagnostics"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出诊断信息"
           }
         }
       }
@@ -2679,6 +2832,23 @@
         }
       }
     },
+    "Nothing is uploaded. The export is written where you choose and Wink sends no part of it anywhere.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing is uploaded. The export is written where you choose and Wink sends no part of it anywhere."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不会上传任何内容。导出文件只写入你选择的位置，Wink 不会把其中任何部分发送到别处。"
+          }
+        }
+      }
+    },
     "OK": {
       "extractionState": "manual",
       "localizations": {
@@ -3019,6 +3189,23 @@
         }
       }
     },
+    "Recent Wink activity, with user name, home path, and secrets removed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recent Wink activity, with user name, home path, and secrets removed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近的 Wink 活动记录，已移除用户名、个人文件夹路径和机密信息。"
+          }
+        }
+      }
+    },
     "Recently Used": {
       "extractionState": "manual",
       "localizations": {
@@ -3257,6 +3444,23 @@
         }
       }
     },
+    "Reveal Log": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reveal Log"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示日志"
+          }
+        }
+      }
+    },
     "Review": {
       "extractionState": "manual",
       "localizations": {
@@ -3304,6 +3508,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "运行中"
+          }
+        }
+      }
+    },
+    "Saved %lld files to %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved %lld files to %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已将 %lld 个文件存储到 %@。"
+          }
+        }
+      }
+    },
+    "Save…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存储…"
           }
         }
       }
@@ -3389,6 +3627,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "设置…"
+          }
+        }
+      }
+    },
+    "Share what Wink knows": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share what Wink knows"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分享 Wink 掌握的信息"
           }
         }
       }
@@ -4107,6 +4362,40 @@
         }
       }
     },
+    "There is no diagnostic log yet. Use Wink for a moment and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There is no diagnostic log yet. Use Wink for a moment and try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前还没有诊断日志。先使用 Wink 一段时间后再试。"
+          }
+        }
+      }
+    },
+    "This log was missing or could not be read when the export was created.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This log was missing or could not be read when the export was created."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建此导出时，该日志缺失或无法读取。"
+          }
+        }
+      }
+    },
     "This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.": {
       "extractionState": "manual",
       "localizations": {
@@ -4721,6 +5010,23 @@
         }
       }
     },
+    "Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 与 macOS 版本、Wink 的签名方式，以及当前哪些快捷键通道已就绪。"
+          }
+        }
+      }
+    },
     "Wink cannot reach its storage folder": {
       "extractionState": "manual",
       "localizations": {
@@ -5040,6 +5346,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "我的快捷键 · %lld"
+          }
+        }
+      }
+    },
+    "Your user name and home folder path are removed, as are passwords, tokens, and web addresses' query strings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your user name and home folder path are removed, as are passwords, tokens, and web addresses' query strings."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的用户名和个人文件夹路径会被移除，密码、令牌和网址中的查询参数同样会被移除。"
           }
         }
       }
