@@ -143,6 +143,32 @@ struct DiagnosticsRedactorTests {
         let stacked = redactor().redact(line: "URL: ignored unrecognized https://user:p@ss@example.com")
         #expect(!stacked.contains("p@ss"))
         #expect(stacked.contains("https://\(DiagnosticsRedactor.marker)@example.com"))
+
+        // Consecutive @s form EMPTY user-info segments; each must still be
+        // consumed so the last pre-host @ delimits and no credential
+        // fragment survives.
+        let doubled = redactor().redact(line: "URL: ignored unrecognized https://user:p@@ss@example.com")
+        #expect(!doubled.contains("@@") && !doubled.contains("p@"))
+        #expect(doubled.contains("https://\(DiagnosticsRedactor.marker)@example.com"))
+    }
+
+    @Test
+    func delimiterOnlySecretValuesAreRedactedWhole() {
+        // A value can be nothing but delimiters — and it is still a value
+        // the label explicitly marks as secret.
+        let parens = redactor().redact(line: "password=)))")
+        #expect(!parens.contains(")))"))
+        #expect(parens.contains("password=\(DiagnosticsRedactor.marker)"))
+
+        let quotes = redactor().redact(line: #"password=""""#)
+        #expect(!quotes.contains(#"""""#) && !quotes.hasSuffix("\""))
+        #expect(quotes.contains("password=\(DiagnosticsRedactor.marker)"))
+
+        // A properly quoted empty value keeps working, and siblings survive
+        // a delimiter-only value.
+        let sibling = redactor().redact(line: "password=)) status=ok")
+        #expect(sibling.hasSuffix("status=ok"))
+        #expect(!sibling.contains("))"))
     }
 
     @Test

@@ -219,7 +219,7 @@ struct DiagnosticsRedactor: Sendable {
         // because the lookahead stops the match before consuming it. All
         // possessive — the match ends at the value, so nothing ever needs
         // giving back.
-        let pattern = #"(?i)("?\#(Self.sensitiveKeyPattern)"?\s*[:=]\s*)("(?:\\.|[^"\\])*+"|'(?:\\.|[^'\\])*+'|[,;)}\]"']*[^\s,;)}\]"']++(?:[\s,;)}\]"']++(?![\w.-]+\s*[:=])[^\s,;)}\]"']++)*+)"#
+        let pattern = #"(?i)("?\#(Self.sensitiveKeyPattern)"?\s*[:=]\s*)("(?:\\.|[^"\\])*+"(?!["'])|'(?:\\.|[^'\\])*+'(?!["'])|[,;)}\]"']*[^\s,;)}\]"']++(?:[\s,;)}\]"']++(?![\w.-]+\s*[:=])[^\s,;)}\]"']++)*+|[,;)}\]"']++)"#
         value = value.replacingOccurrences(
             of: pattern,
             with: "$1\(Self.marker)",
@@ -270,7 +270,7 @@ struct DiagnosticsRedactor: Sendable {
         // class still cannot cross `/`, whitespace, or quotes, so a second
         // URL or prose email later on the line starts its own match.
         value.replacingOccurrences(
-            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+://)(?:[^/\s"'@]+@)++"#,
+            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+://)(?:[^/\s"'@]*@)++"#,
             with: "$1\(Self.marker)@",
             options: .regularExpression
         )
