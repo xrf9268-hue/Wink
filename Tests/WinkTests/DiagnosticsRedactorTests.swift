@@ -54,6 +54,44 @@ struct DiagnosticsRedactorTests {
         #expect(line == "standard shortcuts ready, signal normal")
     }
 
+    @Test
+    func aVeryShortUserNameIsStillRedactedWhenItStandsAloneAsAToken() {
+        // The length guard used to skip 1-2 character names entirely, which
+        // let them straight through whenever they appeared as their own path
+        // component, URL segment, or word rather than glued inside a longer
+        // one.
+        let redactor = DiagnosticsRedactor(homeDirectoryPath: "/Users/al", userName: "al")
+
+        let path = redactor.redact(line: "reading /exports/al/report.json")
+        #expect(!path.contains("/al/"))
+        #expect(path.contains(DiagnosticsRedactor.marker))
+
+        let word = redactor.redact(line: "shared by al in #general")
+        #expect(!word.lowercased().contains(" al "))
+        #expect(word.contains(DiagnosticsRedactor.marker))
+
+        let query = redactor.redact(line: "invited user=al&role=admin")
+        #expect(!query.contains("user=al&"))
+        #expect(query.contains(DiagnosticsRedactor.marker))
+
+        // But it still must not eat the letters out of an unrelated longer
+        // word sitting right next to a boundary character.
+        let embedded = redactor.redact(line: "/exports/normal/report.json")
+        #expect(embedded == "/exports/normal/report.json")
+    }
+
+    @Test
+    func aSingleCharacterUserNameIsRedactedOnlyAtTokenBoundaries() {
+        let redactor = DiagnosticsRedactor(homeDirectoryPath: "/Users/a", userName: "a")
+
+        let standalone = redactor.redact(line: "path=/tmp/a status=ok")
+        #expect(!standalone.contains("/tmp/a "))
+        #expect(standalone.contains(DiagnosticsRedactor.marker))
+
+        let embedded = redactor.redact(line: "status=ready mode=auto")
+        #expect(embedded == "status=ready mode=auto")
+    }
+
     // MARK: - Secrets
 
     @Test

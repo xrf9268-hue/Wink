@@ -96,12 +96,23 @@ struct DiagnosticsRedactor: Sendable {
 
     /// The account name can appear outside a path — in a log message, a
     /// display name, a URL. Applied after path rules so it does not fight
-    /// them, and only for names long enough that matching them is meaningful:
-    /// a two-character user name would match inside ordinary words.
+    /// them.
+    ///
+    /// Boundary-aware rather than a plain substring match: a bare
+    /// `\#(escaped)` would either have to skip short names entirely (a
+    /// 1-2 character name matches inside all sorts of ordinary words — "al"
+    /// is "sign-al", "norm-al") or, if applied unconditionally, redact those
+    /// same ordinary words into noise. Requiring that neither side of the
+    /// match be a letter or digit gets both right: a short name is still
+    /// caught when it stands alone as a path component, URL segment, or log
+    /// token (`/al/`, `by al `, `user=al&`), but never when it is merely
+    /// part of a longer word.
     private func redactingUserName(_ value: String) -> String {
-        guard userName.count >= 3 else { return value }
+        guard !userName.isEmpty else { return value }
+        let escaped = NSRegularExpression.escapedPattern(for: userName)
+        let pattern = #"(?<![A-Za-z0-9])\#(escaped)(?![A-Za-z0-9])"#
         return value.replacingOccurrences(
-            of: NSRegularExpression.escapedPattern(for: userName),
+            of: pattern,
             with: Self.marker,
             options: [.regularExpression, .caseInsensitive]
         )
