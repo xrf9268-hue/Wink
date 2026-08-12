@@ -125,7 +125,7 @@ benefit. Split, a crash during a switch can never damage the list of profiles.
 {
   "schemaVersion": 1,
   "profiles": [
-    { "id": "…UUID…", "name": "Default", "createdAt": "2026-08-10T09:00:00Z", "modifiedAt": "…" }
+    { "id": "…UUID…", "name": "Default", "createdAt": "2026-08-10T09:00:00Z", "modifiedAt": "…" } // metadata edits only — see below
   ]
 }
 
@@ -146,6 +146,20 @@ load failure, not a best-effort read: guessing at a newer schema is how a build 
 arms a configuration its author never approved.
 
 Metadata order in `profiles[]` is the user-visible list order and is preserved on write.
+
+**`modifiedAt` is a metadata timestamp, not a content timestamp.** It is set to
+`createdAt` when the entry is minted (create, duplicate, migration) and rewritten only by
+operations whose primary effect is already a manifest commit — today that is exactly
+rename. It therefore adds **no write of its own**: there is no failure or crash boundary
+to specify beyond the manifest commit it rides on. A shortcut-content save deliberately
+never touches it — D3's save order is data → mirror → descriptor with **no manifest
+write**, and bumping `modifiedAt` there would put the rarely-rewritten profile list on
+every save's failure path (the exact coupling D1 splits these files to avoid) and create a
+new interrupted state after the data may already have committed, for a value nothing
+reads. A feature that ever needs "when did the shortcuts last change" must derive it from
+the data file, not from a manifest promise. Nothing in v1 displays `modifiedAt`; it is
+carried because removing a shipped schema member is a compatibility event, keeping one is
+free.
 
 > **Invariant.** A `Profiles/<id>.json` written by this build decodes to an identical
 > `[AppShortcut]` through the unmodified `PersistenceService.load()` path.
@@ -982,6 +996,7 @@ packaged-app validation.
 | V10m | A stale repair with a live source writes no copy | Reach the same repair with the descriptor's profile file still holding the mirror's bytes — the crashed A→B switch; assert the mirror is repaired and **no** copy is written |
 | V10n | A failed preservation defers the repair | Fail only the `shortcuts.unknown-*` write on the diverged-source path; assert the mirror is left stale and untouched, since that copy is the only guard on that write |
 | V7b | A lossy duplicate is refused | Make the source payload unreshapeable; assert the duplicate fails and writes nothing |
+| V2b | `modifiedAt` is metadata-only | Save shortcut content under an advancing injected clock; assert the manifest entry's `modifiedAt` is untouched. Rename the profile; assert it advances — the update rides the rename's own manifest commit, adding no write |
 | V10c | Unknown provenance is left alone | Migrate from an unreadable legacy file → relaunch → assert no banner, and that `shortcuts.json` still holds the user's original bytes |
 | V10d | Unmodelled members survive | Profile file with an extra JSON member, mirror a byte copy → relaunch → assert no stale rewrite and that the member is still present in both files |
 | V11b | Unsupported pointer schema fails closed | Well-formed `active.json` with `schemaVersion` 99 and exactly one profile → assert zero armed, a quarantine copy, and an explicit picker |
