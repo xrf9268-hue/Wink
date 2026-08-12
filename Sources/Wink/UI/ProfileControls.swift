@@ -316,6 +316,10 @@ struct ProfileManagerSheet: View {
                 WinkButton(String(localized: "Rename", bundle: WinkResourceBundle.bundle)) {
                     guard let selection,
                           let profile = profileState.profiles.first(where: { $0.id == selection }) else { return }
+                    // A leftover error from an earlier create/delete/switch
+                    // would render inside the fresh sheet and call an
+                    // untouched name invalid before the user typed anything.
+                    profileState.errorMessage = nil
                     renamingProfileID = profile.id
                     nameDraft = profile.name
                 }

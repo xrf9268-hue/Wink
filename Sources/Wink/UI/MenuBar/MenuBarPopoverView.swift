@@ -120,6 +120,20 @@ final class MenuBarPopoverModel {
         refresh()
     }
 
+    /// The outcome of the last profile action, for the row beneath the
+    /// picker: a switch from this entry point can fail, or succeed with the
+    /// stale-mirror caveat, and rendering neither would leave the menu-bar
+    /// user with only the new name and no word about either.
+    var profileSwitchNotice: (message: String, isError: Bool)? {
+        if let error = profileState.errorMessage {
+            return (error, true)
+        }
+        if let status = profileState.statusMessage {
+            return (status, false)
+        }
+        return nil
+    }
+
     var shortcutsPaused: Bool {
         preferences.shortcutsPaused
     }
@@ -774,6 +788,16 @@ private struct MenuBarProfileRow: View {
         }
         .padding(.horizontal, MenuBarRowMetrics.rowHorizontalPadding)
         .padding(.vertical, MenuBarRowMetrics.footerRowVerticalPadding)
+
+        if let notice = model.profileSwitchNotice {
+            Text(notice.message)
+                .font(WinkType.labelSmall)
+                .foregroundStyle(notice.isError ? palette.red : palette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, MenuBarRowMetrics.rowHorizontalPadding)
+                .padding(.bottom, MenuBarRowMetrics.footerRowVerticalPadding)
+                .accessibilityIdentifier("MenuBarProfileNoticeRow")
+        }
     }
 }
 

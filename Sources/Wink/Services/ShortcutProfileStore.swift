@@ -250,6 +250,12 @@ final class ShortcutProfileStore {
         /// still enforced; only Insights attribution merges.
         var duplicateShortcutIDs: Set<UUID>
         var foreignMirror: ForeignMirror?
+        /// True when a startup mirror repair (a missing compat file being
+        /// rewritten, a stale one being replaced, or its descriptor being
+        /// corrected) was refused: startup is still `.ready` — the mirror is
+        /// derived data — but the state layer must surface the same caveat
+        /// every other mirror-rewriting path reports.
+        var compatMirrorStale: Bool = false
         /// Set when first-run migration could not read the legacy
         /// `shortcuts.json`. The store itself is healthy and an empty Default
         /// profile exists, but the user's previous configuration was never
@@ -611,7 +617,7 @@ final class ShortcutProfileStore {
             activeProfileID: activeProfileID,
             activeShortcuts: activeShortcuts
         )
-        let foreignMirror = detectForeignMirror(
+        let (foreignMirror, mirrorHealthy) = detectForeignMirror(
             layout: layout,
             activeProfileID: activeProfileID,
             activeBytes: activeBytes
@@ -625,7 +631,8 @@ final class ShortcutProfileStore {
                 unreadableProfileIDs: integrity.unreadable,
                 orphanProfileIDs: integrity.orphans,
                 duplicateShortcutIDs: integrity.duplicateShortcutIDs,
-                foreignMirror: foreignMirror
+                foreignMirror: foreignMirror,
+                compatMirrorStale: !mirrorHealthy
             )
         )
     }
@@ -839,11 +846,16 @@ final class ShortcutProfileStore {
     /// left strictly alone: migration deliberately skips the mirror write when
     /// the legacy file was unreadable, and rewriting it there would destroy
     /// bytes the user may still be able to repair by hand.
+    /// `mirrorHealthy` is false when a startup repair was owed and refused
+    /// (a missing compat file that could not be written, an unreadable one,
+    /// or a stale one whose repair failed or deferred): startup stays
+    /// `.ready` — the mirror is derived data — but the caller surfaces the
+    /// same caveat every other mirror-rewriting path reports.
     private func detectForeignMirror(
         layout: ShortcutProfileLayout,
         activeProfileID: UUID,
         activeBytes: Data
-    ) -> ForeignMirror? {
+    ) -> (offer: ForeignMirror?, mirrorHealthy: Bool) {
         guard let mirrorData = try? Data(contentsOf: layout.mirrorURL) else {
             guard !fileManager.fileExists(atPath: layout.mirrorURL.path) else {
                 // Present but unreadable. Its bytes cannot be classified and
@@ -853,11 +865,11 @@ final class ShortcutProfileStore {
                 // keeps the trace honest instead of logging a repair that was
                 // never attempted.
                 log("PROFILE_TRACE_MIRROR_UNREADABLE active=\(activeProfileID.uuidString)")
-                return nil
+                return (nil, false)
             }
-            // Nothing on disk to lose.
-            writeMirrorForActiveProfile(bytes: activeBytes, profileID: activeProfileID, layout: layout)
-            return nil
+            // Nothing on disk to lose — but a refused write leaves the E2E
+            // harness and downgraded builds with NO configuration at all.
+            return (nil, writeMirrorForActiveProfile(bytes: activeBytes, profileID: activeProfileID, layout: layout))
         }
 
         let descriptor = loadMirrorDescriptor(layout: layout)
@@ -873,11 +885,13 @@ final class ShortcutProfileStore {
         if mirrorDigest == Self.digest(activeBytes) {
             // Current. Keep the descriptor honest so a later comparison
             // attributes correctly; the mirror bytes themselves are already
-            // right, so this rewrite is a no-op on content.
+            // right, so this rewrite is a no-op on content — a refusal here
+            // leaves a usable mirror and only a stale descriptor, which is
+            // not the user-facing staleness the caveat describes.
             if descriptor?.profileID != activeProfileID || descriptor?.sha256 != mirrorDigest {
                 writeMirrorForActiveProfile(bytes: activeBytes, profileID: activeProfileID, layout: layout)
             }
-            return nil
+            return (nil, true)
         }
 
         guard let descriptor else {
@@ -888,7 +902,7 @@ final class ShortcutProfileStore {
             // which makes every later overwrite non-destructive.
             preserveUnknownMirror(mirrorData, digest: mirrorDigest, descriptor: nil, layout: layout)
             log("PROFILE_TRACE_MIRROR_UNKNOWN active=\(activeProfileID.uuidString) reason=no_descriptor")
-            return nil
+            return (nil, true)
         }
 
         // Only the CURRENT digest counts as "Wink wrote this". Remembering the
@@ -919,11 +933,10 @@ final class ShortcutProfileStore {
                 layout: layout
             ) else {
                 log("PROFILE_TRACE_MIRROR_STALE_REPAIR_DEFERRED describedProfile=\(descriptor.profileID.uuidString)")
-                return nil
+                return (nil, false)
             }
             log("PROFILE_TRACE_MIRROR_STALE describedProfile=\(descriptor.profileID.uuidString) active=\(activeProfileID.uuidString)")
-            writeMirrorForActiveProfile(bytes: activeBytes, profileID: activeProfileID, layout: layout)
-            return nil
+            return (nil, writeMirrorForActiveProfile(bytes: activeBytes, profileID: activeProfileID, layout: layout))
         }
 
         // A descriptor naming a profile that no longer exists cannot support
@@ -933,11 +946,11 @@ final class ShortcutProfileStore {
         guard manifest?.profile(id: descriptor.profileID) != nil else {
             preserveUnknownMirror(mirrorData, digest: mirrorDigest, descriptor: descriptor, layout: layout)
             log("PROFILE_TRACE_MIRROR_UNKNOWN active=\(activeProfileID.uuidString) reason=descriptor_profile_deleted")
-            return nil
+            return (nil, true)
         }
 
         log("PROFILE_TRACE_FOREIGN_MIRROR profile=\(descriptor.profileID.uuidString)")
-        return Self.foreignMirrorOffer(profileID: descriptor.profileID, bytes: mirrorData)
+        return (Self.foreignMirrorOffer(profileID: descriptor.profileID, bytes: mirrorData), true)
     }
 
     /// The ONE construction rule for an importable offer: shortcuts are
@@ -1011,7 +1024,7 @@ final class ShortcutProfileStore {
             layout: layout,
             activeProfileID: activeProfileID,
             activeBytes: payload.bytes
-        )
+        ).offer
     }
 
     /// Copies a `shortcuts.json` Wink cannot attribute, so a later save can

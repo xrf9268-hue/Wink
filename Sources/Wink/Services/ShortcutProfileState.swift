@@ -139,6 +139,17 @@ final class ShortcutProfileState {
             // A crash between a delete and its usage cleanup leaves the ids in
             // the manifest; this is where they get retried.
             drainPendingUsageDeletions()
+            // A startup mirror repair that was owed and refused gets the
+            // same caveat every other mirror-rewriting path reports — the
+            // store stays .ready because the mirror is derived data, but
+            // silence here would leave the E2E harness and downgraded
+            // builds without a configuration and the user without a word.
+            if loaded.compatMirrorStale {
+                statusMessage = String(
+                    localized: "The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.",
+                    bundle: WinkResourceBundle.bundle
+                )
+            }
             return loaded.activeShortcuts
 
         case .storageUnavailable:
