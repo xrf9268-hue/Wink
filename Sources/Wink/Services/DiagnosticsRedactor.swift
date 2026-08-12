@@ -185,15 +185,16 @@ struct DiagnosticsRedactor: Sendable {
 
     /// Everything after `?` in a URL. Query strings routinely carry tokens and
     /// identifiers, and no diagnostic needs them — the path and host are what
-    /// make a log line useful. The authority (`//`) is optional: opaque forms
-    /// like `wink:unknown?email=…` are legal URLs, `handleURLs` logs rejected
-    /// ones verbatim, and their queries carry the same kind of payload. A
-    /// prose colon does not slip in — the character after `:` must be
-    /// non-space all the way to the `?`, and over-redacting the rare
+    /// make a log line useful. The authority (`//`) is optional and so is the
+    /// pre-query component itself: `wink:unknown?email=…` and the fully
+    /// hostless `wink:?token=…` are both legal URLs, `handleURLs` logs
+    /// rejected ones verbatim, and their queries carry the same kind of
+    /// payload. A prose colon still does not slip in — whatever sits between
+    /// `:` and `?` must be free of spaces — and over-redacting the rare
     /// `ratio:3?x` token is the cheap direction for a redactor to be wrong in.
     private func redactingURLQueries(_ value: String) -> String {
         value.replacingOccurrences(
-            of: #"([a-zA-Z][a-zA-Z0-9+.-]*:(?://)?[^\s"'?]+)\?[^\s"']*"#,
+            of: #"([a-zA-Z][a-zA-Z0-9+.-]*:(?://)?[^\s"'?]*)\?[^\s"']*"#,
             with: "$1?\(Self.marker)",
             options: .regularExpression
         )

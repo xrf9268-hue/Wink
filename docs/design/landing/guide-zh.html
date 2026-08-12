@@ -610,8 +610,12 @@
         <article class="chapter" id="troubleshooting">
           <p class="eyebrow">10 · 按了没反应</p>
           <h2>什么都没发生。原因在这。</h2>
-          <p>快捷键没反应，一定是两处之一出了问题，而这两处不是一回事：可能 macOS 收回了<strong>权限</strong>，也可能这个快捷键走的<strong>通道</strong>没就绪。菜单栏的状态标签会告诉你是哪一种。</p>
+          <p>快捷键没反应，是三种情况之一，而它们不是一回事：捕获可能被<strong>暂停</strong>了——有意为之；可能 macOS 收回了<strong>权限</strong>；也可能这个快捷键走的<strong>通道</strong>没就绪。菜单栏的状态标签会告诉你是哪一种。</p>
           <div class="list">
+            <div class="list-row">
+              <span class="term">胶囊显示 Paused</span>
+              <span class="desc">什么都没坏——捕获是被有意关掉的，暂停期间所有快捷键都会停。要么你在菜单栏手动暂停了 Wink，要么当前前台 App 在<strong>「在例外 App 中暂停」</strong>列表里（虚拟机和远程桌面默认就在列表中），这时胶囊会点名它：<strong>Paused · Parallels Desktop</strong>。从菜单栏恢复，或把该 App 移出列表。只要还显示 Paused，去折腾权限或通道都不会有任何变化。</span>
+            </div>
             <div class="list-row">
               <span class="term">只有一部分失灵</span>
               <span class="desc">失灵的那批走的是同一条通道。普通修饰键组合（<kbd>⌃⌥K</kbd>）走 Carbon 热键；Hyper 层和 Fn 行的按键走事件监听——而事件监听有两种停摆方式，Carbon 都不受影响。如果菜单栏胶囊显示 <strong>Limited · Secure Input</strong>，是某个 App 占住了安全输入，它会自行恢复。否则去「系统设置 → 隐私与安全性」检查<strong>输入监控</strong>：那一项是真正的权限，撤销它杀掉的恰好就是走事件监听的那一半快捷键。</span>

@@ -137,10 +137,16 @@ struct DiagnosticsRedactorTests {
         #expect(!opaque.contains("bob@example.com"))
         #expect(opaque.contains("wink:unknown?\(DiagnosticsRedactor.marker)"))
 
-        // A prose colon never reaches the query rule: the character after
-        // `:` must be non-space all the way to the `?`.
+        // A prose colon never reaches the query rule: whatever sits between
+        // `:` and `?` must be free of spaces.
         let prose = redactor().redact(line: "note: did the tap restart?")
         #expect(prose == "note: did the tap restart?")
+
+        // The pre-query component can be EMPTY — `wink:?token=…` is a legal
+        // hostless form, and its query is exactly as secret as any other's.
+        let hostless = redactor().redact(line: "unrecognized url: wink:?token=secret123")
+        #expect(!hostless.contains("secret123"))
+        #expect(hostless.contains("wink:?\(DiagnosticsRedactor.marker)"))
     }
 
     // MARK: - Secrets

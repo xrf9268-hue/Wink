@@ -610,8 +610,12 @@
         <article class="chapter" id="troubleshooting">
           <p class="eyebrow">10 · when a chord does nothing</p>
           <h2>Nothing happened. Here's why.</h2>
-          <p>A shortcut that does nothing has failed at exactly one of two places, and they are not the same problem. macOS may have withdrawn a <strong>permission</strong>, or the <strong>route</strong> that shortcut travels may not be ready. The menu bar pill tells you which.</p>
+          <p>A shortcut that does nothing means one of three things, and they are not the same problem. Capture may be <strong>paused</strong> — on purpose. macOS may have withdrawn a <strong>permission</strong>. Or the <strong>route</strong> that shortcut travels may not be ready. The menu bar pill tells you which.</p>
           <div class="list">
+            <div class="list-row">
+              <span class="term">the pill says Paused</span>
+              <span class="desc">Nothing failed — capture is off on purpose, and every shortcut stops while it is. Either you paused Wink from the menu bar, or the frontmost app is on your <strong>“Pause in exception apps”</strong> list (VMs and remote desktops ship there by default), in which case the pill names it: <strong>Paused · Parallels Desktop</strong>. Resume from the menu bar, or take the app off the list. No permission or route troubleshooting will change anything while this reads Paused.</span>
+            </div>
             <div class="list-row">
               <span class="term">only some shortcuts died</span>
               <span class="desc">Whatever died shares a transport. Plain modifier chords (<kbd>⌃⌥K</kbd>) ride Carbon hot keys; anything on the Hyper layer or an Fn-row key rides the event tap — and the tap has two ways to stop while Carbon keeps working. If the pill reads <strong>Limited · Secure Input</strong>, an app is holding Secure Input and it clears itself. Otherwise check <strong>Input Monitoring</strong> in System Settings → Privacy &amp; Security: that one <em>is</em> a permission, and revoking it kills exactly the tap-riding half of your shortcuts.</span>
