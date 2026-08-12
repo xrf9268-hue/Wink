@@ -30,8 +30,16 @@ final class AppController {
     private let profileStore = ShortcutProfileStore()
     /// Points at the ACTIVE profile's data file and carries the compat
     /// `shortcuts.json` mirror as a derived copy, so every existing save path
-    /// stays profile-agnostic.
-    private lazy var persistenceService = profileStore.makeActiveProfilePersistenceService()
+    /// stays profile-agnostic. A refused compat rewrite surfaces through the
+    /// profile state's shared stale-mirror caveat — the save itself has
+    /// already committed and is never failed by derived data.
+    private lazy var persistenceService = profileStore.makeActiveProfilePersistenceService(
+        onMirrorNotRestored: { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.profileState.reportStaleMirrorAfterSave()
+            }
+        }
+    )
     private let usageTracker = UsageTracker()
     private let hyperKeyService = HyperKeyService()
     private let appBundleLocator = AppBundleLocator()

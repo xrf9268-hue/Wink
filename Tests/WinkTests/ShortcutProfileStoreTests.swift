@@ -2219,6 +2219,43 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func anOrdinarySaveReportsARefusedMirrorRewrite() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        let store = harness.makeStore()
+        guard case .ready = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // Present but unreadable: the compat rewrite is refused while the
+        // canonical save commits — the one path of the caveat class that had
+        // no reporting seam until now.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: harness.layout.mirrorURL.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644],
+                ofItemAtPath: harness.layout.mirrorURL.path
+            )
+        }
+
+        let refused = MutableBox(false)
+        let persistence = store.makeActiveProfilePersistenceService(
+            onMirrorNotRestored: { refused.value = true }
+        )
+        try persistence.save([makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")])
+
+        #expect(refused.value)
+        // The canonical save itself committed regardless.
+        let activeID = try #require(store.locator.currentActiveProfileID())
+        #expect((try? store.shortcuts(in: activeID))?.count == 1)
+    }
+
+    @Test
     func aMirrorRewrittenDuringPreservationIsPreservedAgainBeforeReplacement() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }
