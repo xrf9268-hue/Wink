@@ -129,6 +129,23 @@ struct DiagnosticsRedactorTests {
     }
 
     @Test
+    func decodedQueriesWithSpacesAndStackedUserInfoRedactWhole() {
+        // handleURLs logs DECODED urls as the line's final element: the
+        // query legally contains spaces there, and user-info can carry
+        // literal @s (`user:p@ss`). Any fixed whitespace/first-@ boundary
+        // exports a tail of the credential.
+        let query = redactor().redact(
+            line: "URL: ignored unrecognized https://example.com/?email=Bob Smith <bob@example.com>"
+        )
+        #expect(!query.contains("Smith") && !query.contains("bob@example.com"))
+        #expect(query.contains("https://example.com/?\(DiagnosticsRedactor.marker)"))
+
+        let stacked = redactor().redact(line: "URL: ignored unrecognized https://user:p@ss@example.com")
+        #expect(!stacked.contains("p@ss"))
+        #expect(stacked.contains("https://\(DiagnosticsRedactor.marker)@example.com"))
+    }
+
+    @Test
     func opaqueURLQueriesAreRedactedToo() {
         // handleURLs logs rejected URLs verbatim, and `wink:unknown?…` is a
         // legal opaque form — no authority, no `//` — whose query carries the

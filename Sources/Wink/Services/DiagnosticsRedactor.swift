@@ -261,8 +261,15 @@ struct DiagnosticsRedactor: Sendable {
         // scan position before failing on `:`, which is quadratic in line
         // length (measured on `a.a.a.…` probe lines). Real schemes are a
         // handful of characters; 64 is generous headroom.
+        // ONE OR MORE @-terminated segments: user-info legally contains
+        // `@`-free colons but a DECODED value can carry `user:p@ss@host`,
+        // and stopping at the first `@` exported the password's tail. The
+        // authority's user-info ends at the LAST `@` before the path, which
+        // is exactly what the possessive chain consumes; the character
+        // class still cannot cross `/`, whitespace, or quotes, so a second
+        // URL or prose email later on the line starts its own match.
         value.replacingOccurrences(
-            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+://)[^/\s"'@]+@"#,
+            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+://)(?:[^/\s"'@]+@)++"#,
             with: "$1\(Self.marker)@",
             options: .regularExpression
         )
@@ -279,9 +286,15 @@ struct DiagnosticsRedactor: Sendable {
     /// `ratio:3?x` token is the cheap direction for a redactor to be wrong in.
     private func redactingURLQueries(_ value: String) -> String {
         // Scheme bounded and possessive for the same quadratic-scan reason
-        // as the user-info rule above.
+        // as the user-info rule above. The query consumes TO END OF LINE:
+        // the primary vector is handleURLs logging a DECODED URL as the
+        // line's final element, where the query legally contains spaces
+        // (`?email=Bob Smith <bob@…>`) and any whitespace boundary exports
+        // its tail. A URL mid-prose over-redacts what follows — the cheap
+        // direction — and a second URL on the same line is simply consumed
+        // into the same marker.
         value.replacingOccurrences(
-            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+:(?://)?[^\s"'?]*)\?[^\s"']*"#,
+            of: #"([a-zA-Z][a-zA-Z0-9+.-]{0,64}+:(?://)?[^\s"'?]*)\?.*$"#,
             with: "$1?\(Self.marker)",
             options: .regularExpression
         )
