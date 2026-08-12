@@ -940,15 +940,21 @@ final class ShortcutProfileStore {
         guard let activeProfileID = locator.currentActiveProfileID() else {
             return resumableLegacyMirror(layout: layout, activeProfileID: stale.profileID)
         }
-        guard let activeBytes = try? Data(contentsOf: layout.profileDataURL(activeProfileID)) else {
-            // The active profile's own file is unreadable: classification is
-            // impossible and nothing here may write. Startup owns that state.
+        // The STRICT payload, not a raw read: startup runs the strict loader
+        // on the active profile before detection ever sees its bytes, and a
+        // profile that fails it is quarantined, never classified against.
+        // Classifying against raw bytes here would let a malformed canonical
+        // file drive the stale-repair branch and overwrite a usable compat
+        // copy with the malformed payload — a write startup would never make.
+        // Unloadable active profile → classification impossible, nothing may
+        // write; startup owns that state.
+        guard let payload = try? profilePayload(in: activeProfileID) else {
             return nil
         }
         return detectForeignMirror(
             layout: layout,
             activeProfileID: activeProfileID,
-            activeBytes: activeBytes
+            activeBytes: payload.bytes
         )
     }
 
@@ -2031,7 +2037,23 @@ final class ShortcutProfileStore {
         if locator.currentActiveProfileID() == nil,
            manifest?.profile(id: mirror.profileID) != nil,
            fileManager.fileExists(atPath: layout.profileDataURL(mirror.profileID).path) {
-            return try activateProfile(mirror.profileID)
+            let adopted = try activateProfile(mirror.profileID)
+            // The activation's own mirror write follows SWITCH semantics —
+            // a refused rewrite is tolerated because a stale mirror is
+            // attributable and silently repairable next launch. An IMPORT
+            // cannot borrow that tolerance: it is about to clear the offer,
+            // so the same checked rewrite the other two branches make runs
+            // here too, and a refusal is reported rather than swallowed.
+            // (When the activation's write already landed, this rewrite is
+            // byte-identical and the guard sees Wink's own payload.)
+            guard writeMirrorForActiveProfile(bytes: mirror.rawBytes, profileID: mirror.profileID, layout: layout) else {
+                log("PROFILE_TRACE_IMPORT_MIRROR_NOT_RESTORED active=\(mirror.profileID.uuidString)")
+                throw StoreError.writeFailed(
+                    path: layout.mirrorURL.path,
+                    reason: "imported the profile but could not rewrite the compatibility file"
+                )
+            }
+            return adopted
         }
 
         // The mirror always describes the ACTIVE profile. Importing into an

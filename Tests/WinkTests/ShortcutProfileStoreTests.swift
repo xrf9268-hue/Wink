@@ -2977,6 +2977,90 @@ struct ShortcutProfileMirrorTests {
     }
 
     @Test
+    func aResumableImportThatCannotRewriteTheMirrorReportsThePartialFailure() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        let legacy = [makeTestShortcut()]
+        try harness.writeLegacyShortcuts(legacy)
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        try FileManager.default.removeItem(at: harness.layout.profileDataURL(loaded.activeProfileID))
+
+        let reloaded = harness.makeStore()
+        guard case let .activeProfileUnreadable(_, activeProfileID, _, importableMirror) = reloaded.load() else {
+            Issue.record("expected activeProfileUnreadable")
+            return
+        }
+        let mirror = try #require(importableMirror)
+
+        // Present but unreadable AFTER the offer. The recovery branch commits
+        // through activateProfile, whose own mirror write is tolerant by
+        // SWITCH semantics — but an import is about to clear the offer, so
+        // the refusal must surface here exactly as it does on the other two
+        // adoption branches.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: harness.layout.mirrorURL.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644],
+                ofItemAtPath: harness.layout.mirrorURL.path
+            )
+        }
+
+        do {
+            _ = try reloaded.adoptForeignMirror(mirror)
+            Issue.record("expected the partial failure to be reported")
+        } catch let error as ShortcutProfileStore.StoreError {
+            guard case .writeFailed = error else {
+                Issue.record("expected writeFailed, got \(error)")
+                return
+            }
+        }
+
+        // The repair itself landed — data file and pointer — only the compat
+        // rewrite is owed, and the trace says so.
+        #expect(harness.data(at: harness.layout.profileDataURL(activeProfileID)) == mirror.rawBytes)
+        #expect(
+            harness.diagnostics.values.contains {
+                $0.contains("PROFILE_TRACE_IMPORT_MIRROR_NOT_RESTORED")
+            }
+        )
+    }
+
+    @Test
+    func aRefreshNeverClassifiesAgainstAMalformedActiveProfile() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        let store = harness.makeStore()
+        _ = store.load()
+        let foreign = [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        try harness.writeLegacyShortcuts(foreign)
+
+        let reloaded = harness.makeStore()
+        guard case let .ready(after) = reloaded.load(), let mirror = after.foreignMirror else {
+            Issue.record("expected a foreign mirror")
+            return
+        }
+
+        // The canonical file goes malformed after the offer. Startup would
+        // quarantine this profile before detection ever saw its bytes; a
+        // refresh classifying against the RAW bytes instead would let the
+        // stale-repair branch overwrite a usable compat copy with the
+        // malformed payload — a write startup would never make.
+        try harness.writeRaw("[ nope", to: harness.layout.profileDataURL(after.activeProfileID))
+        let mirrorBytesBefore = harness.data(at: harness.layout.mirrorURL)
+
+        #expect(reloaded.refreshedForeignMirrorOffer(replacing: mirror) == nil)
+        #expect(harness.data(at: harness.layout.mirrorURL) == mirrorBytesBefore)
+    }
+
+    @Test
     func aDescriptorNamingADeletedProfileIsUnknownProvenanceNotAForeignEdit() throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

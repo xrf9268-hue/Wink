@@ -931,6 +931,11 @@ struct ShortcutProfileRecoveryRuntimeTests {
 
         #expect(state.pendingForeignMirror == nil)
         #expect(!state.unreadableProfileIDs.contains(work.id))
+        // With no banner and no action left, "review it and try again" would
+        // be an instruction pointing at nothing: the resolved state is
+        // reported as status, not as an error.
+        #expect(state.errorMessage == nil)
+        #expect(state.statusMessage != nil)
     }
 }
 

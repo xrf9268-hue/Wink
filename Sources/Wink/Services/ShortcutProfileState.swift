@@ -542,10 +542,23 @@ final class ShortcutProfileState {
                (try? store.shortcuts(in: mirror.profileID)) != nil {
                 unreadableProfileIDs.remove(mirror.profileID)
             }
-            errorMessage = String(
-                localized: "That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.",
-                bundle: WinkResourceBundle.bundle
-            )
+            if pendingForeignMirror == nil {
+                // Reclassification found nothing foreign left — the file
+                // already matches the active profile (the partially failed
+                // import's repair completed, or the edit was reverted).
+                // "Review it and try again" with no banner and no action
+                // would be an instruction pointing at nothing.
+                errorMessage = nil
+                statusMessage = String(
+                    localized: "That file changed again — and it now matches your profile, so there is nothing left to import.",
+                    bundle: WinkResourceBundle.bundle
+                )
+            } else {
+                errorMessage = String(
+                    localized: "That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.",
+                    bundle: WinkResourceBundle.bundle
+                )
+            }
         } catch {
             errorMessage = userFacingMessage(for: error)
         }

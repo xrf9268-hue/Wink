@@ -458,6 +458,8 @@
 	<string>目标应用</string>
 	<key>That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.</key>
 	<string>该文件在 Wink 首次发现改动后又被修改了。现在显示的是最新版本——请确认后重试。</string>
+	<key>That file changed again — and it now matches your profile, so there is nothing left to import.</key>
+	<string>该文件又被修改了——现在它和你的配置一致，没有可导入的内容了。</string>
 	<key>That profile changed while Wink was switching to it, so nothing was applied. Try again.</key>
 	<string>Wink 正在切换到该配置时它发生了改动，因此未应用任何更改。请重试。</string>
 	<key>That profile no longer exists.</key>
