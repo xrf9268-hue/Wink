@@ -183,6 +183,27 @@ struct DiagnosticsRedactorTests {
     }
 
     @Test
+    func camelCaseSecretLabelsAreRedacted() {
+        // Real code logs camelCase credential labels; the non-alphanumeric
+        // boundary alone cannot see them (the core is preceded by a letter).
+        for line in [
+            "accessToken=abc123",
+            "refreshToken: abc123",
+            "clientSecret=abc123",
+            "myPassword=hunter2",
+            "clientSecretKey=abc123",
+        ] {
+            let out = redactor().redact(line: line)
+            #expect(!out.contains("abc123") && !out.contains("hunter2"), "leaked: \(line) → \(out)")
+        }
+
+        // A lowercase continuation is still not a boundary, and a camel word
+        // that merely CONTAINS a core mid-word does not fire.
+        #expect(redactor().redact(line: "usersession=42abc") == "usersession=42abc")
+        #expect(redactor().redact(line: "reSign=on") == "reSign=on")
+    }
+
+    @Test
     func spacedJWTHeadersAreStillRedacted() {
         // base64("{ \"") begins "eyA" — exactly as valid a JWT header as the
         // compact "eyJ" form.

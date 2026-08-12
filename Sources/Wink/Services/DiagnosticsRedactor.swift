@@ -40,19 +40,27 @@ struct DiagnosticsRedactor: Sendable {
         "session", "signature", "sig",
     ]
 
-    /// One alternation with a separator-attached SUFFIX only. There is no
-    /// prefix group, deliberately twice over: the lookbehind already admits a
-    /// core mid-compound (`AWS_SECRET_…` matches AT `SECRET`, preceded by
-    /// `_`), with the unmatched `AWS_` simply staying put in the output while
-    /// the value is what gets replaced — and a prefix group was the measured
+    /// One alternation with attached suffixes only. There is no prefix
+    /// group, deliberately twice over: the boundary assertions already admit
+    /// a core mid-compound (`AWS_SECRET_…` matches AT `SECRET`, preceded by
+    /// `_`; `clientSecret=` matches AT `Secret`, on the camel boundary),
+    /// with the unmatched affix simply staying put in the output while the
+    /// value is what gets replaced — and a prefix group was the measured
     /// quadratic hot spot (~130ms per 2,000-char `a.a.a.…signatureX=` line,
-    /// re-scanned greedily from every start position). The lookbehind is also
-    /// what stops a mid-word start: `usersession=` cannot fire from
-    /// `session`, because `r` is alphanumeric. The suffix quantifiers are
+    /// re-scanned greedily from every start position).
+    ///
+    /// Boundaries: a non-alphanumeric neighbor, OR a lowercase→uppercase
+    /// camel seam. The camel assertions live in `(?-i:…)` because the
+    /// pattern is applied case-insensitively, and under `(?i)` the classes
+    /// `[a-z]`/`[A-Z]` both match every letter — the seam would degenerate
+    /// to "any two letters" and `usersession=` would fire from `session`.
+    /// Suffixes attach through `_ - .` separators or camel words, all
     /// possessive — an iteration that matched never needs giving back, since
-    /// the `[:=]` tail cannot overlap `[_.-][A-Za-z0-9]`.
+    /// the `[:=]` tail cannot overlap either arm's first character.
     private static let sensitiveKeyPattern =
-        #"(?<![A-Za-z0-9])(?:"# + sensitiveKeyCores.joined(separator: "|") + #")(?:[_.-][A-Za-z0-9]++)*+"#
+        #"(?:(?<![A-Za-z0-9])|(?-i:(?<=[a-z])(?=[A-Z])))(?:"#
+        + sensitiveKeyCores.joined(separator: "|")
+        + #")(?:[_.-][A-Za-z0-9]++|(?-i:[A-Z][a-z0-9]*+))*+"#
 
     /// Header-shaped keys whose value runs to the end of the line and can
     /// contain spaces (`Authorization: Bearer …`). Stopping at the first
