@@ -5,6 +5,7 @@ import ApplicationServices
 final class AppController {
     struct SettingsSceneServices {
         let editor: ShortcutEditorState
+        let profileState: ShortcutProfileState
         let preferences: AppPreferences
         let diagnostics: DiagnosticsState
         let insightsViewModel: InsightsViewModel
@@ -16,6 +17,7 @@ final class AppController {
     struct MenuBarSceneServices {
         let shortcutStore: ShortcutStore
         let preferences: AppPreferences
+        let profileState: ShortcutProfileState
         let shortcutStatusProvider: ShortcutStatusProvider
         let usageTracker: any UsageTracking
         let openSettings: @MainActor (SettingsTab?) -> Void
@@ -26,7 +28,19 @@ final class AppController {
     static let lastSeenVersionDefaultsKey = "com.wink.lastSeenVersion"
 
     private let shortcutStore = ShortcutStore()
-    private let persistenceService = PersistenceService()
+    private let profileStore = ShortcutProfileStore()
+    /// Points at the ACTIVE profile's data file and carries the compat
+    /// `shortcuts.json` mirror as a derived copy, so every existing save path
+    /// stays profile-agnostic. A refused compat rewrite surfaces through the
+    /// profile state's shared stale-mirror caveat — the save itself has
+    /// already committed and is never failed by derived data.
+    private lazy var persistenceService = profileStore.makeActiveProfilePersistenceService(
+        onMirrorWriteOutcome: { [weak self] restored in
+            Task { @MainActor [weak self] in
+                self?.profileState.reportMirrorWriteOutcomeAfterSave(restored: restored)
+            }
+        }
+    )
     private let usageTracker = UsageTracker()
     private let hyperKeyService = HyperKeyService()
     private let appBundleLocator = AppBundleLocator()
@@ -165,8 +179,47 @@ final class AppController {
         shortcutStore: shortcutStore,
         shortcutManager: shortcutManager,
         usageTracker: usageTracker,
+        isShortcutRetainedByAnotherProfile: { [weak self] id in
+            self?.profileStore.isShortcutRetainedByAnotherProfile(id) ?? false
+        },
+        reserveUsageDeletion: { [weak self] id, claim in
+            guard let self else { return }
+            if claim {
+                self.profileStore.reserveUsageDeletions([id])
+            } else {
+                self.profileStore.releaseUsageDeletions([id])
+            }
+        },
         onShortcutConfigurationChange: { [weak self] in
             self?.appPreferences.refreshPermissions()
+        }
+    )
+    private lazy var profileState = ShortcutProfileState(
+        store: profileStore,
+        shortcutManager: shortcutManager,
+        usageTracker: usageTracker,
+        prepareForSwitch: { [weak self] in
+            guard let self else { return DiscardedProfileSwitchDrafts() }
+            // Interactive panels first: their sessions are scoped to the
+            // outgoing binding set, and a picker left open across the switch
+            // would gate dispatch for chords that no longer exist.
+            self.windowPickerHUD.dismiss()
+            self.searchPaletteHUD.dismiss()
+            self.cheatSheetHUD.reset()
+            return self.shortcutEditor.cancelDraftsForProfileSwitch()
+        },
+        hasUnsavedEditorWork: { [weak self] in
+            self?.shortcutEditor.hasUnsavedWork ?? false
+        },
+        onProfileApplied: { [weak self] in
+            self?.appPreferences.refreshPermissions()
+            self?.shortcutEditor.scheduleUsageRefresh()
+            // Insights reads `ShortcutStore` only while refreshing, so its
+            // rankings, unused-shortcut list, and bound-app suggestions keep
+            // describing the OUTGOING profile after a switch made from the
+            // menu bar — the tab is already open, so neither the tab-change
+            // nor the become-active refresh fires.
+            self?.insightsViewModel.scheduleRefresh()
         }
     )
     private lazy var frontmostExceptionMonitor = FrontmostExceptionMonitor(
@@ -225,6 +278,7 @@ final class AppController {
     )
     private lazy var settingsSceneServicesStorage = SettingsSceneServices(
         editor: shortcutEditor,
+        profileState: profileState,
         preferences: appPreferences,
         diagnostics: diagnosticsState,
         insightsViewModel: insightsViewModel,
@@ -235,6 +289,7 @@ final class AppController {
     private lazy var menuBarSceneServicesStorage = MenuBarSceneServices(
         shortcutStore: shortcutStore,
         preferences: appPreferences,
+        profileState: profileState,
         shortcutStatusProvider: settingsShortcutStatusProvider,
         usageTracker: usageTracker,
         openSettings: { [weak self] tab in
@@ -404,7 +459,11 @@ final class AppController {
 
         Self.runStartupSequence(
             startUpdateService: { _ = updateService },
-            loadShortcuts: { try persistenceService.load() },
+            // Profile-aware: returns the ACTIVE profile's shortcuts, and an
+            // empty set for every recovery state so an unreadable
+            // configuration can never fall through to a different profile's
+            // bindings. The failure itself is surfaced by `profileState`.
+            loadShortcuts: { profileState.loadAtStartup() },
             replaceShortcuts: { shortcutStore.replaceAll(with: $0) },
             // "Deferred by an active pause" counts as armed: the routing
             // decision below must reflect user intent, not the pause. With

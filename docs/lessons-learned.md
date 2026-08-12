@@ -798,3 +798,16 @@ After PR #239 stopped repositioning the native traffic lights (they visibly jump
 
 **Residual design decision**
 The aligned cluster sits on AppKit's ~14pt centerline, i.e. ~4pt above the 36pt row's midline. True centering at 18pt requires owning the lights (hide the standard buttons and draw custom dots, PomoFox-style) — repositioning real buttons is what #239 reverted. Treat "centered in the 36pt row" as a separate, owner-approved issue if design fidelity demands it; do not resurrect per-pass `setFrameOrigin` on standard buttons.
+
+## Review-Listing Pagination — the Verdict That Looked Like Silence (#460)
+
+**Issue**
+The PR-babysitting watcher polled `gh api …/pulls/460/reviews` without `--paginate` and filtered for the newest bot review. REST returns 30 items per page, and the PR had accumulated 70 review objects across its bot rounds — so every poll read the OLDEST page, concluded "no verdict yet," and kept concluding it for 55 minutes after the bot's review had already landed on the current head. The misreading then prompted a duplicate `@codex review`, spending a quota round on a re-review of an already-reviewed head.
+
+**Fix**
+- `--paginate` on every REST listing a watcher or terminal-signal check reads (`/reviews`, `/comments`); GraphQL connections paged via `pageInfo { hasNextPage endCursor }`.
+- Filter by author + timestamp against a trigger-time cutoff, never by list position: `.[-1]` on an unpaginated response is "last of the first page," which inverts to "oldest," precisely when the PR is busiest.
+- `pr-review-loop` SKILL.md now carries the rule beside the three terminal-signal forms, because a watcher that reads a truncated listing reproduces the exact failure the three-forms rule exists to prevent — concluding "still running" from incomplete evidence.
+
+**Practical guidance**
+A busy PR is the norm for this repo's review loop, not the exception: seven bot rounds ≈ dozens of review objects. Any tooling that reasons about "the latest" of anything on a PR must prove it read the whole collection first.

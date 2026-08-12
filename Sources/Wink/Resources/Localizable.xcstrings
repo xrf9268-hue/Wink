@@ -1,6 +1,23 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@ (can't be read)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (can't be read)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（无法读取）"
+          }
+        }
+      }
+    },
     "%@ Last checked %@.": {
       "extractionState": "manual",
       "localizations": {
@@ -14,6 +31,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 上次检查时间：%@。"
+          }
+        }
+      }
+    },
+    "%@ copy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ copy"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 副本"
+          }
+        }
+      }
+    },
+    "%@ copy %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ copy %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 副本 %lld"
           }
         }
       }
@@ -263,6 +314,23 @@
         }
       }
     },
+    "A copy of the unreadable file was saved to %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A copy of the unreadable file was saved to %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取的文件已备份到 %@。"
+          }
+        }
+      }
+    },
     "A password field or secure prompt is capturing keyboard input. Hyper and Fn-based shortcuts may not fire until it ends; other standard shortcuts keep working.": {
       "extractionState": "manual",
       "localizations": {
@@ -365,6 +433,23 @@
         }
       }
     },
+    "Add Profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Profile"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加配置"
+          }
+        }
+      }
+    },
     "Add Shortcut": {
       "extractionState": "manual",
       "localizations": {
@@ -412,6 +497,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "所有快捷键均已暂停。"
+          }
+        }
+      }
+    },
+    "Another profile already uses that name.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Another profile already uses that name."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已有其他配置使用该名称。"
           }
         }
       }
@@ -705,6 +807,23 @@
         }
       }
     },
+    "Choose a profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a profile"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择一个配置"
+          }
+        }
+      }
+    },
     "Choose an app…": {
       "extractionState": "manual",
       "localizations": {
@@ -977,6 +1096,40 @@
         }
       }
     },
+    "Create, rename, duplicate, or delete profiles.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create, rename, duplicate, or delete profiles."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建、重命名、复制或删除配置。"
+          }
+        }
+      }
+    },
+    "Created the profile “%@”.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Created the profile “%@”."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已创建配置“%@”。"
+          }
+        }
+      }
+    },
     "Current App": {
       "extractionState": "manual",
       "localizations": {
@@ -1046,6 +1199,23 @@
         }
       }
     },
+    "Delete Profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Profile"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除配置"
+          }
+        }
+      }
+    },
     "Delete Shortcut": {
       "extractionState": "manual",
       "localizations": {
@@ -1059,6 +1229,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "删除快捷键"
+          }
+        }
+      }
+    },
+    "Delete “%@”?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete “%@”?"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要删除“%@”吗？"
           }
         }
       }
@@ -1093,6 +1280,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "已禁用"
+          }
+        }
+      }
+    },
+    "Dismiss": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "知道了"
           }
         }
       }
@@ -1216,6 +1420,23 @@
         }
       }
     },
+    "Duplicate current profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Duplicate current profile"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制当前配置"
+          }
+        }
+      }
+    },
     "Enable All Shortcuts": {
       "extractionState": "manual",
       "localizations": {
@@ -1229,6 +1450,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "启用所有快捷键"
+          }
+        }
+      }
+    },
+    "Enter a profile name.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a profile name."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请输入配置名称。"
           }
         }
       }
@@ -1726,6 +1964,23 @@
         }
       }
     },
+    "Import into “%@”": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import into “%@”"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导入到“%@”"
+          }
+        }
+      }
+    },
     "Import or export shortcuts": {
       "extractionState": "manual",
       "localizations": {
@@ -1773,6 +2028,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "已导入 %lld 个快捷键"
+          }
+        }
+      }
+    },
+    "Imported the changes made outside Wink.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imported the changes made outside Wink."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已导入在 Wink 之外所做的改动。"
           }
         }
       }
@@ -1981,6 +2253,40 @@
         }
       }
     },
+    "Its shortcuts are removed, along with the usage history of shortcuts that exist only in it. Shortcuts that also live in another profile keep their history.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Its shortcuts are removed, along with the usage history of shortcuts that exist only in it. Shortcuts that also live in another profile keep their history."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其中的快捷键会被移除，仅存在于该配置中的快捷键的使用记录也会一并删除。同时存在于其他配置中的快捷键会保留各自的记录。"
+          }
+        }
+      }
+    },
+    "Keep this profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep this profile"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保留当前配置"
+          }
+        }
+      }
+    },
     "Last used %@": {
       "extractionState": "manual",
       "localizations": {
@@ -2118,6 +2424,23 @@
         }
       }
     },
+    "Manage Profiles": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage Profiles"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "管理配置"
+          }
+        }
+      }
+    },
     "Manage…": {
       "extractionState": "manual",
       "localizations": {
@@ -2203,6 +2526,23 @@
         }
       }
     },
+    "New Profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Profile"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新配置"
+          }
+        }
+      }
+    },
     "New Shortcut": {
       "extractionState": "manual",
       "localizations": {
@@ -2254,6 +2594,23 @@
         }
       }
     },
+    "New empty profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New empty profile"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建空配置"
+          }
+        }
+      }
+    },
     "No change": {
       "extractionState": "manual",
       "localizations": {
@@ -2301,6 +2658,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "没有匹配的应用"
+          }
+        }
+      }
+    },
+    "No shortcuts are active and nothing can be changed until you recover.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No shortcuts are active and nothing can be changed until you recover."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前没有生效的快捷键，在恢复之前也无法做任何更改。"
+          }
+        }
+      }
+    },
+    "No shortcuts are active. Choose the profile you want so Wink does not pick one for you.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No shortcuts are active. Choose the profile you want so Wink does not pick one for you."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前没有生效的快捷键。请自行选择要使用的配置，Wink 不会替你决定。"
+          }
+        }
+      }
+    },
+    "No shortcuts are active. Wink did not switch to another profile on its own — choose one below.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No shortcuts are active. Wink did not switch to another profile on its own — choose one below."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前没有生效的快捷键。Wink 不会自行切换到其他配置——请在下方选择一个。"
           }
         }
       }
@@ -2696,6 +3104,57 @@
         }
       }
     },
+    "Profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profile"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置"
+          }
+        }
+      }
+    },
+    "Profile name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profile name"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置名称"
+          }
+        }
+      }
+    },
+    "Profile names can be at most %lld characters.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Profile names can be at most %lld characters."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置名称最多 %lld 个字符。"
+          }
+        }
+      }
+    },
     "Quit Wink": {
       "extractionState": "manual",
       "localizations": {
@@ -2764,6 +3223,23 @@
         }
       }
     },
+    "Recipes import into the active profile. Profiles stay on this Mac; recipes are how you share bindings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recipes import into the active profile. Profiles stay on this Mac; recipes are how you share bindings."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配方会导入到当前配置中。配置只保存在这台 Mac 上；配方则用于分享绑定。"
+          }
+        }
+      }
+    },
     "Recording…": {
       "extractionState": "manual",
       "localizations": {
@@ -2777,6 +3253,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "录制中…"
+          }
+        }
+      }
+    },
+    "Recover": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recover"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "恢复"
           }
         }
       }
@@ -2828,6 +3321,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "移除 %@"
+          }
+        }
+      }
+    },
+    "Rename Profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename Profile"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名配置"
           }
         }
       }
@@ -3223,6 +3733,23 @@
         }
       }
     },
+    "Shortcuts are not loaded and changes cannot be saved. Check that your home folder is available, then relaunch Wink.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shortcuts are not loaded and changes cannot be saved. Check that your home folder is available, then relaunch Wink."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快捷键未加载，改动也无法保存。请确认个人文件夹可用，然后重新启动 Wink。"
+          }
+        }
+      }
+    },
     "Shortcuts paused": {
       "extractionState": "manual",
       "localizations": {
@@ -3427,6 +3954,23 @@
         }
       }
     },
+    "Started a new profile list. Your unreadable file was kept alongside it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Started a new profile list. Your unreadable file was kept alongside it."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已新建配置列表。原先无法读取的文件仍保留在旁。"
+          }
+        }
+      }
+    },
     "Startup, keyboard behavior, and updates.": {
       "extractionState": "manual",
       "localizations": {
@@ -3512,6 +4056,57 @@
         }
       }
     },
+    "Switching profiles discarded the recipe import preview, which was prepared for the previous profile.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switching profiles discarded the recipe import preview, which was prepared for the previous profile."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换配置已放弃配方导入预览——该预览是针对上一个配置生成的。"
+          }
+        }
+      }
+    },
+    "Switching profiles discarded the shortcut you were about to add.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switching profiles discarded the shortcut you were about to add."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换配置已放弃你正准备添加的快捷键。"
+          }
+        }
+      }
+    },
+    "Switching profiles stopped the shortcut recording in progress.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switching profiles stopped the shortcut recording in progress."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换配置已停止正在进行的快捷键录制。"
+          }
+        }
+      }
+    },
     "System Settings > Input Monitoring can lag behind live access. If the affected shortcuts work here, Wink already has the permission it needs.": {
       "extractionState": "manual",
       "localizations": {
@@ -3546,6 +4141,91 @@
         }
       }
     },
+    "That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That file changed again since Wink first noticed it. The offer now shows the newest version — review it and try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该文件在 Wink 首次发现改动后又被修改了。现在显示的是最新版本——请确认后重试。"
+          }
+        }
+      }
+    },
+    "That file changed again — Wink re-checked it, and there is nothing left to import.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That file changed again — Wink re-checked it, and there is nothing left to import."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该文件又被修改了——Wink 重新核查过，已经没有可导入的内容。"
+          }
+        }
+      }
+    },
+    "That profile changed while Wink was switching to it, so nothing was applied. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That profile changed while Wink was switching to it, so nothing was applied. Try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 正在切换到该配置时它发生了改动，因此未应用任何更改。请重试。"
+          }
+        }
+      }
+    },
+    "That profile no longer exists.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That profile no longer exists."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该配置已不存在。"
+          }
+        }
+      }
+    },
+    "That profile’s shortcuts could not be read, so Wink did not switch to it. Nothing was changed or deleted.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That profile’s shortcuts could not be read, so Wink did not switch to it. Nothing was changed or deleted."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取该配置的快捷键，Wink 没有切换过去。任何内容都没有被修改或删除。"
+          }
+        }
+      }
+    },
     "The Settings toggle is live: background checks and downloads, on or off.": {
       "extractionState": "manual",
       "localizations": {
@@ -3563,6 +4243,57 @@
         }
       }
     },
+    "The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改动已导入，但 Wink 未能完成切换到修复后的配置。请再试一次导入。"
+          }
+        }
+      }
+    },
+    "The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改动已导入，但 shortcuts.json 兼容文件未能重写。请再试一次导入。"
+          }
+        }
+      }
+    },
+    "The file no longer matches what Wink last wrote, and its contents could not be read. Wink has changed nothing.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The file no longer matches what Wink last wrote, and its contents could not be read. Wink has changed nothing."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该文件与 Wink 上次写入的内容不一致，且其内容无法读取。Wink 未做任何改动。"
+          }
+        }
+      }
+    },
     "The last automatic update check failed: %@": {
       "extractionState": "manual",
       "localizations": {
@@ -3576,6 +4307,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "上次自动检查更新失败：%@"
+          }
+        }
+      }
+    },
+    "The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法删除该配置，且 Wink 无法撤销此前已经完成的切换。你现在使用的是“%@”。"
+          }
+        }
+      }
+    },
+    "The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "shortcuts.json 兼容文件暂时未能重写；下次成功保存时会刷新它。"
+          }
+        }
+      }
+    },
+    "There is no active profile to keep yet. Import the file first, or choose a profile.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There is no active profile to keep yet. Import the file first, or choose a profile."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前还没有可保留的当前配置。请先导入该文件，或选择一个配置。"
           }
         }
       }
@@ -3610,6 +4392,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "创建此导出时，该日志缺失或无法读取。"
+          }
+        }
+      }
+    },
+    "This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这通常意味着旧版本的 Wink 修改过它，也可能发生在意外关机之后。Wink 目前还未做任何改动。"
           }
         }
       }
@@ -3729,6 +4528,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "输入应用名称，按下 Return 键即可切换到该应用。"
+          }
+        }
+      }
+    },
+    "Unknown profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown profile"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知配置"
           }
         }
       }
@@ -4177,6 +4993,23 @@
         }
       }
     },
+    "Wink always keeps at least one profile.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink always keeps at least one profile."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 始终保留至少一个配置。"
+          }
+        }
+      }
+    },
     "Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.": {
       "extractionState": "manual",
       "localizations": {
@@ -4194,6 +5027,40 @@
         }
       }
     },
+    "Wink cannot reach its storage folder": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink cannot reach its storage folder"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 无法访问其存储文件夹"
+          }
+        }
+      }
+    },
+    "Wink cannot reach its storage folder, so profiles cannot be changed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink cannot reach its storage folder, so profiles cannot be changed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 无法访问其存储文件夹，因此无法更改配置。"
+          }
+        }
+      }
+    },
     "Wink checks for updates automatically and asks before downloading.": {
       "extractionState": "manual",
       "localizations": {
@@ -4207,6 +5074,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "Wink 会自动检查更新，并在下载前征求你的同意。"
+          }
+        }
+      }
+    },
+    "Wink could not read your previous shortcuts file": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink could not read your previous shortcuts file"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 无法读取你之前的快捷键文件"
+          }
+        }
+      }
+    },
+    "Wink could not read your profile list": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink could not read your profile list"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 无法读取你的配置列表"
+          }
+        }
+      }
+    },
+    "Wink could not read your profile list, so nothing can be changed until you recover it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink could not read your profile list, so nothing can be changed until you recover it."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 无法读取你的配置列表，在恢复之前无法进行任何更改。"
+          }
+        }
+      }
+    },
+    "Wink could not save the change to disk, so nothing was changed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink could not save the change to disk, so nothing was changed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 无法将更改写入磁盘，因此未做任何改动。"
+          }
+        }
+      }
+    },
+    "Wink could not tell which profile was active": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink could not tell which profile was active"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 无法确定哪个配置处于使用中"
           }
         }
       }
@@ -4279,6 +5231,23 @@
         }
       }
     },
+    "Wink is still clearing usage history for a deleted profile. Try again in a moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink is still clearing usage history for a deleted profile. Try again in a moment."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 仍在清除已删除配置的使用记录。请稍后再试。"
+          }
+        }
+      }
+    },
     "Wink needs Accessibility access to route global shortcuts.": {
       "extractionState": "manual",
       "localizations": {
@@ -4296,6 +5265,23 @@
         }
       }
     },
+    "Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wink 以一个空配置启动。旧文件未被改动，仍可修复或导入。"
+          }
+        }
+      }
+    },
     "Wink: Permission Lost": {
       "extractionState": "manual",
       "localizations": {
@@ -4309,6 +5295,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Wink：权限丢失"
+          }
+        }
+      }
+    },
+    "You can have at most %lld profiles.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can have at most %lld profiles."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最多只能有 %lld 个配置。"
           }
         }
       }
@@ -4364,6 +5367,40 @@
         }
       }
     },
+    "active": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "active"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用中"
+          }
+        }
+      }
+    },
+    "can't be read": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "can't be read"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取"
+          }
+        }
+      }
+    },
     "for a Hyper shortcut.": {
       "extractionState": "manual",
       "localizations": {
@@ -4377,6 +5414,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "即可触发 Hyper 快捷键。"
+          }
+        }
+      }
+    },
+    "shortcuts.json was changed outside Wink": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "shortcuts.json was changed outside Wink"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "shortcuts.json 在 Wink 之外被修改过"
           }
         }
       }
@@ -4462,6 +5516,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "每次约 3 秒"
+          }
+        }
+      }
+    },
+    "“%@” could not be read": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” could not be read"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@”无法读取"
           }
         }
       }

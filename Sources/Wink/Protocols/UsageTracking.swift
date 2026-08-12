@@ -82,7 +82,11 @@ protocol UsageTracking: Sendable {
     // Async requirement satisfied by UsageTracker's sync actor method; NO
     // extension default (see deleteUsage note below on the shadowing trap).
     func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)]
-    func deleteUsage(shortcutId: UUID) async
+    /// Returns whether the rows are actually gone. Callers that journal a
+    /// pending deletion must not clear the journal on `false`: the retry
+    /// record is the only thing standing between a transient database failure
+    /// and history that is never cleaned up.
+    func deleteUsage(shortcutId: UUID) async -> Bool
     /// Returns nil when the surrounding task was cancelled; a cancelled
     /// refresh stops issuing further queries instead of completing the
     /// remaining phases.

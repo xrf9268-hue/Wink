@@ -45,6 +45,7 @@ final class MenuBarPopoverModel {
 
     private let shortcutStore: ShortcutStore
     private let preferences: AppPreferences
+    private let profileState: ShortcutProfileState
     private let shortcutStatusProvider: ShortcutStatusProvider
     private let usageTracker: any UsageTracking
     private let openSettingsAction: @MainActor (SettingsTab?) -> Void
@@ -62,6 +63,7 @@ final class MenuBarPopoverModel {
     init(
         shortcutStore: ShortcutStore,
         preferences: AppPreferences,
+        profileState: ShortcutProfileState,
         shortcutStatusProvider: ShortcutStatusProvider,
         usageTracker: any UsageTracking,
         workspaceNotificationCenter: NotificationCenter = NSWorkspace.shared.notificationCenter,
@@ -71,6 +73,7 @@ final class MenuBarPopoverModel {
     ) {
         self.shortcutStore = shortcutStore
         self.preferences = preferences
+        self.profileState = profileState
         self.shortcutStatusProvider = shortcutStatusProvider
         self.usageTracker = usageTracker
         self.workspaceNotificationCenter = workspaceNotificationCenter
@@ -83,6 +86,52 @@ final class MenuBarPopoverModel {
 
     var versionText: String {
         "v\(preferences.updatePresentation.currentVersion)"
+    }
+
+    /// Profiles appear in the popover only when the user actually has more
+    /// than one. A single-profile install has nothing to switch between, and
+    /// a row that never does anything is worse than no row.
+    var showsProfileRow: Bool {
+        profileState.profiles.count > 1
+    }
+
+    var activeProfileName: String? {
+        profileState.activeProfile?.name
+    }
+
+    var selectableProfiles: [ShortcutProfile] {
+        profileState.profiles
+    }
+
+    var activeProfileID: UUID? {
+        profileState.activeProfileID
+    }
+
+    func isProfileSelectable(_ profile: ShortcutProfile) -> Bool {
+        !profileState.unreadableProfileIDs.contains(profile.id)
+    }
+
+    func switchToProfile(_ profileID: UUID) {
+        profileState.switchToProfile(profileID)
+        // `shortcutRows` is a cached snapshot built at init and on appear.
+        // The profile name updates through observation, so without this the
+        // popover would show the new profile's name above the outgoing
+        // profile's shortcuts until it is reopened.
+        refresh()
+    }
+
+    /// The outcome of the last profile action, for the row beneath the
+    /// picker: a switch from this entry point can fail, or succeed with the
+    /// stale-mirror caveat, and rendering neither would leave the menu-bar
+    /// user with only the new name and no word about either.
+    var profileSwitchNotice: (message: String, isError: Bool)? {
+        if let error = profileState.errorMessage {
+            return (error, true)
+        }
+        if let status = profileState.statusMessage {
+            return (status, false)
+        }
+        return nil
     }
 
     var shortcutsPaused: Bool {
@@ -415,6 +464,12 @@ struct MenuBarPopoverView: View {
 
     private var actionsSection: some View {
         VStack(spacing: 0) {
+            if model.showsProfileRow {
+                MenuBarProfileRow(model: model)
+
+                Divider().overlay(palette.hairline)
+            }
+
             MenuBarToggleRow(
                 title: String(localized: "Pause all shortcuts", bundle: WinkResourceBundle.bundle),
                 isOn: Binding(
@@ -688,6 +743,61 @@ private struct MenuBarUpdateNoticeRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("MenuBarUpdateNoticeRow")
+    }
+}
+
+/// Shows the active profile and switches between them without opening
+/// Settings. Uses the same `ShortcutProfileState.switchToProfile` path as the
+/// Settings picker, so the transactional apply and the draft-cancellation
+/// contract are identical from either entry point.
+private struct MenuBarProfileRow: View {
+    @Environment(\.winkPalette) private var palette
+    @Bindable var model: MenuBarPopoverModel
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("Profile", bundle: WinkResourceBundle.bundle)
+                .font(WinkType.bodyMedium)
+                .foregroundStyle(palette.textPrimary)
+
+            Spacer(minLength: 8)
+
+            Menu {
+                ForEach(model.selectableProfiles) { profile in
+                    Button {
+                        model.switchToProfile(profile.id)
+                    } label: {
+                        if profile.id == model.activeProfileID {
+                            Label(profile.name, systemImage: "checkmark")
+                        } else {
+                            Text(profile.name)
+                        }
+                    }
+                    .disabled(!model.isProfileSelectable(profile))
+                }
+            } label: {
+                Text(model.activeProfileName ?? String(localized: "Choose a profile", bundle: WinkResourceBundle.bundle))
+                    .font(WinkType.bodyText)
+                    .foregroundStyle(palette.textSecondary)
+                    .lineLimit(1)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .accessibilityLabel(Text("Profile", bundle: WinkResourceBundle.bundle))
+            .accessibilityValue(Text(model.activeProfileName ?? ""))
+        }
+        .padding(.horizontal, MenuBarRowMetrics.rowHorizontalPadding)
+        .padding(.vertical, MenuBarRowMetrics.footerRowVerticalPadding)
+
+        if let notice = model.profileSwitchNotice {
+            Text(notice.message)
+                .font(WinkType.labelSmall)
+                .foregroundStyle(notice.isError ? palette.red : palette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, MenuBarRowMetrics.rowHorizontalPadding)
+                .padding(.bottom, MenuBarRowMetrics.footerRowVerticalPadding)
+                .accessibilityIdentifier("MenuBarProfileNoticeRow")
+        }
     }
 }
 

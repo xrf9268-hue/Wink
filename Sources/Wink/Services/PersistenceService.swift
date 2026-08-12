@@ -53,20 +53,50 @@ struct PersistenceService: Sendable {
     private let storageURLProvider: @Sendable () -> URL?
     private let diagnosticClient: DiagnosticClient
     private let backupIDProvider: @Sendable () -> String
+    private let derivedCopyWriter: (@Sendable (Data) -> Void)?
 
     init(
         storageURLProvider: @escaping @Sendable () -> URL? = {
             StoragePaths.appSupportDirectory()?.appendingPathComponent("shortcuts.json")
         },
         diagnosticClient: DiagnosticClient = .live,
-        backupIDProvider: @escaping @Sendable () -> String = { UUID().uuidString.lowercased() }
+        backupIDProvider: @escaping @Sendable () -> String = { UUID().uuidString.lowercased() },
+        // Receives the exact bytes of every successful save so a caller can
+        // keep derived copies (the profile store's `shortcuts.json` mirror).
+        // Invoked after the canonical write has already succeeded, and it
+        // cannot throw: derived data must never be able to fail a save.
+        derivedCopyWriter: (@Sendable (Data) -> Void)? = nil
     ) {
         self.storageURLProvider = storageURLProvider
         self.diagnosticClient = diagnosticClient
         self.backupIDProvider = backupIDProvider
+        self.derivedCopyWriter = derivedCopyWriter
+    }
+
+    /// The single encoding path for a `[AppShortcut]` payload. Every writer —
+    /// the canonical save and every derived copy — must use it, or a byte
+    /// difference would make an untouched mirror look externally modified.
+    static func encodeShortcuts(_ shortcuts: [AppShortcut]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(shortcuts)
     }
 
     func load() throws -> [AppShortcut] {
+        try loadWithBytes().shortcuts
+    }
+
+    /// The decoded payload **and** the exact bytes it was decoded from, read
+    /// once. `data` is nil only when the file does not exist.
+    ///
+    /// A caller that needs both must use this rather than `load()` followed by
+    /// its own `Data(contentsOf:)`: two reads of one path can observe two
+    /// different files. The migration copy is the case that matters — a second
+    /// read that returned different bytes would install one configuration and
+    /// arm another, and a second read that *failed* would fall through to a
+    /// re-encode, dropping exactly the unmodelled members the byte copy exists
+    /// to preserve.
+    func loadWithBytes() throws -> (shortcuts: [AppShortcut], data: Data?) {
         guard let url = storageURLProvider() else {
             let error = LoadError.storageUnavailable
             logLoadFailure(error)
@@ -74,7 +104,7 @@ struct PersistenceService: Sendable {
         }
 
         guard FileManager.default.fileExists(atPath: url.path) else {
-            return []
+            return ([], nil)
         }
 
         let data: Data
@@ -114,7 +144,7 @@ struct PersistenceService: Sendable {
             throw loadError
         }
 
-        return shortcuts
+        return (shortcuts, data)
     }
 
     func save(_ shortcuts: [AppShortcut]) throws {
@@ -130,11 +160,9 @@ struct PersistenceService: Sendable {
             throw error
         }
 
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-
+        let data: Data
         do {
-            let data = try encoder.encode(shortcuts)
+            data = try Self.encodeShortcuts(shortcuts)
             try data.write(to: url, options: .atomic)
         } catch {
             let saveError = SaveError.writeFailed(
@@ -144,6 +172,8 @@ struct PersistenceService: Sendable {
             logSaveFailure(saveError)
             throw saveError
         }
+
+        derivedCopyWriter?(data)
     }
 
     private func logSaveFailure(_ error: SaveError) {

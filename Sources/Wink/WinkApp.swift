@@ -25,6 +25,7 @@ struct WinkApp: App {
                 model: MenuBarPopoverModel(
                     shortcutStore: menuBarServices.shortcutStore,
                     preferences: menuBarServices.preferences,
+                    profileState: menuBarServices.profileState,
                     shortcutStatusProvider: menuBarServices.shortcutStatusProvider,
                     usageTracker: menuBarServices.usageTracker,
                     openSettings: menuBarServices.openSettings,
@@ -39,6 +40,7 @@ struct WinkApp: App {
             let services = appDelegate.settingsSceneServices
             SettingsView(
                 editor: services.editor,
+                profileState: services.profileState,
                 preferences: services.preferences,
                 diagnostics: services.diagnostics,
                 insightsViewModel: services.insightsViewModel,

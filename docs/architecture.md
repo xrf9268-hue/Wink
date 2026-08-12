@@ -134,6 +134,8 @@ Responsibilities:
 - `ShortcutConflict`
 - `ShortcutStore`
 - `ShortcutValidator`
+- `ShortcutProfile` / `ShortcutProfileManifest` / `ShortcutProfileActivePointer` / `ShortcutProfileMirrorDescriptor`
+- `ShortcutProfileNameRules`
 
 Responsibilities:
 - represent saved shortcut bindings
@@ -142,6 +144,22 @@ Responsibilities:
 - detect duplicate/conflicting bindings
 - hold in-memory state used by the event path and UI
 - persist only the current `[AppShortcut]` schema, whose `id` values must be unique across the entire array (including disabled entries); unsupported, duplicate-ID, or partially corrupted payloads are load failures, not best-effort partial recovery
+- represent named shortcut sets (profiles) and the rules that keep their names addressable: 1–64 characters, unique case-insensitively over NFC-normalized names, at most 32 profiles. Profile identity is always the UUID, never the name, so a rename cannot orphan the active pointer
+- keep shortcut `id` values unique across **all** profiles, which is what lets `usage.db` stay keyed by shortcut UUID alone with no profile column
+
+### Shortcut profiles
+- `ShortcutProfileStore`
+- `ShortcutProfileState`
+- `ProfileBar` / `ProfileManagerSheet`
+
+Responsibilities:
+- own `Application Support/Wink/Profiles/`: `manifest.json` (the profile list), `active.json` (the active pointer, and the single commit point of a switch), `mirror.json` (a descriptor for the compat file), and one `<profileID>.json` data file per profile whose payload is byte-compatible with the historical `shortcuts.json`
+- keep `shortcuts.json` at its original path as a **derived mirror** of the active profile — written last on every save and switch, never read as truth except during first-run migration and the outside-edit check. It is retained because the packaged-app E2E harness, the validation docs, and a downgraded build all still resolve it
+- migrate a pre-profiles install into a Default profile by **copying bytes**, never by decoding and re-encoding: `AppShortcut` drops JSON members it does not model, so a round trip would silently discard data a newer build wrote. The same rule governs mirroring, import, and duplication; the first ordinary save of a profile does re-encode, and that boundary is stated rather than implied
+- interpret every combination of the four files through three sequential stages — profile list, active pointer, profile data — so no combination is undefined. Every failing state arms **zero** shortcuts and asks; an unreadable configuration never falls through to a different profile's bindings
+- never overwrite the compat mirror until a byte-identical copy has been preserved beside it, and never import an outside edit without an explicit user choice
+- issue `UsageTracker.deleteUsage` only for shortcut IDs no other profile holds, failing closed when a sibling profile could not be read
+- surface profile selection, creation, renaming, duplication, deletion, and every recovery state in Settings and the menu bar, using one `switchToProfile` path from both entry points
 
 ### Event capture and matching
 - `ShortcutCaptureCoordinator`
@@ -163,6 +181,7 @@ Responsibilities:
 - encode/decode shareable recipe JSON with explicit schema-version checks
 - classify imported recipe entries into ready/conflict/unresolved plans before persistence
 - keep provider callback work lightweight and always hop back to the main actor before app toggling
+- apply a whole shortcut set through one seam, `ShortcutManager.applyLoadedShortcuts(_:source:)`: an ordinary save and a profile switch run the same synchronous main-actor block, so no observable state mixes one set's store with another's trigger index. That property comes from the actor isolation, not from timing, which is why a profile switch introduces no second capture-synchronization stack
 - report capture readiness as capability-aware state instead of a single global boolean:
   - Accessibility granted
   - Input Monitoring granted
@@ -287,7 +306,10 @@ App launch
   -> NSApp.setActivationPolicy(.accessory)
   -> AppController.start()
   -> SparkleUpdateService initializes if SUFeedURL + SUPublicEDKey are configured
-  -> PersistenceService.load()
+  -> ShortcutProfileStore.load() (migrates a pre-profiles install, or interprets the
+     profile list / active pointer / profile data through the three recovery stages)
+  -> ShortcutProfileState publishes the profile list, the active profile, and any
+     recovery state; a failing state returns an EMPTY shortcut set
   -> ShortcutStore.replaceAll()
   -> HyperKeyService.reapplyIfNeeded()
   -> ShortcutManager.setHyperKeyEnabled(hyperKeyService.isEnabled)
@@ -347,6 +369,34 @@ User opens General tab
   -> Sparkle presents the standard update UI if the configured feed has a newer item
 ```
 
+### 2d. Profile switch flow
+```text
+User picks a profile (Settings picker or menu bar row)
+  -> ShortcutProfileStore.loadProfileForActivation(id)      <- WRITES NOTHING
+       -> decode + unique IDs; a refused switch applies nothing and discards nothing
+       -> returns the rows AND the exact bytes they came from
+  -> ShortcutProfileStore.commitActivation(id, payload)     <- LAST ABORT POINT
+       -> re-verifies Profiles/<id>.json still holds those bytes, and refuses if not
+       -> commits Profiles/active.json  <- the single commit point, BEFORE memory changes
+       -> writes shortcuts.json + mirror.json from the CARRIED bytes, never a re-read
+  -- past this line nothing can abort, so destroying the user's work is now safe --
+  -> ShortcutProfileState cancels recorder/composer/import drafts and dismisses panels,
+     reporting anything discarded (a manual switch may discard; an automatic one defers)
+  -> ShortcutManager.applyLoadedShortcuts(_, source: .profileSwitch)
+       -> ShortcutStore.replaceAll -> rebuildIndex (once) -> capture reconcile (once)
+       -> hold-gesture arbiter reset, window-cycle session invalidated
+       -> readiness pushed to observers
+
+Draft cancellation sits AFTER the commit on purpose. It destroys work the user
+cannot get back, so it must not run for an operation that can still be refused —
+and validation alone cannot be moved late enough to cover the window, because
+the re-verification exists precisely to close the gap that preparation opens.
+Between the commit and the apply the runtime is still on the outgoing set, which
+is the same persist-then-mutate ordering an ordinary save already uses: the
+pointer leads memory, never lags it. Deleting the active profile follows the
+same rule — preparation waits until `deleteProfile` has returned.
+```
+
 ### 3. Trigger flow
 ```text
 Global shortcut event
@@ -396,6 +446,8 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **Truthful menu bar visibility**: `Show Menu Bar Icon` is only exposed now that `menuBarIconVisible` directly controls `MenuBarExtra.isInserted`, and app reopen remains a recovery path back into Settings when no windows are visible
 - **On-demand Input Monitoring**: startup and later shortcut changes request Input Monitoring only when the enabled set needs Hyper transport or a standard Fn+F-row observer; ordinary standard-only and Fn+letter configurations stay on the Carbon/Accessibility path, and any required Input Monitoring request waits until Accessibility has been granted
 - **Strict persistence schema**: Wink currently supports only the exact `[AppShortcut]` payload it writes today, with a unique UUID for every entry in the full array. Malformed data, missing required fields, or duplicate UUIDs fail loading before any array is published, log the structured violation, and preserve a byte-identical `shortcuts.load-failure-*.json` copy instead of silently treating the state as empty; saving rejects the same duplicate-ID violation before overwriting the canonical file
+- **Profiles are named shortcut sets, nothing more**: a profile carries `[AppShortcut]` and the per-shortcut overrides already stored on each row. Hyper mapping, exception rules, launch-at-login, update settings, appearance, and TCC state stay device-global, so switching a profile can never produce a system-wide side effect
+- **The active pointer is the only commit point of a switch**, written before any in-memory change, which preserves the persist-then-mutate rule the save path already had. It lives in its own file so a crash mid-switch cannot damage the profile list
 - **O(1) trigger index**: `ShortcutSignature` dictionary replaces linear scans in the hot path
 - **Observation-first toggle truth**: `ApplicationObservation` snapshots gate stable-state promotion from frontmost/window evidence instead of trusting `isActive` alone
 - **Instrumented, budgeted AX observation** (issue #321): every synchronous window observation runs through a phase-labeled wrapper (`preAction`, `activationConfirmation`, `deactivationConfirmation`, `launchContinuation`, `launchConfirmation`, `snapshotFallback`) that emits an os_signpost interval (`com.wink.app` / `AXObservation`) and an `AX_OBSERVATION_SLOW` diagnostic when one capture exceeds `ApplicationObservation.observationLatencyBudget` (50 ms — well under the 75 ms activation-confirmation delay and the 50 ms deactivation poll). Measured baselines on Apple silicon (macOS 15, `scripts/profile-ax-observation.swift`, 30 iterations each): TextEdit 1 window p50 0.12 ms / max 0.17 ms; 20 windows p50 0.50 ms / p95 8.8 ms; 100 windows p50 4.8 ms / p95 12.5 ms — the healthy path stays inside the budget, so no structural optimization is applied. The one measured violation is an unresponsive target (SIGSTOP fixture), where each AX roundtrip blocks until the messaging timeout; the live capture therefore sets a bounded 1 s `AXUIElementSetMessagingTimeout` on the app element only (~3 s measured worst case per observation instead of ~18 s at the 6 s global default), and a timed-out windows read surfaces as a failed read that the existing fail-closed handling already treats correctly. Window elements deliberately keep the global timeout: a timed-out per-window `kAXMinimized` read would fabricate visible-window evidence and drop the window from the unminimize list, and the sticky per-element stamp would also silently bound the later unminimize write
@@ -416,6 +468,45 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **Service-level test seams**: system-facing services use small injected clients or existing collaborators so runtime decision logic can be covered without live TCC or app-launch side effects
 - **UsageTracker**: SQLite-backed daily usage aggregation off the main actor
 - **Launch-at-login status modeling**: `LaunchAtLoginStatus` preserves enabled / approval-needed / disabled / not-found states
+
+## Planned ownership boundaries
+
+Approved designs that are **not yet implemented**. Everything above this heading describes
+shipped behavior; everything in this section describes a contract that a named issue must
+still deliver. Move an entry into the body above only when its implementation lands.
+
+### Shortcut Profiles v1 (design approved — issue #437 implements)
+
+Design record: `docs/superpowers/specs/2026-08-10-shortcut-profiles-v1-design.md`.
+
+- A new `ShortcutProfileStore` owns `Application Support/Wink/Profiles/`
+  (`manifest.json` metadata list, `active.json` pointer, `mirror.json` mirror descriptor,
+  and one `<profileID>.json` data file per profile). `PersistenceService` keeps its current
+  element-level responsibility: a profile data file is byte-compatible with today's
+  `shortcuts.json` and loads through the unchanged strict/quarantine path.
+- `shortcuts.json` stops being the source of truth and becomes a **derived mirror** of the
+  active profile, written last and never read as truth by builds that understand profiles.
+  It is retained so the packaged-app E2E harness, the validation docs, and the planned
+  diagnostics bundle keep working, and so a reinstall of an older build still finds a
+  configuration.
+- `ShortcutManager` keeps sole ownership of the runtime apply path. A profile switch runs
+  the same synchronous main-actor block as `save(shortcuts:)` — store replace, one index
+  rebuild, one capture reconfiguration, cycle/hold/picker invalidation, one readiness push —
+  so no second Carbon/EventTap synchronization stack is introduced and no observable state
+  can mix one profile's store with another's trigger index.
+- The commit point for a switch is the `active.json` write, which happens **before** memory
+  changes, preserving the existing persist-then-mutate rule. Recovery is defined for every
+  combination of the four files; an unreadable configuration arms **zero** shortcuts and
+  never falls through to a different profile.
+- Shortcut UUIDs become globally unique across profiles, so `UsageTracker` keeps its v3
+  schema unchanged. Duplication mints new IDs, matching the recipe importer's existing
+  mint-on-import rule; `deleteUsage` is issued only for IDs no other profile still holds.
+- Profiles contain only `[AppShortcut]` and the per-shortcut overrides already stored on
+  each row. Hyper mapping, exception rules, launch-at-login, update settings, appearance,
+  TCC state, and diagnostic flags stay device-global and are out of scope by design.
+- The Search Palette trigger stays inside the profile's array and is therefore per-profile;
+  `.winkrecipe` continues to exclude it. Profiles are same-machine sets; recipes are the
+  transfer format, and the two terms are never used interchangeably.
 
 ## Known architectural gaps
 - No dedicated per-shortcut foreground-history stack. Current toggle-off semantics intentionally let macOS choose the next foreground app after `hide()`.

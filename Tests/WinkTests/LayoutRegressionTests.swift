@@ -433,6 +433,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             ShortcutsTabView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider
@@ -457,6 +458,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             ShortcutsTabView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider
@@ -482,6 +484,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             ShortcutsTabView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider
@@ -508,6 +511,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             ShortcutsTabView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider
@@ -582,6 +586,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             ShortcutsTabView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider
@@ -604,6 +609,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             SettingsView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 diagnostics: makeInertDiagnosticsState(),
                 insightsViewModel: context.insightsViewModel,
@@ -818,6 +824,7 @@ struct LayoutRegressionTests {
         let hostingView = makeHostingView(
             ShortcutsTabView(
                 editor: context.editor,
+                profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider
@@ -898,7 +905,7 @@ private actor StaticUsageTracker: UsageTracking {
     func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
         []
     }
-    func deleteUsage(shortcutId: UUID) {}
+    func deleteUsage(shortcutId: UUID) -> Bool { true }
     let shortcutId: UUID
 
     init(shortcutId: UUID) {
@@ -947,7 +954,7 @@ private actor MultiShortcutUsageTracker: UsageTracking {
     func appActivationTotals(days: Int, relativeTo now: Date) async -> [(bundleIdentifier: String, count: Int)] {
         []
     }
-    func deleteUsage(shortcutId: UUID) {}
+    func deleteUsage(shortcutId: UUID) -> Bool { true }
     private let counts: [UUID: Int]
     private let dailyCountsByShortcut: [String: [(date: String, count: Int)]]
     private let hourlyBuckets: [HourlyUsageBucket]
@@ -1050,6 +1057,7 @@ private func makeHeatmapBuckets() -> [HourlyUsageBucket] {
 @MainActor
 private final class MenuBarPopoverLayoutContext {
     let harness = TestPersistenceHarness()
+    let profileHarness = TestProfileHarness()
     let model: MenuBarPopoverModel
 
     init(shortcutCount: Int) {
@@ -1096,6 +1104,7 @@ private final class MenuBarPopoverLayoutContext {
         model = MenuBarPopoverModel(
             shortcutStore: shortcutStore,
             preferences: preferences,
+            profileState: profileHarness.makeLoadedProfileState(shortcutManager: manager),
             shortcutStatusProvider: statusProvider,
             usageTracker: StaticUsageTracker(shortcutId: shortcuts.first?.id ?? UUID()),
             workspaceNotificationCenter: NotificationCenter(),
@@ -1111,6 +1120,8 @@ private final class ShortcutsTabLayoutContext {
     let harness = TestPersistenceHarness()
     let shortcutStore = ShortcutStore()
     let editor: ShortcutEditorState
+    let profileState: ShortcutProfileState
+    let profileHarness = TestProfileHarness()
     let preferences: AppPreferences
     let appListProvider: AppListProvider
     let shortcutStatusProvider: ShortcutStatusProvider
@@ -1144,6 +1155,10 @@ private final class ShortcutsTabLayoutContext {
             shortcutStore: shortcutStore,
             shortcutManager: manager
         )
+        let profileStore = profileHarness.makeStore()
+        _ = profileStore.load()
+        profileState = ShortcutProfileState(store: profileStore, shortcutManager: manager)
+        _ = profileState.loadAtStartup()
         preferences = AppPreferences(
             shortcutManager: manager,
             launchAtLoginService: LaunchAtLoginService(client: .init(
@@ -1175,8 +1190,10 @@ private final class ShortcutsTabLayoutContext {
 @MainActor
 private final class SettingsViewLayoutContext {
     let harness = TestPersistenceHarness()
+    let profileHarness = TestProfileHarness()
     let shortcutStore = ShortcutStore()
     let editor: ShortcutEditorState
+    let profileState: ShortcutProfileState
     let preferences: AppPreferences
     let insightsViewModel: InsightsViewModel
     let appListProvider: AppListProvider
@@ -1217,6 +1234,10 @@ private final class SettingsViewLayoutContext {
                 openSystemSettingsLoginItems: {}
             ))
         )
+        let profileStore = profileHarness.makeStore()
+        _ = profileStore.load()
+        profileState = ShortcutProfileState(store: profileStore, shortcutManager: manager)
+        _ = profileState.loadAtStartup()
         insightsViewModel = InsightsViewModel(
             usageTracker: StaticUsageTracker(shortcutId: shortcut.id),
             shortcutStore: shortcutStore
