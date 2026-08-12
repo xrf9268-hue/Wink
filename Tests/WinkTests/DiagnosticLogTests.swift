@@ -94,6 +94,34 @@ func explicitRotateIfNeededMovesFileAndLetsNextWriteContinue() throws {
     #expect(!current.contains("line-0-"))
 }
 
+// MARK: - Flush barrier before export reads the log (#461 finding 4)
+
+@Test
+func flushMakesEveryQueuedWriteVisibleToAnImmediateRead() throws {
+    // Mirrors what a diagnostics export needs: log() queues its write on the
+    // writer's private queue and returns immediately, so a read taken right
+    // after the last log() call — with no sleep, no delay — must still see
+    // every one of them once flush() returns. flush() is the only thing
+    // standing between the last enqueued write and the read.
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let fileURL = directory.appendingPathComponent("debug.log")
+    let writer = DiagnosticLogWriter(fileURL: fileURL, maxFileSize: .max)
+
+    for index in 0..<200 {
+        writer.log("event-\(index)")
+    }
+    writer.flush()
+
+    let contents = try String(contentsOf: fileURL, encoding: .utf8)
+    let lines = contents.split(separator: "\n")
+
+    #expect(lines.count == 200)
+    #expect(lines.contains { $0.contains("event-199") })
+}
+
 // MARK: - Rotated backup inclusion (#461 finding 3)
 
 @Test

@@ -111,7 +111,14 @@ enum DiagnosticsClientLive {
     /// because the thing it is collecting is broken.
     @MainActor
     private static func readLogs() -> [(name: String, contents: String?)] {
-        collectLogs(primaryURL: DiagnosticLog.logFileURL(), fileManager: .default)
+        // `DiagnosticLog.log()` queues its write asynchronously, so the last
+        // few lines of the current session can still be sitting on the
+        // writer's queue at the moment Export is pressed. Reading the file
+        // straight through without this barrier would race that queue and
+        // produce an export that is missing exactly the events a user is
+        // most likely exporting to show someone.
+        DiagnosticLog.flush()
+        return collectLogs(primaryURL: DiagnosticLog.logFileURL(), fileManager: .default)
     }
 
     /// Reads the active log plus its rotated backup (`debug.log.1`) when one
