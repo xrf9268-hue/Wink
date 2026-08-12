@@ -65,6 +65,7 @@ struct DiagnosticsRedactor: Sendable {
         value = redactingLabelledSecrets(value)
         value = redactingBearerTokens(value)
         value = redactingJSONWebTokens(value)
+        value = redactingURLUserInfo(value)
         value = redactingURLQueries(value)
         value = redactingUserName(value)
         return truncating(value)
@@ -163,6 +164,21 @@ struct DiagnosticsRedactor: Sendable {
         value.replacingOccurrences(
             of: #"\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*"#,
             with: Self.marker,
+            options: .regularExpression
+        )
+    }
+
+    /// `scheme://user:password@host` — the authority's user-info component.
+    /// Query strings are not the only URL component that carries credentials:
+    /// an unrecognized `wink://` URL is logged verbatim by `handleURLs`, and
+    /// user-info is structurally unambiguous (between `://` and a pre-path
+    /// `@`), so it is redacted wholesale — the password and the user name
+    /// with it, since a name in an authority is identifying even when it is
+    /// not this account's. The host stays: it is what makes the line useful.
+    private func redactingURLUserInfo(_ value: String) -> String {
+        value.replacingOccurrences(
+            of: #"([a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s"'@]+@"#,
+            with: "$1\(Self.marker)@",
             options: .regularExpression
         )
     }

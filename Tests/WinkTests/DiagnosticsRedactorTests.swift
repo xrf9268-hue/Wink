@@ -109,6 +109,25 @@ struct DiagnosticsRedactorTests {
         #expect(embedded == "status=ready mode=auto")
     }
 
+    @Test
+    func urlAuthorityCredentialsAreRedacted() {
+        // handleURLs logs unrecognized URLs verbatim, and user-info is legal
+        // authority syntax — the password must not survive into an export
+        // whose preview promises passwords are removed.
+        let both = redactor().redact(line: "unrecognized url: wink://bob:hunter2@focus/extra")
+        #expect(!both.contains("hunter2"))
+        #expect(!both.contains("bob"))
+        #expect(both.contains("wink://\(DiagnosticsRedactor.marker)@focus/extra"))
+
+        let userOnly = redactor().redact(line: "GET https://bob@example.com/path ok")
+        #expect(userOnly.contains("https://\(DiagnosticsRedactor.marker)@example.com/path"))
+
+        // A URL with no user-info is untouched, and a bare email address is
+        // not an authority — no `://` precedes it.
+        let plain = redactor().redact(line: "GET https://example.com/path from bob@example.com")
+        #expect(plain == "GET https://example.com/path from bob@example.com")
+    }
+
     // MARK: - Secrets
 
     @Test
