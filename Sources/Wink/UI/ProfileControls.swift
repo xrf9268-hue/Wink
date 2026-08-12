@@ -417,6 +417,14 @@ struct ProfileManagerSheet: View {
             .textFieldStyle(.roundedBorder)
             .accessibilityLabel(Text("Profile name", bundle: WinkResourceBundle.bundle))
 
+            // The sheet stays open on a rejected name, so the rejection has
+            // to be visible HERE: the manager's message area sits behind
+            // this modal, and an invisible error reads as "Rename did
+            // nothing".
+            if let errorMessage = profileState.errorMessage {
+                WinkBanner(kind: .error, title: errorMessage)
+            }
+
             HStack {
                 Spacer(minLength: 0)
                 WinkButton(String(localized: "Cancel", bundle: WinkResourceBundle.bundle)) {
