@@ -1603,7 +1603,14 @@ final class ShortcutProfileStore {
         }
     }
 
-    func commitActivation(_ profileID: UUID, payload: ValidatedProfilePayload) throws {
+    /// Returns whether the compat mirror was rewritten. The switch itself
+    /// never fails on derived data — SWITCH semantics tolerate a stale
+    /// mirror because it is attributable and silently repairable next
+    /// launch — but the caller must be able to say so rather than claim
+    /// full success while shortcuts.json still describes the previous
+    /// profile. Same contract as recoverManifest and DeleteOutcome.
+    @discardableResult
+    func commitActivation(_ profileID: UUID, payload: ValidatedProfilePayload) throws -> Bool {
         guard let layout else { throw StoreError.storageUnavailable }
         // Before the pointer moves, so a refused switch changes nothing at all.
         try verifyCanonicalPayload(payload.bytes, profileID: profileID, layout: layout)
@@ -1613,7 +1620,7 @@ final class ShortcutProfileStore {
         // The exact bytes that were validated and are about to be applied, so
         // the mirror cannot describe a different payload than the runtime is
         // running.
-        writeMirrorForActiveProfile(bytes: payload.bytes, profileID: profileID, layout: layout)
+        return writeMirrorForActiveProfile(bytes: payload.bytes, profileID: profileID, layout: layout)
     }
 
     // MARK: - CRUD
@@ -2185,6 +2192,7 @@ final class ShortcutProfileStore {
         if locator.currentActiveProfileID() == nil,
            manifest?.profile(id: mirror.profileID) != nil {
             let adopted: [AppShortcut]?
+            var mirrorLandedDuringActivation = false
             do {
                 // The EXACT imported payload, never a re-read: between
                 // `writeProfileBytes` above and this commit, another writer
@@ -2194,7 +2202,7 @@ final class ShortcutProfileStore {
                 // `commitActivation`'s canonical recheck (the same one every
                 // explicit switch runs) turns that race into
                 // `profileChangedDuringOperation` instead.
-                try commitActivation(
+                mirrorLandedDuringActivation = try commitActivation(
                     mirror.profileID,
                     payload: ValidatedProfilePayload(shortcuts: shortcuts, bytes: mirror.rawBytes)
                 )
@@ -2228,13 +2236,11 @@ final class ShortcutProfileStore {
             // a refused rewrite is tolerated because a stale mirror is
             // attributable and silently repairable next launch. An IMPORT
             // cannot borrow that tolerance: it is about to clear the offer,
-            // so the check the other two branches make runs here too.
-            // VERIFIED rather than re-written: when the activation's write
-            // already landed, writing again could only manufacture a fresh
-            // transient failure for an operation that has fully succeeded.
-            let mirrorLanded = (try? Data(contentsOf: layout.mirrorURL))
-                .map { Self.digest($0) == Self.digest(mirror.rawBytes) } ?? false
-            guard mirrorLanded
+            // so the check the other two branches make runs here too — and
+            // commitActivation now REPORTS whether its write landed, so a
+            // fully successful recovery is never re-written (which could
+            // only manufacture a fresh transient failure) nor re-read.
+            guard mirrorLandedDuringActivation
                 || writeMirrorForActiveProfile(bytes: mirror.rawBytes, profileID: mirror.profileID, layout: layout) else {
                 log("PROFILE_TRACE_IMPORT_MIRROR_NOT_RESTORED active=\(mirror.profileID.uuidString)")
                 throw StoreError.importCommittedButMirrorNotRestored

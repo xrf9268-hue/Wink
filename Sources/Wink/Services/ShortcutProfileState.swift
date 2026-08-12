@@ -264,8 +264,9 @@ final class ShortcutProfileState {
             return
         }
 
+        let mirrorRestored: Bool
         do {
-            try store.commitActivation(profileID, payload: payload)
+            mirrorRestored = try store.commitActivation(profileID, payload: payload)
         } catch {
             // Nothing written, nothing applied, and nothing discarded.
             errorMessage = userFacingMessage(for: error)
@@ -285,7 +286,20 @@ final class ShortcutProfileState {
         shortcutManager.applyLoadedShortcuts(payload.shortcuts, source: .profileSwitch)
         onProfileApplied()
         errorMessage = nil
-        statusMessage = switchedMessage(discarded: discarded)
+        // The switch committed either way — a stale mirror never rolls it
+        // back — but full success must not be claimed while shortcuts.json
+        // still describes the previous profile. Same caveat as recovery and
+        // delete.
+        let base = switchedMessage(discarded: discarded)
+        if mirrorRestored {
+            statusMessage = base
+        } else {
+            let caveat = String(
+                localized: "The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.",
+                bundle: WinkResourceBundle.bundle
+            )
+            statusMessage = [base, caveat].compactMap { $0 }.joined(separator: " ")
+        }
     }
 
     // MARK: - CRUD
