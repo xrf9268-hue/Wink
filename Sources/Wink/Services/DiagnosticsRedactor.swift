@@ -209,6 +209,16 @@ struct DiagnosticsRedactor: Sendable {
                 // smuggled tail escape. Stripping the false prefix makes the
                 // fold behave like every other continuation, so the label
                 // rule consumes the tail.
+                //
+                // Reset the monotonicity baseline to the folded timestamp. A
+                // genuine clock rollback produces ONE backward timestamp and
+                // then resumes forward from the lower value; leaving the
+                // baseline on the pre-rollback value would fold every
+                // subsequent record until wall time caught up, collapsing an
+                // entire interval into a single truncated line.
+                if let prefix {
+                    previousRecordTimestamp = prefix.timestamp
+                }
                 let continuation = prefix?.remainder ?? String(line)
                 records[records.count - 1] += " " + continuation
             } else {

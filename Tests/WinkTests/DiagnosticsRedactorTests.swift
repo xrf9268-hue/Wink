@@ -489,6 +489,21 @@ struct DiagnosticsRedactorTests {
     }
 
     @Test
+    func aClockRollbackDoesNotCollapseTheFollowingInterval() {
+        // A genuine clock rollback: after the step back, records resume moving
+        // forward from the lower value. Only the first post-rollback record
+        // folds (and is over-redacted into its predecessor); the rest must
+        // stay separate records rather than collapsing into one truncated
+        // line that discards the whole interval.
+        let text = "2026-08-11T10:00:00Z login password=hunter2\n2026-08-11T09:00:00Z foldedMessage\n2026-08-11T09:00:01Z msg2\n2026-08-11T09:00:02Z password=secondSecret"
+        let output = redactor().redact(text: text)
+        #expect(!output.contains("hunter2"))
+        #expect(!output.contains("secondSecret"))
+        #expect(output.contains("msg2"))
+        #expect(output.components(separatedBy: "\n").count == 3)
+    }
+
+    @Test
     func documentsWithoutRecordTimestampsKeepTheirLineStructure() {
         // The continuation heuristic keys on the writer's timestamp prefix;
         // a document without it must not collapse into one line.
