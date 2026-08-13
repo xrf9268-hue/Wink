@@ -818,6 +818,80 @@ struct ShortcutProfileRecoveryRuntimeTests {
 
     @MainActor
     @Test
+    func aStuckSuccessorSwitchStillClearsTheUnreadableBanner() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([safariShortcut()])
+
+        let setup = harness.makeStore()
+        guard case let .ready(loaded) = setup.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+        let defaultID = loaded.activeProfileID
+        let work = try setup.createProfile(named: "Work", duplicating: nil)
+        // Remove the pointed profile's data file so the next launch lands in
+        // `activeProfileUnreadable` with a resumable legacy mirror offered.
+        try FileManager.default.removeItem(at: harness.layout.profileDataURL(defaultID))
+
+        // A persistent storage failure: the manifest write AND the rollback
+        // pointer write both fail, which is the realistic shape of a full or
+        // read-only volume. The delete's own pointer commit still succeeds, so
+        // the switch to the successor sticks while the delete is reported
+        // failed.
+        let manifestURL = harness.layout.manifestURL
+        let pointerURL = harness.layout.activePointerURL
+        let pointerWrites = CallbackRecorder<Int>()
+        let store = harness.makeStore(
+            writeClient: ShortcutProfileStore.WriteClient { data, url in
+                struct InjectedWriteFailure: Error {}
+                if url == manifestURL { throw InjectedWriteFailure() }
+                if url == pointerURL {
+                    pointerWrites.record(1)
+                    // The first pointer write is the delete's own commit; the
+                    // second is the rollback, which must also fail.
+                    if pointerWrites.count > 1 { throw InjectedWriteFailure() }
+                }
+                try data.write(to: url, options: .atomic)
+            }
+        )
+        let manager = ShortcutManager(
+            shortcutStore: ShortcutStore(),
+            persistenceService: store.makeActiveProfilePersistenceService(),
+            appSwitcher: RecordingAppSwitcher(),
+            captureCoordinator: ShortcutCaptureCoordinator(
+                standardProvider: FakeCaptureProvider(),
+                hyperProvider: FakeHyperCaptureProvider()
+            ),
+            permissionService: FakePermissionService(),
+            automaticPermissionPromptingEnabled: false,
+            diagnosticClient: .init(log: { _ in })
+        )
+        let state = ShortcutProfileState(store: store, shortcutManager: manager)
+        _ = state.loadAtStartup()
+        guard case .activeProfileUnreadable = state.recovery else {
+            Issue.record("expected activeProfileUnreadable recovery")
+            return
+        }
+        #expect(state.pendingForeignMirror?.profileID == defaultID)
+
+        state.deleteProfile(defaultID)
+
+        // The successor is armed, so the banner that claims nothing is active
+        // must be gone — and the external-switch seam must be unblocked — even
+        // though the delete itself failed and was reported.
+        #expect(state.recovery == .none)
+        #expect(state.activeProfileID == work.id)
+        #expect(state.canApplyExternalSwitch)
+        // The failed profile survives on disk, so it stays marked unreadable
+        // and its resumable import offer stays available.
+        #expect(state.unreadableProfileIDs.contains(defaultID))
+        #expect(state.pendingForeignMirror?.profileID == defaultID)
+        #expect(state.errorMessage != nil)
+    }
+
+    @MainActor
+    @Test
     func aFailedUsageDeletionKeepsItsJournalEntryForTheNextLaunch() async throws {
         let harness = TestProfileHarness()
         defer { harness.cleanup() }

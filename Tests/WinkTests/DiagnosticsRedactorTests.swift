@@ -457,6 +457,38 @@ struct DiagnosticsRedactorTests {
     }
 
     @Test
+    func aBackwardTimestampDoesNotFakeARecordBoundary() {
+        // A crafted continuation smuggles an OLD timestamp after an embedded
+        // LF: the reconstruction heuristic would otherwise promote it to a
+        // record and leave its tail as an unlabeled line no rule can reach.
+        // Real records only move forward, so a timestamp that steps backward
+        // folds into its predecessor — and drops the false prefix, whose
+        // time-colon would otherwise read as a `key:` label and stop the
+        // chunked value rule short of the smuggled tail.
+        let text = "2026-08-11T09:00:00Z login password=hunter2\n2026-01-01T00:00:00Z secretTail\n2026-08-11T09:00:01Z status=ready"
+        let output = redactor().redact(text: text)
+        #expect(!output.contains("hunter2"))
+        #expect(!output.contains("secretTail"))
+        #expect(output.contains("2026-08-11T09:00:00Z"))
+        #expect(output.contains("2026-08-11T09:00:01Z"))
+        #expect(output.contains("status=ready"))
+    }
+
+    @Test
+    func aForwardTimestampStillStartsARecord() {
+        // The monotonicity check must not demote a legitimate record: a
+        // timestamp equal to or after the previous record's keeps its own
+        // line, so a secret in the second record is redacted in place and
+        // unrelated fields survive.
+        let text = "2026-08-11T09:00:00Z login password=hunter2\n2026-08-11T09:00:00Z password=secondSecret\n2026-08-11T09:00:01Z status=ready"
+        let output = redactor().redact(text: text)
+        #expect(!output.contains("hunter2"))
+        #expect(!output.contains("secondSecret"))
+        #expect(output.contains("status=ready"))
+        #expect(output.components(separatedBy: "\n").count == 3)
+    }
+
+    @Test
     func documentsWithoutRecordTimestampsKeepTheirLineStructure() {
         // The continuation heuristic keys on the writer's timestamp prefix;
         // a document without it must not collapse into one line.
