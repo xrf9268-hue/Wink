@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import SwiftUI
+import WinkIntents
 
 enum SettingsWindowMetrics {
     static let width: CGFloat = 860
@@ -18,6 +19,10 @@ struct WinkApp: App {
     @AppStorage(AppPreferences.menuBarIconVisibleDefaultsKey)
     private var menuBarIconVisible = true
 
+    init() {
+        WinkAppShortcuts.updateAppShortcutParameters()
+    }
+
     var body: some Scene {
         let menuBarServices = appDelegate.menuBarSceneServices
         WinkMenuBarScene(isInserted: $menuBarIconVisible) {
@@ -28,6 +33,7 @@ struct WinkApp: App {
                     profileState: menuBarServices.profileState,
                     shortcutStatusProvider: menuBarServices.shortcutStatusProvider,
                     usageTracker: menuBarServices.usageTracker,
+                    setShortcutsPaused: menuBarServices.setShortcutsPaused,
                     openSettings: menuBarServices.openSettings,
                     quit: menuBarServices.quit
                 )
@@ -54,7 +60,7 @@ struct WinkApp: App {
             )
             .toolbar(removing: .title)
             .toolbar(removing: .sidebarToggle)
-            .background(SettingsWindowChromeConfigurator())
+            .background(SettingsWindowChromeConfigurator(settingsLauncher: services.settingsLauncher))
             .winkChromeRoot()
         }
         .commands {
@@ -156,6 +162,8 @@ enum SettingsTitlebarLayout {
 ///      own midpoint (36pt / 2 = 18pt from the top), not AppKit's native
 ///      28pt-band center.
 private struct SettingsWindowChromeConfigurator: NSViewRepresentable {
+    let settingsLauncher: SettingsLauncher
+
     func makeCoordinator() -> SettingsWindowChromeCoordinator {
         SettingsWindowChromeCoordinator()
     }
@@ -174,6 +182,9 @@ private struct SettingsWindowChromeConfigurator: NSViewRepresentable {
     private func scheduleConfiguration(for view: NSView, coordinator: SettingsWindowChromeCoordinator) {
         DispatchQueue.main.async {
             guard let window = view.window else { return }
+            settingsLauncher.installSettingsPresentationObserver { [weak window] in
+                window?.isVisible == true && window?.isMiniaturized == false
+            }
             coordinator.attach(to: window)
         }
     }

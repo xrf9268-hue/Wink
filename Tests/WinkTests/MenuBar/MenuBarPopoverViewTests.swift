@@ -123,6 +123,23 @@ struct MenuBarPopoverViewTests {
     }
 
     @Test @MainActor
+    func pauseActionUsesTheInjectedSharedExecutorRoute() {
+        let pauseRecorder = PauseRecorder()
+        let context = makePopoverContext(
+            shortcuts: [],
+            usageTotal: 0,
+            setShortcutsPaused: { paused in
+                pauseRecorder.values.append(paused)
+            }
+        )
+
+        context.model.setShortcutsPaused(true)
+
+        #expect(pauseRecorder.values == [true])
+        #expect(!context.preferences.shortcutsPaused)
+    }
+
+    @Test @MainActor
     func updateNoticeReflectsMirroredPhase() throws {
         let defaults = try #require(UserDefaults(suiteName: "MenuBarPopoverViewTests.updateNotice"))
         defaults.removePersistentDomain(forName: "MenuBarPopoverViewTests.updateNotice")
@@ -321,6 +338,7 @@ private func makePopoverContext(
     appNotificationCenter: NotificationCenter = NotificationCenter(),
     userDefaults: UserDefaults? = nil,
     updateService: FakeUpdateService? = nil,
+    setShortcutsPaused: (@MainActor (Bool) -> Void)? = nil,
     openSettings: @escaping @MainActor (SettingsTab?) -> Void = { _ in },
     quit: @escaping @MainActor () -> Void = {}
 ) -> PopoverContext {
@@ -385,6 +403,7 @@ private func makePopoverContext(
         usageTracker: StaticUsageTracker(total: usageTotal),
         workspaceNotificationCenter: workspaceNotificationCenter,
         appNotificationCenter: appNotificationCenter,
+        setShortcutsPaused: setShortcutsPaused,
         openSettings: openSettings,
         quit: quit
     )
@@ -595,6 +614,10 @@ private final class OpenedTabsRecorder: @unchecked Sendable {
 
 private final class FlagRecorder: @unchecked Sendable {
     var didRun = false
+}
+
+private final class PauseRecorder: @unchecked Sendable {
+    var values: [Bool] = []
 }
 
 @MainActor

@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import WinkIntents
 
 @MainActor
 final class AppController {
@@ -20,6 +21,7 @@ final class AppController {
         let profileState: ShortcutProfileState
         let shortcutStatusProvider: ShortcutStatusProvider
         let usageTracker: any UsageTracking
+        let setShortcutsPaused: @MainActor (Bool) -> Void
         let openSettings: @MainActor (SettingsTab?) -> Void
         let quit: @MainActor () -> Void
     }
@@ -175,6 +177,35 @@ final class AppController {
         updateService: updateService,
         userDefaults: userDefaults
     )
+    private lazy var actionExecutor = WinkActionExecutor(client: .init(
+        isShortcutsPaused: { [weak self] in
+            self?.appPreferences.shortcutsPaused ?? false
+        },
+        setShortcutsPaused: { [weak self] paused in
+            self?.appPreferences.setShortcutsPaused(paused)
+        },
+        isSearchPalettePresented: { [weak self] in
+            self?.searchPaletteHUD.isPresented ?? false
+        },
+        canPresentSearchPalette: { [weak self] in
+            guard let self else { return false }
+            return !self.windowPickerHUD.isPresented
+        },
+        showSearchPalette: { [weak self] in
+            self?.searchPaletteHUD.present()
+        },
+        openSettingsIfReady: { [weak self] tab in
+            guard let self, self.settingsLauncher.openIfReady(tab: tab) else {
+                return false
+            }
+            NSApp.activate()
+            return true
+        },
+        waitForSettingsPresentation: { [weak self] in
+            guard let self else { return false }
+            return try await self.settingsLauncher.waitForSettingsPresentation()
+        }
+    ))
     private lazy var shortcutEditor = ShortcutEditorState(
         shortcutStore: shortcutStore,
         shortcutManager: shortcutManager,
@@ -292,8 +323,19 @@ final class AppController {
         profileState: profileState,
         shortcutStatusProvider: settingsShortcutStatusProvider,
         usageTracker: usageTracker,
+        setShortcutsPaused: { [weak self] paused in
+            do {
+                try self?.actionExecutor.execute(paused ? .pause : .resume)
+            } catch {
+                DiagnosticLog.log("ACTION: menu pause transition failed: \(error.localizedDescription)")
+            }
+        },
         openSettings: { [weak self] tab in
-            self?.openSettings(tab: tab)
+            do {
+                try self?.actionExecutor.execute(.openSettings(tab.map(WinkSettingsTabIntentValue.init)))
+            } catch {
+                DiagnosticLog.log("ACTION: menu settings open failed: \(error.localizedDescription)")
+            }
         },
         quit: {
             NSApplication.shared.terminate(nil)
@@ -314,6 +356,10 @@ final class AppController {
 
     var menuBarSceneServices: MenuBarSceneServices {
         menuBarSceneServicesStorage
+    }
+
+    var appIntentClient: WinkActionClient {
+        actionExecutor.appIntentClient()
     }
 
     /// FIFO chain over activation writes and the opt-out purge: unstructured
@@ -451,7 +497,11 @@ final class AppController {
         }
         appListProvider.refreshIfNeeded()
         shortcutManager.onSearchPaletteTriggered = { [weak self] in
-            self?.searchPaletteHUD.present()
+            do {
+                try self?.actionExecutor.execute(.showSearchPalette)
+            } catch {
+                DiagnosticLog.log("ACTION: shortcut Search Palette failed: \(error.localizedDescription)")
+            }
         }
         shortcutManager.onRecordingSessionKeyPress = { [weak self] keyPress in
             self?.shortcutEditor.handleRecordingSessionKeyPress(keyPress)
@@ -540,10 +590,18 @@ final class AppController {
                 ))
             case .pause:
                 DiagnosticLog.log("URL: pause")
-                appPreferences.setShortcutsPaused(true)
+                do {
+                    try actionExecutor.execute(.pause)
+                } catch {
+                    DiagnosticLog.log("URL: pause failed: \(error.localizedDescription)")
+                }
             case .resume:
                 DiagnosticLog.log("URL: resume")
-                appPreferences.setShortcutsPaused(false)
+                do {
+                    try actionExecutor.execute(.resume)
+                } catch {
+                    DiagnosticLog.log("URL: resume failed: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -618,5 +676,15 @@ final class AppController {
 
     private static func currentVersionString(bundle: Bundle = .main) -> String {
         bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+    }
+}
+
+private extension WinkSettingsTabIntentValue {
+    init(_ settingsTab: SettingsTab) {
+        switch settingsTab {
+        case .shortcuts: self = .shortcuts
+        case .general: self = .general
+        case .insights: self = .insights
+        }
     }
 }

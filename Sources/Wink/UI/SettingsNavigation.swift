@@ -41,6 +41,9 @@ final class SettingsLauncher {
     private var openSettingsHandler: (@MainActor () -> Void)?
 
     @ObservationIgnored
+    private var settingsPresentationObserver: (@MainActor () -> Bool)?
+
+    @ObservationIgnored
     private var pendingOpen = false
 
     init(userDefaults: UserDefaults = .standard) {
@@ -62,6 +65,10 @@ final class SettingsLauncher {
         handler()
     }
 
+    func installSettingsPresentationObserver(_ observer: @escaping @MainActor () -> Bool) {
+        settingsPresentationObserver = observer
+    }
+
     func open(tab: SettingsTab? = nil) {
         if let tab {
             selectedTab = tab
@@ -73,5 +80,35 @@ final class SettingsLauncher {
         }
 
         openSettingsHandler()
+    }
+
+    /// Opens immediately or reports that SwiftUI has not installed its
+    /// environment bridge yet. Automation callers use this path so they can
+    /// return a truthful error instead of claiming success for queued work.
+    @discardableResult
+    func openIfReady(tab: SettingsTab? = nil) -> Bool {
+        guard let openSettingsHandler else {
+            return false
+        }
+        if let tab {
+            selectedTab = tab
+        }
+        openSettingsHandler()
+        return true
+    }
+
+    func waitForSettingsPresentation(
+        timeout: Duration = .seconds(2),
+        pollInterval: Duration = .milliseconds(50)
+    ) async throws -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while settingsPresentationObserver?() != true {
+            guard clock.now < deadline else {
+                return false
+            }
+            try await clock.sleep(for: pollInterval)
+        }
+        return true
     }
 }

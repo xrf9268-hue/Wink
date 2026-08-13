@@ -20,6 +20,7 @@ let package = Package(
         .executableTarget(
             name: "Wink",
             dependencies: [
+                "WinkIntents",
                 .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/Wink",
@@ -29,6 +30,7 @@ let package = Package(
                 "Resources/AppIcon.icns",
                 "Resources/MenuBarTemplate.svg",
                 "Resources/Localizable.xcstrings",
+                "Resources/AppShortcuts.xcstrings",
             ],
             resources: [
                 .process("Resources/MenuBarAssets.xcassets"),
@@ -49,9 +51,13 @@ let package = Package(
                 ]),
             ]
         ),
+        .target(
+            name: "WinkIntents",
+            path: "Sources/WinkIntents"
+        ),
         .testTarget(
             name: "WinkTests",
-            dependencies: ["Wink"],
+            dependencies: ["Wink", "WinkIntents"],
             path: "Tests/WinkTests"
         )
     ]

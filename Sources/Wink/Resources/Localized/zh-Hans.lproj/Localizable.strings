@@ -102,6 +102,8 @@
 	<string>选择诊断信息文件夹的保存位置。</string>
 	<key>Clear</key>
 	<string>清除</string>
+	<key>Clear Wink's manual shortcut pause.</key>
+	<string>解除 Wink 快捷键的手动暂停。</string>
 	<key>Click to record</key>
 	<string>点击录制</string>
 	<key>Click to review and install.</key>
@@ -338,12 +340,22 @@
 	<string>好</string>
 	<key>Open Login Items Settings</key>
 	<string>打开登录项设置</string>
+	<key>Open Wink Settings</key>
+	<string>打开 Wink 设置</string>
+	<key>Open Wink Settings at ${tab}</key>
+	<string>在 ${tab} 打开 Wink 设置</string>
+	<key>Open Wink Settings to an optional tab.</key>
+	<string>打开 Wink 设置，可选择指定标签页。</string>
 	<key>Opens Wink in the menu bar when you sign in.</key>
 	<string>登录时在菜单栏中打开 Wink。</string>
 	<key>Optional</key>
 	<string>可选</string>
 	<key>Past 7 days</key>
 	<string>过去 7 天</string>
+	<key>Pause Wink</key>
+	<string>暂停 Wink</string>
+	<key>Pause all Wink shortcuts.</key>
+	<string>暂停所有 Wink 快捷键。</string>
 	<key>Pause all shortcuts</key>
 	<string>暂停所有快捷键</string>
 	<key>Pause in exception apps</key>
@@ -404,6 +416,8 @@
 	<string>全局快捷键所需权限</string>
 	<key>Requires at least one modifier (⌘⌥⌃⇧)</key>
 	<string>至少需要一个修饰键（⌘⌥⌃⇧）</string>
+	<key>Resume Wink</key>
+	<string>恢复 Wink</string>
 	<key>Reveal Log</key>
 	<string>显示日志</string>
 	<key>Review</key>
@@ -424,6 +438,10 @@
 	<string>搜索应用…</string>
 	<key>Search shortcuts</key>
 	<string>搜索快捷键</string>
+	<key>Search with Wink</key>
+	<string>使用 Wink 搜索</string>
+	<key>Settings Tab</key>
+	<string>设置标签页</string>
 	<key>Settings…</key>
 	<string>设置…</string>
 	<key>Share what Wink knows</key>
@@ -444,6 +462,10 @@
 	<string>快捷键已暂停</string>
 	<key>Show Menu Bar Icon</key>
 	<string>显示菜单栏图标</string>
+	<key>Show Wink Search Palette</key>
+	<string>显示 Wink 搜索面板</string>
+	<key>Show Wink's app search palette.</key>
+	<string>显示 Wink 的应用搜索面板。</string>
 	<key>Skip Conflicts</key>
 	<string>跳过冲突项</string>
 	<key>Skip This Version</key>
@@ -584,6 +606,14 @@
 	<string>Wink %@ 已下载完成。现在重新启动即可完成安装，或继续使用 — 它将在 Wink 退出时安装。</string>
 	<key>Wink %@ is the latest version.</key>
 	<string>Wink %@ 已是最新版本。</string>
+	<key>Wink Search Palette is open.</key>
+	<string>Wink 搜索面板已打开。</string>
+	<key>Wink Settings did not become visible.</key>
+	<string>Wink 设置窗口未能显示。</string>
+	<key>Wink Settings is not ready yet. Please try again.</key>
+	<string>Wink 设置尚未就绪，请重试。</string>
+	<key>Wink Settings is open.</key>
+	<string>Wink 设置已打开。</string>
 	<key>Wink Update</key>
 	<string>Wink 更新</string>
 	<key>Wink always keeps at least one profile.</key>
@@ -596,14 +626,20 @@
 	<string>Wink 无法访问其存储文件夹，因此无法更改配置。</string>
 	<key>Wink checks for updates automatically and asks before downloading.</key>
 	<string>Wink 会自动检查更新，并在下载前征求你的同意。</string>
+	<key>Wink could not pause shortcuts.</key>
+	<string>Wink 无法暂停快捷键。</string>
 	<key>Wink could not read your previous shortcuts file</key>
 	<string>Wink 无法读取你之前的快捷键文件</string>
 	<key>Wink could not read your profile list</key>
 	<string>Wink 无法读取你的配置列表</string>
 	<key>Wink could not read your profile list, so nothing can be changed until you recover it.</key>
 	<string>Wink 无法读取你的配置列表，在恢复之前无法进行任何更改。</string>
+	<key>Wink could not resume shortcuts.</key>
+	<string>Wink 无法恢复快捷键。</string>
 	<key>Wink could not save the change to disk, so nothing was changed.</key>
 	<string>Wink 无法将更改写入磁盘，因此未做任何改动。</string>
+	<key>Wink could not show the Search Palette.</key>
+	<string>Wink 无法显示搜索面板。</string>
 	<key>Wink could not tell which profile was active</key>
 	<string>Wink 无法确定哪个配置处于使用中</string>
 	<key>Wink couldn't disable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
@@ -616,8 +652,12 @@
 	<string>Wink 已注册为登录启动项，但 macOS 仍需要你在“登录项”中批准。</string>
 	<key>Wink is still clearing usage history for a deleted profile. Try again in a moment.</key>
 	<string>Wink 仍在清除已删除配置的使用记录。请稍后再试。</string>
+	<key>Wink manual pause is cleared.</key>
+	<string>Wink 的手动暂停已解除。</string>
 	<key>Wink needs Accessibility access to route global shortcuts.</key>
 	<string>Wink 需要辅助功能权限才能路由全局快捷键。</string>
+	<key>Wink shortcuts are paused.</key>
+	<string>Wink 快捷键已暂停。</string>
 	<key>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</key>
 	<string>Wink 以一个空配置启动。旧文件未被改动，仍可修复或导入。</string>
 	<key>Wink: Permission Lost</key>

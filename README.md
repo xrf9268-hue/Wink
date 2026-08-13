@@ -53,6 +53,10 @@ Always launch the packaged app with `open build/Wink.app` when testing permissio
 
 ## Automation
 
+Wink publishes four localized actions in Apple's Shortcuts app: **Pause Wink**, **Resume Wink**, **Show Wink Search Palette**, and **Open Wink Settings** (optionally to Shortcuts, General, or Insights). They launch Wink when needed, and only report success after the requested state or UI is actually active. Pause and Resume change only the manual-pause bit, so exception-rule auto-pause remains independent.
+
+The existing URL surface remains available for tools that cannot invoke App Intents:
+
 Wink exposes its toggle semantics on a `wink://` URL scheme, so Raycast, Karabiner, BetterTouchTool, Stream Deck, or plain shell scripts can drive it — including the SkyLight forced activation that scripts cannot perform themselves:
 
 ```bash

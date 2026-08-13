@@ -48,6 +48,7 @@ final class MenuBarPopoverModel {
     private let profileState: ShortcutProfileState
     private let shortcutStatusProvider: ShortcutStatusProvider
     private let usageTracker: any UsageTracking
+    private let setShortcutsPausedAction: (@MainActor (Bool) -> Void)?
     private let openSettingsAction: @MainActor (SettingsTab?) -> Void
     private let quitAction: @MainActor () -> Void
     private let workspaceNotificationCenter: NotificationCenter
@@ -68,6 +69,7 @@ final class MenuBarPopoverModel {
         usageTracker: any UsageTracking,
         workspaceNotificationCenter: NotificationCenter = NSWorkspace.shared.notificationCenter,
         appNotificationCenter: NotificationCenter = .default,
+        setShortcutsPaused: (@MainActor (Bool) -> Void)? = nil,
         openSettings: @escaping @MainActor (SettingsTab?) -> Void,
         quit: @escaping @MainActor () -> Void
     ) {
@@ -78,6 +80,7 @@ final class MenuBarPopoverModel {
         self.usageTracker = usageTracker
         self.workspaceNotificationCenter = workspaceNotificationCenter
         self.appNotificationCenter = appNotificationCenter
+        self.setShortcutsPausedAction = setShortcutsPaused
         self.openSettingsAction = openSettings
         self.quitAction = quit
         observeNotifications()
@@ -230,7 +233,11 @@ final class MenuBarPopoverModel {
     }
 
     func setShortcutsPaused(_ paused: Bool) {
-        preferences.setShortcutsPaused(paused)
+        if let setShortcutsPausedAction {
+            setShortcutsPausedAction(paused)
+        } else {
+            preferences.setShortcutsPaused(paused)
+        }
     }
 
     func openSettings() {
