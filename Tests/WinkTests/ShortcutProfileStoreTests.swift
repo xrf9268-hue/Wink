@@ -1748,13 +1748,17 @@ struct ShortcutProfileMirrorTests {
         // The mirror ends up holding the ACTIVE profile's own bytes — the
         // state a partially failed inactive-profile import leaves behind
         // (profile data imported, active bytes restored, only the descriptor
-        // write lost). A refresh that attached these bytes to the stale
+        // write lost, so the descriptor is GONE). Without the descriptor to
+        // vouch for the intervening bytes, adopting the captured snapshot
+        // still refuses (the B→A snapshot exception requires an own-current
+        // descriptor); a refresh that attached these bytes to the stale
         // offer's target would present the active profile's payload as an
         // importable foreign edit, and a retry would overwrite the target
         // with it. Full reclassification recognizes the bytes as current and
         // dissolves the offer instead.
         let activeBytes = try #require(harness.data(at: harness.layout.profileDataURL(after.activeProfileID)))
         try activeBytes.write(to: harness.layout.mirrorURL)
+        try FileManager.default.removeItem(at: harness.layout.mirrorDescriptorURL)
 
         #expect(throws: ShortcutProfileStore.StoreError.foreignMirrorChangedSinceOffer) {
             try reloaded.adoptForeignMirror(mirror)
@@ -2101,6 +2105,180 @@ struct ShortcutProfileMirrorTests {
             harness.data(at: harness.layout.mirrorURL)
                 == harness.data(at: harness.layout.profileDataURL(work.id))
         )
+    }
+
+    @Test
+    func anOutsideEditOfferSurvivesAReturnSwitchAndStillImports() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+
+        let first = harness.makeStore()
+        guard case .ready = first.load() else {
+            Issue.record("expected a ready load state")
+            return
+        }
+
+        // An outside edit of the mirror, noticed at the next launch: the
+        // offer captures the edited bytes for the active profile (A), along
+        // with A's canonical digest at capture time.
+        try harness.writeLegacyShortcuts(
+            [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        )
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load(), let offer = loaded.foreignMirror else {
+            Issue.record("expected an importable outside-edit offer")
+            return
+        }
+
+        // A→B, then B→A. The return switch rewrites the mirror to A's
+        // CANONICAL payload — not a newer save — so the offer must still
+        // import rather than dissolving.
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        _ = try store.activateProfile(work.id)
+        _ = try store.activateProfile(offer.profileID)
+
+        let adopted = try store.adoptForeignMirror(offer)
+        #expect(adopted == offer.shortcuts)
+        #expect(harness.data(at: harness.layout.profileDataURL(offer.profileID)) == offer.rawBytes)
+        // The mirror now describes the ACTIVE profile with the imported edit.
+        #expect(harness.data(at: harness.layout.mirrorURL) == offer.rawBytes)
+    }
+
+    @Test
+    func anActiveOfferStillRefusesAfterANewerInAppSave() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        _ = harness.makeStore().load()
+
+        try harness.writeLegacyShortcuts(
+            [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        )
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load(), let offer = loaded.foreignMirror else {
+            Issue.record("expected an importable outside-edit offer")
+            return
+        }
+
+        // An in-app save to the ACTIVE profile advances both the data file
+        // and the mirror past the captured offer. The B→A exception must not
+        // license rolling that newer payload back to the stale edit.
+        let newer = [makeTestShortcut(appName: "Notes", bundleIdentifier: "com.apple.notes", keyEquivalent: "n")]
+        try store.makeActiveProfilePersistenceService().save(newer)
+
+        #expect(throws: ShortcutProfileStore.StoreError.foreignMirrorChangedSinceOffer) {
+            _ = try store.adoptForeignMirror(offer)
+        }
+        // The newer save is intact — the stale offer did not roll it back.
+        #expect(try store.shortcuts(in: loaded.activeProfileID) == newer)
+    }
+
+    @Test
+    func aSnapshotRefusesWhenTheDataFileAdvancedPastCanonical() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        _ = harness.makeStore().load()
+
+        try harness.writeLegacyShortcuts(
+            [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        )
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load(), let offer = loaded.foreignMirror else {
+            Issue.record("expected an importable outside-edit offer")
+            return
+        }
+
+        // A→B→A: the return switch leaves mirror + descriptor on A's
+        // canonical payload, which is exactly the shape the B→A snapshot
+        // exception exists to adopt.
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        _ = try store.activateProfile(work.id)
+        _ = try store.activateProfile(offer.profileID)
+
+        // An in-app save advances the data file but its compat rewrite fails,
+        // so the mirror and descriptor still describe the OLD canonical bytes
+        // while the data file has moved on. The snapshot must not roll the
+        // newer save back: the data file no longer holds the canonical
+        // payload, which is what the exception checks rather than the mirror.
+        let newer = [makeTestShortcut(appName: "Notes", bundleIdentifier: "com.apple.notes", keyEquivalent: "n")]
+        try PersistenceService.encodeShortcuts(newer).write(
+            to: harness.layout.profileDataURL(offer.profileID),
+            options: .atomic
+        )
+
+        #expect(throws: ShortcutProfileStore.StoreError.foreignMirrorChangedSinceOffer) {
+            _ = try store.adoptForeignMirror(offer)
+        }
+        #expect(try store.shortcuts(in: loaded.activeProfileID) == newer)
+    }
+
+    @Test
+    func aSnapshotStillAdoptsWhenTheTargetDataFileWasDeleted() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        _ = harness.makeStore().load()
+
+        try harness.writeLegacyShortcuts(
+            [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        )
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load(), let offer = loaded.foreignMirror else {
+            Issue.record("expected an importable outside-edit offer")
+            return
+        }
+
+        // A→B→A, then the target's data file vanishes before the user clicks
+        // Import. There is nothing to roll back and the snapshot is the
+        // user's only copy of the edit, so adoption must repair the file
+        // rather than dissolve into the canonical mirror bytes.
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        _ = try store.activateProfile(work.id)
+        _ = try store.activateProfile(offer.profileID)
+        try FileManager.default.removeItem(at: harness.layout.profileDataURL(offer.profileID))
+
+        let adopted = try store.adoptForeignMirror(offer)
+        #expect(adopted == offer.shortcuts)
+        #expect(harness.data(at: harness.layout.profileDataURL(offer.profileID)) == offer.rawBytes)
+        #expect(harness.data(at: harness.layout.mirrorURL) == offer.rawBytes)
+    }
+
+    @Test
+    func aSnapshotRefusesWhenTheMirrorIsTheNewerPayloadsLastCopy() throws {
+        let harness = TestProfileHarness()
+        defer { harness.cleanup() }
+        try harness.writeLegacyShortcuts([makeTestShortcut()])
+        _ = harness.makeStore().load()
+
+        try harness.writeLegacyShortcuts(
+            [makeTestShortcut(appName: "Mail", bundleIdentifier: "com.apple.mail", keyEquivalent: "m")]
+        )
+        let store = harness.makeStore()
+        guard case let .ready(loaded) = store.load(), let offer = loaded.foreignMirror else {
+            Issue.record("expected an importable outside-edit offer")
+            return
+        }
+
+        // A→B→A, then an in-app save lands, then the target's data file is
+        // deleted: the mirror is now the newer payload's ONLY copy. Adopting
+        // the stale offer must refuse rather than rewrite that mirror without
+        // preserving it (writeMirror's same-profile exemption).
+        let work = try store.createProfile(named: "Work", duplicating: nil)
+        _ = try store.activateProfile(work.id)
+        _ = try store.activateProfile(offer.profileID)
+
+        let newer = [makeTestShortcut(appName: "Notes", bundleIdentifier: "com.apple.notes", keyEquivalent: "n")]
+        try store.makeActiveProfilePersistenceService().save(newer)
+        try FileManager.default.removeItem(at: harness.layout.profileDataURL(offer.profileID))
+
+        #expect(throws: ShortcutProfileStore.StoreError.foreignMirrorChangedSinceOffer) {
+            _ = try store.adoptForeignMirror(offer)
+        }
+        // The newer payload's last copy survives in the mirror.
+        let newerBytes = try PersistenceService.encodeShortcuts(newer)
+        #expect(harness.data(at: harness.layout.mirrorURL) == newerBytes)
     }
 
     @Test

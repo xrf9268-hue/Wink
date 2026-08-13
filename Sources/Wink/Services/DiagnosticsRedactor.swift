@@ -161,23 +161,72 @@ struct DiagnosticsRedactor: Sendable {
     /// structure.
     func redact(text: String) -> String {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        // A probe that failed to compile must fail toward standalone lines:
+        // joining is the risky direction, per-line redaction is the old,
+        // safe behavior.
+        guard Self.recordTimestampPattern != nil else {
+            return lines.map { redact(line: String($0)) }.joined(separator: "\n")
+        }
         var records: [String] = []
         records.reserveCapacity(lines.count)
         // Tracked as a flag rather than re-probed: a join keeps the record's
         // original timestamped prefix, and re-running the probe over the
         // accumulated record would copy it once per continuation.
         var lastIsTimestampedRecord = false
+        // The timestamp of the last record STARTED, for the monotonicity
+        // check below. nil until the first record appears.
+        var previousRecordTimestamp: Date?
         for (index, line) in lines.enumerated() {
             // The trailing empty subsequence is the document's final
             // newline, not a continuation; folding it in would append a
             // stray space to the last record on every export.
             let isFinalNewline = line.isEmpty && index == lines.count - 1
-            let isRecordStart = !isFinalNewline && Self.startsWithRecordTimestamp(line)
+            let prefix = isFinalNewline ? nil : Self.recordPrefix(line)
+            // A timestamp-shaped line is a record start only when its
+            // timestamp does not step BACKWARD from the previous record.
+            // Real records only move forward, so a backward step is a
+            // continuation — a percent-decoded newline followed by an old
+            // timestamp smuggled to break out of a secret's value, or a
+            // genuine clock adjustment — and folds into its predecessor.
+            // A continuation that smuggles a FORWARD timestamp is still
+            // indistinguishable from a real record by structure alone, and
+            // demoting every forward timestamp would over-redact legitimate
+            // records; that residual is the adversarial case the "owns the
+            // machine" threat model above already concedes.
+            // A shape match whose timestamp does not parse (defensive; the
+            // shape probe and the parser describe the same grammar) still
+            // counts as a record start: standalone is the safe direction.
+            let isRecordStart = !isFinalNewline
+                && Self.startsWithRecordTimestamp(line)
+                && (prefix == nil || previousRecordTimestamp == nil || prefix!.timestamp >= previousRecordTimestamp!)
             if !records.isEmpty, lastIsTimestampedRecord, !isRecordStart, !isFinalNewline {
-                records[records.count - 1] += " " + line
+                // Fold as a continuation. A timestamp-shaped line that is NOT
+                // a record boundary drops its timestamp prefix: the whole
+                // reason it reached this branch is that its timestamp proved
+                // it a continuation, and keeping it would re-introduce a
+                // `word:`-shaped token (the time's colon) that the
+                // chunked-value rule reads as a label boundary, letting the
+                // smuggled tail escape. Stripping the false prefix makes the
+                // fold behave like every other continuation, so the label
+                // rule consumes the tail.
+                //
+                // Reset the monotonicity baseline to the folded timestamp. A
+                // genuine clock rollback produces ONE backward timestamp and
+                // then resumes forward from the lower value; leaving the
+                // baseline on the pre-rollback value would fold every
+                // subsequent record until wall time caught up, collapsing an
+                // entire interval into a single truncated line.
+                if let prefix {
+                    previousRecordTimestamp = prefix.timestamp
+                }
+                let continuation = prefix?.remainder ?? String(line)
+                records[records.count - 1] += " " + continuation
             } else {
                 records.append(String(line))
                 lastIsTimestampedRecord = isRecordStart
+                if let prefix {
+                    previousRecordTimestamp = prefix.timestamp
+                }
             }
         }
         return records.map { redact(line: $0) }.joined(separator: "\n")
@@ -186,18 +235,97 @@ struct DiagnosticsRedactor: Sendable {
     /// The writer's record prefix. Liberal about fractional seconds and
     /// offsets so formatter drift across builds cannot demote real records
     /// to continuations of their predecessor.
-    private static let recordTimestampProbe = try? NSRegularExpression(
-        pattern: #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2}) "#
+    ///
+    /// Capturing groups: 1-6 year..second, 7 fractional digits (optional),
+    /// 8 `Z` or a `±HH:MM`/`±HHMM` offset, 9-10 the offset's hours/minutes.
+    private static let recordTimestampPattern = try? NSRegularExpression(
+        pattern: #"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-](\d{2}):?(\d{2})) "#
     )
 
     private static func startsWithRecordTimestamp<S: StringProtocol>(_ line: S) -> Bool {
         // A probe that failed to compile must fail toward "record start":
         // joining is the risky direction, standalone lines are the old,
         // safe behavior.
-        guard let probe = recordTimestampProbe else { return true }
+        guard let probe = recordTimestampPattern else { return true }
         let value = String(line)
         return probe.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) != nil
     }
+
+    /// The parsed timestamp and the content after the record prefix, or nil
+    /// when the line does not begin with one (or its timestamp cannot be
+    /// parsed — which the shape probe above then treats as a record start).
+    private static func recordPrefix<S: StringProtocol>(_ line: S) -> (timestamp: Date, remainder: String)? {
+        guard let pattern = recordTimestampPattern else { return nil }
+        let value = String(line)
+        guard
+            let match = pattern.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)),
+            let fullRange = Range(match.range, in: value),
+            let timestamp = Self.parseRecordTimestamp(match: match, in: value)
+        else {
+            return nil
+        }
+        return (timestamp, String(value[fullRange.upperBound...]))
+    }
+
+    /// Parses the captured ISO8601 prefix into an absolute instant so records
+    /// written under different offsets still order correctly.
+    private static func parseRecordTimestamp(match: NSTextCheckingResult, in value: String) -> Date? {
+        func group(_ index: Int) -> String? {
+            guard let range = Range(match.range(at: index), in: value), !range.isEmpty else { return nil }
+            return String(value[range])
+        }
+
+        guard
+            let year = group(1).flatMap(Int.init),
+            let month = group(2).flatMap(Int.init),
+            let day = group(3).flatMap(Int.init),
+            let hour = group(4).flatMap(Int.init),
+            let minute = group(5).flatMap(Int.init),
+            let second = group(6).flatMap(Int.init)
+        else {
+            return nil
+        }
+
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = hour
+        components.minute = minute
+        components.second = second
+        if let fraction = group(7) {
+            // Fractional digits, truncated to nanosecond precision. The probe
+            // is liberal about how many digits a drifted formatter writes.
+            let digits = fraction.prefix(9)
+            let padded = digits + String(repeating: "0", count: max(0, 9 - digits.count))
+            components.nanosecond = Int(padded)
+        }
+
+        guard let dateInUTC = utcCalendar.date(from: components) else { return nil }
+
+        // The wall-clock components are local to the written offset; subtract
+        // it to get the UTC instant, so `+08:00` and `Z` compare correctly.
+        let offsetSeconds: Int
+        if group(8) == "Z" {
+            offsetSeconds = 0
+        } else if
+            let designator = group(8),
+            let offsetHours = group(9).flatMap(Int.init),
+            let offsetMinutes = group(10).flatMap(Int.init)
+        {
+            let magnitude = offsetHours * 3600 + offsetMinutes * 60
+            offsetSeconds = designator.hasPrefix("-") ? -magnitude : magnitude
+        } else {
+            return nil
+        }
+        return dateInUTC.addingTimeInterval(TimeInterval(-offsetSeconds))
+    }
+
+    private static let utcCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }()
 
     // MARK: - Rules
 

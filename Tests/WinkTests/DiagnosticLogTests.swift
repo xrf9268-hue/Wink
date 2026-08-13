@@ -30,6 +30,43 @@ func concurrentWritesProduceOneLinePerMessage() async throws {
 }
 
 @Test
+func concurrentWritesKeepTimestampsInFileOrder() async throws {
+    // The timestamp is sampled inside the serial queue, so even when callers
+    // race, the file's timestamps are non-decreasing. The redactor's
+    // record-boundary heuristic depends on that order: an out-of-order
+    // timestamp would be misread as a continuation and folded into its
+    // predecessor.
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let fileURL = directory.appendingPathComponent("debug.log")
+    let writer = DiagnosticLogWriter(fileURL: fileURL, maxFileSize: .max)
+    let messageCount = 2_000
+
+    await withTaskGroup(of: Void.self) { group in
+        for index in 0..<messageCount {
+            group.addTask {
+                writer.log("message-\(index)")
+            }
+        }
+    }
+    writer.flush()
+
+    let contents = try String(contentsOf: fileURL, encoding: .utf8)
+    let formatter = ISO8601DateFormatter()
+    let timestamps = contents.split(separator: "\n").compactMap { line -> Date? in
+        guard let space = line.firstIndex(of: " ") else { return nil }
+        return formatter.date(from: String(line[..<space]))
+    }
+
+    #expect(timestamps.count == messageCount)
+    for (earlier, later) in zip(timestamps, timestamps.dropFirst()) {
+        #expect(later >= earlier)
+    }
+}
+
+@Test
 func exceedingMaxFileSizeRotatesAndContinuesWritingToNewFile() throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

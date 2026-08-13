@@ -474,13 +474,22 @@ final class ShortcutProfileState {
                 // telling the user no shortcuts are active while a successor
                 // is loaded and armed.
                 //
-                // Not on the unrecoverable path, though: there the delete
-                // failed and the profile is still there and still unreadable,
-                // so clearing the banner — and with it a resumable import —
-                // would remove the only guidance the user has.
-                if case .activeProfileUnreadable = recovery, outcome.unrecoverableSwitchReason == nil {
+                // The recovery clears whenever a successor is armed — the
+                // banner's claim is false the moment the runtime is on the
+                // successor — INCLUDING the unrecoverable path, where the
+                // delete failed but the switch it had already committed could
+                // not be undone and `canApplyExternalSwitch` would otherwise
+                // stay blocked until relaunch. What survives there is the
+                // failed profile's row (still in `unreadableProfileIDs`, so
+                // the picker keeps it disabled) and its import offer
+                // (`pendingForeignMirror`), which only a COMPLETED delete may
+                // drop: on the unrecoverable path the profile and its file
+                // survive, so the import is still the user's way back.
+                if case .activeProfileUnreadable = recovery {
                     recovery = .none
-                    pendingForeignMirror = nil
+                    if outcome.unrecoverableSwitchReason == nil {
+                        pendingForeignMirror = nil
+                    }
                 }
                 unreadableProfileIDs.remove(newActiveProfileID)
                 shortcutManager.applyLoadedShortcuts(newActiveShortcuts, source: .profileSwitch)

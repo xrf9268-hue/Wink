@@ -31,8 +31,13 @@ final class DiagnosticLogWriter: @unchecked Sendable {
     }
 
     func log(_ message: String) {
-        let timestamp = Date()
         queue.async { [self] in
+            // Timestamp sampled INSIDE the serial queue, never at the call
+            // site: two concurrent callers that sample Date() before enqueue
+            // can land in the file out of timestamp order (a preempted caller
+            // enqueues after a later one), and the redactor's record-boundary
+            // heuristic keys on timestamps being monotonic in file order.
+            let timestamp = Date()
             // A record IS one line — that contract is what every reader,
             // the redactor included, keys on. An externally decoded value
             // (a wink:// bundle carrying %0A) can arrive with embedded

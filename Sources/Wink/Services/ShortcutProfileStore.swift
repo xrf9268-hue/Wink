@@ -235,6 +235,15 @@ final class ShortcutProfileStore {
         /// from, and a type that can express the lossy state invites a caller
         /// that produces it.
         var rawBytes: Data
+        /// The digest of the target profile's canonical data file at the moment
+        /// the offer was captured. It is what lets `adoptForeignMirror` prove,
+        /// after a B→A return switch, that the mirror's intervening bytes are
+        /// the pre-edit payload rather than a newer save — so a snapshot
+        /// adoption for the ACTIVE profile can be told apart from rolling back
+        /// a save. `nil` when the canonical payload could not be read (an
+        /// interrupted migration, an unreadable target), in which case the
+        /// snapshot exception simply cannot be proven.
+        var canonicalDigest: String? = nil
     }
 
     struct LoadedProfiles: Equatable, Sendable {
@@ -995,7 +1004,38 @@ final class ShortcutProfileStore {
         }
 
         log("PROFILE_TRACE_FOREIGN_MIRROR profile=\(descriptor.profileID.uuidString)")
-        return (Self.foreignMirrorOffer(profileID: descriptor.profileID, bytes: mirrorData), true)
+        return (
+            Self.foreignMirrorOffer(
+                profileID: descriptor.profileID,
+                bytes: mirrorData,
+                canonicalDigest: Self.canonicalDigest(
+                    of: descriptor.profileID,
+                    activeProfileID: activeProfileID,
+                    activeBytes: activeBytes,
+                    layout: layout
+                )
+            ),
+            true
+        )
+    }
+
+    /// The digest of a profile's canonical data file as of offer-capture time,
+    /// so a later adoption can prove the mirror was rewritten FROM that
+    /// payload rather than from a newer save. The active profile's bytes are
+    /// already in hand; any other target's are read directly.
+    private static func canonicalDigest(
+        of profileID: UUID,
+        activeProfileID: UUID,
+        activeBytes: Data,
+        layout: ShortcutProfileLayout
+    ) -> String? {
+        if profileID == activeProfileID {
+            return digest(activeBytes)
+        }
+        guard let bytes = try? Data(contentsOf: layout.profileDataURL(profileID)) else {
+            return nil
+        }
+        return digest(bytes)
     }
 
     /// The ONE construction rule for an importable offer: shortcuts are
@@ -1004,10 +1044,19 @@ final class ShortcutProfileStore {
     /// duplicate rows into the runtime and leave a file the strict loader
     /// quarantines on the next launch, arming nothing — so those bytes carry
     /// no decoded side and the UI offers only keep-and-overwrite.
-    private static func foreignMirrorOffer(profileID: UUID, bytes: Data) -> ForeignMirror {
+    private static func foreignMirrorOffer(
+        profileID: UUID,
+        bytes: Data,
+        canonicalDigest: String?
+    ) -> ForeignMirror {
         let decoded = (try? JSONDecoder().decode([AppShortcut].self, from: bytes))
             .flatMap { Set($0.map(\.id)).count == $0.count ? $0 : nil }
-        return ForeignMirror(profileID: profileID, shortcuts: decoded, rawBytes: bytes)
+        return ForeignMirror(
+            profileID: profileID,
+            shortcuts: decoded,
+            rawBytes: bytes,
+            canonicalDigest: canonicalDigest
+        )
     }
 
     /// Rebuilds a pending offer from the file as it is NOW, after
@@ -1063,7 +1112,10 @@ final class ShortcutProfileStore {
             // ownership fails closed while a sibling is unreadable). A
             // vanished file has nothing left to offer.
             guard let bytes = try? Data(contentsOf: layout.mirrorURL) else { return nil }
-            return Self.foreignMirrorOffer(profileID: stale.profileID, bytes: bytes)
+            // Classification is unavailable, so the canonical payload cannot
+            // be vouched for either; the snapshot exception simply cannot be
+            // proven for a rebuilt offer.
+            return Self.foreignMirrorOffer(profileID: stale.profileID, bytes: bytes, canonicalDigest: nil)
         }
         return detectForeignMirror(
             layout: layout,
@@ -2241,27 +2293,65 @@ final class ShortcutProfileStore {
         if let currentBytes = try? Data(contentsOf: layout.mirrorURL),
            Self.digest(currentBytes) != Self.digest(mirror.rawBytes) {
             // EXCEPT when the intervening write is provably Wink's OWN
-            // rewrite for the ACTIVE profile and the offer targets a
-            // DIFFERENT profile: an ordinary A→B switch rewrites the mirror
-            // to B (preserving the offered bytes first — writeMirror's
-            // guard), and refusing here would dissolve the only UI path for
-            // importing A's captured edit, leaving it recoverable solely
-            // from the preservation file. That adoption installs into A's
-            // data file and leaves B's mirror exactly as it stands, so
-            // nothing rolls back. The descriptor-digest match is the same
-            // "Wink wrote these exact bytes" reading detectForeignMirror
-            // uses — an external re-edit breaks it and still refuses — and
-            // an offer for the ACTIVE profile keeps refusing outright:
-            // there the adoption WOULD roll data and mirror back over
-            // Wink's own newer payload, whose only copy is what it would
-            // overwrite.
+            // rewrite for the ACTIVE profile. The descriptor-digest match is
+            // the same "Wink wrote these exact bytes" reading
+            // detectForeignMirror uses — an external re-edit breaks it and
+            // still refuses. Two shapes are safe to adopt from a snapshot:
             let descriptor = loadMirrorDescriptor(layout: layout)
             let activeProfileID = locator.currentActiveProfileID()
             let ownRewriteForActive = activeProfileID != nil
                 && descriptor?.profileID == activeProfileID
                 && descriptor?.sha256 == Self.digest(currentBytes)
+
+            // 1. The offer targets a DIFFERENT profile: an ordinary A→B
+            // switch rewrites the mirror to B (preserving the offered bytes
+            // first — writeMirror's guard), and refusing here would dissolve
+            // the only UI path for importing A's captured edit, leaving it
+            // recoverable solely from the preservation file. That adoption
+            // installs into A's data file and leaves B's mirror exactly as it
+            // stands, so nothing rolls back.
+            let ownRewriteForDifferentProfile = ownRewriteForActive
                 && mirror.profileID != activeProfileID
-            guard ownRewriteForActive else {
+
+            // 2. The offer targets the ACTIVE profile: a B→A return switch
+            // rewrote the mirror to the target's CANONICAL payload — the
+            // pre-edit data file — without advancing it, so adopting applies
+            // the captured edit over the payload it was made against rather
+            // than rolling back a newer save. Two independent facts must BOTH
+            // hold, or a newer payload is destroyed without a copy:
+            //
+            // - The MIRROR still holds the canonical payload. A save that
+            //   landed and was then followed by a deletion of the target's
+            //   data file leaves the mirror as the newer payload's LAST copy;
+            //   adopting would rewrite it without preservation (writeMirror's
+            //   same-profile exemption) and lose it.
+            // - The target's DATA FILE carries no newer payload: it is absent
+            //   (the snapshot then repairs it) or still canonical. A save
+            //   whose compat rewrite failed advances the data file while the
+            //   mirror and descriptor stay on the OLD bytes — the data →
+            //   mirror → descriptor ordering — so the mirror alone cannot
+            //   prove this. Present-but-unreadable stays refused: bytes that
+            //   cannot be captured must never be overwritten.
+            let mirrorStillCanonical = mirror.canonicalDigest == Self.digest(currentBytes)
+            let noNewerTargetPayload: Bool
+            if let activeProfileID {
+                let dataURL = layout.profileDataURL(activeProfileID)
+                if !fileManager.fileExists(atPath: dataURL.path) {
+                    noNewerTargetPayload = true
+                } else if let dataFileBytes = try? Data(contentsOf: dataURL) {
+                    noNewerTargetPayload = Self.digest(dataFileBytes) == mirror.canonicalDigest
+                } else {
+                    noNewerTargetPayload = false
+                }
+            } else {
+                noNewerTargetPayload = false
+            }
+            let ownRewriteForOfferTarget = ownRewriteForActive
+                && mirror.profileID == activeProfileID
+                && mirrorStillCanonical
+                && noNewerTargetPayload
+
+            guard ownRewriteForDifferentProfile || ownRewriteForOfferTarget else {
                 log("PROFILE_TRACE_IMPORT_REFUSED reason=mirror_changed_since_offer")
                 throw StoreError.foreignMirrorChangedSinceOffer
             }
