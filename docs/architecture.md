@@ -75,6 +75,8 @@ flowchart LR
 - `AppDelegate`
 - `AppController`
 - `SettingsLauncher`
+- `WinkActionExecutor`
+- `WinkIntents`
 - `SparkleUpdateService`
 
 Responsibilities:
@@ -85,6 +87,9 @@ Responsibilities:
 - start global shortcut handling
 - keep menu bar insertion bound to the persisted `menuBarIconVisible` preference
 - present Settings and reactivate Wink when first-launch, menu-bar, or reopen entry points request it
+- publish four App Intents/App Shortcuts and register their action dependency before launch completes
+- route menu-bar, URL, shortcut-trigger, and App Intent pause/search/settings actions through one main-actor executor that verifies the requested state before returning success
+- keep Settings' ordinary first-launch/reopen path queue-capable while App Intent execution uses `openIfReady` and fails explicitly rather than reporting success for queued work
 
 ### Menu bar shell
 - `WinkMenuBarScene`
@@ -261,6 +266,7 @@ Responsibilities:
 - `ShortcutCaptureStatus`
 - `scripts/build-app-icon.sh`
 - `scripts/package-app.sh`
+- `scripts/extract-app-intents-metadata.sh`
 - `scripts/package-update-zip.sh`
 - `scripts/generate-appcast.sh`
 - `Sources/Wink/Resources/Info.plist`
@@ -280,15 +286,16 @@ Responsibilities:
 - regenerate `AppIcon.icns` and the menu bar template PNGs from the SVG sources for Dock, menu bar, and packaged-app consistency
 - embed and re-sign `Sparkle.framework` for packaged builds, removing unused XPC services because Wink is not sandboxed
 - automate `.app`, Sparkle update zip, and signed appcast packaging via scripts
+- compile and validate `Metadata.appintents` inside the final packaged app, including four foreground-dynamic actions, four SF Symbol-backed App Shortcuts, and English/Simplified Chinese phrase catalogs; packaging fails if discovery metadata is incomplete
 
 ### Localization
-- `Sources/Wink/Resources/Localizable.xcstrings` (source of truth, hand-authored)
+- `Sources/Wink/Resources/{Localizable,AppShortcuts}.xcstrings` (sources of truth, hand-authored)
 - `Sources/Wink/Resources/Localized/{en,zh-Hans}.lproj` (generated, checked in)
 - `scripts/gen-localizations.sh`
 - `WinkResourceBundle`
 
 Responsibilities:
-- ship a String Catalog with English as the default localization and zh-Hans as the first translated locale, English-as-key throughout
+- ship String Catalogs with English as the default localization and zh-Hans as the first translated locale, English-as-key throughout; App Shortcut phrases preserve Apple's `${applicationName}` token in every locale
 - compile `.xcstrings` → per-locale `.lproj` via `xcrun xcstringstool compile` ahead of time, because plain `swift build` (unlike an Xcode build) never compiles `.xcstrings` itself
 - route every localized lookup through `WinkResourceBundle.bundle`
 
@@ -302,6 +309,8 @@ App launch
   -> WinkApp declares MenuBarExtra(.window) with a custom template-image label + Settings scenes + SettingsCommands
   -> MenuBarExtra insertion is bound to `menuBarIconVisible`
   -> @NSApplicationDelegateAdaptor creates AppDelegate
+  -> AppDelegate registers WinkActionExecutor as the App Intents dependency
+  -> WinkApp refreshes App Shortcut parameters
   -> AppDelegate.applicationDidFinishLaunching()
   -> NSApp.setActivationPolicy(.accessory)
   -> AppController.start()
@@ -321,6 +330,18 @@ App launch
   -> CarbonHotKeyProvider starts the Fn/F-row observer when needed, then registers enabled standard shortcuts; unavailable observation fails only affected Fn+F-row bindings closed
   -> EventTapCaptureProvider/EventTapManager starts only when Input Monitoring is granted and Hyper-routed shortcuts exist
   -> if this is a fresh install with no saved shortcuts, AppController.openSettings() routes through SettingsLauncher + openSettings()
+```
+
+### 1b. App Intent flow
+```text
+Shortcuts runs Pause / Resume / Show Search Palette / Open Settings
+  -> the intent uses foreground-dynamic mode (macOS 26+) or openAppWhenRun (macOS 15-25)
+  -> AppDependency resolves the client registered by AppDelegate
+  -> WinkActionExecutor hops to the main actor
+  -> pause/resume mutates only AppPreferences' manual-pause bit and verifies the observed value
+  -> Search Palette reuses SearchPaletteHUDController and verifies it is presented
+  -> Settings uses SettingsLauncher.openIfReady(tab:) and never queues a false success
+  -> the intent returns a localized success dialog, or propagates an explicit error
 ```
 
 ### 2. Add shortcut flow

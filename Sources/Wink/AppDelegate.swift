@@ -1,8 +1,14 @@
 import AppKit
+import WinkIntents
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let appController = AppController()
+
+    override init() {
+        super.init()
+        WinkAppIntentDependency.register(appController.appIntentClient)
+    }
 
     var settingsSceneServices: AppController.SettingsSceneServices {
         appController.settingsSceneServices

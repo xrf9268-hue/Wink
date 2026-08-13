@@ -327,8 +327,15 @@ for locale in "${APP_LOCALIZATIONS[@]}"; do
     cat > "$lproj_dir/InfoPlist.strings" <<'STRINGS'
 /* Top-level localization marker — real catalogs live in Wink_Wink.bundle; see #390 */
 STRINGS
+    cp "$PROJECT_DIR/Sources/Wink/Resources/Localized/${locale}.lproj/Localizable.strings" \
+        "$lproj_dir/Localizable.strings"
+    cp "$PROJECT_DIR/Sources/Wink/Resources/Localized/${locale}.lproj/AppShortcuts.strings" \
+        "$lproj_dir/AppShortcuts.strings"
 done
-echo "    Top-level localization markers created for: ${APP_LOCALIZATIONS[*]}"
+echo "    Top-level localization catalogs created for: ${APP_LOCALIZATIONS[*]}"
+
+echo "==> Extracting App Intents metadata..."
+bash "$SCRIPT_DIR/extract-app-intents-metadata.sh" "$MACOS_DIR/${APP_NAME}" "$RESOURCES_DIR"
 
 # Copy Sparkle.framework into the app bundle while preserving symlinks.
 echo "==> Embedding Sparkle.framework..."

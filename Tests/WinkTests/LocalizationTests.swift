@@ -4,7 +4,7 @@ import Testing
 
 /// Verifies the compiled Localizable.strings/.stringsdict catalog actually
 /// resolves from the resource bundle — swift build/test never compile
-/// Localizable.xcstrings itself (see scripts/gen-localizations.sh); this
+/// the .xcstrings sources themselves (see scripts/gen-localizations.sh); this
 /// guards against the checked-in Sources/Wink/Resources/Localized output
 /// drifting out of sync or silently failing to load.
 @Suite("Localization catalog")
@@ -21,9 +21,51 @@ struct LocalizationTests {
     }
 
     @Test
+    func appShortcutPhrasesPreserveTheApplicationTokenInBothLocales() throws {
+        let keys = [
+            "Pause ${applicationName}",
+            "Resume ${applicationName}",
+            "Search with ${applicationName}",
+            "Open ${applicationName} settings",
+        ]
+
+        for locale in ["en", "zh-Hans"] {
+            let bundle = try subBundle(forLocalization: locale)
+            for key in keys {
+                let localized = bundle.localizedString(
+                    forKey: key,
+                    value: "«miss»",
+                    table: "AppShortcuts"
+                )
+                #expect(localized != "«miss»", "missing \(locale) App Shortcut phrase: \(key)")
+                #expect(localized.contains("${applicationName}"))
+            }
+        }
+    }
+
+    @Test
     func zhHansResolvesAKnownKey() throws {
         let sub = try subBundle(forLocalization: "zh-Hans")
         #expect(sub.localizedString(forKey: "Ready", value: "«miss»", table: nil) == "就绪")
+    }
+
+    @Test
+    func appIntentResultsAndFailuresResolveInZhHans() throws {
+        let sub = try subBundle(forLocalization: "zh-Hans")
+        let keys = [
+            "Wink manual pause is cleared.",
+            "Wink could not pause shortcuts.",
+            "Wink could not resume shortcuts.",
+            "Wink could not show the Search Palette.",
+            "Wink Settings is not ready yet. Please try again.",
+            "Wink Settings did not become visible.",
+        ]
+
+        for key in keys {
+            let translated = sub.localizedString(forKey: key, value: "«miss»", table: nil)
+            #expect(translated != "«miss»", "missing zh-Hans App Intent entry for \(key)")
+            #expect(translated != key, "zh-Hans App Intent entry for \(key) is still English")
+        }
     }
 
     @Test

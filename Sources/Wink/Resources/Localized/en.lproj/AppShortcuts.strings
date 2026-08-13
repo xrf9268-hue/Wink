@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Open ${applicationName} settings</key>
+	<string>Open ${applicationName} settings</string>
+	<key>Open Wink Settings</key>
+	<string>Open Wink Settings</string>
+	<key>Pause ${applicationName}</key>
+	<string>Pause ${applicationName}</string>
+	<key>Pause Wink</key>
+	<string>Pause Wink</string>
+	<key>Resume ${applicationName}</key>
+	<string>Resume ${applicationName}</string>
+	<key>Resume Wink</key>
+	<string>Resume Wink</string>
+	<key>Search with ${applicationName}</key>
+	<string>Search with ${applicationName}</string>
+	<key>Search with Wink</key>
+	<string>Search with Wink</string>
+</dict>
+</plist>

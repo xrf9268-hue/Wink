@@ -1,6 +1,146 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Open Wink Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Open Wink Settings" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "打开 Wink 设置" } }
+      }
+    },
+    "Open Wink Settings at ${tab}": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Open Wink Settings at ${tab}" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "在 ${tab} 打开 Wink 设置" } }
+      }
+    },
+    "Open Wink Settings to an optional tab.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Open Wink Settings to an optional tab." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "打开 Wink 设置，可选择指定标签页。" } }
+      }
+    },
+    "Pause all Wink shortcuts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Pause all Wink shortcuts." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂停所有 Wink 快捷键。" } }
+      }
+    },
+    "Pause Wink": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Pause Wink" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂停 Wink" } }
+      }
+    },
+    "Clear Wink's manual shortcut pause.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Clear Wink's manual shortcut pause." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "解除 Wink 快捷键的手动暂停。" } }
+      }
+    },
+    "Resume Wink": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Resume Wink" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "恢复 Wink" } }
+      }
+    },
+    "Search with Wink": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Search with Wink" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用 Wink 搜索" } }
+      }
+    },
+    "Settings Tab": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Settings Tab" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "设置标签页" } }
+      }
+    },
+    "Show Wink Search Palette": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Show Wink Search Palette" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "显示 Wink 搜索面板" } }
+      }
+    },
+    "Show Wink's app search palette.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Show Wink's app search palette." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "显示 Wink 的应用搜索面板。" } }
+      }
+    },
+    "Wink Search Palette is open.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink Search Palette is open." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 搜索面板已打开。" } }
+      }
+    },
+    "Wink could not pause shortcuts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink could not pause shortcuts." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 无法暂停快捷键。" } }
+      }
+    },
+    "Wink could not resume shortcuts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink could not resume shortcuts." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 无法恢复快捷键。" } }
+      }
+    },
+    "Wink could not show the Search Palette.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink could not show the Search Palette." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 无法显示搜索面板。" } }
+      }
+    },
+    "Wink manual pause is cleared.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink manual pause is cleared." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 的手动暂停已解除。" } }
+      }
+    },
+    "Wink Settings is open.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink Settings is open." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 设置已打开。" } }
+      }
+    },
+    "Wink Settings did not become visible.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink Settings did not become visible." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 设置窗口未能显示。" } }
+      }
+    },
+    "Wink Settings is not ready yet. Please try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink Settings is not ready yet. Please try again." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 设置尚未就绪，请重试。" } }
+      }
+    },
+    "Wink shortcuts are paused.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink shortcuts are paused." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 快捷键已暂停。" } }
+      }
+    },
     "%@ (can't be read)": {
       "extractionState": "manual",
       "localizations": {

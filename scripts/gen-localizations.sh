@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Compiles Sources/Wink/Resources/Localizable.xcstrings (the hand-authored
-# source of truth) into the checked-in per-locale .lproj files under
+# Compiles the hand-authored String Catalogs into the checked-in per-locale
+# .lproj files under
 # Sources/Wink/Resources/Localized.
 #
 # `swift build` does not compile .xcstrings — Xcode's build system does that
@@ -18,7 +18,10 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CATALOG="$REPO_ROOT/Sources/Wink/Resources/Localizable.xcstrings"
+CATALOGS=(
+  "$REPO_ROOT/Sources/Wink/Resources/Localizable.xcstrings"
+  "$REPO_ROOT/Sources/Wink/Resources/AppShortcuts.xcstrings"
+)
 OUTPUT_DIR="$REPO_ROOT/Sources/Wink/Resources/Localized"
 
 MODE="generate"
@@ -26,10 +29,12 @@ if [ "${1:-}" = "--check" ]; then
   MODE="check"
 fi
 
-if [ ! -f "$CATALOG" ]; then
-  echo "error: missing $CATALOG" >&2
-  exit 1
-fi
+for catalog in "${CATALOGS[@]}"; do
+  if [ ! -f "$catalog" ]; then
+    echo "error: missing $catalog" >&2
+    exit 1
+  fi
+done
 
 if ! command -v xcrun >/dev/null 2>&1; then
   echo "error: xcrun not found — this script requires Xcode command line tools on macOS" >&2
@@ -40,17 +45,19 @@ compile_into() {
   local dest="$1"
   rm -rf "$dest"
   mkdir -p "$dest"
-  xcrun xcstringstool compile "$CATALOG" --output-directory "$dest"
+  for catalog in "${CATALOGS[@]}"; do
+    xcrun xcstringstool compile "$catalog" --output-directory "$dest"
+  done
 }
 
 if [ "$MODE" = "generate" ]; then
   compile_into "$OUTPUT_DIR"
-  echo "Compiled $CATALOG -> $OUTPUT_DIR"
+  echo "Compiled ${#CATALOGS[@]} String Catalogs -> $OUTPUT_DIR"
   exit 0
 fi
 
 # --check: compile into a scratch directory and diff against the checked-in
-# output so CI catches a Localizable.xcstrings edit that was never
+# output so CI catches a String Catalog edit that was never
 # regenerated.
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -58,7 +65,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 compile_into "$TMP_DIR/Localized"
 
 if ! diff -rq "$TMP_DIR/Localized" "$OUTPUT_DIR" >"$TMP_DIR/diff.txt" 2>&1; then
-  echo "error: $OUTPUT_DIR is out of date with $CATALOG" >&2
+  echo "error: $OUTPUT_DIR is out of date with the String Catalog sources" >&2
   echo "" >&2
   cat "$TMP_DIR/diff.txt" >&2
   echo "" >&2
@@ -67,4 +74,4 @@ if ! diff -rq "$TMP_DIR/Localized" "$OUTPUT_DIR" >"$TMP_DIR/diff.txt" 2>&1; then
   exit 1
 fi
 
-echo "Sources/Wink/Resources/Localized is up to date with $CATALOG"
+echo "Sources/Wink/Resources/Localized is up to date with ${#CATALOGS[@]} String Catalogs"

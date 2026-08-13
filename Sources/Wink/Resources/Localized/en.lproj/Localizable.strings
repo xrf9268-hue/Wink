@@ -98,6 +98,8 @@
 	<string>Choose where to save the diagnostics folder.</string>
 	<key>Clear</key>
 	<string>Clear</string>
+	<key>Clear Wink's manual shortcut pause.</key>
+	<string>Clear Wink's manual shortcut pause.</string>
 	<key>Click to record</key>
 	<string>Click to record</string>
 	<key>Click to review and install.</key>
@@ -334,12 +336,22 @@
 	<string>OK</string>
 	<key>Open Login Items Settings</key>
 	<string>Open Login Items Settings</string>
+	<key>Open Wink Settings</key>
+	<string>Open Wink Settings</string>
+	<key>Open Wink Settings at ${tab}</key>
+	<string>Open Wink Settings at ${tab}</string>
+	<key>Open Wink Settings to an optional tab.</key>
+	<string>Open Wink Settings to an optional tab.</string>
 	<key>Opens Wink in the menu bar when you sign in.</key>
 	<string>Opens Wink in the menu bar when you sign in.</string>
 	<key>Optional</key>
 	<string>Optional</string>
 	<key>Past 7 days</key>
 	<string>Past 7 days</string>
+	<key>Pause Wink</key>
+	<string>Pause Wink</string>
+	<key>Pause all Wink shortcuts.</key>
+	<string>Pause all Wink shortcuts.</string>
 	<key>Pause all shortcuts</key>
 	<string>Pause all shortcuts</string>
 	<key>Pause in exception apps</key>
@@ -400,6 +412,8 @@
 	<string>Required for global shortcuts</string>
 	<key>Requires at least one modifier (⌘⌥⌃⇧)</key>
 	<string>Requires at least one modifier (⌘⌥⌃⇧)</string>
+	<key>Resume Wink</key>
+	<string>Resume Wink</string>
 	<key>Reveal Log</key>
 	<string>Reveal Log</string>
 	<key>Review</key>
@@ -420,6 +434,10 @@
 	<string>Search apps…</string>
 	<key>Search shortcuts</key>
 	<string>Search shortcuts</string>
+	<key>Search with Wink</key>
+	<string>Search with Wink</string>
+	<key>Settings Tab</key>
+	<string>Settings Tab</string>
 	<key>Settings…</key>
 	<string>Settings…</string>
 	<key>Share what Wink knows</key>
@@ -440,6 +458,10 @@
 	<string>Shortcuts paused</string>
 	<key>Show Menu Bar Icon</key>
 	<string>Show Menu Bar Icon</string>
+	<key>Show Wink Search Palette</key>
+	<string>Show Wink Search Palette</string>
+	<key>Show Wink's app search palette.</key>
+	<string>Show Wink's app search palette.</string>
 	<key>Skip Conflicts</key>
 	<string>Skip Conflicts</string>
 	<key>Skip This Version</key>
@@ -580,6 +602,14 @@
 	<string>Wink %@ is downloaded. Relaunch now to finish installing, or keep working — it installs when Wink quits.</string>
 	<key>Wink %@ is the latest version.</key>
 	<string>Wink %@ is the latest version.</string>
+	<key>Wink Search Palette is open.</key>
+	<string>Wink Search Palette is open.</string>
+	<key>Wink Settings did not become visible.</key>
+	<string>Wink Settings did not become visible.</string>
+	<key>Wink Settings is not ready yet. Please try again.</key>
+	<string>Wink Settings is not ready yet. Please try again.</string>
+	<key>Wink Settings is open.</key>
+	<string>Wink Settings is open.</string>
 	<key>Wink Update</key>
 	<string>Wink Update</string>
 	<key>Wink always keeps at least one profile.</key>
@@ -592,14 +622,20 @@
 	<string>Wink cannot reach its storage folder, so profiles cannot be changed.</string>
 	<key>Wink checks for updates automatically and asks before downloading.</key>
 	<string>Wink checks for updates automatically and asks before downloading.</string>
+	<key>Wink could not pause shortcuts.</key>
+	<string>Wink could not pause shortcuts.</string>
 	<key>Wink could not read your previous shortcuts file</key>
 	<string>Wink could not read your previous shortcuts file</string>
 	<key>Wink could not read your profile list</key>
 	<string>Wink could not read your profile list</string>
 	<key>Wink could not read your profile list, so nothing can be changed until you recover it.</key>
 	<string>Wink could not read your profile list, so nothing can be changed until you recover it.</string>
+	<key>Wink could not resume shortcuts.</key>
+	<string>Wink could not resume shortcuts.</string>
 	<key>Wink could not save the change to disk, so nothing was changed.</key>
 	<string>Wink could not save the change to disk, so nothing was changed.</string>
+	<key>Wink could not show the Search Palette.</key>
+	<string>Wink could not show the Search Palette.</string>
 	<key>Wink could not tell which profile was active</key>
 	<string>Wink could not tell which profile was active</string>
 	<key>Wink couldn't disable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
@@ -612,8 +648,12 @@
 	<string>Wink is registered to launch at login, but macOS still needs your approval in Login Items.</string>
 	<key>Wink is still clearing usage history for a deleted profile. Try again in a moment.</key>
 	<string>Wink is still clearing usage history for a deleted profile. Try again in a moment.</string>
+	<key>Wink manual pause is cleared.</key>
+	<string>Wink manual pause is cleared.</string>
 	<key>Wink needs Accessibility access to route global shortcuts.</key>
 	<string>Wink needs Accessibility access to route global shortcuts.</string>
+	<key>Wink shortcuts are paused.</key>
+	<string>Wink shortcuts are paused.</string>
 	<key>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</key>
 	<string>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</string>
 	<key>Wink: Permission Lost</key>

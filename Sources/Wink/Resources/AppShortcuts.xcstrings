@@ -1,0 +1,62 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Open ${applicationName} settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Open ${applicationName} settings" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "打开 ${applicationName} 设置" } }
+      }
+    },
+    "Open Wink Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Open Wink Settings" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "打开 Wink 设置" } }
+      }
+    },
+    "Pause ${applicationName}": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Pause ${applicationName}" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂停 ${applicationName}" } }
+      }
+    },
+    "Pause Wink": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Pause Wink" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂停 Wink" } }
+      }
+    },
+    "Resume ${applicationName}": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Resume ${applicationName}" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "恢复 ${applicationName}" } }
+      }
+    },
+    "Resume Wink": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Resume Wink" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "恢复 Wink" } }
+      }
+    },
+    "Search with ${applicationName}": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Search with ${applicationName}" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用 ${applicationName} 搜索" } }
+      }
+    },
+    "Search with Wink": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Search with Wink" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用 Wink 搜索" } }
+      }
+    }
+  },
+  "version": "1.0"
+}
