@@ -215,7 +215,10 @@ func secondPressAfterOwnedLaunchUsesTrackedHideInsteadOfHideUntracked() async {
                 }
                 return windowObservations[0]
             },
-            activationPolicy: { _ in .regular }
+            activationPolicy: { _ in .regular },
+            applicationState: { _ in
+                .init(isActive: true, isHidden: false)
+            }
         )),
         fallbackActivationClient: .init(openApplication: { _, _, completion in
             isRunning = true

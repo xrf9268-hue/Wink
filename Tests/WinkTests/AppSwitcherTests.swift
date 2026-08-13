@@ -2152,7 +2152,10 @@ func staleLaunchErrorDoesNotMutateSupersedingSession() async {
                     failureReason: nil
                 )
             },
-            activationPolicy: { _ in .regular }
+            activationPolicy: { _ in .regular },
+            applicationState: { _ in
+                .init(isActive: true, isHidden: false)
+            }
         )),
         activationClient: .init(activateFrontProcess: { _, _ in
             .success(ProcessSerialNumber())
