@@ -36,6 +36,12 @@ On 2026-04-09, packaged-app runtime validation moved past the original TCC block
 
 ## Automated Verification
 
+### 2026-08-13
+- issue #465 (post-merge hardening of #460/#461) implemented and verified: `swift test` passed (1033 tests) and `swift build -c release` passed
+- three parked findings closed with regression tests: diagnostics-redaction timestamp monotonicity (+ clock-rollback baseline reset and writer-side queue-order timestamp sampling), the B→A snapshot-adoption condition (canonical mirror AND data file, absent-file repair, mirror-last-copy guard), and the stale unreadable-recovery banner on an armed successor
+- locally reviewed with `codex review` (gpt-5.6-sol) before push; the GitHub Codex bot passed the current head with 👍 after two P2 findings were fixed and their threads resolved
+- the forward-timestamp continuation residual in `DiagnosticsRedactor` is explicitly out of scope (adversarial-only; the "owns the machine" threat model already concedes it)
+
 ### 2026-04-20
 - `swift test --filter 'WinkRecipeCodec|WinkRecipeImportPlanner|ShortcutEditorStateTests|ShortcutManagerStatusTests|AppListProviderTests'` passed; the focused recipe/import/availability suite reported 40 tests passed, including the new issue #176 regression coverage
 - after removing stale `Wink` TCC rows and re-adding the exact current `build/Wink.app`, a fresh packaged relaunch on the current standard-only `Safari` / `Terminal` / `Notes` fixture logged `start(): ready=true, ax=true, im=true, inputMonitoringRequired=false` plus `attemptStart: shortcuts=3 triggerIndex=3 carbon=true eventTap=false`
