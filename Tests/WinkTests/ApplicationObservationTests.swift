@@ -219,6 +219,36 @@ func nonRegularAppWithoutWindowEvidenceCanRemainStable() {
 }
 
 @Test @MainActor
+func snapshotReadsInjectedApplicationState() {
+    let currentApp = NSRunningApplication.current
+    let observation = ApplicationObservation(client: .init(
+        currentFrontmostBundleIdentifier: {
+            currentApp.bundleIdentifier
+        },
+        windowObservation: { _ in
+            .init(
+                windows: nil,
+                visibleWindowCount: 1,
+                hasFocusedWindow: true,
+                hasMainWindow: true,
+                windowsReadSucceeded: true,
+                failureReason: nil
+            )
+        },
+        activationPolicy: { _ in .regular },
+        applicationState: { _ in
+            .init(isActive: false, isHidden: true)
+        }
+    ))
+
+    let snapshot = observation.snapshot(for: currentApp)
+
+    #expect(snapshot.targetIsActive == false)
+    #expect(snapshot.targetIsHidden == true)
+    #expect(snapshot.isStableActivation == false)
+}
+
+@Test @MainActor
 func measuredWindowObservationPassesThroughTheCaptureUnchanged() {
     let currentApp = NSRunningApplication.current
     let expected = ApplicationObservation.WindowObservation(

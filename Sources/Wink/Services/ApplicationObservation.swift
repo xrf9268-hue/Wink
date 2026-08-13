@@ -157,6 +157,11 @@ struct ActivationObservationSnapshot: Sendable, Equatable {
 }
 
 struct ApplicationObservation {
+    struct ApplicationState: Sendable, Equatable {
+        let isActive: Bool
+        let isHidden: Bool
+    }
+
     struct WindowObservation {
         let windows: [AXUIElement]?
         /// Windows whose `kAXMinimized` read true during this observation
@@ -178,6 +183,7 @@ struct ApplicationObservation {
         let currentFrontmostBundleIdentifier: @MainActor () -> String?
         let windowObservation: @MainActor (NSRunningApplication) -> WindowObservation
         let activationPolicy: @MainActor (NSRunningApplication) -> NSApplication.ActivationPolicy
+        let applicationState: @MainActor (NSRunningApplication) -> ApplicationState
         let now: @Sendable () -> CFAbsoluteTime
         let onSlowObservation: @MainActor (SlowObservationReport) -> Void
 
@@ -185,6 +191,7 @@ struct ApplicationObservation {
             currentFrontmostBundleIdentifier: @escaping @MainActor () -> String?,
             windowObservation: @escaping @MainActor (NSRunningApplication) -> WindowObservation,
             activationPolicy: @escaping @MainActor (NSRunningApplication) -> NSApplication.ActivationPolicy,
+            applicationState: (@MainActor (NSRunningApplication) -> ApplicationState)? = nil,
             now: @escaping @Sendable () -> CFAbsoluteTime = CFAbsoluteTimeGetCurrent,
             onSlowObservation: @escaping @MainActor (SlowObservationReport) -> Void = { report in
                 DiagnosticLog.log(report.logLine)
@@ -193,6 +200,9 @@ struct ApplicationObservation {
             self.currentFrontmostBundleIdentifier = currentFrontmostBundleIdentifier
             self.windowObservation = windowObservation
             self.activationPolicy = activationPolicy
+            self.applicationState = applicationState ?? { app in
+                ApplicationState(isActive: app.isActive, isHidden: app.isHidden)
+            }
             self.now = now
             self.onSlowObservation = onSlowObservation
         }
@@ -280,12 +290,13 @@ struct ApplicationObservation {
             activationPolicy: client.activationPolicy(app),
             windowObservation: windowObservation
         )
+        let applicationState = client.applicationState(app)
 
         return ActivationObservationSnapshot(
             targetBundleIdentifier: app.bundleIdentifier,
             observedFrontmostBundleIdentifier: client.currentFrontmostBundleIdentifier(),
-            targetIsActive: app.isActive,
-            targetIsHidden: app.isHidden,
+            targetIsActive: applicationState.isActive,
+            targetIsHidden: applicationState.isHidden,
             visibleWindowCount: windowObservation.visibleWindowCount,
             hasFocusedWindow: windowObservation.hasFocusedWindow,
             hasMainWindow: windowObservation.hasMainWindow,
