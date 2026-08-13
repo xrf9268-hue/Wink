@@ -251,14 +251,12 @@ private final class MutableTabBox {
 @MainActor
 private func makePreferences(
     permissionState: MutablePermissionState,
-    launchAtLoginState: MutableLaunchAtLoginState,
-    secureInputActive: Bool = false
+    launchAtLoginState: MutableLaunchAtLoginState
 ) -> AppPreferences {
     AppPreferences(
         shortcutManager: makeShortcutManager(
             permissionService: FakePermissionService(state: permissionState),
-            captureCoordinator: makeCaptureCoordinator(),
-            secureInputActive: secureInputActive
+            captureCoordinator: makeCaptureCoordinator()
         ),
         launchAtLoginService: LaunchAtLoginService(client: .init(
             status: { launchAtLoginState.statusValue },
@@ -277,8 +275,7 @@ private func makePreferences(
 private func makeShortcutManager(
     permissionService: some PermissionServicing,
     captureCoordinator: ShortcutCaptureCoordinator,
-    persistenceService: PersistenceService = TestPersistenceHarness().makePersistenceService(),
-    secureInputActive: Bool = false
+    persistenceService: PersistenceService = TestPersistenceHarness().makePersistenceService()
 ) -> ShortcutManager {
     ShortcutManager(
         shortcutStore: ShortcutStore(),
@@ -286,7 +283,7 @@ private func makeShortcutManager(
         appSwitcher: FakeAppSwitcher(),
         captureCoordinator: captureCoordinator,
         permissionService: permissionService,
-        secureInputProbe: { secureInputActive },
+        secureInputProbe: { false },
         diagnosticClient: .live
     )
 }
