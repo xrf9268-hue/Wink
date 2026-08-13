@@ -546,6 +546,17 @@ Some test helpers built `ShortcutManager` or `AppPreferences` with a default `Pe
 **Practical guidance**
 Treat the default `PersistenceService()` initializer as runtime-only. Any test that exercises save/load behavior through `ShortcutManager`, `AppPreferences`, or related helpers must inject an isolated persistence service backed by a temporary directory. Reuse a shared test harness instead of open-coding ad hoc temp paths so new tests inherit isolation by default. When verifying this boundary, compare the real `shortcuts.json` checksum before and after `swift test`; unchanged bytes are the acceptance signal.
 
+## Secure Input Is Live State, Not A Test Fixture
+
+**Issue**
+Tests that compare a complete `ShortcutCaptureStatus` can fail solely because the screen locked while the suite was running.
+
+**Cause**
+The production `ShortcutManager` probes `IsSecureEventInputEnabled()` lazily, and `loginwindow` holds Secure Input while the screen is locked. A test helper that does not pass `secureInputProbe` therefore reads machine state even when Accessibility and Input Monitoring are already fake.
+
+**Practical guidance**
+Every test helper that builds `ShortcutManager` for deterministic snapshot assertions must inject `secureInputProbe`, normally returning `false`, and keep a dedicated test for the `true` branch. Do not weaken whole-snapshot equality by ignoring `secureInputActive`; it is part of the real readiness contract. A bounded process that calls `EnableSecureEventInput()` can reproduce the locked-screen environment without actually locking the developer's session.
+
 ## Previous-App Self-Reference Was A Symptom, Not The Runtime Contract
 
 **Issue**

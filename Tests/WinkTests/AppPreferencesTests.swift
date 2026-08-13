@@ -32,6 +32,13 @@ func initSnapshotsShortcutAndLaunchAtLoginState() {
     #expect(preferences.hyperKeyEnabled == true)
 }
 
+@Test @MainActor
+func initSnapshotsInjectedSecureInputState() {
+    let preferences = makePreferences(secureInputActive: true)
+
+    #expect(preferences.shortcutCaptureStatus.secureInputActive == true)
+}
+
 /// #383 regression: `AppPreferences.init()` snapshots `shortcutCaptureStatus`
 /// exactly once, before the event tap ever runs, so the cheat-sheet gate
 /// (`hyperCheatSheetEnabled && hyperKeyEnabled && eventTapActive`) must be
@@ -820,7 +827,8 @@ private final class RecordingAppSwitcher: AppSwitching {
 private func makeShortcutManager(
     permissionService: some PermissionServicing,
     captureCoordinator: ShortcutCaptureCoordinator,
-    persistenceService: PersistenceService = TestPersistenceHarness().makePersistenceService()
+    persistenceService: PersistenceService = TestPersistenceHarness().makePersistenceService(),
+    secureInputActive: Bool = false
 ) -> ShortcutManager {
     ShortcutManager(
         shortcutStore: ShortcutStore(),
@@ -828,6 +836,7 @@ private func makeShortcutManager(
         appSwitcher: FakeAppSwitcher(),
         captureCoordinator: captureCoordinator,
         permissionService: permissionService,
+        secureInputProbe: { secureInputActive },
         diagnosticClient: .live
     )
 }
@@ -945,13 +954,15 @@ private func makePreferences(
     state: MutableLaunchAtLoginState? = nil,
     openSystemSettingsLoginItems: @escaping @Sendable () -> Void = {},
     bundleURL: URL = URL(fileURLWithPath: "/Applications/Wink.app"),
-    updateService: UpdateServicing? = nil
+    updateService: UpdateServicing? = nil,
+    secureInputActive: Bool = false
 ) -> AppPreferences {
     let launchAtLoginState = state ?? MutableLaunchAtLoginState(status: status)
     return AppPreferences(
         shortcutManager: makeShortcutManager(
             permissionService: FakePermissionService(ax: true, input: true),
-            captureCoordinator: makeCaptureCoordinator()
+            captureCoordinator: makeCaptureCoordinator(),
+            secureInputActive: secureInputActive
         ),
         launchAtLoginService: LaunchAtLoginService(client: .init(
             status: { launchAtLoginState.statusValue },

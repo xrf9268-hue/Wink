@@ -283,6 +283,7 @@ private func makeShortcutManager(
         appSwitcher: FakeAppSwitcher(),
         captureCoordinator: captureCoordinator,
         permissionService: permissionService,
+        secureInputProbe: { false },
         diagnosticClient: .live
     )
 }
