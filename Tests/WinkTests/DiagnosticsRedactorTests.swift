@@ -111,8 +111,9 @@ struct DiagnosticsRedactorTests {
 
     @Test
     func urlAuthorityCredentialsAreRedacted() {
-        // handleURLs logs unrecognized URLs verbatim, and user-info is legal
-        // authority syntax — the password must not survive into an export
+        // Current custom-URL handling never logs raw input, but legacy or
+        // unrelated URL diagnostics can contain legal authority user-info;
+        // the password must not survive into an export
         // whose preview promises passwords are removed.
         let both = redactor().redact(line: "unrecognized url: wink://bob:hunter2@focus/extra")
         #expect(!both.contains("hunter2"))
@@ -132,8 +133,8 @@ struct DiagnosticsRedactorTests {
 
     @Test
     func decodedQueriesWithSpacesAndStackedUserInfoRedactWhole() {
-        // handleURLs logs DECODED urls as the line's final element: the
-        // query legally contains spaces there, and user-info can carry
+        // Defense in depth for legacy/unrelated DECODED URL diagnostics: a
+        // final query can contain spaces, and user-info can carry
         // literal @s (`user:p@ss`). Any fixed whitespace/first-@ boundary
         // exports a tail of the credential.
         let query = redactor().redact(
@@ -192,8 +193,8 @@ struct DiagnosticsRedactorTests {
 
     @Test
     func opaqueURLQueriesAreRedactedToo() {
-        // handleURLs logs rejected URLs verbatim, and `wink:unknown?…` is a
-        // legal opaque form — no authority, no `//` — whose query carries the
+        // A legacy diagnostic can contain `wink:unknown?…`, a legal opaque
+        // form with no authority and no `//`, whose query carries the
         // same kind of payload the authority form's does.
         let opaque = redactor().redact(line: "unrecognized url: wink:unknown?email=bob@example.com")
         #expect(!opaque.contains("bob@example.com"))
@@ -328,8 +329,8 @@ struct DiagnosticsRedactorTests {
 
     @Test
     func percentEncodedIdentitiesAreDecodedBeforeRedaction() {
-        // handleURLs logs rejected URLs verbatim; %2FUsers%2Falice must not
-        // hide the home path and account name from every rule.
+        // Legacy/unrelated URL diagnostics remain protected:
+        // %2FUsers%2Falice must not hide the home path and account name.
         let line = redactor().redact(line: "unrecognized url: wink:open/%2FUsers%2Falice%2Fsecret.txt")
         #expect(!line.lowercased().contains("alice"))
         #expect(!line.contains("%2F"))
@@ -361,8 +362,7 @@ struct DiagnosticsRedactorTests {
 
     @Test
     func decodedQuotesDoNotStopEitherURLRule() {
-        // A recognized command's decoded inner URL is logged by the
-        // missing-app path, and a decoded value can legally hold a quote in
+        // A legacy/unrelated decoded URL diagnostic can hold a quote in
         // user-info (`user:p"secret@host`) or in the path (`/a"b?email=…`).
         // Quotes used to bound both regions, which disabled each rule on
         // exactly those lines.
@@ -382,8 +382,8 @@ struct DiagnosticsRedactorTests {
 
     @Test
     func decodedPathWhitespaceDoesNotStopTheQueryRuleOnAuthorityForms() {
-        // An accepted command's inner web URL is decoded and re-logged with
-        // its punctuation live, and a decoded path legally holds spaces
+        // A legacy/unrelated decoded URL diagnostic can preserve punctuation,
+        // and a decoded path can hold spaces
         // (`/a b?fullName=…`). The authority form is anchored by `://` —
         // which prose never produces — so its pre-query region crosses
         // whitespace to the first `?`.
@@ -397,9 +397,8 @@ struct DiagnosticsRedactorTests {
 
     @Test
     func decodedHostlessValuesWithWhitespaceStillRedactTheirQueries() {
-        // WinkURLCommand accepts arbitrary decoded bundle values, so the
-        // missing-app path can log a hostless form whose opaque part holds
-        // decoded spaces. The prose defense is the colon-hugging first
+        // Defense in depth for legacy/unrelated hostless URL diagnostics whose
+        // opaque part holds decoded spaces. The prose defense is the colon-hugging first
         // character, not a whitespace boundary.
         let line = redactor().redact(
             line: "no app matched custom:foo bar?fullName=Bob Smith"

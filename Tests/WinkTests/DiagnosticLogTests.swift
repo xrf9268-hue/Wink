@@ -169,8 +169,9 @@ func embeddedNewlinesCannotSplitALogRecord() throws {
     let url = directory.appendingPathComponent("debug.log")
     let writer = DiagnosticLogWriter(fileURL: url)
 
-    // A decoded wink:// bundle can carry %0A; written raw it would split
-    // the record and hand the redactor an unlabeled continuation line.
+    // Current custom-URL handling never writes raw input. Keep the writer safe
+    // for legacy or unrelated diagnostics whose decoded payload carries %0A:
+    // a raw newline must not split the record into an unlabeled continuation.
     writer.log("URL: ignored unrecognized wink:x?bundle=password=hunter2\nsecretTail")
     writer.flush()
 

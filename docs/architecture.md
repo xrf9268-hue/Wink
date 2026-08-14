@@ -76,6 +76,8 @@ flowchart LR
 - `AppController`
 - `SettingsLauncher`
 - `WinkActionExecutor`
+- `WinkURLCommand`
+- `WinkURLCommandHandler`
 - `WinkIntents`
 - `SparkleUpdateService`
 
@@ -88,8 +90,15 @@ Responsibilities:
 - keep menu bar insertion bound to the persisted `menuBarIconVisible` preference
 - present Settings and reactivate Wink when first-launch, menu-bar, or reopen entry points request it
 - publish four App Intents/App Shortcuts and register their action dependency before launch completes
-- route menu-bar, URL, shortcut-trigger, and App Intent pause/search/settings actions through one main-actor executor that verifies the requested state before returning success
-- keep Settings' ordinary first-launch/reopen path queue-capable while App Intent execution uses `openIfReady` and fails explicitly rather than reporting success for queued work
+- route menu-bar, URL, shortcut-trigger, and App Intent pause/search/settings actions through one main-actor executor; result-bearing App Intents verify the requested state before returning success
+- keep Settings' ordinary first-launch/reopen and one-way URL paths queue-capable while App Intent execution uses `openIfReady` and fails explicitly rather than reporting success for queued work
+- parse every delivered custom URL through a pure `URLComponents` allowlist before performing any side effect, validate app targets through `AppBundleLocator`, and keep rejection logs to bounded reason codes instead of raw URL input
+
+### Custom URL trust boundary
+
+The `wink://` scheme is a delivery mechanism, not caller authentication: reverse-DNS naming does not reserve the scheme to Wink, and source-application metadata is not an authorization decision. `AppDelegate` owns the raw `kAEGetURL` Apple Event instead of relying on `application(_:open:)`, because Foundation's `URL` normalization can irreversibly fold Unicode command-host aliases into allowlisted ASCII before a delegate sees them. `WinkURLCommand` therefore receives the direct object's exact string, owns the complete accepted grammar, and fails closed on non-ASCII raw authorities, user info, ports, fragments, extra paths, unknown or duplicate query items, missing values, malformed percent escapes, non-ASCII or overlong bundle identifiers, and unsupported Settings tabs. Legacy toggle alone retains its previous outer-whitespace trimming before validation. The accepted surface is intentionally non-destructive: toggle/focus for installed apps, pause/resume, Search Palette, and Settings only. It has no callback, import, file, script, permission, secret, or arbitrary preference operations.
+
+`WinkURLCommandHandler` parses before dispatch, records only a normalized accepted command or bounded rejection code, canonicalizes installed bundle identifiers from the resolved application bundle before activation, and deduplicates Search and Settings presentation within one Apple Event delivery batch. `focus` creates an ephemeral shortcut with `frontmostBehaviorOverride = .focus` and bypasses the toggle cooldown, so `AppSwitcher` uses its idempotent focus lane even if the global or stored behavior would hide or cycle. An already-stable frontmost target with no owned hide returns immediately instead of scheduling a confirmation that could later reverse an unrelated Cmd-Tab or Dock click; a direct focus also starts a fresh attempt instead of inheriting an older degraded retry cap. When focus supersedes a recently dispatched toggle-off, its first observation is delayed through a short fast-settlement window and matching-process `didHide` ownership remains one-shot through the recovery plus one bounded post-settlement window. A stale hide request cannot be armed after its deactivation deadline, and expiry, termination, a newer Wink hide intent, or a newer activation intent for another target clears the corresponding recovery. URL Settings delivery may use `SettingsLauncher`'s existing deferred-open commit during cold launch; App Intents retain the stricter observable-success contract. Opening a URL proves only delivery, never completion of AppSwitcher's asynchronous activation request.
 
 ### Menu bar shell
 - `WinkMenuBarScene`

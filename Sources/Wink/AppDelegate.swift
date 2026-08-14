@@ -22,6 +22,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appController.menuBarSceneServices
     }
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // NSApplication's URL delegate callback receives Foundation-normalized
+        // URLs, which irreversibly folds some Unicode host spellings into ASCII
+        // allowlisted commands. Own the Get URL Apple Event instead so the
+        // parser sees the exact delivered string from its direct object.
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleGetURLEvent(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // SwiftUI's `Settings` scene defaults the app to `.regular` activation,
         // which would surface a Dock icon and About menu we don't want for a
@@ -48,11 +61,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appController.openPrimarySettingsWindow()
     }
 
-    func application(_ application: NSApplication, open urls: [URL]) {
-        appController.handleURLs(urls)
+    func applicationWillTerminate(_ notification: Notification) {
+        NSAppleEventManager.shared().removeEventHandler(
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
+        appController.stop()
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
-        appController.stop()
+    @objc private func handleGetURLEvent(
+        _ event: NSAppleEventDescriptor,
+        withReplyEvent replyEvent: NSAppleEventDescriptor
+    ) {
+        appController.handleURLStrings(Self.rawURLStrings(from: event))
+    }
+
+    static func rawURLStrings(from event: NSAppleEventDescriptor) -> [String] {
+        guard let directObject = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject)) else {
+            return []
+        }
+        guard directObject.descriptorType == DescType(typeAEList) else {
+            return directObject.stringValue.map { [$0] } ?? []
+        }
+        guard directObject.numberOfItems > 0 else {
+            return []
+        }
+        return (1 ... directObject.numberOfItems).compactMap {
+            directObject.atIndex($0)?.stringValue
+        }
     }
 }

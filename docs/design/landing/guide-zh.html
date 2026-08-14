@@ -601,9 +601,14 @@
           <p>所有功能也能从应用外部触达，走 <kbd>wink://</kbd> 协议：</p>
           <div class="cli">
             <div><span class="ps">$</span> open -g "wink://toggle?bundle=com.google.Chrome"</div>
-            <div class="dim">wink://pause · wink://resume — 同样的用法</div>
+            <div><span class="ps">$</span> open -g "wink://focus?bundle=com.google.Chrome"</div>
+            <div><span class="ps">$</span> open -g "wink://search"</div>
+            <div><span class="ps">$</span> open -g "wink://open-settings?tab=insights"</div>
+            <div class="dim">wink://pause · wink://resume · wink://open-settings</div>
           </div>
-          <p>始终用 <kbd>open -g</kbd> 调用它。单纯的 <kbd>open</kbd> 会先激活 Wink 来投递这个 URL，这会让你真正的目标应用被判定成"不在前台"，把每一次切换都变成单纯的激活；<kbd>-g</kbd> 能让 Wink 留在后台，这样切换看到的才是真实的前台状态。自动化触发遵守和真实按键一样的按应用冷却时间，但从不计入洞察。</p>
+          <p><kbd>focus</kbd> 是幂等的：它会把已安装的 App 带到前台，但目标已经在前台时绝不会隐藏它，也不会轮换它的窗口。设置页只接受 <kbd>shortcuts</kbd>、<kbd>general</kbd> 和 <kbd>insights</kbd> 三个 tab 值。</p>
+          <p>始终用 <kbd>open -g</kbd> 调用它。单纯的 <kbd>open</kbd> 会先激活 Wink 来投递这个 URL，这会让你真正的目标应用被判定成“不在前台”，把每一次切换都变成单纯的激活；<kbd>-g</kbd> 能让 Wink 留在后台，这样切换看到的才是真实的前台状态。Toggle 请求遵守和真实按键一样的按应用冷却时间，但 URL 触发的应用操作从不计入洞察。</p>
+          <p>自定义 URL 协议无法认证调用方。Wink 只接受上面列出的命令和参数，会根据已安装 App 校验 bundle identifier，并忽略格式错误或未知的输入。协议不提供 <kbd>callback</kbd>、<kbd>x-success</kbd> 或其他完成回调：URL 投递成功不代表 macOS 已经完成异步激活请求。</p>
         </article>
 
 

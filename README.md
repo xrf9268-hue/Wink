@@ -57,17 +57,21 @@ Wink publishes four localized actions in Apple's Shortcuts app: **Pause Wink**, 
 
 The existing URL surface remains available for tools that cannot invoke App Intents:
 
-Wink exposes its toggle semantics on a `wink://` URL scheme, so Raycast, Karabiner, BetterTouchTool, Stream Deck, or plain shell scripts can drive it — including the SkyLight forced activation that scripts cannot perform themselves:
+Wink exposes a small, non-destructive `wink://` URL surface, so Raycast, Karabiner, BetterTouchTool, Stream Deck, or plain shell scripts can drive it — including the SkyLight forced activation that scripts cannot perform themselves:
 
 ```bash
 open -g "wink://toggle?bundle=com.google.Chrome"   # toggle an installed app
+open -g "wink://focus?bundle=com.google.Chrome"    # focus; never hide or cycle
 open -g "wink://pause"                             # pause all shortcuts
 open -g "wink://resume"                            # resume
+open -g "wink://search"                            # show Search Palette
+open -g "wink://open-settings"                     # open Settings
+open -g "wink://open-settings?tab=insights"        # shortcuts | general | insights
 ```
 
 Use `open -g` (background): a plain `open` activates Wink to deliver the URL, which makes the target count as "not frontmost" and turns every toggle into an activate.
 
-Unknown commands and uninstalled bundles are logged and ignored. Automation presses respect the per-bundle cooldown but never count toward Insights usage.
+Custom URL schemes do not authenticate their caller. Wink therefore accepts only the grammar above, validates app bundle identifiers against installed applications, and ignores malformed URLs, unknown parameters, unsupported tabs, and uninstalled bundles with bounded diagnostics. There are no `callback`, `x-success`, or other completion-callback parameters: URL delivery does not prove that an asynchronous app activation completed. Toggle requests respect the per-bundle cooldown; URL-triggered app actions never count toward Insights usage.
 
 ## Technical Notes
 - Standard shortcuts use Carbon hotkeys.

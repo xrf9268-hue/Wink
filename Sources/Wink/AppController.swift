@@ -138,7 +138,7 @@ final class AppController {
             // independent of whatever frontmost behavior the user may have
             // separately configured for a real shortcut targeting the same
             // app. Calling AppSwitcher directly (not shortcutManager.trigger)
-            // matches the wink:// URL scheme's .toggle handling below: this
+            // matches WinkURLCommandHandler's direct app-action handling: this
             // ad hoc shortcut has no persisted id, so recording "usage"
             // against it would just orphan a UUID no UI ever shows.
             //
@@ -194,6 +194,11 @@ final class AppController {
         showSearchPalette: { [weak self] in
             self?.searchPaletteHUD.present()
         },
+        openSettings: { [weak self] tab in
+            guard let self else { return }
+            self.settingsLauncher.open(tab: tab)
+            NSApp.activate()
+        },
         openSettingsIfReady: { [weak self] tab in
             guard let self, self.settingsLauncher.openIfReady(tab: tab) else {
                 return false
@@ -204,6 +209,26 @@ final class AppController {
         waitForSettingsPresentation: { [weak self] in
             guard let self else { return false }
             return try await self.settingsLauncher.waitForSettingsPresentation()
+        }
+    ))
+    private lazy var urlCommandHandler = WinkURLCommandHandler(client: .init(
+        applicationURL: { [weak self] bundleIdentifier in
+            self?.appBundleLocator.applicationURL(for: bundleIdentifier)
+        },
+        performApplicationAction: { [weak self] shortcut, bypassCooldown in
+            self?.appSwitcher.toggleApplication(
+                for: shortcut,
+                bypassCooldown: bypassCooldown
+            ) ?? false
+        },
+        executeSharedAction: { [weak self] action, settingsPresentationPolicy in
+            try self?.actionExecutor.execute(
+                action,
+                settingsPresentationPolicy: settingsPresentationPolicy
+            )
+        },
+        log: { message in
+            DiagnosticLog.log(message)
         }
     ))
     private lazy var shortcutEditor = ShortcutEditorState(
@@ -562,48 +587,12 @@ final class AppController {
         shortcutManager.stop()
     }
 
-    /// wink:// URL scheme entry. Toggle reuses the full activation
-    /// pipeline via a synthetic shortcut but goes straight to the switcher
-    /// — automation presses never record usage (Insights stays a picture
-    /// of the user's own keystrokes). Pause/resume mirror the menu bar
-    /// toggle, capsule state included.
-    func handleURLs(_ urls: [URL]) {
-        for url in urls {
-            guard let command = WinkURLCommand.parse(url) else {
-                DiagnosticLog.log("URL: ignored unrecognized \(url.absoluteString)")
-                continue
-            }
-            switch command {
-            case .toggle(let bundleIdentifier):
-                guard appBundleLocator.applicationURL(for: bundleIdentifier) != nil else {
-                    DiagnosticLog.log("URL: toggle ignored, no installed app for \(bundleIdentifier)")
-                    continue
-                }
-                let name = appBundleLocator.applicationURL(for: bundleIdentifier)?
-                    .deletingPathExtension().lastPathComponent ?? bundleIdentifier
-                DiagnosticLog.log("URL: toggle \(bundleIdentifier)")
-                _ = appSwitcher.toggleApplication(for: AppShortcut(
-                    appName: name,
-                    bundleIdentifier: bundleIdentifier,
-                    keyEquivalent: "",
-                    modifierFlags: []
-                ))
-            case .pause:
-                DiagnosticLog.log("URL: pause")
-                do {
-                    try actionExecutor.execute(.pause)
-                } catch {
-                    DiagnosticLog.log("URL: pause failed: \(error.localizedDescription)")
-                }
-            case .resume:
-                DiagnosticLog.log("URL: resume")
-                do {
-                    try actionExecutor.execute(.resume)
-                } catch {
-                    DiagnosticLog.log("URL: resume failed: \(error.localizedDescription)")
-                }
-            }
-        }
+    /// `wink://` delivery is untrusted local input. The pure parser rejects
+    /// the complete URL before this handler performs any side effect, while
+    /// accepted commands reuse the shared action executor or AppSwitcher's
+    /// established toggle/focus lanes. Raw URLs are never logged.
+    func handleURLStrings(_ rawValues: [String]) {
+        urlCommandHandler.handle(rawValues)
     }
 
     func openPrimarySettingsWindow() {
