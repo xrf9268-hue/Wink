@@ -808,8 +808,6 @@
 	<string>Wink is still clearing usage history for a deleted profile. Try again in a moment.</string>
 	<key>Wink manual pause is cleared.</key>
 	<string>Wink manual pause is cleared.</string>
-	<key>Wink · Paused</key>
-	<string>Wink · Paused</string>
 	<key>Wink matched the saved shortcut and is waiting for the target app to become frontmost.</key>
 	<string>Wink matched the saved shortcut and is waiting for the target app to become frontmost.</string>
 	<key>Wink needs Accessibility access to route global shortcuts.</key>
@@ -824,6 +822,8 @@
 	<string>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</string>
 	<key>Wink will restore “%@” as soon as the current shortcut edit is finished.</key>
 	<string>Wink will restore “%@” as soon as the current shortcut edit is finished.</string>
+	<key>Wink · Paused</key>
+	<string>Wink · Paused</string>
 	<key>Wink: Permission Lost</key>
 	<string>Wink: Permission Lost</string>
 	<key>You can have at most %lld profiles.</key>

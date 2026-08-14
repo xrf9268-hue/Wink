@@ -812,8 +812,6 @@
 	<string>Wink 仍在清除已删除配置的使用记录。请稍后再试。</string>
 	<key>Wink manual pause is cleared.</key>
 	<string>Wink 的手动暂停已解除。</string>
-	<key>Wink · Paused</key>
-	<string>Wink · 已暂停</string>
 	<key>Wink matched the saved shortcut and is waiting for the target app to become frontmost.</key>
 	<string>Wink 已匹配保存的快捷键，正在等待目标应用成为最前端应用。</string>
 	<key>Wink needs Accessibility access to route global shortcuts.</key>
@@ -828,6 +826,8 @@
 	<string>Wink 以一个空配置启动。旧文件未被改动，仍可修复或导入。</string>
 	<key>Wink will restore “%@” as soon as the current shortcut edit is finished.</key>
 	<string>当前快捷键编辑完成后，Wink 将恢复“%@”。</string>
+	<key>Wink · Paused</key>
+	<string>Wink · 已暂停</string>
 	<key>Wink: Permission Lost</key>
 	<string>Wink：权限丢失</string>
 	<key>You can have at most %lld profiles.</key>
