@@ -14,6 +14,10 @@
 	<string>%@ has not been activated in the past 7 days.</string>
 	<key>%@ have not been activated in the past 7 days.</key>
 	<string>%@ have not been activated in the past 7 days.</string>
+	<key>%@ is disabled.</key>
+	<string>%@ is disabled.</string>
+	<key>%@ is unavailable.</key>
+	<string>%@ is unavailable.</string>
 	<key>%@ permission was revoked. Wink needs this permission to work. Please re-enable it in System Settings &gt; Privacy &amp; Security &gt; %@.</key>
 	<string>%@ permission was revoked. Wink needs this permission to work. Please re-enable it in System Settings &gt; Privacy &amp; Security &gt; %@.</string>
 	<key>%@ versus the previous period.</key>
@@ -40,6 +44,8 @@
 	<string>Accessibility</string>
 	<key>Accessibility permission is required for app switching.</key>
 	<string>Accessibility permission is required for app switching.</string>
+	<key>Accessibility permission is required to run shortcuts from the menu.</key>
+	<string>Accessibility permission is required to run shortcuts from the menu.</string>
 	<key>Accessibility permission needed</key>
 	<string>Accessibility permission needed</string>
 	<key>Activations</key>
@@ -50,6 +56,8 @@
 	<string>Add Profile</string>
 	<key>Add Shortcut</key>
 	<string>Add Shortcut</string>
+	<key>Add a shortcut for %@</key>
+	<string>Add a shortcut for %@</string>
 	<key>All Apps</key>
 	<string>All Apps</string>
 	<key>All shortcuts are paused.</key>
@@ -138,6 +146,8 @@
 	<string>Could not write the diagnostics: %@</string>
 	<key>Couldn't find this app. Rebind it to restore the shortcut.</key>
 	<string>Couldn't find this app. Rebind it to restore the shortcut.</string>
+	<key>Couldn’t run the %@ shortcut. Try again.</key>
+	<string>Couldn’t run the %@ shortcut. Try again.</string>
 	<key>Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.</key>
 	<string>Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.</string>
 	<key>Create, rename, duplicate, or delete profiles.</key>
@@ -460,6 +470,8 @@
 	<string>Review</string>
 	<key>Routes global shortcuts.</key>
 	<string>Routes global shortcuts.</string>
+	<key>Run %@ shortcut with Wink</key>
+	<string>Run %@ shortcut with Wink</string>
 	<key>Running</key>
 	<string>Running</string>
 	<key>Saved %lld files to %@.</key>

@@ -25,6 +25,7 @@ final class MenuBarPopoverModel {
         let shortcut: AppShortcut
         let isRunning: Bool
         let isUnavailable: Bool
+        let profileRevision: Int
 
         var title: String {
             shortcut.displayAppName
@@ -41,6 +42,49 @@ final class MenuBarPopoverModel {
 
             return nil
         }
+
+        var actionAccessibilityLabel: String {
+            String(localized: "Run \(title) shortcut with Wink", bundle: WinkResourceBundle.bundle)
+        }
+    }
+
+    enum ShortcutActivationFailure: Equatable {
+        case unavailable(String)
+        case disabled(String)
+        case accessibilityRequired
+        case rejected(String)
+
+        var message: String {
+            switch self {
+            case let .unavailable(appName):
+                return String(localized: "\(appName) is unavailable.", bundle: WinkResourceBundle.bundle)
+            case let .disabled(appName):
+                return String(localized: "\(appName) is disabled.", bundle: WinkResourceBundle.bundle)
+            case .accessibilityRequired:
+                return String(
+                    localized: "Accessibility permission is required to run shortcuts from the menu.",
+                    bundle: WinkResourceBundle.bundle
+                )
+            case let .rejected(appName):
+                return String(localized: "Couldn’t run the \(appName) shortcut. Try again.", bundle: WinkResourceBundle.bundle)
+            }
+        }
+    }
+
+    /// The prerequisite-bearing part of a row snapshot. Running state is
+    /// deliberately excluded: a target starting or stopping does not by
+    /// itself make a disabled, unavailable, permission, or rejected result
+    /// obsolete. Exact binding edits and availability changes do.
+    private struct ShortcutActivationFailureContext: Equatable {
+        let shortcut: AppShortcut
+        let isUnavailable: Bool
+        let profileRevision: Int
+
+        init(row: ShortcutRow) {
+            shortcut = row.shortcut
+            isUnavailable = row.isUnavailable
+            profileRevision = row.profileRevision
+        }
     }
 
     private let shortcutStore: ShortcutStore
@@ -49,6 +93,11 @@ final class MenuBarPopoverModel {
     private let shortcutStatusProvider: ShortcutStatusProvider
     private let usageTracker: any UsageTracking
     private let setShortcutsPausedAction: (@MainActor (Bool) -> Void)?
+    private let activateShortcutAction: @MainActor (
+        AppShortcut,
+        @escaping @MainActor @Sendable (ShortcutInvocationOutcome) -> Void
+    ) -> Bool
+    private let accessibilityAnnouncementAction: @MainActor (String) -> Void
     private let openSettingsAction: @MainActor (SettingsTab?) -> Void
     private let quitAction: @MainActor () -> Void
     private let workspaceNotificationCenter: NotificationCenter
@@ -60,6 +109,18 @@ final class MenuBarPopoverModel {
     private(set) var shortcutRows: [ShortcutRow] = []
     private(set) var todayActivationCount = 0
     private(set) var todayHistogramBars = Array(repeating: 0.0, count: 24)
+    private var storedShortcutActivationFailure: ShortcutActivationFailure?
+    private var storedShortcutActivationFailureContext: ShortcutActivationFailureContext?
+    private var shortcutActivationFailureRevision: Int?
+    private var shortcutActivationGeneration = 0
+    private var observedActiveProfileRevision: Int
+
+    var shortcutActivationFailure: ShortcutActivationFailure? {
+        guard shortcutActivationFailureRevision == profileState.activeProfileRevision else {
+            return nil
+        }
+        return storedShortcutActivationFailure
+    }
 
     init(
         shortcutStore: ShortcutStore,
@@ -70,6 +131,11 @@ final class MenuBarPopoverModel {
         workspaceNotificationCenter: NotificationCenter = NSWorkspace.shared.notificationCenter,
         appNotificationCenter: NotificationCenter = .default,
         setShortcutsPaused: (@MainActor (Bool) -> Void)? = nil,
+        activateShortcut: (@MainActor (
+            AppShortcut,
+            @escaping @MainActor @Sendable (ShortcutInvocationOutcome) -> Void
+        ) -> Bool)? = nil,
+        announceAccessibility: (@MainActor (String) -> Void)? = nil,
         openSettings: @escaping @MainActor (SettingsTab?) -> Void,
         quit: @escaping @MainActor () -> Void
     ) {
@@ -81,9 +147,23 @@ final class MenuBarPopoverModel {
         self.workspaceNotificationCenter = workspaceNotificationCenter
         self.appNotificationCenter = appNotificationCenter
         self.setShortcutsPausedAction = setShortcutsPaused
+        self.activateShortcutAction = activateShortcut ?? { _, _ in false }
+        self.accessibilityAnnouncementAction = announceAccessibility ?? { message in
+            NSAccessibility.post(
+                element: NSApp as Any,
+                notification: .announcementRequested,
+                userInfo: [
+                    .announcement: message,
+                    .priority: NSAccessibilityPriorityLevel.high.rawValue
+                ]
+            )
+        }
         self.openSettingsAction = openSettings
         self.quitAction = quit
+        observedActiveProfileRevision = profileState.activeProfileRevision
         observeNotifications()
+        observeActiveProfileChanges()
+        observeShortcutStoreChanges()
         refresh()
     }
 
@@ -115,7 +195,13 @@ final class MenuBarPopoverModel {
     }
 
     func switchToProfile(_ profileID: UUID) {
+        let previousProfileID = activeProfileID
         profileState.switchToProfile(profileID)
+        if previousProfileID != activeProfileID,
+           activeProfileID == profileID {
+            observedActiveProfileRevision = profileState.activeProfileRevision
+            invalidateShortcutActivationFeedback()
+        }
         // `shortcutRows` is a cached snapshot built at init and on appear.
         // The profile name updates through observation, so without this the
         // popover would show the new profile's name above the outgoing
@@ -216,15 +302,26 @@ final class MenuBarPopoverModel {
         // app or a running process).
         let shortcuts = shortcutStore.shortcuts.filter { !$0.isSearchPaletteTarget }
         shortcutStatusProvider.track(shortcuts)
-        shortcutRows = shortcuts.map { shortcut in
+        let refreshedRows = shortcuts.map { shortcut in
             let status = shortcutStatusProvider.status(for: shortcut)
             return ShortcutRow(
                 id: shortcut.id,
                 shortcut: shortcut,
                 isRunning: status.isRunning,
-                isUnavailable: status.isUnavailable
+                isUnavailable: status.isUnavailable,
+                profileRevision: profileState.activeProfileRevision
             )
         }
+        // A displayed failure belongs to one prerequisite-bearing row
+        // snapshot. Clear it only when that row was removed or changed; an
+        // unrelated app launch must not dismiss another row's useful error.
+        if let failureContext = storedShortcutActivationFailureContext,
+           !refreshedRows.contains(where: {
+               ShortcutActivationFailureContext(row: $0) == failureContext
+           }) {
+            clearStoredShortcutActivationFailure()
+        }
+        shortcutRows = refreshedRows
         refreshUsage()
     }
 
@@ -237,6 +334,124 @@ final class MenuBarPopoverModel {
             setShortcutsPausedAction(paused)
         } else {
             preferences.setShortcutsPaused(paused)
+        }
+    }
+
+    /// Invokes the saved binding directly through ShortcutManager. Capture
+    /// transport health (Carbon/EventTap/Fn observer, Secure Input, pause)
+    /// deliberately does not gate a click: no key event is being captured.
+    /// Availability, enabled state, and Accessibility remain real activation
+    /// prerequisites and get an inline, recoverable failure surface.
+    @discardableResult
+    func activateShortcut(_ row: ShortcutRow) -> Bool {
+        storedShortcutActivationFailure = nil
+        shortcutActivationFailureRevision = nil
+        shortcutActivationGeneration += 1
+        let activationGeneration = shortcutActivationGeneration
+        let activationProfileID = activeProfileID
+        let activationProfileRevision = profileState.activeProfileRevision
+        let activationConfigurationRevision = shortcutStore.configurationRevision
+        let activationFailureContext = ShortcutActivationFailureContext(row: row)
+
+        // Profile application is synchronous, but this model refreshes its
+        // cached rows on the next main-actor task. Reject that brief stale-row
+        // window (including Focus/automation switches) before an outgoing
+        // UUID can reach AppSwitcher or usage accounting.
+        guard row.profileRevision == activationProfileRevision,
+              shortcutStore.shortcuts.contains(row.shortcut) else {
+            refresh()
+            presentShortcutActivationFailure(.rejected(row.title), row: row)
+            return false
+        }
+
+        guard !row.isUnavailable else {
+            presentShortcutActivationFailure(.unavailable(row.title), row: row)
+            return false
+        }
+        guard row.shortcut.isEnabled else {
+            presentShortcutActivationFailure(.disabled(row.title), row: row)
+            return false
+        }
+
+        preferences.refreshPermissions()
+        guard preferences.shortcutCaptureStatus.accessibilityGranted else {
+            presentShortcutActivationFailure(.accessibilityRequired, row: row)
+            return false
+        }
+
+        guard activateShortcutAction(row.shortcut, { [weak self] outcome in
+            guard let self,
+                  self.shortcutActivationGeneration == activationGeneration,
+                  self.activeProfileID == activationProfileID,
+                  self.profileState.activeProfileRevision == activationProfileRevision,
+                  self.shortcutStore.configurationRevision == activationConfigurationRevision,
+                  self.shortcutStore.shortcuts.contains(row.shortcut),
+                  self.shortcutRows.contains(where: {
+                      ShortcutActivationFailureContext(row: $0) == activationFailureContext
+                  }) else {
+                return
+            }
+            if outcome == .failed {
+                self.presentShortcutActivationFailure(.rejected(row.title), row: row)
+            }
+        }) else {
+            presentShortcutActivationFailure(.rejected(row.title), row: row)
+            return false
+        }
+        return true
+    }
+
+    private func presentShortcutActivationFailure(
+        _ failure: ShortcutActivationFailure,
+        row: ShortcutRow
+    ) {
+        storedShortcutActivationFailure = failure
+        storedShortcutActivationFailureContext = ShortcutActivationFailureContext(row: row)
+        shortcutActivationFailureRevision = profileState.activeProfileRevision
+        accessibilityAnnouncementAction(failure.message)
+    }
+
+    private func invalidateShortcutActivationFeedback() {
+        shortcutActivationGeneration += 1
+        clearStoredShortcutActivationFailure()
+    }
+
+    private func clearStoredShortcutActivationFailure() {
+        storedShortcutActivationFailure = nil
+        storedShortcutActivationFailureContext = nil
+        shortcutActivationFailureRevision = nil
+    }
+
+    private func observeShortcutStoreChanges() {
+        withObservationTracking {
+            _ = shortcutStore.shortcuts
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                // ShortcutStore.configurationRevision already advanced in the
+                // synchronous mutation. This deferred task only rebuilds UI;
+                // it must not invalidate an invocation started from the new
+                // configuration before this task gets its main-actor turn.
+                self.refresh()
+                self.observeShortcutStoreChanges()
+            }
+        }
+    }
+
+    private func observeActiveProfileChanges() {
+        withObservationTracking {
+            _ = profileState.activeProfileRevision
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let revision = self.profileState.activeProfileRevision
+                if revision != self.observedActiveProfileRevision {
+                    self.observedActiveProfileRevision = revision
+                    self.invalidateShortcutActivationFeedback()
+                    self.refresh()
+                }
+                self.observeActiveProfileChanges()
+            }
         }
     }
 
@@ -343,6 +558,16 @@ struct MenuBarPopoverView: View {
 
             shortcutsHeader
 
+            if let failure = model.shortcutActivationFailure {
+                Text(failure.message)
+                    .font(WinkType.labelSmall)
+                    .foregroundStyle(palette.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 6)
+                    .accessibilityIdentifier("MenuBarShortcutActivationFailure")
+            }
+
             shortcutsList
                 .layoutPriority(1)
 
@@ -441,7 +666,9 @@ struct MenuBarPopoverView: View {
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(filteredRows) { row in
-                                MenuBarShortcutRow(row: row)
+                                MenuBarShortcutRow(row: row) {
+                                    model.activateShortcut(row)
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -639,55 +866,60 @@ private struct MenuBarShortcutRow: View {
     @State private var isHovering = false
 
     let row: MenuBarPopoverModel.ShortcutRow
+    let action: @MainActor () -> Void
 
     var body: some View {
-        HStack(spacing: MenuBarRowMetrics.listRowSpacing) {
-            AppIconView(
-                bundleIdentifier: row.shortcut.bundleIdentifier,
-                size: 22
-            )
+        Button(action: action) {
+            HStack(spacing: MenuBarRowMetrics.listRowSpacing) {
+                AppIconView(
+                    bundleIdentifier: row.shortcut.bundleIdentifier,
+                    size: 22
+                )
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(row.title)
-                        .font(WinkType.bodyMedium)
-                        .foregroundStyle(palette.textPrimary)
-                        .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(row.title)
+                            .font(WinkType.bodyMedium)
+                            .foregroundStyle(palette.textPrimary)
+                            .lineLimit(1)
 
-                    if row.isRunning {
-                        WinkStatusDot(color: palette.green)
+                        if row.isRunning {
+                            WinkStatusDot(color: palette.green)
+                        }
+                    }
+
+                    if let statusText = row.statusText {
+                        Text(statusText)
+                            .font(WinkType.labelSmall)
+                            .foregroundStyle(row.isUnavailable ? palette.amber : palette.textTertiary)
                     }
                 }
 
-                if let statusText = row.statusText {
-                    Text(statusText)
-                        .font(WinkType.labelSmall)
-                        .foregroundStyle(row.isUnavailable ? palette.amber : palette.textTertiary)
+                Spacer(minLength: 8)
+
+                if row.shortcut.isHyper {
+                    WinkHyperBadge(size: .small)
                 }
+
+                WinkShortcutGlyph(
+                    ShortcutKeycapStrip.labels(
+                        keyEquivalent: row.shortcut.keyEquivalent,
+                        modifierFlags: row.shortcut.modifierFlags
+                    ).joined()
+                )
             }
-
-            Spacer(minLength: 8)
-
-            if row.shortcut.isHyper {
-                WinkHyperBadge(size: .small)
-            }
-
-            WinkShortcutGlyph(
-                ShortcutKeycapStrip.labels(
-                    keyEquivalent: row.shortcut.keyEquivalent,
-                    modifierFlags: row.shortcut.modifierFlags
-                ).joined()
+            .padding(.horizontal, MenuBarRowMetrics.rowHorizontalPadding)
+            .padding(.vertical, MenuBarRowMetrics.listRowVerticalPadding)
+            .background(
+                RoundedRectangle(cornerRadius: MenuBarRowMetrics.listRowCornerRadius, style: .continuous)
+                    .fill(isHovering ? palette.sidebarItemHover : .clear)
             )
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, MenuBarRowMetrics.rowHorizontalPadding)
-        .padding(.vertical, MenuBarRowMetrics.listRowVerticalPadding)
-        .background(
-            RoundedRectangle(cornerRadius: MenuBarRowMetrics.listRowCornerRadius, style: .continuous)
-                .fill(isHovering ? palette.sidebarItemHover : .clear)
-        )
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .opacity(row.shortcut.isEnabled ? 1 : 0.6)
+        .accessibilityLabel(row.actionAccessibilityLabel)
     }
 }
 

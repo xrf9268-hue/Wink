@@ -17,6 +17,10 @@ enum InsightsTabCopy {
         return "\(activations) · \(compactRangeText(for: period))"
     }
 
+    static func suggestionAccessibilityLabel(appName: String) -> String {
+        String(localized: "Add a shortcut for \(appName)", bundle: WinkResourceBundle.bundle)
+    }
+
     private static func compactRangeText(for period: InsightsPeriod) -> String {
         switch period {
         case .day:
@@ -33,6 +37,15 @@ struct InsightsTabView: View {
     @Environment(\.winkPalette) private var palette
 
     @Bindable var viewModel: InsightsViewModel
+    private let onSuggestedAppSelected: @MainActor (InsightsViewModel.SuggestedApp) -> Void
+
+    init(
+        viewModel: InsightsViewModel,
+        onSuggestedAppSelected: (@MainActor (InsightsViewModel.SuggestedApp) -> Void)? = nil
+    ) {
+        self.viewModel = viewModel
+        self.onSuggestedAppSelected = onSuggestedAppSelected ?? { _ in }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -88,16 +101,25 @@ struct InsightsTabView: View {
                             .font(WinkType.labelSmall)
                             .foregroundStyle(palette.textSecondary)
                         ForEach(viewModel.suggestedApps) { suggestion in
-                            HStack(spacing: 8) {
-                                AppIconView(bundleIdentifier: suggestion.bundleIdentifier, size: 20)
-                                Text(suggestion.name)
-                                    .font(WinkType.bodyText)
-                                    .foregroundStyle(palette.textPrimary)
-                                Spacer(minLength: 8)
-                                Text("\(suggestion.count)× this period", bundle: WinkResourceBundle.bundle)
-                                    .font(WinkType.labelSmall)
-                                    .foregroundStyle(palette.textTertiary)
+                            Button {
+                                onSuggestedAppSelected(suggestion)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    AppIconView(bundleIdentifier: suggestion.bundleIdentifier, size: 20)
+                                    Text(suggestion.name)
+                                        .font(WinkType.bodyText)
+                                        .foregroundStyle(palette.textPrimary)
+                                    Spacer(minLength: 8)
+                                    Text("\(suggestion.count)× this period", bundle: WinkResourceBundle.bundle)
+                                        .font(WinkType.labelSmall)
+                                        .foregroundStyle(palette.textTertiary)
+                                }
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(
+                                InsightsTabCopy.suggestionAccessibilityLabel(appName: suggestion.name)
+                            )
                         }
                     }
                     // WinkCard pads only its title row; content insets are

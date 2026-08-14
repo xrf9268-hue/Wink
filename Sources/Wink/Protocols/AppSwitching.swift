@@ -1,15 +1,59 @@
 import CoreGraphics
 import Foundation
 
-struct AppActivationAttemptIdentity: Equatable, Sendable {
+struct AppActivationAttemptIdentity: Equatable, Hashable, Sendable {
     let bundleIdentifier: String
     let attemptID: UUID
     let generation: Int
 }
 
+enum AppSwitchInvocationOperation: Equatable, Hashable, Sendable {
+    case activation
+    case deactivation
+}
+
+enum AppSwitchInvocationStatus: Equatable, Sendable {
+    case pending
+    case confirmed
+    case failed
+}
+
+/// Exact ownership for one accepted direct invocation. The token binds an
+/// asynchronous result to the concrete bundle AppSwitcher resolved at the
+/// start of that invocation, including frontmost-app pseudo-targets.
+struct AppSwitchInvocationToken: Equatable, Hashable, Sendable {
+    /// Distinguishes repeated menu actions that intentionally reuse the same
+    /// toggle session (for example, a degraded activation reconfirmation or a
+    /// hide retry). Session identity alone is not invocation identity.
+    let invocationID: UUID
+    let attempt: AppActivationAttemptIdentity
+    let operation: AppSwitchInvocationOperation
+}
+
+struct AppSwitchInvocationReceipt: Equatable, Sendable {
+    let token: AppSwitchInvocationToken?
+    let status: AppSwitchInvocationStatus
+
+    static let confirmed = AppSwitchInvocationReceipt(
+        token: nil,
+        status: .confirmed
+    )
+}
+
 struct AppActivationAttemptSnapshot: Equatable, Sendable {
     let identity: AppActivationAttemptIdentity
     let isConfirmed: Bool
+    let isFailed: Bool
+
+    init(
+        identity: AppActivationAttemptIdentity,
+        isConfirmed: Bool,
+        isFailed: Bool = false
+    ) {
+        self.identity = identity
+        self.isConfirmed = isConfirmed
+        self.isFailed = isFailed
+    }
 }
 
 @MainActor
@@ -20,6 +64,21 @@ protocol AppSwitching {
     ///   skipped, and the cooldown is still stamped afterward.
     @discardableResult
     func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool
+
+    /// Runs the same toggle pipeline while returning exact ownership for any
+    /// asynchronous activation or deactivation it accepted. Callers that need
+    /// final UI feedback must use this instead of inferring success from the
+    /// absence of an activation session.
+    func performApplicationInvocation(
+        for shortcut: AppShortcut,
+        bypassCooldown: Bool
+    ) -> AppSwitchInvocationReceipt?
+
+    /// Returns the terminal state of the exact receipt token. A missing or
+    /// superseded owned session fails closed.
+    func applicationInvocationStatus(
+        for token: AppSwitchInvocationToken
+    ) -> AppSwitchInvocationStatus
 
     func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior)
 
@@ -64,6 +123,21 @@ extension AppSwitching {
     @discardableResult
     func toggleApplication(for shortcut: AppShortcut) -> Bool {
         toggleApplication(for: shortcut, bypassCooldown: false)
+    }
+
+    func performApplicationInvocation(
+        for shortcut: AppShortcut,
+        bypassCooldown: Bool
+    ) -> AppSwitchInvocationReceipt? {
+        toggleApplication(for: shortcut, bypassCooldown: bypassCooldown)
+            ? .confirmed
+            : nil
+    }
+
+    func applicationInvocationStatus(
+        for token: AppSwitchInvocationToken
+    ) -> AppSwitchInvocationStatus {
+        .failed
     }
 
     func setFrontmostTargetBehavior(_ behavior: FrontmostTargetBehavior) {}

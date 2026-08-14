@@ -23,6 +23,10 @@ final class AppController {
         let shortcutStatusProvider: ShortcutStatusProvider
         let usageTracker: any UsageTracking
         let setShortcutsPaused: @MainActor (Bool) -> Void
+        let activateShortcut: @MainActor (
+            AppShortcut,
+            @escaping @MainActor @Sendable (ShortcutInvocationOutcome) -> Void
+        ) -> Bool
         let openSettings: @MainActor (SettingsTab?) -> Void
         let quit: @MainActor () -> Void
     }
@@ -412,6 +416,13 @@ final class AppController {
             } catch {
                 DiagnosticLog.log("ACTION: menu pause transition failed: \(error.localizedDescription)")
             }
+        },
+        activateShortcut: { [weak self] shortcut, onFinalOutcome in
+            self?.shortcutManager.trigger(
+                shortcut,
+                source: .menuBar,
+                onFinalOutcome: onFinalOutcome
+            ) ?? false
         },
         openSettings: { [weak self] tab in
             do {

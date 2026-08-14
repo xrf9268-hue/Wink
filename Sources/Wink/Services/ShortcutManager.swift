@@ -7,6 +7,20 @@ import os.log
 private let logger = Logger(subsystem: DiagnosticLog.subsystem, category: "ShortcutManager")
 private let shortcutManagerSuppressAutomaticPermissionPromptsArgument = "--suppress-automatic-permission-prompts"
 
+/// Stable attribution for paths that invoke a saved binding. The source is
+/// diagnostics-only: every path still hands the original shortcut (and UUID)
+/// to AppSwitcher, so cooldown, re-entry, confirmation, and usage semantics
+/// cannot diverge by UI surface.
+enum ShortcutInvocationSource: String, Sendable {
+    case capturedShortcut = "capture"
+    case menuBar = "menu"
+}
+
+enum ShortcutInvocationOutcome: Equatable, Sendable {
+    case confirmed
+    case failed
+}
+
 /// The permission a revocation notification is about. `identifierToken` must
 /// stay locale-stable — it drives `UNNotificationRequest` identity
 /// (replacement/dedup), so it can never be built from the localized display
@@ -417,12 +431,114 @@ final class ShortcutManager {
     }
 
     @discardableResult
-    func trigger(_ shortcut: AppShortcut) -> Bool {
-        let success = appSwitcher.toggleApplication(for: shortcut)
+    func trigger(
+        _ shortcut: AppShortcut,
+        source: ShortcutInvocationSource = .capturedShortcut,
+        onFinalOutcome: (@MainActor @Sendable (ShortcutInvocationOutcome) -> Void)? = nil
+    ) -> Bool {
+        diagnosticClient.log(
+            "SHORTCUT_INVOKE source=\(source.rawValue) event=attempt shortcutId=\(shortcut.id.uuidString) bundle=\(shortcut.bundleIdentifier)"
+        )
+        let invocation: AppSwitchInvocationReceipt?
+        let success: Bool
+        if onFinalOutcome == nil {
+            // Captured shortcuts have no outcome observer. Keep them on the
+            // original toggle path so AppSwitcher does not retain an
+            // invocation token that nobody will ever poll.
+            invocation = nil
+            success = appSwitcher.toggleApplication(
+                for: shortcut,
+                bypassCooldown: false
+            )
+        } else {
+            invocation = appSwitcher.performApplicationInvocation(
+                for: shortcut,
+                bypassCooldown: false
+            )
+            success = invocation != nil
+        }
+        let outcome = success ? "accepted" : "rejected"
+        diagnosticClient.log(
+            "SHORTCUT_INVOKE source=\(source.rawValue) event=\(outcome) shortcutId=\(shortcut.id.uuidString) bundle=\(shortcut.bundleIdentifier)"
+        )
         if success, let usageTracker {
             Task { await usageTracker.recordUsage(shortcutId: shortcut.id) }
         }
+        if let invocation, let onFinalOutcome {
+            observeFinalInvocationOutcome(
+                invocation,
+                for: shortcut,
+                source: source,
+                onFinalOutcome: onFinalOutcome
+            )
+        }
         return success
+    }
+
+    private func observeFinalInvocationOutcome(
+        _ invocation: AppSwitchInvocationReceipt,
+        for shortcut: AppShortcut,
+        source: ShortcutInvocationSource,
+        onFinalOutcome: @escaping @MainActor @Sendable (ShortcutInvocationOutcome) -> Void
+    ) {
+        if invocation.status != .pending {
+            finishInvocationOutcome(
+                invocation.status == .confirmed ? .confirmed : .failed,
+                shortcut: shortcut,
+                source: source,
+                onFinalOutcome: onFinalOutcome
+            )
+            return
+        }
+        guard let token = invocation.token else {
+            finishInvocationOutcome(
+                .failed,
+                shortcut: shortcut,
+                source: source,
+                onFinalOutcome: onFinalOutcome
+            )
+            return
+        }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(6))
+            while clock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(50))
+                guard !Task.isCancelled else { return }
+                let status = self.appSwitcher.applicationInvocationStatus(
+                    for: token
+                )
+                if status != .pending {
+                    self.finishInvocationOutcome(
+                        status == .confirmed ? .confirmed : .failed,
+                        shortcut: shortcut,
+                        source: source,
+                        onFinalOutcome: onFinalOutcome
+                    )
+                    return
+                }
+            }
+            self.finishInvocationOutcome(
+                .failed,
+                shortcut: shortcut,
+                source: source,
+                onFinalOutcome: onFinalOutcome
+            )
+        }
+    }
+
+    private func finishInvocationOutcome(
+        _ outcome: ShortcutInvocationOutcome,
+        shortcut: AppShortcut,
+        source: ShortcutInvocationSource,
+        onFinalOutcome: @MainActor @Sendable (ShortcutInvocationOutcome) -> Void
+    ) {
+        let event = outcome == .confirmed ? "confirmed" : "failed"
+        diagnosticClient.log(
+            "SHORTCUT_INVOKE source=\(source.rawValue) event=\(event) shortcutId=\(shortcut.id.uuidString) bundle=\(shortcut.bundleIdentifier)"
+        )
+        onFinalOutcome(outcome)
     }
 
     func shortcutCaptureStatus() -> ShortcutCaptureStatus {

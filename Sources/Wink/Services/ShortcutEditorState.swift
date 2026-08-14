@@ -196,6 +196,18 @@ final class ShortcutEditorState {
         Task { await refreshUsageCounts() }
     }
 
+    /// Seeds the existing Shortcuts composer from an Insights suggestion.
+    /// This is draft-only by construction: no store write happens until the
+    /// user records a chord and confirms through `addShortcut()`.
+    func prefillSuggestedApplication(appName: String, bundleIdentifier: String) {
+        isRecordingShortcut = false
+        selectedAppName = appName
+        selectedBundleIdentifier = bundleIdentifier
+        recordedShortcut = nil
+        conflictMessage = nil
+        saveErrorMessage = nil
+    }
+
     /// The #356 search-palette trigger, if one is currently recorded. Not
     /// rendered in the per-app "Your Shortcuts" list (it targets no app) —
     /// see `ShortcutsTabView`'s `visibleShortcuts` filter — but it lives in

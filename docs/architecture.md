@@ -115,6 +115,8 @@ Responsibilities:
 - load the menu bar image from packaged PNG resources, mark the backing `NSImage` as template, and render it through `Image(nsImage:)` so light/dark and highlighted menu bar states use AppKit's template tinting path
 - show the v2 popover shell (wordmark, version, Ready/Paused pill, real search filter, Today hourly histogram, shortcut rows, action rows)
 - reuse `ShortcutStore` and `ShortcutStatusProvider` so the popover reflects saved ordering plus running/unavailable state
+- render each saved row as a mouse, Full Keyboard Access, and VoiceOver action that passes the original `AppShortcut` to `ShortcutManager.trigger(source: .menuBar)`; direct invocation never synthesizes a key and never depends on Carbon, EventTap, Fn-observer, Secure Input, or capture-pause readiness
+- preserve the ordinary AppSwitcher cooldown, re-entry, frontmost behavior, and asynchronous confirmation path for menu actions; `performApplicationInvocation` returns a unique per-invocation token bound to the concrete resolved bundle, attempt generation, and activation-vs-deactivation phase, so hide failure cannot masquerade as success and a frontmost-app pseudo-target cannot adopt another app's session. Only the row's enabled/available state plus Accessibility gate invocation, and both immediate rejection and an exact-token failed confirmation stay visible inside the originating profile's popover and are announced to assistive technology; profile switches and `ShortcutStore`'s synchronous configuration revision invalidate pending feedback, while an exact binding/availability change clears only the displayed message owned by that row (unrelated app lifecycle changes never dismiss it)
 - route `Manage…` to `Settings > Shortcuts`, `Settings…` to the shared Settings bridge, `Check for Updates…` to Sparkle, and `Quit Wink` to app termination
 - keep `Pause all shortcuts` wired to the real shortcut-capture runtime instead of a UI-only placeholder
 - avoid any fallback `NSStatusItem` / `NSMenu` compatibility shell now that the SwiftUI scene owns the menu bar UI
@@ -150,6 +152,7 @@ Responsibilities:
 - persist General-tab preferences such as `frontmostTargetBehavior`
 - show conflicts before saving
 - display usage trends and app ranking via Insights tab
+- make each suggested app an accessible action that seeds the existing Shortcuts composer with exactly that bundle before opening the Shortcuts tab; selection never persists a binding and clears any old chord so recording plus explicit confirmation remain mandatory
 
 ### Shortcut domain
 - `AppShortcut`
@@ -385,6 +388,25 @@ User opens settings
   -> onShortcutConfigurationChange triggers AppPreferences.refreshPermissions()
 ```
 
+### 2a. Direct menu and Insights actions
+```text
+User clicks or keyboard/VoiceOver-activates a saved menu row
+  -> MenuBarPopoverModel checks enabled + installed availability + current Accessibility trust
+  -> AppController passes the exact saved AppShortcut and UUID to ShortcutManager.trigger(source: .menuBar)
+  -> ShortcutManager logs SHORTCUT_INVOKE source=menu and calls AppSwitcher without bypassing cooldown
+  -> AppSwitcher keeps the normal active/hidden/not-running/frontmost/re-entry/confirmation behavior
+  -> an accepted asynchronous action is monitored by its unique invocation ID, exact attempt ID + generation, and activation-vs-deactivation phase until confirmed or terminally failed
+  -> failure remains inline and posts a high-priority accessibility announcement for VoiceOver
+  -> accepted attempts record usage against the existing UUID; rejected attempts do not
+  -> CarbonHotKeyProvider / EventTapManager / Fn observer and synthetic input are never consulted
+
+User activates an Insights suggestion
+  -> SuggestedShortcutNavigation seeds ShortcutEditorState with the exact app name + bundle identifier
+  -> any old recorded chord is cleared and no persistence method is called
+  -> SettingsLauncher.open(tab: .shortcuts) selects and presents the existing composer once
+  -> only a later recorded chord plus Add Shortcut runs the ordinary add-shortcut flow
+```
+
 ### 2b. Import / export recipe flow
 ```text
 User clicks Export...
@@ -510,7 +532,7 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **Stable-state toggle semantics**: activate immediately, confirm asynchronously, allow toggle-off only from `activeStable`, and avoid restore-away rollback on confirmation failure
 - **Official hide request path**: toggle-off uses `NSRunningApplication.hide()` plus asynchronous confirmation instead of event-synthesized hide commands
 - **Service-level test seams**: system-facing services use small injected clients or existing collaborators so runtime decision logic can be covered without live TCC or app-launch side effects
-- **UsageTracker**: SQLite-backed daily usage aggregation off the main actor
+- **UsageTracker**: SQLite-backed daily usage aggregation off the main actor; captured and menu-origin invocations share the saved shortcut UUID, while `ShortcutInvocationSource` exists only for explicit diagnostic attribution
 - **Launch-at-login status modeling**: `LaunchAtLoginStatus` preserves enabled / approval-needed / disabled / not-found states
 
 ## Planned ownership boundaries

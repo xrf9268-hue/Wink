@@ -874,6 +874,172 @@ func degradedRepeatReconfirmsSameGenerationAndStopsAfterStableEvidence() throws 
 }
 
 @Test @MainActor
+func repeatedDegradedInvocationGetsFreshOwnershipAndIgnoresPriorFailure() throws {
+    let target = try #require(NSWorkspace.shared.frontmostApplication)
+    let bundleIdentifier = try #require(target.bundleIdentifier)
+    let clock = MutableClock(time: 100)
+    let scheduler = ManualConfirmationScheduler()
+    let coordinator = ToggleSessionCoordinator(now: { clock.time })
+    let original = coordinator.beginActivation(
+        for: bundleIdentifier,
+        appName: target.localizedName,
+        pid: target.processIdentifier,
+        startedAt: clock.time
+    )
+    _ = coordinator.markDegraded(
+        for: bundleIdentifier,
+        reason: "activation_recovery_exhausted",
+        generation: original.generation
+    )
+    let stableEvidence = MutableBoolean(false)
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: {
+                stableEvidence.value ? bundleIdentifier : nil
+            },
+            windowObservation: { _ in
+                .init(
+                    windows: nil,
+                    visibleWindowCount: 1,
+                    hasFocusedWindow: true,
+                    hasMainWindow: true,
+                    windowsReadSucceeded: true,
+                    failureReason: nil
+                )
+            },
+            activationPolicy: { _ in .regular },
+            applicationState: { _ in
+                .init(isActive: stableEvidence.value, isHidden: false)
+            }
+        )),
+        activationClient: .init(activateFrontProcess: { _, _ in
+            .success(ProcessSerialNumber())
+        }),
+        appLookupClient: .init(
+            runningApplications: { _ in [target] },
+            applicationURL: { _ in nil }
+        ),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        recoveryClient: .init(perform: { _, completion in completion() }),
+        sessionCoordinator: coordinator
+    )
+    let shortcut = AppShortcut(
+        appName: target.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "r",
+        modifierFlags: ["command", "option"]
+    )
+
+    let first = try #require(switcher.performApplicationInvocation(
+        for: shortcut,
+        bypassCooldown: true
+    ))
+    let firstToken = try #require(first.token)
+    #expect(first.status == .pending)
+    scheduler.runAll()
+    #expect(switcher.applicationInvocationStatus(for: firstToken) == .failed)
+
+    let second = try #require(switcher.performApplicationInvocation(
+        for: shortcut,
+        bypassCooldown: true
+    ))
+    let secondToken = try #require(second.token)
+    #expect(second.status == .pending)
+    #expect(secondToken.attempt == firstToken.attempt)
+    #expect(secondToken.invocationID != firstToken.invocationID)
+    #expect(switcher.applicationInvocationStatus(for: secondToken) == .pending)
+
+    stableEvidence.value = true
+    scheduler.runNext()
+    #expect(switcher.applicationInvocationStatus(for: secondToken) == .confirmed)
+}
+
+@Test @MainActor
+func rejectedReentryCannotOverwriteTheOuterInvocationReceipt() throws {
+    let target = try #require(NSWorkspace.shared.frontmostApplication)
+    let bundleIdentifier = try #require(target.bundleIdentifier)
+    let coordinator = ToggleSessionCoordinator(now: { 100 })
+    let scheduler = ManualConfirmationScheduler()
+    let outerShortcut = AppShortcut(
+        appName: target.localizedName ?? "Outer",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "o",
+        modifierFlags: ["command"]
+    )
+    let nestedShortcut = AppShortcut(
+        appName: "Nested",
+        bundleIdentifier: "com.example.Nested",
+        keyEquivalent: "n",
+        modifierFlags: ["command"]
+    )
+    var nestedReceipt: AppSwitchInvocationReceipt?
+    var switcher: AppSwitcher!
+    switcher = AppSwitcher(
+        frontmostTracker: FrontmostApplicationTracker(client: .init(
+            currentFrontmostBundleIdentifier: { nil },
+            currentFrontmostApplication: { nil }
+        )),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: { nil },
+            windowObservation: { _ in
+                .init(
+                    windows: nil,
+                    visibleWindowCount: 1,
+                    hasFocusedWindow: true,
+                    hasMainWindow: true,
+                    windowsReadSucceeded: true,
+                    failureReason: nil
+                )
+            },
+            activationPolicy: { _ in .regular },
+            applicationState: { _ in .init(isActive: false, isHidden: false) }
+        )),
+        activationClient: .init(activateFrontProcess: { _, _ in
+            .success(ProcessSerialNumber())
+        }),
+        appLookupClient: .init(
+            runningApplications: { requestedBundle in
+                if requestedBundle == bundleIdentifier {
+                    nestedReceipt = switcher.performApplicationInvocation(
+                        for: nestedShortcut,
+                        bypassCooldown: true
+                    )
+                    return [target]
+                }
+                return []
+            },
+            applicationURL: { _ in nil }
+        ),
+        confirmationClient: .init(
+            now: { 100 },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        sessionCoordinator: coordinator
+    )
+
+    let outerReceipt = try #require(switcher.performApplicationInvocation(
+        for: outerShortcut,
+        bypassCooldown: true
+    ))
+
+    #expect(nestedReceipt == nil)
+    #expect(outerReceipt.status == .pending)
+    #expect(outerReceipt.token?.attempt.bundleIdentifier == bundleIdentifier)
+    #expect(coordinator.session(for: bundleIdentifier)?.phase == .activating)
+    if let token = outerReceipt.token {
+        #expect(switcher.applicationInvocationStatus(for: token) == .pending)
+    }
+}
+
+@Test @MainActor
 func degradedRepeatObservationCannotExpireAcceptedSessionIntoNewGeneration() throws {
     let target = try #require(NSWorkspace.shared.frontmostApplication)
     let bundleIdentifier = try #require(target.bundleIdentifier)
@@ -1384,6 +1550,133 @@ func promotionToStableNotifiesCoordinator() {
 }
 
 @Test @MainActor
+func frontmostInvocationDoesNotAdoptAnotherBundlesPendingSession() throws {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let frontmostBundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost app for exact invocation ownership test")
+        return
+    }
+    let coordinator = ToggleSessionCoordinator(now: { 100 })
+    let unrelatedSession = coordinator.beginActivation(
+        for: "com.example.Unrelated",
+        appName: "Unrelated",
+        startedAt: 100
+    )
+    var psn = ProcessSerialNumber()
+    psn.highLongOfPSN = 1
+    psn.lowLongOfPSN = 2
+    let switcher = AppSwitcher(
+        frontmostTracker: FrontmostApplicationTracker(client: .init(
+            currentFrontmostBundleIdentifier: { frontmostBundleIdentifier },
+            currentFrontmostApplication: { frontmostApp }
+        )),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: { frontmostBundleIdentifier },
+            windowObservation: { _ in
+                .init(
+                    windows: nil,
+                    visibleWindowCount: 1,
+                    hasFocusedWindow: true,
+                    hasMainWindow: true,
+                    windowsReadSucceeded: true,
+                    failureReason: nil
+                )
+            },
+            activationPolicy: { _ in .regular }
+        )),
+        activationClient: .init(activateFrontProcess: { _, _ in .success(psn) }),
+        appLookupClient: .init(
+            runningApplications: { _ in [frontmostApp] },
+            applicationURL: { _ in nil }
+        ),
+        sessionCoordinator: coordinator
+    )
+    let frontmostShortcut = AppShortcut(
+        appName: AppShortcut.frontmostTargetDisplayName,
+        bundleIdentifier: AppShortcut.frontmostTargetSentinelBundleIdentifier,
+        keyEquivalent: "f",
+        modifierFlags: ["command"],
+        frontmostBehaviorOverride: .focus,
+        target: .frontmostApp
+    )
+
+    let receipt = try #require(switcher.performApplicationInvocation(
+        for: frontmostShortcut,
+        bypassCooldown: false
+    ))
+
+    #expect(receipt == .confirmed)
+    #expect(coordinator.session(
+        for: unrelatedSession.bundleIdentifier
+    )?.attemptID == unrelatedSession.attemptID)
+    #expect(coordinator.session(
+        for: unrelatedSession.bundleIdentifier
+    )?.phase == .activating)
+    #expect(coordinator.session(for: frontmostBundleIdentifier) == nil)
+}
+
+@Test @MainActor
+func frontmostFocusReportsSuccessAfterReplacingAnOldDegradedAttempt() throws {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost app for focus invocation test")
+        return
+    }
+    let coordinator = ToggleSessionCoordinator(now: { 100 })
+    let oldAttempt = coordinator.beginActivation(
+        for: bundleIdentifier,
+        appName: frontmostApp.localizedName,
+        startedAt: 90
+    )
+    coordinator.markDegraded(
+        for: bundleIdentifier,
+        reason: "old_attempt_failed",
+        generation: oldAttempt.generation
+    )
+    var psn = ProcessSerialNumber()
+    psn.highLongOfPSN = 3
+    psn.lowLongOfPSN = 4
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: { bundleIdentifier },
+            windowObservation: { _ in
+                .init(
+                    windows: nil,
+                    visibleWindowCount: 1,
+                    hasFocusedWindow: true,
+                    hasMainWindow: true,
+                    windowsReadSucceeded: true,
+                    failureReason: nil
+                )
+            },
+            activationPolicy: { _ in .regular }
+        )),
+        activationClient: .init(activateFrontProcess: { _, _ in .success(psn) }),
+        appLookupClient: .init(
+            runningApplications: { _ in [frontmostApp] },
+            applicationURL: { _ in nil }
+        ),
+        sessionCoordinator: coordinator
+    )
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? bundleIdentifier,
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "f",
+        modifierFlags: ["command"],
+        frontmostBehaviorOverride: .focus
+    )
+
+    let receipt = try #require(switcher.performApplicationInvocation(
+        for: shortcut,
+        bypassCooldown: false
+    ))
+
+    #expect(receipt == .confirmed)
+    #expect(coordinator.session(for: bundleIdentifier)?.phase == .idle)
+}
+
+@Test @MainActor
 func shouldToggleOffReturnsFalseWhenCoordinatorInvalidatesSession() {
     let clock = MutableClock(time: 100)
     let coordinator = ToggleSessionCoordinator(now: { clock.time })
@@ -1653,7 +1946,7 @@ func deactivationConfirmationPreservesSuccessfulZeroWindowBehavior() {
 }
 
 @Test @MainActor
-func deactivationConfirmationRevertsToStableWhenHideDoesNotSettleBeforeDeadline() {
+func deactivationConfirmationRevertsToStableWhenHideDoesNotSettleBeforeDeadline() throws {
     let clock = MutableClock(time: 300)
     let scheduler = ManualConfirmationScheduler()
     let coordinator = ToggleSessionCoordinator(now: { clock.time })
@@ -1698,6 +1991,16 @@ func deactivationConfirmationRevertsToStableWhenHideDoesNotSettleBeforeDeadline(
         activationPath: .hide,
         startedAt: clock.time
     )
+    let deactivationSession = try #require(coordinator.session(for: "com.apple.Safari"))
+    let invocationToken = AppSwitchInvocationToken(
+        invocationID: UUID(),
+        attempt: AppActivationAttemptIdentity(
+            bundleIdentifier: deactivationSession.bundleIdentifier,
+            attemptID: deactivationSession.attemptID,
+            generation: deactivationSession.generation
+        ),
+        operation: .deactivation
+    )
     let shortcut = AppShortcut(
         appName: "Safari",
         bundleIdentifier: "com.apple.Safari",
@@ -1737,6 +2040,7 @@ func deactivationConfirmationRevertsToStableWhenHideDoesNotSettleBeforeDeadline(
     #expect(switcher.pendingDeactivationState == nil)
     #expect(switcher.stableActivationState?.bundleIdentifier == "com.apple.Safari")
     #expect(coordinator.session(for: "com.apple.Safari")?.phase == .activeStable)
+    #expect(switcher.applicationInvocationStatus(for: invocationToken) == .failed)
 }
 
 @Test @MainActor
@@ -1862,14 +2166,124 @@ func externalUntrackedHideDispatchesHideRequestThroughCoordinatorOwnedSession() 
         modifierFlags: ["command"]
     )
 
-    let accepted = switcher.toggleApplication(for: shortcut)
+    let receipt = switcher.performApplicationInvocation(
+        for: shortcut,
+        bypassCooldown: false
+    )
 
-    #expect(accepted == true)
+    #expect(receipt?.status == .pending)
+    let token = receipt?.token
+    #expect(token?.attempt.bundleIdentifier == bundleIdentifier)
+    #expect(token?.operation == .deactivation)
     #expect(switcher.pendingDeactivationState?.activationPath == .hideUntracked)
 
-    scheduler.runNext()
+    scheduler.runFirst(after: AppSwitcher.hideRequestDispatchDelay)
+    #expect(switcher.handleWorkspaceHideNotification(
+        bundleIdentifier: bundleIdentifier
+    ) != nil)
 
     #expect(hideCalls == 1)
+    if let token {
+        #expect(switcher.applicationInvocationStatus(for: token) == .confirmed)
+    }
+}
+
+@Test @MainActor
+func repeatedTrackedHideGetsFreshOwnershipAfterPriorFailure() throws {
+    let frontmostApp = try #require(NSWorkspace.shared.frontmostApplication)
+    let bundleIdentifier = try #require(frontmostApp.bundleIdentifier)
+    let clock = MutableClock(time: 300)
+    let scheduler = ManualConfirmationScheduler()
+    let coordinator = ToggleSessionCoordinator(now: { clock.time })
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: { bundleIdentifier },
+            windowObservation: { _ in
+                .init(
+                    windows: nil,
+                    visibleWindowCount: 1,
+                    hasFocusedWindow: true,
+                    hasMainWindow: true,
+                    windowsReadSucceeded: true,
+                    failureReason: nil
+                )
+            },
+            activationPolicy: { _ in .regular },
+            applicationState: { _ in .init(isActive: true, isHidden: false) }
+        )),
+        hideRequestClient: .init(hideApplication: { _ in true }),
+        appLookupClient: .init(
+            runningApplications: { _ in [frontmostApp] },
+            applicationURL: { _ in nil }
+        ),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        sessionCoordinator: coordinator
+    )
+    let pending = switcher.acceptPendingActivation(
+        for: bundleIdentifier,
+        startedAt: clock.time,
+        pid: frontmostApp.processIdentifier
+    )
+    _ = switcher.promotePendingActivationIfCurrent(
+        bundleIdentifier: bundleIdentifier,
+        generation: pending.generation,
+        snapshot: ActivationObservationSnapshot(
+            targetBundleIdentifier: bundleIdentifier,
+            observedFrontmostBundleIdentifier: bundleIdentifier,
+            targetIsActive: true,
+            targetIsHidden: false,
+            visibleWindowCount: 1,
+            hasFocusedWindow: true,
+            hasMainWindow: true,
+            windowObservationSucceeded: true,
+            windowObservationFailureReason: nil,
+            classification: .regularWindowed,
+            classificationReason: "visible focused main window"
+        )
+    )
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "h",
+        modifierFlags: ["command"]
+    )
+
+    let first = try #require(switcher.performApplicationInvocation(
+        for: shortcut,
+        bypassCooldown: true
+    ))
+    let firstToken = try #require(first.token)
+    #expect(first.status == .pending)
+
+    scheduler.runNext()
+    scheduler.runNext()
+    for elapsed in [0.1, 0.2, 0.3] {
+        clock.time = 300 + elapsed
+        scheduler.runNext()
+    }
+    #expect(switcher.applicationInvocationStatus(for: firstToken) == .failed)
+    #expect(coordinator.session(for: bundleIdentifier)?.phase == .activeStable)
+
+    let second = try #require(switcher.performApplicationInvocation(
+        for: shortcut,
+        bypassCooldown: true
+    ))
+    let secondToken = try #require(second.token)
+    #expect(second.status == .pending)
+    #expect(secondToken.attempt == firstToken.attempt)
+    #expect(secondToken.invocationID != firstToken.invocationID)
+    #expect(switcher.applicationInvocationStatus(for: secondToken) == .pending)
+
+    #expect(switcher.handleWorkspaceHideNotification(
+        bundleIdentifier: bundleIdentifier
+    ) != nil)
+    #expect(switcher.applicationInvocationStatus(for: secondToken) == .confirmed)
 }
 
 @Test @MainActor
@@ -3485,6 +3899,15 @@ private final class MutableClock {
 
     init(time: CFAbsoluteTime) {
         self.time = time
+    }
+}
+
+@MainActor
+private final class MutableBoolean {
+    var value: Bool
+
+    init(_ value: Bool) {
+        self.value = value
     }
 }
 

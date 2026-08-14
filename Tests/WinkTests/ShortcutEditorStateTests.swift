@@ -72,6 +72,66 @@ func successfulComposerSaveReportsTheExactCreatedShortcutForOnboarding() {
     #expect(added?.bundleIdentifier == "com.apple.Safari")
 }
 
+/// #435: an Insights row selects one exact bundle, seeds the existing draft,
+/// and changes tabs through SettingsLauncher once. Installing the handler
+/// models an already-open Settings window on another tab; the handler sees
+/// the completed draft and no shortcut is persisted before chord confirmation.
+@Test @MainActor
+func insightsSuggestionPrefillsComposerAndOpensShortcutsExactlyOnce() throws {
+    let existing = AppShortcut(
+        appName: "Terminal",
+        bundleIdentifier: "com.apple.Terminal",
+        keyEquivalent: "t",
+        modifierFlags: ["command"]
+    )
+    let context = makeEditorContext(existingShortcuts: [existing])
+    context.editor.selectedAppName = "Old draft"
+    context.editor.selectedBundleIdentifier = "example.old-draft"
+    context.editor.recordedShortcut = RecordedShortcut(
+        keyEquivalent: "o",
+        modifierFlags: ["command"]
+    )
+    context.editor.isRecordingShortcut = true
+
+    let defaultsName = "ShortcutEditorStateTests.insightsSuggestion.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: defaultsName))
+    defaults.removePersistentDomain(forName: defaultsName)
+    let launcher = SettingsLauncher(userDefaults: defaults)
+    launcher.selectedTab = .insights
+    var openCount = 0
+    var draftSeenByPresentation: (name: String, bundle: String)?
+    launcher.installOpenSettingsHandler {
+        openCount += 1
+        draftSeenByPresentation = (
+            context.editor.selectedAppName,
+            context.editor.selectedBundleIdentifier
+        )
+    }
+    let suggestion = InsightsViewModel.SuggestedApp(
+        bundleIdentifier: "com.apple.Safari",
+        name: "Safari",
+        count: 12
+    )
+
+    SuggestedShortcutNavigation.open(
+        suggestion,
+        editor: context.editor,
+        settingsLauncher: launcher
+    )
+
+    #expect(openCount == 1)
+    #expect(launcher.selectedTab == .shortcuts)
+    #expect(draftSeenByPresentation?.name == "Safari")
+    #expect(draftSeenByPresentation?.bundle == "com.apple.Safari")
+    #expect(context.editor.selectedAppName == "Safari")
+    #expect(context.editor.selectedBundleIdentifier == "com.apple.Safari")
+    #expect(context.editor.recordedShortcut == nil)
+    #expect(!context.editor.isRecordingShortcut)
+    #expect(context.shortcutStore.shortcuts == [existing])
+    #expect(context.callbackCount.value == 0)
+    #expect(InsightsTabCopy.suggestionAccessibilityLabel(appName: "Safari") == "Add a shortcut for Safari")
+}
+
 @MainActor
 private func makeFailingSaveEditorContext(
     existingShortcuts: [AppShortcut]
