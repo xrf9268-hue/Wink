@@ -299,6 +299,7 @@ final class AppSwitcher: AppSwitching {
         let shortcut: AppShortcut
         let focusIntentGeneration: Int
         let expiresAt: CFAbsoluteTime
+        var activationGeneration: Int?
         var pendingForegroundActivation: PendingForegroundActivation?
     }
 
@@ -1045,7 +1046,10 @@ final class AppSwitcher: AppSwitching {
                     self.supersededHideFocusRecoveries[bundleIdentifier] = settledRecovery
                     return
                 }
-                self.supersededHideFocusRecoveries.removeValue(forKey: bundleIdentifier)
+                self.clearSupersededHideFocusRecoveryOwnership(
+                    for: bundleIdentifier,
+                    invalidatingActivationGeneration: true
+                )
             }
         }
     }
@@ -1078,7 +1082,10 @@ final class AppSwitcher: AppSwitching {
             return nil
         }
         guard confirmationClient.now() <= recovery.expiresAt else {
-            clearSupersededHideFocusRecoveryOwnership(for: bundleIdentifier)
+            clearSupersededHideFocusRecoveryOwnership(
+                for: bundleIdentifier,
+                invalidatingActivationGeneration: true
+            )
             return nil
         }
         guard recovery.pendingForegroundActivation == nil else {
@@ -1144,12 +1151,18 @@ final class AppSwitcher: AppSwitching {
     }
 
     private func clearSupersededHideFocusRecoveryOwnership(
-        for bundleIdentifier: String
+        for bundleIdentifier: String,
+        invalidatingActivationGeneration: Bool = false
     ) {
         guard let recovery = supersededHideFocusRecoveries.removeValue(
             forKey: bundleIdentifier
         ) else {
             return
+        }
+        if invalidatingActivationGeneration,
+           let activationGeneration = recovery.activationGeneration,
+           pendingActivationState(for: bundleIdentifier)?.generation == activationGeneration {
+            clearActivationTracking(for: bundleIdentifier)
         }
         if dispatchedHideRequests[bundleIdentifier]?.generation == recovery.hideGeneration {
             dispatchedHideRequests.removeValue(forKey: bundleIdentifier)
@@ -1192,6 +1205,7 @@ final class AppSwitcher: AppSwitching {
                 shortcut: recovery.shortcut,
                 focusIntentGeneration: focusIntentGeneration,
                 expiresAt: now + focusHideRecoveryIntentWindow,
+                activationGeneration: nil,
                 pendingForegroundActivation: nil
             )
             return deactivationConfirmationTimeout
@@ -1212,6 +1226,7 @@ final class AppSwitcher: AppSwitching {
             ),
             focusIntentGeneration: focusIntentGeneration,
             expiresAt: now + focusHideRecoveryIntentWindow,
+            activationGeneration: nil,
             pendingForegroundActivation: nil
         )
         // The delay is only the fast observation path. Ownership itself is
@@ -1834,6 +1849,10 @@ final class AppSwitcher: AppSwitching {
         activationPath: ActivationPath,
         initialDelay: TimeInterval? = nil
     ) {
+        if var recovery = supersededHideFocusRecoveries[state.bundleIdentifier] {
+            recovery.activationGeneration = state.generation
+            supersededHideFocusRecoveries[state.bundleIdentifier] = recovery
+        }
         schedulePendingConfirmation(
             state: state,
             shortcut: shortcut,

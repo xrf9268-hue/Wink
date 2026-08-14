@@ -2606,6 +2606,133 @@ func completionBoundHideRecoveryRespectsExternalForegroundIntent(
     #expect(scheduler.pendingCount == 0)
 }
 
+@Test @MainActor
+func externalForegroundIntentCancelsPendingFocusConfirmationLadder() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for focus ladder test")
+        return
+    }
+
+    let externalProcessIdentifier = frontmostApp.processIdentifier + 10_000
+    var observedFrontmostBundleIdentifier: String? = bundleIdentifier
+    var observedFrontmostProcessIdentifier: pid_t? = frontmostApp.processIdentifier
+    var applicationState = ApplicationObservation.ApplicationState(
+        isActive: true,
+        isHidden: false
+    )
+    var activationCalls = 0
+    var recoveryStages: [AppSwitcher.WindowRecoveryStage] = []
+    let clock = MutableClock(time: CFAbsoluteTimeGetCurrent())
+    let scheduler = ManualConfirmationScheduler()
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: { observedFrontmostBundleIdentifier },
+            currentFrontmostProcessIdentifier: { observedFrontmostProcessIdentifier },
+            windowObservation: { _ in
+                .init(
+                    windows: nil,
+                    visibleWindowCount: 1,
+                    hasFocusedWindow: true,
+                    hasMainWindow: true,
+                    windowsReadSucceeded: true,
+                    failureReason: nil
+                )
+            },
+            activationPolicy: { _ in .regular },
+            applicationState: { _ in applicationState }
+        )),
+        activationClient: .init(activateFrontProcess: { _, _ in
+            activationCalls += 1
+            observedFrontmostBundleIdentifier = bundleIdentifier
+            observedFrontmostProcessIdentifier = frontmostApp.processIdentifier
+            applicationState = .init(isActive: true, isHidden: false)
+            return .success(ProcessSerialNumber())
+        }),
+        hideRequestClient: .init(hideApplication: { _ in true }),
+        appLookupClient: .init(
+            runningApplications: { _ in [frontmostApp] },
+            applicationURL: { _ in nil }
+        ),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        ),
+        recoveryClient: .init(perform: { stage, completion in
+            recoveryStages.append(stage)
+            completion()
+        })
+    )
+    switcher.setFrontmostTargetBehavior(.hide)
+
+    let pending = switcher.acceptPendingActivation(
+        for: bundleIdentifier,
+        startedAt: clock.time,
+        pid: frontmostApp.processIdentifier
+    )
+    #expect(switcher.promotePendingActivationIfCurrent(
+        bundleIdentifier: bundleIdentifier,
+        generation: pending.generation,
+        snapshot: ActivationObservationSnapshot(
+            targetBundleIdentifier: bundleIdentifier,
+            observedFrontmostBundleIdentifier: bundleIdentifier,
+            targetIsActive: true,
+            targetIsHidden: false,
+            visibleWindowCount: 1,
+            hasFocusedWindow: true,
+            hasMainWindow: true,
+            windowObservationSucceeded: true,
+            windowObservationFailureReason: nil,
+            classification: .regularWindowed,
+            classificationReason: "visible focused main window"
+        )
+    ))
+    #expect(switcher.toggleApplication(for: AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "h",
+        modifierFlags: ["command"]
+    )))
+    scheduler.runNext()
+    clock.time += 0.31
+    scheduler.runNext()
+
+    #expect(switcher.toggleApplication(
+        for: AppShortcut(
+            appName: frontmostApp.localizedName ?? "Frontmost",
+            bundleIdentifier: bundleIdentifier,
+            keyEquivalent: "",
+            modifierFlags: [],
+            frontmostBehaviorOverride: .focus
+        ),
+        bypassCooldown: true
+    ))
+    #expect(activationCalls == 1)
+    #expect(switcher.pendingActivationState != nil)
+    #expect(scheduler.pendingDelays == [0.3])
+
+    observedFrontmostBundleIdentifier = nil
+    observedFrontmostProcessIdentifier = externalProcessIdentifier
+    applicationState = .init(isActive: false, isHidden: false)
+    switcher.handleWorkspaceActivationNotification(
+        processIdentifier: externalProcessIdentifier
+    )
+    #expect(scheduler.pendingDelays == [0.3, 0.05])
+
+    scheduler.runFirst(after: 0.05)
+    #expect(switcher.pendingActivationState == nil)
+    scheduler.runAll()
+    #expect(recoveryStages.isEmpty)
+
+    applicationState = .init(isActive: false, isHidden: true)
+    #expect(switcher.handleWorkspaceHideNotification(application: frontmostApp) == nil)
+    #expect(activationCalls == 1)
+    #expect(scheduler.pendingCount == 0)
+}
+
 @Test(arguments: [false, true]) @MainActor
 func targetReactivationOrNewerFocusInvalidatesPendingForegroundCancellation(
     renewsFocus: Bool
@@ -3374,6 +3501,15 @@ private final class ManualConfirmationScheduler {
             return
         }
         let operation = operations.removeFirst().operation
+        operation()
+    }
+
+    func runFirst(after delay: TimeInterval) {
+        guard let index = operations.firstIndex(where: { abs($0.delay - delay) < 0.000_001 }) else {
+            Issue.record("Expected a scheduled confirmation operation after \(delay) seconds")
+            return
+        }
+        let operation = operations.remove(at: index).operation
         operation()
     }
 
