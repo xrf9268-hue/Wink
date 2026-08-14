@@ -103,6 +103,27 @@ struct WinkActionExecutorTests {
     }
 
     @Test @MainActor
+    func deferredSettingsPolicyQueuesColdLaunchDeliveryWithoutUsingTheReadyGate() throws {
+        var queuedTabs: [SettingsTab?] = []
+        var readyGateCalls = 0
+        let executor = makeExecutor(
+            queueSettings: { queuedTabs.append($0) },
+            openSettings: { _ in
+                readyGateCalls += 1
+                return false
+            }
+        )
+
+        try executor.execute(
+            .openSettings(.insights),
+            settingsPresentationPolicy: .allowDeferred
+        )
+
+        #expect(queuedTabs == [.insights])
+        #expect(readyGateCalls == 0)
+    }
+
+    @Test @MainActor
     func settingsIntentFailsWhenTheWindowNeverBecomesVisible() async {
         let executor = makeExecutor(
             openSettings: { _ in true },
@@ -121,6 +142,7 @@ struct WinkActionExecutorTests {
         canPresentSearch: @escaping @MainActor () -> Bool = { true },
         isSearchPresented: @escaping @MainActor () -> Bool = { true },
         showSearch: @escaping @MainActor () -> Void = {},
+        queueSettings: @escaping @MainActor (SettingsTab?) -> Void = { _ in },
         openSettings: @escaping @MainActor (SettingsTab?) -> Bool = { _ in true },
         waitForSettings: @escaping @MainActor () async throws -> Bool = { true }
     ) -> WinkActionExecutor {
@@ -130,6 +152,7 @@ struct WinkActionExecutorTests {
             isSearchPalettePresented: isSearchPresented,
             canPresentSearchPalette: canPresentSearch,
             showSearchPalette: showSearch,
+            openSettings: queueSettings,
             openSettingsIfReady: openSettings,
             waitForSettingsPresentation: waitForSettings
         ))

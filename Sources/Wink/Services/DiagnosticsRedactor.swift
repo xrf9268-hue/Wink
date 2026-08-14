@@ -102,10 +102,11 @@ struct DiagnosticsRedactor: Sendable {
             ? String(line.map { $0.isNewline || $0 == "\0" ? " " : $0 })
             : line
         // Percent-encoding is a disclosure vector here, not fidelity to
-        // protect: `handleURLs` logs rejected URLs verbatim, and
-        // `%2FUsers%2Falice` hides the home path from every rule below. One
-        // decode pass covers the accidental case (a legitimately encoded URL
-        // in the log); decode LOOPS are out of scope — an adversary crafting
+        // protect: current URL handling logs only normalized commands or
+        // bounded rejection codes, but legacy logs and other diagnostics can
+        // still contain a URL where `%2FUsers%2Falice` hides the home path
+        // from every rule below. One decode pass covers that case; decode
+        // LOOPS are out of scope — an adversary crafting
         // log content to survive one decode already writes to the log and
         // owns the machine. Decoded per RUN of escapes, not per line:
         // `removingPercentEncoding` is all-or-nothing, so one bare `%`
@@ -438,9 +439,10 @@ struct DiagnosticsRedactor: Sendable {
     }
 
     /// `scheme://user:password@host` — the authority's user-info component.
-    /// Query strings are not the only URL component that carries credentials:
-    /// an unrecognized `wink://` URL is logged verbatim by `handleURLs`, and
-    /// user-info is structurally unambiguous (between `://` and a pre-path
+    /// Query strings are not the only URL component that carries credentials.
+    /// Current custom-URL handling never records raw input, but exported logs
+    /// can include legacy or unrelated URL diagnostics; user-info is
+    /// structurally unambiguous (between `://` and a pre-path
     /// `@`), so it is redacted wholesale — the password and the user name
     /// with it, since a name in an authority is identifying even when it is
     /// not this account's. The host stays: it is what makes the line useful.
@@ -475,16 +477,16 @@ struct DiagnosticsRedactor: Sendable {
     /// identifiers, and no diagnostic needs them — the path and host are what
     /// make a log line useful. The authority (`//`) is optional and so is the
     /// pre-query component itself: `wink:unknown?email=…` and the fully
-    /// hostless `wink:?token=…` are both legal URLs, `handleURLs` logs
-    /// rejected ones verbatim, and their queries carry the same kind of
+    /// hostless `wink:?token=…` are both legal URL-shaped legacy diagnostics,
+    /// and their queries carry the same kind of
     /// payload. A prose colon still does not slip in — whatever sits between
     /// `:` and `?` must be free of spaces — and over-redacting the rare
     /// `ratio:3?x` token is the cheap direction for a redactor to be wrong in.
     private func redactingURLQueries(_ value: String) -> String {
         // Scheme bounded and possessive for the same quadratic-scan reason
         // as the user-info rule above. The query consumes TO END OF LINE:
-        // the primary vector is handleURLs logging a DECODED URL as the
-        // line's final element, where the query legally contains spaces
+        // the primary vector is a legacy or unrelated diagnostic logging a
+        // DECODED URL as the line's final element, where the query contains spaces
         // (`?email=Bob Smith <bob@…>`) and any whitespace boundary exports
         // its tail. A URL mid-prose over-redacts what follows — the cheap
         // direction — and a second URL on the same line is simply consumed
@@ -498,9 +500,9 @@ struct DiagnosticsRedactor: Sendable {
         // a URL's opaque part hugs its colon — and nothing else bounds the
         // region: decoded values legally hold spaces, quotes, and every
         // character this rule ever excluded (`/a b?…`, `/a"b?…`,
-        // `custom:foo bar?…` — WinkURLCommand accepts arbitrary decoded
-        // bundle values, so hostless forms carry decoded spaces too, and
-        // each exclusion in turn became a bypass). A colon-hugging token
+        // `custom:foo bar?…`; historical or unrelated URL diagnostics can
+        // carry decoded spaces, and each exclusion in turn became a bypass).
+        // A colon-hugging token
         // with a later `?` (`ratio:3 done? yes`) over-redacts its tail —
         // the cheap direction.
         value.replacingOccurrences(

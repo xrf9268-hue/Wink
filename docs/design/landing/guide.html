@@ -601,9 +601,14 @@
           <p>Everything is also reachable from outside the app, on the <kbd>wink://</kbd> scheme:</p>
           <div class="cli">
             <div><span class="ps">$</span> open -g "wink://toggle?bundle=com.google.Chrome"</div>
-            <div class="dim">wink://pause · wink://resume — same idea</div>
+            <div><span class="ps">$</span> open -g "wink://focus?bundle=com.google.Chrome"</div>
+            <div><span class="ps">$</span> open -g "wink://search"</div>
+            <div><span class="ps">$</span> open -g "wink://open-settings?tab=insights"</div>
+            <div class="dim">wink://pause · wink://resume · wink://open-settings</div>
           </div>
-          <p>Always call it with <kbd>open -g</kbd>. A plain <kbd>open</kbd> activates Wink to deliver the URL, which makes your actual target read as “not frontmost” and turns every toggle into a plain activate; <kbd>-g</kbd> keeps Wink in the background so the toggle sees the real frontmost state. Automation presses respect the same per-bundle cooldown as a real keypress, but they never count toward Insights.</p>
+          <p><kbd>focus</kbd> is idempotent: it brings an installed app forward but never hides it or cycles its windows when it is already frontmost. The only Settings tabs accepted are <kbd>shortcuts</kbd>, <kbd>general</kbd>, and <kbd>insights</kbd>.</p>
+          <p>Always call it with <kbd>open -g</kbd>. A plain <kbd>open</kbd> activates Wink to deliver the URL, which makes your actual target read as “not frontmost” and turns every toggle into a plain activate; <kbd>-g</kbd> keeps Wink in the background so the toggle sees the real frontmost state. Toggle requests respect the same per-bundle cooldown as a real keypress, but URL-triggered app actions never count toward Insights.</p>
+          <p>A custom URL scheme does not authenticate who called it. Wink accepts only the commands and parameters above, validates bundle identifiers against installed apps, and ignores malformed or unknown input. There are no <kbd>callback</kbd>, <kbd>x-success</kbd>, or other completion callbacks: successful URL delivery does not prove that macOS completed the asynchronous activation request.</p>
         </article>
 
 

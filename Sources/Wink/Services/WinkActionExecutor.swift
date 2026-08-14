@@ -28,19 +28,33 @@ enum WinkActionExecutionError: LocalizedError, Equatable {
 
 @MainActor
 struct WinkActionExecutor {
+    enum SettingsPresentationPolicy: Equatable, Sendable {
+        /// App Intents and menu actions must fail if the SwiftUI bridge is not
+        /// installed yet; they must never report a queued request as success.
+        case requireReady
+        /// A custom URL has no completion result. On cold launch it may use
+        /// SettingsLauncher's existing pending-open commit so the delivered
+        /// request executes as soon as SwiftUI installs its bridge.
+        case allowDeferred
+    }
+
     struct Client {
         let isShortcutsPaused: @MainActor () -> Bool
         let setShortcutsPaused: @MainActor (Bool) -> Void
         let isSearchPalettePresented: @MainActor () -> Bool
         let canPresentSearchPalette: @MainActor () -> Bool
         let showSearchPalette: @MainActor () -> Void
+        let openSettings: @MainActor (SettingsTab?) -> Void
         let openSettingsIfReady: @MainActor (SettingsTab?) -> Bool
         let waitForSettingsPresentation: @MainActor () async throws -> Bool
     }
 
     let client: Client
 
-    func execute(_ action: WinkAction) throws {
+    func execute(
+        _ action: WinkAction,
+        settingsPresentationPolicy: SettingsPresentationPolicy = .requireReady
+    ) throws {
         switch action {
         case .pause:
             try setPaused(true)
@@ -57,8 +71,14 @@ struct WinkActionExecutor {
                 throw WinkActionExecutionError.searchPaletteUnavailable
             }
         case .openSettings(let tab):
-            guard client.openSettingsIfReady(tab.map(SettingsTab.init)) else {
-                throw WinkActionExecutionError.settingsUnavailable
+            let settingsTab = tab.map(SettingsTab.init)
+            switch settingsPresentationPolicy {
+            case .requireReady:
+                guard client.openSettingsIfReady(settingsTab) else {
+                    throw WinkActionExecutionError.settingsUnavailable
+                }
+            case .allowDeferred:
+                client.openSettings(settingsTab)
             }
         }
     }
