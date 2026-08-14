@@ -14,6 +14,10 @@
 	<string>%@ 在过去 7 天内未被触发。</string>
 	<key>%@ have not been activated in the past 7 days.</key>
 	<string>%@ 在过去 7 天内均未被触发。</string>
+	<key>%@ is disabled.</key>
+	<string>%@ 已停用。</string>
+	<key>%@ is unavailable.</key>
+	<string>%@ 不可用。</string>
 	<key>%@ permission was revoked. Wink needs this permission to work. Please re-enable it in System Settings &gt; Privacy &amp; Security &gt; %@.</key>
 	<string>%@ 权限已被撤销。Wink 需要此权限才能正常工作。请在系统设置 &gt; 隐私与安全性 &gt; %@ 中重新启用。</string>
 	<key>%@ versus the previous period.</key>
@@ -44,6 +48,8 @@
 	<string>辅助功能</string>
 	<key>Accessibility permission is required for app switching.</key>
 	<string>应用切换需要辅助功能权限。</string>
+	<key>Accessibility permission is required to run shortcuts from the menu.</key>
+	<string>需要辅助功能权限才能从菜单运行快捷键。</string>
 	<key>Accessibility permission needed</key>
 	<string>需要辅助功能权限</string>
 	<key>Activations</key>
@@ -54,6 +60,8 @@
 	<string>添加配置</string>
 	<key>Add Shortcut</key>
 	<string>添加快捷键</string>
+	<key>Add a shortcut for %@</key>
+	<string>为 %@ 添加快捷键</string>
 	<key>All Apps</key>
 	<string>所有应用</string>
 	<key>All shortcuts are paused.</key>
@@ -142,6 +150,8 @@
 	<string>无法写入诊断信息：%@</string>
 	<key>Couldn't find this app. Rebind it to restore the shortcut.</key>
 	<string>找不到此应用。请重新绑定以恢复快捷键。</string>
+	<key>Couldn’t run the %@ shortcut. Try again.</key>
+	<string>无法运行 %@ 快捷键。请重试。</string>
 	<key>Count app switches locally to suggest shortcuts in Insights. Turning this off also deletes the collected counts.</key>
 	<string>在本地统计应用切换次数，用于在洞察中推荐快捷键。关闭此选项也会删除已收集的统计数据。</string>
 	<key>Create, rename, duplicate, or delete profiles.</key>
@@ -464,6 +474,8 @@
 	<string>查看</string>
 	<key>Routes global shortcuts.</key>
 	<string>用于路由全局快捷键。</string>
+	<key>Run %@ shortcut with Wink</key>
+	<string>使用 Wink 运行 %@ 快捷键</string>
 	<key>Running</key>
 	<string>运行中</string>
 	<key>Saved %lld files to %@.</key>

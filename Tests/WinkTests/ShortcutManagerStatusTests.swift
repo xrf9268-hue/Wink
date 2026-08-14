@@ -201,6 +201,58 @@ private struct FakeAppSwitcher: AppSwitching {
     }
 }
 
+@MainActor
+private final class RecordingAppSwitcher: AppSwitching {
+    var result: Bool
+    var activationAttempt: AppActivationAttemptSnapshot?
+    var invocationReceipt: AppSwitchInvocationReceipt = .confirmed
+    var invocationStatuses: [
+        AppSwitchInvocationToken: AppSwitchInvocationStatus
+    ] = [:]
+    private(set) var invocations: [(shortcut: AppShortcut, bypassCooldown: Bool)] = []
+    private(set) var receiptRequestCount = 0
+
+    init(result: Bool) {
+        self.result = result
+    }
+
+    @discardableResult
+    func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool {
+        invocations.append((shortcut, bypassCooldown))
+        return result
+    }
+
+    func performApplicationInvocation(
+        for shortcut: AppShortcut,
+        bypassCooldown: Bool
+    ) -> AppSwitchInvocationReceipt? {
+        receiptRequestCount += 1
+        return toggleApplication(for: shortcut, bypassCooldown: bypassCooldown)
+            ? invocationReceipt
+            : nil
+    }
+
+    func applicationInvocationStatus(
+        for token: AppSwitchInvocationToken
+    ) -> AppSwitchInvocationStatus {
+        invocationStatuses[token] ?? .pending
+    }
+
+    func currentActivationAttempt(
+        for bundleIdentifier: String
+    ) -> AppActivationAttemptSnapshot? {
+        guard activationAttempt?.identity.bundleIdentifier == bundleIdentifier else {
+            return nil
+        }
+        return activationAttempt
+    }
+}
+
+@MainActor
+private final class InvocationOutcomeRecorder {
+    var outcomes: [ShortcutInvocationOutcome] = []
+}
+
 private func defaultShortcutManagerAppBundleLocator() -> AppBundleLocator {
     TestAppBundleLocator(entries: [
         "com.apple.Safari": URL(fileURLWithPath: "/Applications/Safari.app"),
@@ -214,6 +266,8 @@ private func makeShortcutManager(
     standardProvider: FakeCaptureProvider = FakeCaptureProvider(),
     hyperProvider: FakeHyperCaptureProvider = FakeHyperCaptureProvider(),
     persistenceHarness: TestPersistenceHarness = TestPersistenceHarness(),
+    appSwitcher: any AppSwitching = FakeAppSwitcher(),
+    usageTracker: UsageTracker? = nil,
     appBundleLocator: AppBundleLocator = defaultShortcutManagerAppBundleLocator(),
     automaticPermissionPromptingEnabled: Bool = true,
     diagnosticSink: @escaping @Sendable (String) -> Void = { _ in }
@@ -225,14 +279,127 @@ private func makeShortcutManager(
     let manager = ShortcutManager(
         shortcutStore: ShortcutStore(),
         persistenceService: persistenceHarness.makePersistenceService(),
-        appSwitcher: FakeAppSwitcher(),
+        appSwitcher: appSwitcher,
         captureCoordinator: coordinator,
         permissionService: permissionService,
+        usageTracker: usageTracker,
         appBundleLocator: appBundleLocator,
         automaticPermissionPromptingEnabled: automaticPermissionPromptingEnabled,
         diagnosticClient: .init(log: diagnosticSink)
     )
     return (manager, standardProvider, hyperProvider, persistenceHarness)
+}
+
+/// #435: source attribution changes diagnostics only. Menu invocation keeps
+/// the original UUID, uses the normal cooldown-bearing AppSwitcher call, and
+/// records usage only when that call accepts the activation. No capture
+/// provider is started and no synthetic key path is involved.
+@Test @MainActor
+func directMenuInvocationPreservesSwitchAndUsageSemantics() async throws {
+    let shortcut = AppShortcut(
+        id: UUID(uuidString: "5FB0E97E-58C8-4E03-92EA-6BF24678703A")!,
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "s",
+        modifierFlags: ["command"]
+    )
+    let appSwitcher = RecordingAppSwitcher(result: true)
+    let usageTracker = UsageTracker(databasePath: ":memory:")
+    let diagnostics = DiagnosticCapture()
+    let context = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        appSwitcher: appSwitcher,
+        usageTracker: usageTracker,
+        diagnosticSink: diagnostics.record
+    )
+    try context.manager.save(shortcuts: [shortcut])
+
+    #expect(context.manager.trigger(shortcut, source: .menuBar))
+    #expect(appSwitcher.invocations.count == 1)
+    #expect(appSwitcher.invocations[0].shortcut == shortcut)
+    #expect(appSwitcher.invocations[0].bypassCooldown == false)
+    #expect(appSwitcher.receiptRequestCount == 0)
+    #expect(context.standardProvider.startCallCount == 0)
+    #expect(context.hyperProvider.startCallCount == 0)
+    #expect(diagnostics.messages.contains {
+        $0.contains("SHORTCUT_INVOKE source=menu event=attempt")
+            && $0.contains(shortcut.id.uuidString)
+    })
+    #expect(diagnostics.messages.contains {
+        $0.contains("SHORTCUT_INVOKE source=menu event=accepted")
+            && $0.contains(shortcut.id.uuidString)
+    })
+
+    var counts: [UUID: Int] = [:]
+    for _ in 0..<100 {
+        counts = await usageTracker.usageCounts(days: 1, relativeTo: Date())
+        if counts[shortcut.id] == 1 { break }
+        await Task.yield()
+    }
+    #expect(counts[shortcut.id] == 1)
+
+    appSwitcher.result = false
+    #expect(!context.manager.trigger(shortcut, source: .menuBar))
+    await Task.yield()
+    counts = await usageTracker.usageCounts(days: 1, relativeTo: Date())
+    #expect(counts[shortcut.id] == 1)
+    #expect(appSwitcher.invocations.count == 2)
+    #expect(appSwitcher.invocations[1].bypassCooldown == false)
+    #expect(appSwitcher.receiptRequestCount == 0)
+    #expect(diagnostics.messages.contains {
+        $0.contains("SHORTCUT_INVOKE source=menu event=rejected")
+            && $0.contains(shortcut.id.uuidString)
+    })
+}
+
+@Test @MainActor
+func directMenuInvocationReportsTheOwnedAsyncActivationFailure() async throws {
+    let shortcut = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "s",
+        modifierFlags: ["command"]
+    )
+    let identity = AppActivationAttemptIdentity(
+        bundleIdentifier: shortcut.bundleIdentifier,
+        attemptID: UUID(uuidString: "1C1E9077-C0DF-4777-9F4C-B0C4468E27F4")!,
+        generation: 3
+    )
+    let appSwitcher = RecordingAppSwitcher(result: true)
+    let token = AppSwitchInvocationToken(
+        invocationID: UUID(),
+        attempt: identity,
+        operation: .activation
+    )
+    appSwitcher.invocationReceipt = AppSwitchInvocationReceipt(
+        token: token,
+        status: .pending
+    )
+    let diagnostics = DiagnosticCapture()
+    let context = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: true),
+        appSwitcher: appSwitcher,
+        diagnosticSink: diagnostics.record
+    )
+    let outcomes = InvocationOutcomeRecorder()
+
+    let accepted = context.manager.trigger(
+        shortcut,
+        source: .menuBar,
+        onFinalOutcome: { outcomes.outcomes.append($0) }
+    )
+    #expect(accepted)
+    #expect(appSwitcher.receiptRequestCount == 1)
+    appSwitcher.invocationStatuses[token] = .failed
+
+    for _ in 0..<100 where outcomes.outcomes.isEmpty {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(outcomes.outcomes == [.failed])
+    #expect(diagnostics.messages.contains {
+        $0.contains("SHORTCUT_INVOKE source=menu event=failed")
+            && $0.contains(shortcut.id.uuidString)
+    })
 }
 
 private func standardShortcut() -> AppShortcut {

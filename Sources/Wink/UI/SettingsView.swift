@@ -83,6 +83,25 @@ struct SettingsViewLifecycleHandler {
     }
 }
 
+/// One explicit transition owns suggestion selection so the draft is ready
+/// before the Settings tab changes, including when the window is already open
+/// on another tab. `SettingsLauncher.open` invokes its presentation handler
+/// exactly once per click.
+@MainActor
+enum SuggestedShortcutNavigation {
+    static func open(
+        _ suggestion: InsightsViewModel.SuggestedApp,
+        editor: ShortcutEditorState,
+        settingsLauncher: SettingsLauncher
+    ) {
+        editor.prefillSuggestedApplication(
+            appName: suggestion.name,
+            bundleIdentifier: suggestion.bundleIdentifier
+        )
+        settingsLauncher.open(tab: .shortcuts)
+    }
+}
+
 struct SettingsView: View {
     @Environment(\.winkPalette) private var palette
 
@@ -190,7 +209,16 @@ struct SettingsView: View {
                 firstShortcutOnboarding: firstShortcutOnboarding
             )
         case .insights:
-            InsightsTabView(viewModel: insightsViewModel)
+            InsightsTabView(
+                viewModel: insightsViewModel,
+                onSuggestedAppSelected: { suggestion in
+                    SuggestedShortcutNavigation.open(
+                        suggestion,
+                        editor: editor,
+                        settingsLauncher: settingsLauncher
+                    )
+                }
+            )
         case .general:
             GeneralTabView(preferences: preferences, editor: editor, diagnostics: diagnostics)
         }

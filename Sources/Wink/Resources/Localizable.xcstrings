@@ -979,6 +979,48 @@
         }
       }
     },
+    "%@ is unavailable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "%@ is unavailable." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%@ 不可用。" } }
+      }
+    },
+    "%@ is disabled.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "%@ is disabled." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%@ 已停用。" } }
+      }
+    },
+    "Accessibility permission is required to run shortcuts from the menu.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Accessibility permission is required to run shortcuts from the menu." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "需要辅助功能权限才能从菜单运行快捷键。" } }
+      }
+    },
+    "Couldn’t run the %@ shortcut. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Couldn’t run the %@ shortcut. Try again." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法运行 %@ 快捷键。请重试。" } }
+      }
+    },
+    "Run %@ shortcut with Wink": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Run %@ shortcut with Wink" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用 Wink 运行 %@ 快捷键" } }
+      }
+    },
+    "Add a shortcut for %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Add a shortcut for %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "为 %@ 添加快捷键" } }
+      }
+    },
     "Application names and bundle identifiers are included. They are what make a report useful, and they reveal which apps you have shortcuts for.": {
       "extractionState": "manual",
       "localizations": {

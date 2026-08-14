@@ -328,6 +328,20 @@ final class AppSwitcher: AppSwitching {
     private var supersededHideFocusRecoveries: [String: SupersededHideFocusRecovery] = [:]
     private var nextFocusHideRecoveryIntentGeneration = 0
     private var nextForegroundActivationGeneration = 0
+    private var resolvedShortcutForLastInvocation: AppShortcut?
+    private var lastInvocationReceiptOverride: AppSwitchInvocationReceipt?
+    private struct InvocationOwnershipKey: Hashable {
+        let attempt: AppActivationAttemptIdentity
+        let operation: AppSwitchInvocationOperation
+    }
+    private var pendingInvocationTokens: [
+        InvocationOwnershipKey: Set<AppSwitchInvocationToken>
+    ] = [:]
+    private var terminalInvocationStatuses: [
+        AppSwitchInvocationToken: AppSwitchInvocationStatus
+    ] = [:]
+    private var terminalInvocationOrder: [AppSwitchInvocationToken] = []
+    private let terminalInvocationStatusLimit = 100
 
     /// Re-entry guard: prevents nested calls to toggleApplication on the same run loop turn.
     private var isToggling = false
@@ -468,20 +482,197 @@ final class AppSwitcher: AppSwitching {
         windowCycleCoordinator.invalidate(reason: reason)
     }
 
+    func performApplicationInvocation(
+        for shortcut: AppShortcut,
+        bypassCooldown: Bool
+    ) -> AppSwitchInvocationReceipt? {
+        // A synchronous collaborator can re-enter while the outer toggle is
+        // still resolving its receipt. Let the normal re-entry guard emit its
+        // diagnostics, but never clear the outer invocation's ownership
+        // context for a request that cannot be accepted.
+        if isToggling {
+            _ = toggleApplication(
+                for: shortcut,
+                bypassCooldown: bypassCooldown
+            )
+            return nil
+        }
+        resolvedShortcutForLastInvocation = nil
+        lastInvocationReceiptOverride = nil
+        guard toggleApplication(
+            for: shortcut,
+            bypassCooldown: bypassCooldown
+        ) else {
+            return nil
+        }
+        if let lastInvocationReceiptOverride {
+            return lastInvocationReceiptOverride
+        }
+        guard let resolvedShortcutForLastInvocation,
+              let session = sessionCoordinator.session(
+                for: resolvedShortcutForLastInvocation.bundleIdentifier
+              ) else {
+            return .confirmed
+        }
+
+        let operation: AppSwitchInvocationOperation
+        switch session.phase {
+        case .launching, .activating:
+            operation = .activation
+        case .deactivating:
+            operation = .deactivation
+        case .degraded:
+            return AppSwitchInvocationReceipt(token: nil, status: .failed)
+        case .activeStable, .idle:
+            return .confirmed
+        }
+        let token = makeInvocationToken(for: session, operation: operation)
+        registerPendingInvocation(token)
+        return AppSwitchInvocationReceipt(
+            token: token,
+            status: .pending
+        )
+    }
+
+    func applicationInvocationStatus(
+        for token: AppSwitchInvocationToken
+    ) -> AppSwitchInvocationStatus {
+        if let terminal = terminalInvocationStatuses[token] {
+            return terminal
+        }
+        let ownershipKey = invocationOwnershipKey(for: token)
+        guard pendingInvocationTokens[ownershipKey]?.contains(token) == true else {
+            return .failed
+        }
+        guard let session = sessionCoordinator.session(
+            for: token.attempt.bundleIdentifier
+        ), activationAttemptIdentity(for: session) == token.attempt else {
+            return finishInvocation(token, status: .failed)
+        }
+        let status: AppSwitchInvocationStatus
+        switch token.operation {
+        case .activation:
+            switch session.phase {
+            case .launching, .activating:
+                status = .pending
+            case .activeStable:
+                status = .confirmed
+            case .idle, .deactivating, .degraded:
+                status = .failed
+            }
+        case .deactivation:
+            switch session.phase {
+            case .deactivating:
+                status = .pending
+            case .idle:
+                // The normal completion path records a terminal result before
+                // moving to idle. Reaching idle without that owned record can
+                // also mean session expiry, so fail closed.
+                status = .failed
+            case .launching, .activating, .activeStable, .degraded:
+                status = .failed
+            }
+        }
+        if status == .pending {
+            return status
+        }
+        return finishInvocation(token, status: status)
+    }
+
     func currentActivationAttempt(
         for bundleIdentifier: String
     ) -> AppActivationAttemptSnapshot? {
-        guard let session = sessionCoordinator.session(for: bundleIdentifier),
-              session.phase == .launching
-                || session.phase == .activating
-                || session.phase == .degraded
-                || session.phase == .activeStable else {
+        guard let session = sessionCoordinator.activationSession(for: bundleIdentifier) else {
             return nil
         }
+        return activationAttemptSnapshot(for: session)
+    }
+
+    private func activationAttemptSnapshot(
+        for session: ToggleSessionCoordinator.Session
+    ) -> AppActivationAttemptSnapshot {
         return AppActivationAttemptSnapshot(
             identity: activationAttemptIdentity(for: session),
-            isConfirmed: session.phase == .activeStable
+            isConfirmed: session.phase == .activeStable,
+            isFailed: session.phase == .degraded
         )
+    }
+
+    private func makeInvocationToken(
+        for session: ToggleSessionCoordinator.Session,
+        operation: AppSwitchInvocationOperation
+    ) -> AppSwitchInvocationToken {
+        AppSwitchInvocationToken(
+            invocationID: UUID(),
+            attempt: activationAttemptIdentity(for: session),
+            operation: operation
+        )
+    }
+
+    private func invocationOwnershipKey(
+        for token: AppSwitchInvocationToken
+    ) -> InvocationOwnershipKey {
+        InvocationOwnershipKey(
+            attempt: token.attempt,
+            operation: token.operation
+        )
+    }
+
+    private func invocationOwnershipKey(
+        for session: ToggleSessionCoordinator.Session,
+        operation: AppSwitchInvocationOperation
+    ) -> InvocationOwnershipKey {
+        InvocationOwnershipKey(
+            attempt: activationAttemptIdentity(for: session),
+            operation: operation
+        )
+    }
+
+    private func registerPendingInvocation(_ token: AppSwitchInvocationToken) {
+        pendingInvocationTokens[invocationOwnershipKey(for: token), default: []].insert(token)
+    }
+
+    @discardableResult
+    private func finishInvocation(
+        _ token: AppSwitchInvocationToken,
+        status: AppSwitchInvocationStatus
+    ) -> AppSwitchInvocationStatus {
+        let ownershipKey = invocationOwnershipKey(for: token)
+        pendingInvocationTokens[ownershipKey]?.remove(token)
+        if pendingInvocationTokens[ownershipKey]?.isEmpty == true {
+            pendingInvocationTokens.removeValue(forKey: ownershipKey)
+        }
+        recordTerminalInvocationStatus(status, for: token)
+        return status
+    }
+
+    private func recordTerminalInvocationStatus(
+        _ status: AppSwitchInvocationStatus,
+        for token: AppSwitchInvocationToken
+    ) {
+        if terminalInvocationStatuses[token] == nil {
+            terminalInvocationOrder.append(token)
+        }
+        terminalInvocationStatuses[token] = status
+        while terminalInvocationOrder.count > terminalInvocationStatusLimit {
+            let expired = terminalInvocationOrder.removeFirst()
+            terminalInvocationStatuses.removeValue(forKey: expired)
+        }
+    }
+
+    private func recordTerminalInvocationStatus(
+        _ status: AppSwitchInvocationStatus,
+        for session: ToggleSessionCoordinator.Session,
+        operation: AppSwitchInvocationOperation
+    ) {
+        let ownershipKey = invocationOwnershipKey(
+            for: session,
+            operation: operation
+        )
+        let tokens = pendingInvocationTokens.removeValue(forKey: ownershipKey) ?? []
+        for token in tokens {
+            recordTerminalInvocationStatus(status, for: token)
+        }
     }
 
     func setActivationConfirmationObserver(
@@ -679,6 +870,11 @@ final class AppSwitcher: AppSwitching {
         ) else {
             return nil
         }
+        recordTerminalInvocationStatus(
+            .confirmed,
+            for: session,
+            operation: .activation
+        )
         if notifiesActivationConfirmation {
             activationConfirmationObserver?(activationAttemptIdentity(for: session))
         }
@@ -791,13 +987,18 @@ final class AppSwitcher: AppSwitching {
                 self.clearSupersededHideFocusRecoveryOwnership(
                     for: state.bundleIdentifier
                 )
-                guard self.sessionCoordinator.markDegraded(
+                guard let degradedSession = self.sessionCoordinator.markDegraded(
                     for: state.bundleIdentifier,
                     reason: "activation_recovery_exhausted",
                     generation: state.generation
-                ) != nil else {
+                ) else {
                     return
                 }
+                self.recordTerminalInvocationStatus(
+                    .failed,
+                    for: degradedSession,
+                    operation: .activation
+                )
                 self.logToggleTrace(
                     family: .confirmation,
                     bundleIdentifier: state.bundleIdentifier,
@@ -966,6 +1167,16 @@ final class AppSwitcher: AppSwitching {
     }
 
     private func clearActivationTracking(for bundleIdentifier: String) {
+        if let session = sessionCoordinator.session(for: bundleIdentifier),
+           session.phase == .launching
+            || session.phase == .activating
+            || session.phase == .degraded {
+            recordTerminalInvocationStatus(
+                .failed,
+                for: session,
+                operation: .activation
+            )
+        }
         sessionCoordinator.resetSession(for: bundleIdentifier)
     }
 
@@ -981,10 +1192,26 @@ final class AppSwitcher: AppSwitching {
     }
 
     private func completePendingDeactivation(for bundleIdentifier: String) {
+        if let session = sessionCoordinator.session(for: bundleIdentifier),
+           session.phase == .deactivating {
+            recordTerminalInvocationStatus(
+                .confirmed,
+                for: session,
+                operation: .deactivation
+            )
+        }
         sessionCoordinator.completeDeactivation(for: bundleIdentifier)
     }
 
     private func cancelPendingDeactivation(for bundleIdentifier: String) {
+        if let session = sessionCoordinator.session(for: bundleIdentifier),
+           session.phase == .deactivating {
+            recordTerminalInvocationStatus(
+                .failed,
+                for: session,
+                operation: .deactivation
+            )
+        }
         sessionCoordinator.cancelDeactivation(for: bundleIdentifier)
     }
 
@@ -1337,6 +1564,8 @@ final class AppSwitcher: AppSwitching {
             return false
         }
 
+        resolvedShortcutForLastInvocation = shortcut
+
         // Per-bundle cooldown. The gate runs before the frontmost lane is
         // chosen, so the Cycle relaxation needs its own cheap frontmost
         // pre-check here (workspace snapshot only — no AX on this path).
@@ -1459,6 +1688,10 @@ final class AppSwitcher: AppSwitching {
                     sessionSnapshot: degradedReconfirmDecision.session
                 )
             case .retryCapped:
+                lastInvocationReceiptOverride = AppSwitchInvocationReceipt(
+                    token: nil,
+                    status: .failed
+                )
                 logToggleTrace(
                     family: .decision,
                     bundleIdentifier: shortcut.bundleIdentifier,
@@ -1472,6 +1705,10 @@ final class AppSwitcher: AppSwitching {
                 )
                 return true
             case .absoluteCeilingReached:
+                lastInvocationReceiptOverride = AppSwitchInvocationReceipt(
+                    token: nil,
+                    status: .failed
+                )
                 logToggleTrace(
                     family: .decision,
                     bundleIdentifier: shortcut.bundleIdentifier,

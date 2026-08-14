@@ -85,6 +85,10 @@ final class ToggleSessionCoordinator {
         session(for: bundleIdentifier, matching: [.launching, .activating, .degraded])
     }
 
+    func activationSession(for bundleIdentifier: String? = nil) -> Session? {
+        session(for: bundleIdentifier, matching: [.launching, .activating, .degraded, .activeStable])
+    }
+
     func pendingDeactivationSession(for bundleIdentifier: String? = nil) -> Session? {
         session(for: bundleIdentifier, matching: [.deactivating])
     }

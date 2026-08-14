@@ -43,6 +43,10 @@ final class ShortcutProfileState {
 
     private(set) var profiles: [ShortcutProfile] = []
     private(set) var activeProfileID: UUID?
+    /// Monotonic ownership boundary for async UI work tied to the active
+    /// profile. Unlike the profile ID, this cannot return to an old value
+    /// after an A → B → A sequence.
+    private(set) var activeProfileRevision = 0
     private(set) var unreadableProfileIDs: Set<UUID> = []
     private(set) var orphanProfileIDs: Set<UUID> = []
     private(set) var duplicateShortcutIDs: Set<UUID> = []
@@ -230,7 +234,7 @@ final class ShortcutProfileState {
 
     private func apply(_ loaded: ShortcutProfileStore.LoadedProfiles) {
         profiles = loaded.profiles
-        activeProfileID = loaded.activeProfileID
+        setActiveProfileID(loaded.activeProfileID)
         unreadableProfileIDs = loaded.unreadableProfileIDs
         orphanProfileIDs = loaded.orphanProfileIDs
         duplicateShortcutIDs = loaded.duplicateShortcutIDs
@@ -247,12 +251,18 @@ final class ShortcutProfileState {
 
     private func reset(recovery: Recovery) {
         profiles = []
-        activeProfileID = nil
+        setActiveProfileID(nil)
         unreadableProfileIDs = []
         orphanProfileIDs = []
         duplicateShortcutIDs = []
         pendingForeignMirror = nil
         self.recovery = recovery
+    }
+
+    private func setActiveProfileID(_ profileID: UUID?) {
+        guard activeProfileID != profileID else { return }
+        activeProfileID = profileID
+        activeProfileRevision &+= 1
     }
 
     // MARK: - Switching
@@ -300,7 +310,7 @@ final class ShortcutProfileState {
         // the apply the runtime is still on the outgoing set, which is the same
         // persist-then-mutate ordering an ordinary save already uses.
         let discarded = prepareForSwitch()
-        activeProfileID = profileID
+        setActiveProfileID(profileID)
         unreadableProfileIDs.remove(profileID)
         // A successful switch resolves the ACTIVE-PROFILE recovery states
         // (an ambiguous pointer, an unreadable active profile) — but the
@@ -479,7 +489,7 @@ final class ShortcutProfileState {
 
             if let newActiveProfileID = outcome.newActiveProfileID,
                let newActiveShortcuts = outcome.newActiveShortcuts {
-                activeProfileID = newActiveProfileID
+                setActiveProfileID(newActiveProfileID)
                 // Deleting the pointed-but-unreadable profile resolves the
                 // very state the banner describes. Leaving it up would keep
                 // telling the user no shortcuts are active while a successor
@@ -625,7 +635,7 @@ final class ShortcutProfileState {
                 // repaired an unloadable active profile, so clearing the
                 // recovery state here is what turns the banner off and puts
                 // the profile back in the picker.
-                activeProfileID = mirror.profileID
+                setActiveProfileID(mirror.profileID)
                 if case .activeProfileUnreadable = recovery {
                     recovery = .none
                     profiles = store.manifest?.profiles ?? profiles

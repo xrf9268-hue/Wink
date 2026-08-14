@@ -34,6 +34,7 @@ struct WinkApp: App {
                     shortcutStatusProvider: menuBarServices.shortcutStatusProvider,
                     usageTracker: menuBarServices.usageTracker,
                     setShortcutsPaused: menuBarServices.setShortcutsPaused,
+                    activateShortcut: menuBarServices.activateShortcut,
                     openSettings: menuBarServices.openSettings,
                     quit: menuBarServices.quit
                 )
