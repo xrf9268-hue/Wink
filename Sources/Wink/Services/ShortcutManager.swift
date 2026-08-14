@@ -82,6 +82,7 @@ final class ShortcutManager {
     private var hyperKeyEnabled = false
     private var shortcutsPaused = false
     private var autoPausedByException = false
+    private var focusPaused = false
     private let secureInputProbe: () -> Bool
     private var lastSecureInputState = false
     /// Last status delivered to `onCaptureStatusChange`. `AppPreferences`
@@ -115,7 +116,7 @@ final class ShortcutManager {
     /// physical onboarding verification.
     var shouldCaptureOnboardingTriggerContext: (@MainActor (AppShortcut) -> Bool)?
     /// Fires whenever the composed pause state transitions (manual pause,
-    /// exception auto-pause, either direction).
+    /// exception auto-pause, Focus pause, either direction).
     var onCapturePauseStateChange: (@MainActor (_ paused: Bool) -> Void)?
     /// Fires when a hold-enabled shortcut's chord is held past the hold
     /// threshold. The consumer (AppController) owns what a hold action does;
@@ -160,7 +161,7 @@ final class ShortcutManager {
     private var recordingSessionActive = false
 
     private var effectivePaused: Bool {
-        shortcutsPaused || autoPausedByException
+        shortcutsPaused || autoPausedByException || focusPaused
     }
     private var lastCaptureBlockedMessages: Set<String> = []
     private var hasStarted = false
@@ -592,9 +593,8 @@ final class ShortcutManager {
 
         let wasEffectivelyPaused = effectivePaused
         shortcutsPaused = paused
-        // Manual and exception pauses compose: capture only transitions
-        // when the OR of both bits changes, so resuming one while the
-        // other still holds keeps capture paused.
+        // All pause reasons compose: capture only transitions when their OR
+        // changes, so resuming one while another still holds stays paused.
         guard effectivePaused != wasEffectivelyPaused else { return }
         applyEffectivePauseTransition(promptForPermissions: promptForPermissions)
     }
@@ -619,8 +619,22 @@ final class ShortcutManager {
         applyEffectivePauseTransition()
     }
 
+    /// Focus Filter pause. It is a third independent, non-manual reason:
+    /// applying or clearing it never persists or mutates the manual and
+    /// frontmost-exception bits.
+    func setFocusPaused(_ paused: Bool) {
+        guard focusPaused != paused else {
+            return
+        }
+
+        let wasEffectivelyPaused = effectivePaused
+        focusPaused = paused
+        guard effectivePaused != wasEffectivelyPaused else { return }
+        applyEffectivePauseTransition()
+    }
+
     private func applyEffectivePauseTransition(promptForPermissions: Bool = true) {
-        // Both pause bits are part of the composed status, and the
+        // All pause bits are part of the composed status, and the
         // exception auto-pause has no AppPreferences-side pull path at all
         // — every branch below (including the paused early return) must
         // push, or the cached status lags until the next poll tick (#383).

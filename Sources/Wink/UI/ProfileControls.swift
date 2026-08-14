@@ -1,5 +1,26 @@
 import SwiftUI
 
+enum ProfileBarSelection {
+    static func profileID(
+        activeProfileID: UUID?,
+        focusProfileID: UUID?,
+        manualProfileIDDuringFocus: UUID?,
+        focusRestorePending: Bool
+    ) -> UUID? {
+        focusProfileID == nil && !focusRestorePending
+            ? activeProfileID
+            : manualProfileIDDuringFocus
+    }
+
+    static func profileName(
+        profiles: [ShortcutProfile],
+        selectedProfileID: UUID?
+    ) -> String {
+        guard let selectedProfileID else { return "" }
+        return profiles.first { $0.id == selectedProfileID }?.name ?? ""
+    }
+}
+
 /// Profile selector plus the recovery banners, shown above the shortcut list.
 ///
 /// Terminology is fixed and must not drift: a **Profile** is one of the user's
@@ -24,6 +45,7 @@ struct ProfileBar: View {
             if profileState.isMutable {
                 selector
             }
+            focusOverlayBanner
             recoveryBanner
             foreignMirrorBanner
             messageBanner
@@ -60,7 +82,7 @@ struct ProfileBar: View {
             .labelsHidden()
             .frame(maxWidth: 220, alignment: .leading)
             .accessibilityLabel(Text("Profile", bundle: WinkResourceBundle.bundle))
-            .accessibilityValue(Text(profileState.activeProfile?.name ?? ""))
+            .accessibilityValue(Text(selectedProfileName))
 
             WinkButton(
                 String(localized: "Manage…", bundle: WinkResourceBundle.bundle),
@@ -76,12 +98,62 @@ struct ProfileBar: View {
 
     private var profileSelection: Binding<UUID?> {
         Binding(
-            get: { profileState.activeProfileID },
+            get: {
+                ProfileBarSelection.profileID(
+                    activeProfileID: profileState.activeProfileID,
+                    focusProfileID: profileState.focusProfileID,
+                    manualProfileIDDuringFocus: profileState.manualProfileIDDuringFocus,
+                    focusRestorePending: profileState.focusRestorePending
+                )
+            },
             set: { newValue in
                 guard let newValue else { return }
                 profileState.switchToProfile(newValue)
             }
         )
+    }
+
+    private var selectedProfileName: String {
+        ProfileBarSelection.profileName(
+            profiles: profileState.profiles,
+            selectedProfileID: profileSelection.wrappedValue
+        )
+    }
+
+    @ViewBuilder
+    private var focusOverlayBanner: some View {
+        if let focusProfile = profileState.focusProfile,
+           profileState.isFocusProfileApplied {
+            WinkBanner(
+                kind: .info,
+                title: String(
+                    localized: "Focus is using “\(focusProfile.name)”",
+                    bundle: WinkResourceBundle.bundle
+                ),
+                message: String(
+                    localized: "Choose another Profile above to change what Wink restores when Focus ends. The Focus profile stays active until then.",
+                    bundle: WinkResourceBundle.bundle
+                )
+            )
+        } else if profileState.focusProfile != nil {
+            WinkBanner(
+                kind: .info,
+                title: String(
+                    localized: "A Focus profile change is waiting for the current shortcut edit to finish.",
+                    bundle: WinkResourceBundle.bundle
+                )
+            )
+        } else if profileState.focusRestorePending,
+                  let manualProfile = profileState.manualProfileDuringFocus {
+            WinkBanner(
+                kind: .info,
+                title: String(localized: "Restoring the pre-Focus profile", bundle: WinkResourceBundle.bundle),
+                message: String(
+                    localized: "Wink will restore “\(manualProfile.name)” as soon as the current shortcut edit is finished.",
+                    bundle: WinkResourceBundle.bundle
+                )
+            )
+        }
     }
 
     private func profileRowLabel(_ profile: ShortcutProfile) -> String {
@@ -330,7 +402,10 @@ struct ProfileManagerSheet: View {
                           let profile = profileState.profiles.first(where: { $0.id == selection }) else { return }
                     pendingDeletion = profile
                 }
-                .disabled(selection == nil || !profileState.canDeleteProfiles)
+                .disabled(
+                    selection == nil
+                        || selection.map(profileState.canDeleteProfile) != true
+                )
 
                 Spacer(minLength: 0)
 
@@ -399,9 +474,16 @@ struct ProfileManagerSheet: View {
             Spacer(minLength: 8)
 
             if profile.id == profileState.activeProfileID {
-                Text("active", bundle: WinkResourceBundle.bundle)
+                Text(
+                    profile.id == profileState.focusProfileID ? "Focus Filter" : "active",
+                    bundle: WinkResourceBundle.bundle
+                )
                     .font(WinkType.labelSmall)
                     .foregroundStyle(palette.accent)
+            } else if profile.id == profileState.manualProfileIDDuringFocus {
+                Text("restore after Focus", bundle: WinkResourceBundle.bundle)
+                    .font(WinkType.labelSmall)
+                    .foregroundStyle(palette.textSecondary)
             }
         }
         .accessibilityElement(children: .combine)
@@ -437,8 +519,7 @@ struct ProfileManagerSheet: View {
                 .keyboardShortcut(.cancelAction)
 
                 WinkButton(String(localized: "Rename", bundle: WinkResourceBundle.bundle), variant: .primary) {
-                    profileState.renameProfile(profileID, to: nameDraft)
-                    if profileState.errorMessage == nil {
+                    if profileState.renameProfile(profileID, to: nameDraft) {
                         renamingProfileID = nil
                     }
                 }
@@ -451,13 +532,13 @@ struct ProfileManagerSheet: View {
 }
 
 /// `UUID` is not `Identifiable`, and `.sheet(item:)` needs one.
-private struct ProfileIdentifier: Identifiable, Hashable {
+private struct ProfileIdentifier: Identifiable, Hashable, Sendable {
     let id: UUID
 }
 
 private extension Binding where Value == UUID? {
-    func map<Wrapped: Identifiable & Hashable>(
-        _ transform: @escaping (UUID) -> Wrapped
+    func map<Wrapped: Identifiable & Hashable & Sendable>(
+        _ transform: @escaping @Sendable (UUID) -> Wrapped
     ) -> Binding<Wrapped?> {
         Binding<Wrapped?>(
             get: { wrappedValue.map(transform) },

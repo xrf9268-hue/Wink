@@ -440,7 +440,18 @@ jobs:
       - name: Verify app signature
         run: |
           codesign --verify --deep --strict --verbose=2 build/Wink.app
+          codesign --verify --strict --verbose=2 \
+            build/Wink.app/Contents/Extensions/WinkFocusIntentsExtension.appex
           test -d build/Wink.app/Contents/Frameworks/Sparkle.framework
+          if [ "$SIGNING_MODE" = "developer-id" ]; then
+            codesign -d --entitlements :- build/Wink.app 2>&1 | grep -q 'group.com.wink.app'
+            codesign -d --entitlements :- \
+              build/Wink.app/Contents/Extensions/WinkFocusIntentsExtension.appex 2>&1 \
+              | grep -q 'group.com.wink.app'
+            codesign -d --entitlements :- \
+              build/Wink.app/Contents/Extensions/WinkFocusIntentsExtension.appex 2>&1 \
+              | grep -A1 -q 'com.apple.security.app-sandbox'
+          fi
 
       - name: Assess app with Gatekeeper
         if: ${{ env.SIGNING_MODE == 'developer-id' }}

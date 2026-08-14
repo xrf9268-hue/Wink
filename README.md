@@ -23,6 +23,7 @@ Wink suggests a quick, subtle signal: something that happens almost instantly an
 - Hold the Hyper key to see a cheat sheet of every bound shortcut.
 - Review usage in the Insights tab — trends, a weekly heatmap, and shortcut suggestions for apps you switch to often. All of it stays on your Mac.
 - Exception rules auto-pause capture while a VM or remote desktop is frontmost, and Secure Input degradation is surfaced in the menu bar instead of failing silently.
+- Apply a chosen shortcut Profile, pause shortcuts, or both from macOS Focus Filters; each Focus is configured explicitly in System Settings and restores your latest manual Profile afterward.
 - Import and export `.winkrecipe` shortcut sets.
 - Launch at login, in-app Sparkle updates.
 - Available in English and Simplified Chinese (zh-Hans); see [`docs/localization.md`](docs/localization.md) for how to add a locale.
@@ -54,6 +55,13 @@ Always launch the packaged app with `open build/Wink.app` when testing permissio
 ## Automation
 
 Wink publishes four localized actions in Apple's Shortcuts app: **Pause Wink**, **Resume Wink**, **Show Wink Search Palette**, and **Open Wink Settings** (optionally to Shortcuts, General, or Insights). They launch Wink when needed, and only report success after the requested state or UI is actually active. Pause and Resume change only the manual-pause bit, so exception-rule auto-pause remains independent.
+
+Wink also embeds a separate **Wink Focus Filter** App Intents extension. In
+System Settings > Focus, choose a Wink Profile by its stable identity and/or
+enable Focus-owned pause. The extension works while Wink is not running; on
+the next launch Wink reads the durable state, applies it through the normal
+atomic Profile switch, and restores the latest manual Profile when the Focus
+overlay ends. Manual, exception-rule, and Focus pauses remain independent.
 
 The existing URL surface remains available for tools that cannot invoke App Intents:
 

@@ -339,6 +339,10 @@ final class AppController {
             self?.insightsViewModel.scheduleRefresh()
         }
     )
+    private lazy var focusFilterCoordinator = FocusFilterCoordinator(
+        profileState: profileState,
+        preferences: appPreferences
+    )
     private lazy var frontmostExceptionMonitor = FrontmostExceptionMonitor(
         onAutoPauseChange: { [weak self] paused, appName in
             self?.shortcutManager.setAutoPausedByException(paused)
@@ -630,7 +634,16 @@ final class AppController {
             // empty set for every recovery state so an unreadable
             // configuration can never fall through to a different profile's
             // bindings. The failure itself is surfaced by `profileState`.
-            loadShortcuts: { profileState.loadAtStartup() },
+            loadShortcuts: {
+                let loaded = profileState.loadAtStartup()
+                // Reconciliation may need to switch profiles before capture
+                // starts. Seed the store first so the shared #437 apply seam
+                // sees the loaded base set, then return whichever set the
+                // Focus overlay left effective.
+                shortcutStore.replaceAll(with: loaded)
+                focusFilterCoordinator.start()
+                return shortcutStore.shortcuts
+            },
             replaceShortcuts: { shortcutStore.replaceAll(with: $0) },
             // "Deferred by an active pause" counts as armed: the routing
             // decision below must reflect user intent, not the pause. With
@@ -686,6 +699,7 @@ final class AppController {
     }
 
     func stop() {
+        focusFilterCoordinator.stop()
         hyperKeyService.clearMappingIfEnabled()
         shortcutManager.stop()
     }

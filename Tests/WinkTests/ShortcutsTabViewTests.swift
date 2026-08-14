@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Wink
 
@@ -72,6 +73,83 @@ struct ShortcutsTabViewTests {
         #expect(presentation == .exception(appName: nil))
         #expect(!presentation.showsResumeAction)
         #expect(presentation.title == "Shortcuts paused by an exception rule")
+    }
+
+    @Test
+    func focusPauseDoesNotOfferADeadManualResumeAction() throws {
+        let presentation = try #require(
+            FirstShortcutOnboardingPausePresentation(
+                effectivePaused: true,
+                manuallyPaused: false,
+                autoPauseTriggerAppName: nil,
+                focusPauseActive: true
+            )
+        )
+
+        #expect(presentation == .focus)
+        #expect(!presentation.showsResumeAction)
+        #expect(presentation.title == "Shortcuts paused by Focus")
+    }
+
+    @Test
+    func focusPauseGuidanceNamesTheRemainingPauseReason() throws {
+        let presentation = try #require(
+            FirstShortcutOnboardingPausePresentation(
+                effectivePaused: true,
+                manuallyPaused: true,
+                autoPauseTriggerAppName: "Parallels Desktop",
+                focusPauseActive: true
+            )
+        )
+
+        #expect(presentation == .focusWithOtherReason)
+        #expect(!presentation.showsResumeAction)
+        #expect(presentation.title == "Shortcuts paused by Focus and another reason")
+        #expect(
+            presentation.message
+                == "Change or deactivate the Focus Filter, then clear the remaining pause reason before shortcut capture can resume."
+        )
+    }
+
+    @Test
+    func profilePickerAndAccessibilityUseTheSameRestoreSelectionDuringFocus() {
+        let activeID = UUID()
+        let restoreID = UUID()
+        let focusID = UUID()
+        let profiles = [
+            ShortcutProfile(id: activeID, name: "Active", createdAt: .distantPast),
+            ShortcutProfile(id: restoreID, name: "Restore", createdAt: .distantPast),
+        ]
+
+        let selectedID = ProfileBarSelection.profileID(
+            activeProfileID: activeID,
+            focusProfileID: focusID,
+            manualProfileIDDuringFocus: restoreID,
+            focusRestorePending: false
+        )
+
+        #expect(selectedID == restoreID)
+        #expect(
+            ProfileBarSelection.profileName(
+                profiles: profiles,
+                selectedProfileID: selectedID
+            ) == "Restore"
+        )
+    }
+
+    @Test
+    func profilePickerSelectsPendingRestoreTargetAfterFocusEnds() {
+        let formerFocusID = UUID()
+        let restoreID = UUID()
+
+        #expect(
+            ProfileBarSelection.profileID(
+                activeProfileID: formerFocusID,
+                focusProfileID: nil,
+                manualProfileIDDuringFocus: restoreID,
+                focusRestorePending: true
+            ) == restoreID
+        )
     }
 
     @Test

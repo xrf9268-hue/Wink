@@ -2,8 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>%@ (Focus pending)</key>
+	<string>%@ (Focus pending)</string>
+	<key>%@ (Focus)</key>
+	<string>%@ (Focus)</string>
 	<key>%@ (can't be read)</key>
 	<string>%@ (can't be read)</string>
+	<key>%@ (restore after Focus)</key>
+	<string>%@ (restore after Focus)</string>
 	<key>%@ Last checked %@.</key>
 	<string>%@ Last checked %@.</string>
 	<key>%@ copy</key>
@@ -36,6 +42,8 @@
 	<string>30 days</string>
 	<key>7 days</key>
 	<string>7 days</string>
+	<key>A Focus profile change is waiting for the current shortcut edit to finish.</key>
+	<string>A Focus profile change is waiting for the current shortcut edit to finish.</string>
 	<key>A copy of the unreadable file was saved to %@.</key>
 	<string>A copy of the unreadable file was saved to %@.</string>
 	<key>A password field or secure prompt is capturing keyboard input. Hyper and Fn-based shortcuts may not fire until it ends; other standard shortcuts keep working.</key>
@@ -74,6 +82,8 @@
 	<string>App unavailable</string>
 	<key>Application names and bundle identifiers are included. They are what make a report useful, and they reveal which apps you have shortcuts for.</key>
 	<string>Application names and bundle identifiers are included. They are what make a report useful, and they reveal which apps you have shortcuts for.</string>
+	<key>Apply a specific Wink shortcut profile and optionally pause all shortcuts while this Focus is active.</key>
+	<string>Apply a specific Wink shortcut profile and optionally pause all shortcuts while this Focus is active.</string>
 	<key>Apps you switch to often that have no shortcut yet. Add one in Shortcuts.</key>
 	<string>Apps you switch to often that have no shortcut yet. Add one in Shortcuts.</string>
 	<key>Assumes ~3 seconds per activation.</key>
@@ -96,6 +106,10 @@
 	<string>Cancel</string>
 	<key>Change Shortcut</key>
 	<string>Change Shortcut</string>
+	<key>Change or deactivate the Focus Filter in System Settings to resume shortcut capture.</key>
+	<string>Change or deactivate the Focus Filter in System Settings to resume shortcut capture.</string>
+	<key>Change or deactivate the Focus Filter, then clear the remaining pause reason before shortcut capture can resume.</key>
+	<string>Change or deactivate the Focus Filter, then clear the remaining pause reason before shortcut capture can resume.</string>
 	<key>Check for Updates…</key>
 	<string>Check for Updates…</string>
 	<key>Check that the app is still installed, then retry or choose a different shortcut.</key>
@@ -114,6 +128,8 @@
 	<string>Choose an app, record one shortcut, and press it once so Wink can verify the real switch.</string>
 	<key>Choose an app…</key>
 	<string>Choose an app…</string>
+	<key>Choose another Profile above to change what Wink restores when Focus ends. The Focus profile stays active until then.</key>
+	<string>Choose another Profile above to change what Wink restores when Focus ends. The Focus profile stays active until then.</string>
 	<key>Choose one app and record one shortcut</key>
 	<string>Choose one app and record one shortcut</string>
 	<key>Choose where to save the diagnostics folder.</key>
@@ -216,6 +232,16 @@
 	<string>First Shortcut Guide…</string>
 	<key>Focus</key>
 	<string>Focus</string>
+	<key>Focus Filter</key>
+	<string>Focus Filter</string>
+	<key>Focus ended and Wink restored “%@”.</key>
+	<string>Focus ended and Wink restored “%@”.</string>
+	<key>Focus is using the profile “%@”. Manual profile changes will be restored when Focus ends.</key>
+	<string>Focus is using the profile “%@”. Manual profile changes will be restored when Focus ends.</string>
+	<key>Focus is using “%@”.</key>
+	<string>Focus is using “%@”.</string>
+	<key>Focus keeps “%@” active. Wink will restore “%@” when Focus ends.</key>
+	<string>Focus keeps “%@” active. Wink will restore “%@” when Focus ends.</string>
 	<key>Full release notes</key>
 	<string>Full release notes</string>
 	<key>General</key>
@@ -322,6 +348,8 @@
 	<string>Master switch for global shortcut routing.</string>
 	<key>Most used</key>
 	<string>Most used</string>
+	<key>Name</key>
+	<string>Name</string>
 	<key>Needed</key>
 	<string>Needed</string>
 	<key>Needed for the current shortcut configuration.</key>
@@ -384,6 +412,8 @@
 	<string>Optional</string>
 	<key>Past 7 days</key>
 	<string>Past 7 days</string>
+	<key>Pause Shortcuts</key>
+	<string>Pause Shortcuts</string>
 	<key>Pause Wink</key>
 	<string>Pause Wink</string>
 	<key>Pause all Wink shortcuts.</key>
@@ -396,6 +426,8 @@
 	<string>Paused</string>
 	<key>Paused · %@</key>
 	<string>Paused · %@</string>
+	<key>Paused · Focus</key>
+	<string>Paused · Focus</string>
 	<key>Permission is present, but the selected route is not ready yet. Retry after macOS finishes applying the change.</key>
 	<string>Permission is present, but the selected route is not ready yet. Retry after macOS finishes applying the change.</string>
 	<key>Permissions</key>
@@ -456,6 +488,12 @@
 	<string>Required for global shortcuts</string>
 	<key>Requires at least one modifier (⌘⌥⌃⇧)</key>
 	<string>Requires at least one modifier (⌘⌥⌃⇧)</string>
+	<key>Restored “%@”. This Focus still pauses shortcuts.</key>
+	<string>Restored “%@”. This Focus still pauses shortcuts.</string>
+	<key>Restoring the pre-Focus profile</key>
+	<string>Restoring the pre-Focus profile</string>
+	<key>Restoring the profile from before Focus is waiting for the current shortcut edit to finish.</key>
+	<string>Restoring the profile from before Focus is waiting for the current shortcut edit to finish.</string>
 	<key>Resume</key>
 	<string>Resume</string>
 	<key>Resume Wink</key>
@@ -500,6 +538,8 @@
 	<string>Shareable shortcut sets</string>
 	<key>Shortcut</key>
 	<string>Shortcut</string>
+	<key>Shortcut Profile</key>
+	<string>Shortcut Profile</string>
 	<key>Shortcut capture needs attention</key>
 	<string>Shortcut capture needs attention</string>
 	<key>Shortcut capture ready</key>
@@ -514,6 +554,10 @@
 	<string>Shortcuts paused</string>
 	<key>Shortcuts paused by %@</key>
 	<string>Shortcuts paused by %@</string>
+	<key>Shortcuts paused by Focus</key>
+	<string>Shortcuts paused by Focus</string>
+	<key>Shortcuts paused by Focus and another reason</key>
+	<string>Shortcuts paused by Focus and another reason</string>
 	<key>Shortcuts paused by an exception rule</key>
 	<string>Shortcuts paused by an exception rule</string>
 	<key>Show Menu Bar Icon</key>
@@ -584,8 +628,12 @@
 	<string>That profile no longer exists.</string>
 	<key>That profile’s shortcuts could not be read, so Wink did not switch to it. Nothing was changed or deleted.</key>
 	<string>That profile’s shortcuts could not be read, so Wink did not switch to it. Nothing was changed or deleted.</string>
+	<key>The Focus Filter refers to a profile that no longer exists.</key>
+	<string>The Focus Filter refers to a profile that no longer exists.</string>
 	<key>The Settings toggle is live: background checks and downloads, on or off.</key>
 	<string>The Settings toggle is live: background checks and downloads, on or off.</string>
+	<key>The active Focus Filter refers to a profile that no longer exists. Wink kept the current profile instead of choosing another one.</key>
+	<string>The active Focus Filter refers to a profile that no longer exists. Wink kept the current profile instead of choosing another one.</string>
 	<key>The binding is no longer in the active shortcut set. Choose an app and record it again.</key>
 	<string>The binding is no longer in the active shortcut set. Choose an app and record it again.</string>
 	<key>The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again.</key>
@@ -598,6 +646,8 @@
 	<string>The last automatic update check failed: %@</string>
 	<key>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</key>
 	<string>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</string>
+	<key>The profile saved for restoration after Focus no longer exists. Wink kept the current profile instead of choosing another one.</key>
+	<string>The profile saved for restoration after Focus no longer exists. Wink kept the current profile instead of choosing another one.</string>
 	<key>The saved chord reached Wink's normal capture and activation pipeline, and the target became frontmost.</key>
 	<string>The saved chord reached Wink's normal capture and activation pipeline, and the target became frontmost.</string>
 	<key>The saved shortcut is unavailable</key>
@@ -612,8 +662,12 @@
 	<string>There is no active profile to keep yet. Import the file first, or choose a profile.</string>
 	<key>There is no diagnostic log yet. Use Wink for a moment and try again.</key>
 	<string>There is no diagnostic log yet. Use Wink for a moment and try again.</string>
+	<key>This Wink Focus Filter data uses unsupported schema version %lld.</key>
+	<string>This Wink Focus Filter data uses unsupported schema version %lld.</string>
 	<key>This log was missing or could not be read when the export was created.</key>
 	<string>This log was missing or could not be read when the export was created.</string>
+	<key>This profile is in use by the current Focus Filter and cannot be deleted until Focus ends.</key>
+	<string>This profile is in use by the current Focus Filter and cannot be deleted until Focus ends.</string>
 	<key>This shortcut route also needs Input Monitoring to capture the physical press.</key>
 	<string>This shortcut route also needs Input Monitoring to capture the physical press.</string>
 	<key>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</key>
@@ -660,6 +714,8 @@
 	<string>Updates, the Wink way</string>
 	<key>Usage trends for your saved shortcuts.</key>
 	<string>Usage trends for your saved shortcuts.</string>
+	<key>Use ${profile}, pause: ${pauseShortcuts}</key>
+	<string>Use ${profile}, pause: ${pauseShortcuts}</string>
 	<key>Use New Shortcut below. The guide continues after Add Shortcut saves the binding.</key>
 	<string>Use New Shortcut below. The guide continues after Add Shortcut saves the binding.</string>
 	<key>Version %@</key>
@@ -688,6 +744,8 @@
 	<string>Wink %@ is downloaded. Relaunch now to finish installing, or keep working — it installs when Wink quits.</string>
 	<key>Wink %@ is the latest version.</key>
 	<string>Wink %@ is the latest version.</string>
+	<key>Wink Focus Filter</key>
+	<string>Wink Focus Filter</string>
 	<key>Wink Search Palette is open.</key>
 	<string>Wink Search Palette is open.</string>
 	<key>Wink Settings did not become visible.</key>
@@ -702,14 +760,22 @@
 	<string>Wink always keeps at least one profile.</string>
 	<key>Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.</key>
 	<string>Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.</string>
+	<key>Wink cannot access its Focus Filter shared container. The app and extension must be signed with the same App Group entitlement.</key>
+	<string>Wink cannot access its Focus Filter shared container. The app and extension must be signed with the same App Group entitlement.</string>
 	<key>Wink cannot reach its storage folder</key>
 	<string>Wink cannot reach its storage folder</string>
 	<key>Wink cannot reach its storage folder, so profiles cannot be changed.</key>
 	<string>Wink cannot reach its storage folder, so profiles cannot be changed.</string>
 	<key>Wink checks for updates automatically and asks before downloading.</key>
 	<string>Wink checks for updates automatically and asks before downloading.</string>
+	<key>Wink could not apply the Focus Filter because there is no resolved profile to restore later.</key>
+	<string>Wink could not apply the Focus Filter because there is no resolved profile to restore later.</string>
 	<key>Wink could not pause shortcuts.</key>
 	<string>Wink could not pause shortcuts.</string>
+	<key>Wink could not read the Focus Filter profile catalog.</key>
+	<string>Wink could not read the Focus Filter profile catalog.</string>
+	<key>Wink could not read the saved Focus Filter state, so it left the current profile and pause reasons unchanged.</key>
+	<string>Wink could not read the saved Focus Filter state, so it left the current profile and pause reasons unchanged.</string>
 	<key>Wink could not read your previous shortcuts file</key>
 	<string>Wink could not read your previous shortcuts file</string>
 	<key>Wink could not read your profile list</key>
@@ -718,8 +784,12 @@
 	<string>Wink could not read your profile list, so nothing can be changed until you recover it.</string>
 	<key>Wink could not resume shortcuts.</key>
 	<string>Wink could not resume shortcuts.</string>
+	<key>Wink could not save Focus Filter state. The current profile was left unchanged.</key>
+	<string>Wink could not save Focus Filter state. The current profile was left unchanged.</string>
 	<key>Wink could not save the change to disk, so nothing was changed.</key>
 	<string>Wink could not save the change to disk, so nothing was changed.</string>
+	<key>Wink could not save the profile that should be restored after Focus ends.</key>
+	<string>Wink could not save the profile that should be restored after Focus ends.</string>
 	<key>Wink could not show the Search Palette.</key>
 	<string>Wink could not show the Search Palette.</string>
 	<key>Wink could not start that switch</key>
@@ -750,6 +820,10 @@
 	<string>Wink shortcuts are paused.</string>
 	<key>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</key>
 	<string>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</string>
+	<key>Wink will restore “%@” as soon as the current shortcut edit is finished.</key>
+	<string>Wink will restore “%@” as soon as the current shortcut edit is finished.</string>
+	<key>Wink · Paused</key>
+	<string>Wink · Paused</string>
 	<key>Wink: Permission Lost</key>
 	<string>Wink: Permission Lost</string>
 	<key>You can have at most %lld profiles.</key>
@@ -766,6 +840,8 @@
 	<string>can't be read</string>
 	<key>for a Hyper shortcut.</key>
 	<string>for a Hyper shortcut.</string>
+	<key>restore after Focus</key>
+	<string>restore after Focus</string>
 	<key>shortcuts.json was changed outside Wink</key>
 	<string>shortcuts.json was changed outside Wink</string>
 	<key>to act as</key>

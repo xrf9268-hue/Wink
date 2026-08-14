@@ -30,6 +30,14 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
+EXTENSIONS_DIR="$CONTENTS_DIR/Extensions"
+FOCUS_EXTENSION_NAME="WinkFocusIntentsExtension"
+FOCUS_EXTENSION_DIR="$EXTENSIONS_DIR/${FOCUS_EXTENSION_NAME}.appex"
+FOCUS_EXTENSION_CONTENTS_DIR="$FOCUS_EXTENSION_DIR/Contents"
+FOCUS_EXTENSION_MACOS_DIR="$FOCUS_EXTENSION_CONTENTS_DIR/MacOS"
+FOCUS_EXTENSION_RESOURCES_DIR="$FOCUS_EXTENSION_CONTENTS_DIR/Resources"
+FOCUS_EXTENSION_INFO_PLIST="$PROJECT_DIR/Sources/WinkFocusIntentsExtension/Info.plist"
+FOCUS_EXTENSION_ENTITLEMENTS="$PROJECT_DIR/Sources/WinkFocusIntentsExtension/entitlements.plist"
 RESOURCE_BUNDLE_NAME="${APP_NAME}_${APP_NAME}.bundle"
 INFO_PLIST="$PROJECT_DIR/Sources/Wink/Resources/Info.plist"
 APP_ICON="$PROJECT_DIR/Sources/Wink/Resources/AppIcon.icns"
@@ -255,7 +263,7 @@ fi
 
 echo "==> Creating app bundle..."
 rm -rf "$APP_DIR"
-mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR"
+mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR" "$EXTENSIONS_DIR"
 
 # Copy binary
 cp "$BINARY" "$MACOS_DIR/${APP_NAME}"
@@ -337,6 +345,37 @@ echo "    Top-level localization catalogs created for: ${APP_LOCALIZATIONS[*]}"
 echo "==> Extracting App Intents metadata..."
 bash "$SCRIPT_DIR/extract-app-intents-metadata.sh" "$MACOS_DIR/${APP_NAME}" "$RESOURCES_DIR"
 
+FOCUS_EXTENSION_BINARY="$BUILD_SCRATCH_PATH/release/${FOCUS_EXTENSION_NAME}"
+if [ ! -x "$FOCUS_EXTENSION_BINARY" ]; then
+    echo "Error: release Focus extension binary not found at $FOCUS_EXTENSION_BINARY" >&2
+    exit 1
+fi
+if [ ! -f "$FOCUS_EXTENSION_INFO_PLIST" ] || [ ! -f "$FOCUS_EXTENSION_ENTITLEMENTS" ]; then
+    echo "Error: Focus extension bundle inputs are missing" >&2
+    exit 1
+fi
+
+echo "==> Embedding Focus Filter App Intents extension..."
+mkdir -p "$FOCUS_EXTENSION_MACOS_DIR" "$FOCUS_EXTENSION_RESOURCES_DIR"
+cp "$FOCUS_EXTENSION_BINARY" "$FOCUS_EXTENSION_MACOS_DIR/$FOCUS_EXTENSION_NAME"
+chmod +x "$FOCUS_EXTENSION_MACOS_DIR/$FOCUS_EXTENSION_NAME"
+cp "$FOCUS_EXTENSION_INFO_PLIST" "$FOCUS_EXTENSION_CONTENTS_DIR/Info.plist"
+plutil -replace CFBundleShortVersionString \
+    -string "$(plutil -extract CFBundleShortVersionString raw "$CONTENTS_DIR/Info.plist")" \
+    "$FOCUS_EXTENSION_CONTENTS_DIR/Info.plist"
+plutil -replace CFBundleVersion \
+    -string "$(plutil -extract CFBundleVersion raw "$CONTENTS_DIR/Info.plist")" \
+    "$FOCUS_EXTENSION_CONTENTS_DIR/Info.plist"
+for locale in "${APP_LOCALIZATIONS[@]}"; do
+    extension_lproj="$FOCUS_EXTENSION_RESOURCES_DIR/${locale}.lproj"
+    mkdir -p "$extension_lproj"
+    cp "$PROJECT_DIR/Sources/Wink/Resources/Localized/${locale}.lproj/Localizable.strings" \
+        "$extension_lproj/Localizable.strings"
+done
+bash "$SCRIPT_DIR/extract-focus-intents-metadata.sh" \
+    "$FOCUS_EXTENSION_MACOS_DIR/$FOCUS_EXTENSION_NAME" \
+    "$FOCUS_EXTENSION_RESOURCES_DIR"
+
 # Copy Sparkle.framework into the app bundle while preserving symlinks.
 echo "==> Embedding Sparkle.framework..."
 ditto "$SPARKLE_FRAMEWORK_SOURCE" "$FRAMEWORKS_DIR/Sparkle.framework"
@@ -382,16 +421,36 @@ fi
 
 sign_nested_item "$SPARKLE_FRAMEWORK_DIR"
 
+echo "==> Signing Focus Filter extension..."
+FOCUS_SIGN_ARGS=(
+    --force
+    --sign "$SELECTED_SIGN_IDENTITY"
+    --identifier com.wink.app.focus-intents
+    --entitlements "$FOCUS_EXTENSION_ENTITLEMENTS"
+)
+if [ "$ENABLE_HARDENED_RUNTIME" = "1" ] && [ "$SELECTED_SIGN_IDENTITY" != "-" ]; then
+    FOCUS_SIGN_ARGS+=(--options runtime)
+fi
+if [ "$ENABLE_TIMESTAMP" = "1" ] && [ "$SELECTED_SIGN_IDENTITY" != "-" ]; then
+    FOCUS_SIGN_ARGS+=(--timestamp)
+fi
+codesign "${FOCUS_SIGN_ARGS[@]}" "$FOCUS_EXTENSION_DIR" 2>&1
+codesign --verify --strict --verbose=2 "$FOCUS_EXTENSION_DIR"
+
 echo "==> Signing app bundle..."
-SIGN_ARGS=(--force --sign "$SELECTED_SIGN_IDENTITY" --identifier "$BUNDLE_ID")
+if [ ! -f "$ENTITLEMENTS_PLIST" ]; then
+    echo "Error: entitlements file not found at $ENTITLEMENTS_PLIST" >&2
+    exit 1
+fi
+SIGN_ARGS=(
+    --force
+    --sign "$SELECTED_SIGN_IDENTITY"
+    --identifier "$BUNDLE_ID"
+    --entitlements "$ENTITLEMENTS_PLIST"
+)
 
 if [ "$ENABLE_HARDENED_RUNTIME" = "1" ] && [ "$SELECTED_SIGN_IDENTITY" != "-" ]; then
     SIGN_ARGS+=(--options runtime)
-    if [ ! -f "$ENTITLEMENTS_PLIST" ]; then
-        echo "Error: entitlements file not found at $ENTITLEMENTS_PLIST" >&2
-        exit 1
-    fi
-    SIGN_ARGS+=(--entitlements "$ENTITLEMENTS_PLIST")
 fi
 
 if [ "$ENABLE_TIMESTAMP" = "1" ] && [ "$SELECTED_SIGN_IDENTITY" != "-" ]; then
@@ -399,6 +458,8 @@ if [ "$ENABLE_TIMESTAMP" = "1" ] && [ "$SELECTED_SIGN_IDENTITY" != "-" ]; then
 fi
 
 codesign "${SIGN_ARGS[@]}" "$APP_DIR" 2>&1
+codesign --verify --deep --strict --verbose=2 "$APP_DIR"
+codesign --verify --strict --verbose=2 "$FOCUS_EXTENSION_DIR"
 
 echo "==> Done: $APP_DIR"
 echo "    Run with: open $APP_DIR"

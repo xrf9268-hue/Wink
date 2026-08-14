@@ -1559,6 +1559,35 @@ final class ShortcutProfileStore {
         }
     }
 
+    /// Rewrites the already-current pointer and does not return until both the
+    /// file and its containing directory are on stable storage. Most profile
+    /// switches need only the ordinary commit-before-mutate ordering because
+    /// every resulting on-disk combination has a defined recovery. Focus
+    /// restoration is different: clearing the App Group restore marker is a
+    /// destructive authorization, so that marker must not become durable
+    /// before the pointer whose recovery it authorizes.
+    func makeCurrentActivePointerDurable(_ profileID: UUID) throws {
+        guard let layout else { throw StoreError.storageUnavailable }
+        guard manifest?.profile(id: profileID) != nil,
+              pointedProfileID == profileID,
+              locator.currentActiveProfileID() == profileID else {
+            throw StoreError.profileNotFound(profileID)
+        }
+        let pointer = ShortcutProfileActivePointer(activeProfileID: profileID)
+        do {
+            try writeClient.writeDurable(
+                try Self.metadataEncoder.encode(pointer),
+                layout.activePointerURL
+            )
+            activePointerIsDurable = true
+        } catch {
+            throw StoreError.writeFailed(
+                path: layout.activePointerURL.path,
+                reason: error.localizedDescription
+            )
+        }
+    }
+
     // MARK: - Reads
 
     /// Strict read of any profile, quarantining on failure. Used when the user

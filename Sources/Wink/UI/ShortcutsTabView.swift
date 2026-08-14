@@ -297,18 +297,25 @@ enum FirstShortcutOnboardingLaunchEligibility {
 enum FirstShortcutOnboardingPausePresentation: Equatable {
     case manual
     case exception(appName: String?)
+    case focus
+    case focusWithOtherReason
 
     init?(
         effectivePaused: Bool,
         manuallyPaused: Bool,
-        autoPauseTriggerAppName: String?
+        autoPauseTriggerAppName: String?,
+        focusPauseActive: Bool = false
     ) {
         guard effectivePaused else { return nil }
 
-        // Exception and manual pauses are independent bits. If both are active,
-        // clearing the manual bit cannot resume capture, so lead with the
-        // exception guidance until the triggering app is no longer frontmost.
-        if let autoPauseTriggerAppName {
+        // All pause reasons are independent bits. Focus guidance wins whenever
+        // that bit is active because neither leaving an exception app nor
+        // clearing the manual bit can resume capture while Focus still holds it.
+        if focusPauseActive && (manuallyPaused || autoPauseTriggerAppName != nil) {
+            self = .focusWithOtherReason
+        } else if focusPauseActive {
+            self = .focus
+        } else if let autoPauseTriggerAppName {
             self = .exception(appName: autoPauseTriggerAppName)
         } else if manuallyPaused {
             self = .manual
@@ -334,6 +341,10 @@ enum FirstShortcutOnboardingPausePresentation: Equatable {
             )
         case .exception(nil):
             String(localized: "Shortcuts paused by an exception rule", bundle: WinkResourceBundle.bundle)
+        case .focus:
+            String(localized: "Shortcuts paused by Focus", bundle: WinkResourceBundle.bundle)
+        case .focusWithOtherReason:
+            String(localized: "Shortcuts paused by Focus and another reason", bundle: WinkResourceBundle.bundle)
         }
     }
 
@@ -348,6 +359,10 @@ enum FirstShortcutOnboardingPausePresentation: Equatable {
             )
         case .exception(nil):
             String(localized: "Switch away from the exception app to resume shortcut capture, or remove it from the exception list.", bundle: WinkResourceBundle.bundle)
+        case .focus:
+            String(localized: "Change or deactivate the Focus Filter in System Settings to resume shortcut capture.", bundle: WinkResourceBundle.bundle)
+        case .focusWithOtherReason:
+            String(localized: "Change or deactivate the Focus Filter, then clear the remaining pause reason before shortcut capture can resume.", bundle: WinkResourceBundle.bundle)
         }
     }
 }
@@ -714,7 +729,8 @@ struct ShortcutsTabView: View {
         let pausePresentation = FirstShortcutOnboardingPausePresentation(
             effectivePaused: readiness?.shortcutsPaused == true,
             manuallyPaused: preferences.shortcutsPaused,
-            autoPauseTriggerAppName: preferences.autoPauseTriggerAppName
+            autoPauseTriggerAppName: preferences.autoPauseTriggerAppName,
+            focusPauseActive: preferences.focusPauseActive
         )
         let copy = onboardingPermissionCopy(readiness, pausePresentation: pausePresentation)
 

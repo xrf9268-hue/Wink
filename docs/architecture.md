@@ -187,6 +187,22 @@ Responsibilities:
 - issue `UsageTracker.deleteUsage` only for shortcut IDs no other profile holds, failing closed when a sibling profile could not be read
 - surface profile selection, creation, renaming, duplication, deletion, and every recovery state in Settings and the menu bar, using one `switchToProfile` path from both entry points
 
+### Focus Filter integration
+- `WinkFocusIntentsExtension` / `SetWinkFocusFilterIntent`
+- `ShortcutProfileEntity` / `ShortcutProfileEntityQuery`
+- `WinkFocusSharedContract` / `FocusFilterSharedStore`
+- `FocusFilterCoordinator`
+
+Responsibilities:
+- expose a real App Intents extension so macOS can apply a configured Focus Filter while the main app is not running; the extension is embedded at `Contents/Extensions/WinkFocusIntentsExtension.appex`, sandboxed, and signed with the same `group.com.wink.app` App Group as the host
+- publish profiles to System Settings as App Entities keyed by the stable profile UUID. A rename changes display text only; Focus names are never inspected or mapped to profile names
+- persist the current Focus profile, Focus pause bit, and exact manual restore profile in the shared container. Cross-process read-modify-write operations use an advisory file lock plus atomic replacement; every state mutation flushes the file and containing directory before the lock is released, so the manual restore target is durable before a Focus profile pointer can commit. Main-app reconciliation compare-checks the snapshot and keeps that same lock through the synchronous runtime apply and restore-marker commit, so Focus B or deactivation cannot overtake an in-flight Focus A apply. The Darwin notification is only a wake-up hint, because startup always reads the durable file
+- treat the Focus profile as an overlay: it wins while present, manual profile choices update only the saved base, and default-value/deactivation delivery restores the latest exact base through the ordinary profile transaction before clearing it
+- defer an automatic switch while recovery or an unsaved recorder/composer/import draft exists. The Focus pause bit still applies independently, readiness observation retries after the editor becomes safe, transient apply/restore/shared-state failures use a bounded retry ladder, and a successful catalog repair is an explicit retry trigger
+- fail closed for stale, deleted, unreadable, or unresolved profile IDs. Wink keeps the current effective profile and surfaces the error; it never guesses another profile or reports a failed operation as success
+- serialize profile deletion with extension selection under the shared lock: deletion first removes the App Entity before the extension can validate it, while selection first marks the profile as in use and blocks deletion even if the main app's in-memory overlay has not caught up
+- compose Focus pause as a third runtime reason (`manual || frontmost exception || Focus`). Applying or clearing it never mutates the other two bits, and it introduces no Accessibility, Input Monitoring, Screen Recording, or other TCC request
+
 ### Event capture and matching
 - `ShortcutCaptureCoordinator`
 - `CarbonHotKeyProvider`
@@ -463,6 +479,38 @@ pointer leads memory, never lags it. Deleting the active profile follows the
 same rule — preparation waits until `deleteProfile` has returned.
 ```
 
+### 2e. Focus Filter flow
+```text
+User configures Wink under System Settings > Focus > Focus Filters
+  -> ShortcutProfileEntityQuery reads the App Group profile catalog by UUID
+  -> macOS invokes SetWinkFocusFilterIntent in the embedded extension
+       -> validates the selected UUID still exists
+       -> atomically writes profile/pause parameters, preserving the manual restore UUID
+       -> posts a Darwin notification (wake-up hint only)
+
+Wink starts or receives the notification
+  -> FocusFilterCoordinator reads the durable shared state
+  -> under the shared lock, confirms that snapshot is still current
+  -> applies the independent Focus pause bit and effective Profile synchronously
+  -> only then releases the lock (a changed snapshot is retried fresh)
+  -> first profile overlay activation records the current active UUID as manual base
+  -> canApplyExternalSwitch?
+       no  -> keep current runtime profile and retry after editor/recovery readiness changes
+       yes -> ShortcutProfileState.applyExternalProfile(id)
+              -> the exact load / active-pointer commit / synchronous runtime apply from 2d
+  -> transient apply failures retry on a bounded 250 ms / 1 s / 3 s / 8 s / 15 s ladder
+
+While the overlay is active, a manual profile choice
+  -> validates the requested profile file
+  -> updates only the shared manual restore UUID
+  -> leaves the Focus profile effective
+
+Default-value perform / Focus deactivation
+  -> extension removes only profile + pause overlay fields
+  -> main app restores the saved manual UUID through 2d
+  -> only after that commit succeeds, clears the restore UUID
+```
+
 ### 3. Trigger flow
 ```text
 Global shortcut event
@@ -513,6 +561,7 @@ CGEvent callback receives tapDisabledByTimeout / tapDisabledByUserInput
 - **On-demand Input Monitoring**: startup and later shortcut changes request Input Monitoring only when the enabled set needs Hyper transport or a standard Fn+F-row observer; ordinary standard-only and Fn+letter configurations stay on the Carbon/Accessibility path, and any required Input Monitoring request waits until Accessibility has been granted
 - **Strict persistence schema**: Wink currently supports only the exact `[AppShortcut]` payload it writes today, with a unique UUID for every entry in the full array. Malformed data, missing required fields, or duplicate UUIDs fail loading before any array is published, log the structured violation, and preserve a byte-identical `shortcuts.load-failure-*.json` copy instead of silently treating the state as empty; saving rejects the same duplicate-ID violation before overwriting the canonical file
 - **Profiles are named shortcut sets, nothing more**: a profile carries `[AppShortcut]` and the per-shortcut overrides already stored on each row. Hyper mapping, exception rules, launch-at-login, update settings, appearance, and TCC state stay device-global, so switching a profile can never produce a system-wide side effect
+- **Focus is a durable overlay, not another profile store**: the extension persists only stable profile IDs plus the Focus pause/base bookkeeping in the App Group container. Profile payloads remain solely in `Application Support/Wink/Profiles/`, and every effective switch still commits through `active.json`
 - **The active pointer is the only commit point of a switch**, written before any in-memory change, which preserves the persist-then-mutate rule the save path already had. It lives in its own file so a crash mid-switch cannot damage the profile list
 - **O(1) trigger index**: `ShortcutSignature` dictionary replaces linear scans in the hot path
 - **Observation-first toggle truth**: `ApplicationObservation` snapshots gate stable-state promotion from frontmost/window evidence instead of trusting `isActive` alone

@@ -231,6 +231,22 @@ final class MenuBarPopoverModel {
         preferences.autoPauseTriggerAppName
     }
 
+    var focusPauseActive: Bool {
+        preferences.focusPauseActive
+    }
+
+    var focusProfileID: UUID? {
+        profileState.focusProfileID
+    }
+
+    var isFocusProfileApplied: Bool {
+        profileState.isFocusProfileApplied
+    }
+
+    var manualProfileIDDuringFocus: UUID? {
+        profileState.manualProfileIDDuringFocus
+    }
+
     var secureInputActive: Bool {
         preferences.shortcutCaptureStatus.secureInputActive
     }
@@ -600,8 +616,11 @@ struct MenuBarPopoverView: View {
             Spacer(minLength: 8)
 
             MenuBarStatusPill(
-                paused: model.shortcutsPaused || model.autoPauseTriggerAppName != nil,
+                paused: model.shortcutsPaused
+                    || model.autoPauseTriggerAppName != nil
+                    || model.focusPauseActive,
                 autoPausedBy: model.autoPauseTriggerAppName,
+                focusPaused: model.focusPauseActive,
                 secureInputActive: model.secureInputActive
             )
         }
@@ -761,6 +780,7 @@ private struct MenuBarStatusPill: View {
 
     let paused: Bool
     var autoPausedBy: String?
+    var focusPaused: Bool = false
     var secureInputActive: Bool = false
 
     private var title: String {
@@ -776,6 +796,9 @@ private struct MenuBarStatusPill: View {
         // reads as a mystery.
         if let autoPausedBy {
             return String(localized: "Paused · \(autoPausedBy)", bundle: WinkResourceBundle.bundle)
+        }
+        if focusPaused {
+            return String(localized: "Paused · Focus", bundle: WinkResourceBundle.bundle)
         }
         return String(localized: "Paused", bundle: WinkResourceBundle.bundle)
     }
@@ -1006,8 +1029,20 @@ private struct MenuBarProfileRow: View {
                     Button {
                         model.switchToProfile(profile.id)
                     } label: {
-                        if profile.id == model.activeProfileID {
+                        if profile.id == model.focusProfileID {
+                            Label(
+                                model.isFocusProfileApplied
+                                    ? String(localized: "\(profile.name) (Focus)", bundle: WinkResourceBundle.bundle)
+                                    : String(localized: "\(profile.name) (Focus pending)", bundle: WinkResourceBundle.bundle),
+                                systemImage: model.isFocusProfileApplied ? "checkmark" : "clock"
+                            )
+                        } else if profile.id == model.activeProfileID {
                             Label(profile.name, systemImage: "checkmark")
+                        } else if profile.id == model.manualProfileIDDuringFocus {
+                            Label(
+                                String(localized: "\(profile.name) (restore after Focus)", bundle: WinkResourceBundle.bundle),
+                                systemImage: "arrow.uturn.backward"
+                            )
                         } else {
                             Text(profile.name)
                         }
