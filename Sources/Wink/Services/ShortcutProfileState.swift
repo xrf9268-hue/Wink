@@ -102,6 +102,17 @@ final class ShortcutProfileState {
         isMutable && profiles.count > 1
     }
 
+    /// The first-shortcut guide describes a confirmed empty configuration,
+    /// not a recovery placeholder that happens to arm zero shortcuts. Requiring
+    /// both a resolved active profile and no recovery state prevents unreadable
+    /// storage or failed legacy migration from being misclassified as a fresh
+    /// install.
+    var canPrepareFirstShortcutOnboarding: Bool {
+        guard activeProfileID != nil else { return false }
+        if case .none = recovery { return true }
+        return false
+    }
+
     /// Duplication needs something to duplicate. `activeProfileAmbiguous` and
     /// `activeProfileUnreadable` leave the manager usable — the user is meant
     /// to be able to pick a profile out of them — but with no active profile,

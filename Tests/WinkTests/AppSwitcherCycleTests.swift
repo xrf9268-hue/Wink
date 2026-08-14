@@ -127,7 +127,8 @@ private func makeCycleSwitcher(
     trackerBundle: String? = nil,
     trackerApp: NSRunningApplication? = nil,
     windowsReadFails: @escaping @MainActor () -> Bool = { false },
-    windowCycleCoordinator: WindowCycleCoordinator? = nil
+    windowCycleCoordinator: WindowCycleCoordinator? = nil,
+    sessionCoordinator: ToggleSessionCoordinator? = nil
 ) -> AppSwitcher {
     var psn = ProcessSerialNumber()
     psn.highLongOfPSN = 1
@@ -184,6 +185,7 @@ private func makeCycleSwitcher(
                 scheduler(delay, operation)
             }
         ),
+        sessionCoordinator: sessionCoordinator,
         windowCycleClient: .init(
             windowID: { element in
                 windows.windowID(for: element)
@@ -1594,6 +1596,48 @@ func focusPickedWindowRunsTheActivationTrioAndInvalidatesTheCycleCursor() {
     #expect(recorder.madeKeyWindowIDs.last == 202)
     #expect(recorder.raisedWindowIDs.last == 202)
     #expect(coordinator.session == nil, "a manual pick invalidates the cycle cursor")
+}
+
+@Test @MainActor
+func focusPickedWindowPromotesPendingSessionWithoutConfirmingActivation() {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for picker promotion test")
+        return
+    }
+
+    let clock = CycleTestClock(time: 100)
+    let recorder = CycleActionRecorder()
+    let windows = CycleTestWindows(ids: [201, 202])
+    let sessionCoordinator = ToggleSessionCoordinator(now: { clock.time })
+    let switcher = makeCycleSwitcher(
+        frontmostApp: frontmostApp,
+        bundleIdentifier: bundleIdentifier,
+        windows: windows,
+        focusedWindowID: { 201 },
+        recorder: recorder,
+        clock: clock,
+        sessionCoordinator: sessionCoordinator
+    )
+    _ = switcher.acceptPendingActivation(for: bundleIdentifier, startedAt: clock.time)
+    var confirmedAttempts: [AppActivationAttemptIdentity] = []
+    switcher.setActivationConfirmationObserver { confirmedAttempts.append($0) }
+
+    let shortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "c",
+        modifierFlags: ["command", "option"],
+        holdAction: .windowPicker
+    )
+    guard let session = switcher.windowPickerSession(for: shortcut) else {
+        Issue.record("Expected a picker session")
+        return
+    }
+
+    #expect(switcher.focusPickedWindow(windowID: 202, session: session))
+    #expect(sessionCoordinator.session(for: bundleIdentifier)?.phase == .activeStable)
+    #expect(confirmedAttempts.isEmpty, "picker focus has not observed frontmost activation")
 }
 
 @Test @MainActor

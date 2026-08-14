@@ -210,6 +210,8 @@ struct ShortcutProfileRuntimeApplyTests {
         let context = try makeSwitchContext(legacyShortcuts: [safariShortcut()])
         defer { context.harness.cleanup() }
 
+        #expect(context.state.canPrepareFirstShortcutOnboarding)
+
         let defaultProfileID = try #require(context.state.activeProfileID)
         context.state.createProfile(named: "Work", duplicatingActiveProfile: false)
         let work = try #require(context.state.profiles.first { $0.id != defaultProfileID })
@@ -528,6 +530,7 @@ struct ShortcutProfileRecoveryRuntimeTests {
         #expect(armed.isEmpty)
         #expect(!state.isMutable)
         #expect(!state.canApplyExternalSwitch)
+        #expect(!state.canPrepareFirstShortcutOnboarding)
 
         state.createProfile(named: "Work", duplicatingActiveProfile: false)
         #expect(state.errorMessage != nil)
@@ -563,6 +566,7 @@ struct ShortcutProfileRecoveryRuntimeTests {
             Issue.record("expected the legacy migration notice after an unreadable legacy file")
             return
         }
+        #expect(!state.canPrepareFirstShortcutOnboarding)
 
         // Switching profiles resolves active-profile recovery states, but
         // the migration failure is not about the active profile: the
@@ -619,6 +623,7 @@ struct ShortcutProfileRecoveryRuntimeTests {
         #expect(state.profiles.count == 2)
         // The list is offered so the user can pick — but nothing is chosen.
         #expect(state.recovery != .none)
+        #expect(!state.canPrepareFirstShortcutOnboarding)
     }
 
     @MainActor
@@ -873,6 +878,7 @@ struct ShortcutProfileRecoveryRuntimeTests {
             Issue.record("expected activeProfileUnreadable recovery")
             return
         }
+        #expect(!state.canPrepareFirstShortcutOnboarding)
         #expect(state.pendingForeignMirror?.profileID == defaultID)
 
         state.deleteProfile(defaultID)

@@ -53,6 +53,7 @@ final class ShortcutManager {
     private let appBundleLocator: AppBundleLocator
     private let diagnosticClient: DiagnosticClient
     private let automaticPermissionPromptingEnabled: Bool
+    private var automaticPermissionPromptSuppressedForOnboarding = false
     private let keyMatcher = KeyMatcher()
     private var triggerIndex: [ShortcutTrigger: AppShortcut] = [:]
     private var permissionTimer: Timer?
@@ -84,6 +85,21 @@ final class ShortcutManager {
     /// probe can race and observe a different (even reverted) value than
     /// the one this dedupe just latched, permanently desyncing the two.
     var onCaptureStatusChange: (@MainActor (ShortcutCaptureStatus) -> Void)?
+
+    /// Emitted only after a physical capture provider delivered a chord and
+    /// the trigger index resolved it to a real app binding. UI/menu actions do
+    /// not pass through this hook, which lets first-shortcut onboarding prove
+    /// the actual capture -> match -> activation path.
+    var onCapturedShortcutTrigger: (@MainActor (
+        AppShortcut,
+        Bool,
+        Bool,
+        AppActivationAttemptSnapshot?
+    ) -> Void)?
+    /// Hot-path preflight for the expensive frontmost-process snapshot above.
+    /// The controller returns true only for the exact UUID currently awaiting
+    /// physical onboarding verification.
+    var shouldCaptureOnboardingTriggerContext: (@MainActor (AppShortcut) -> Bool)?
     /// Fires whenever the composed pause state transitions (manual pause,
     /// exception auto-pause, either direction).
     var onCapturePauseStateChange: (@MainActor (_ paused: Bool) -> Void)?
@@ -104,6 +120,11 @@ final class ShortcutManager {
     /// it and run the standard conflict path. The consumer (AppController)
     /// forwards to `ShortcutEditorState.handleRecordingSessionKeyPress`.
     var onRecordingSessionKeyPress: (@MainActor (KeyPress) -> Void)?
+    /// Synchronous notification from the one whole-configuration apply seam.
+    /// Consumers use the incoming model only after the store, trigger index,
+    /// and providers all agree on it; this remains live even when Settings is
+    /// not displaying the Shortcuts tab.
+    var onShortcutSetApplied: (@MainActor ([AppShortcut]) -> Void)?
     private var holdGestureArbiter: HoldGestureArbiter?
     /// True while an interactive Wink panel (the hold-to-show window picker)
     /// is key. Matched shortcut dispatch is gated on it instead of the full
@@ -159,10 +180,13 @@ final class ShortcutManager {
         self.secureInputProbe = secureInputProbe ?? { IsSecureEventInputEnabled() }
     }
 
-    func start() {
+    func start(suppressAutomaticPermissionPrompt: Bool = false) {
         wireHoldGestureArbiterIfNeeded()
         rebuildIndex()
         let inputMonitoringRequired = captureCoordinator.inputMonitoringRequired
+        let shouldPromptAutomatically = automaticPermissionPromptingEnabled
+            && !automaticPermissionPromptSuppressedForOnboarding
+            && !suppressAutomaticPermissionPrompt
         let ready: Bool
         if effectivePaused {
             ready = false
@@ -170,11 +194,11 @@ final class ShortcutManager {
             let shouldRequestInputMonitoring = inputMonitoringRequired
                 && permissionService.isAccessibilityTrusted()
             ready = permissionService.requestIfNeeded(
-                prompt: automaticPermissionPromptingEnabled,
+                prompt: shouldPromptAutomatically,
                 inputMonitoringRequired: shouldRequestInputMonitoring
             )
         }
-        if !automaticPermissionPromptingEnabled {
+        if !shouldPromptAutomatically {
             diagnosticClient.log("Automatic permission prompts suppressed for this launch")
         }
         logger.info(
@@ -389,6 +413,7 @@ final class ShortcutManager {
         // push here the cheat-sheet gate and General tab lag on the cached
         // status until the next 3 s poll tick (#383).
         notifyCaptureStatusChangeIfNeeded()
+        onShortcutSetApplied?(shortcuts)
     }
 
     @discardableResult
@@ -444,7 +469,7 @@ final class ShortcutManager {
         captureCoordinator.setHyperHoldObserver(observer)
     }
 
-    func setShortcutsPaused(_ paused: Bool) {
+    func setShortcutsPaused(_ paused: Bool, promptForPermissions: Bool = true) {
         guard shortcutsPaused != paused else {
             return
         }
@@ -455,7 +480,14 @@ final class ShortcutManager {
         // when the OR of both bits changes, so resuming one while the
         // other still holds keeps capture paused.
         guard effectivePaused != wasEffectivelyPaused else { return }
-        applyEffectivePauseTransition()
+        applyEffectivePauseTransition(promptForPermissions: promptForPermissions)
+    }
+
+    /// Onboarding owns permission timing for its exact selected route. Keep
+    /// every aggregate automatic path non-prompting for the whole presented
+    /// guide, including later configuration changes and the 3-second poll.
+    func setAutomaticPermissionPromptSuppressedForOnboarding(_ suppressed: Bool) {
+        automaticPermissionPromptSuppressedForOnboarding = suppressed
     }
 
     /// Exception-rule auto-pause (frontmost VM/remote-desktop app).
@@ -471,7 +503,7 @@ final class ShortcutManager {
         applyEffectivePauseTransition()
     }
 
-    private func applyEffectivePauseTransition() {
+    private func applyEffectivePauseTransition(promptForPermissions: Bool = true) {
         // Both pause bits are part of the composed status, and the
         // exception auto-pause has no AppPreferences-side pull path at all
         // — every branch below (including the paused early return) must
@@ -504,7 +536,9 @@ final class ShortcutManager {
         let shouldRequestInputMonitoring = captureCoordinator.inputMonitoringRequired
             && permissionService.isAccessibilityTrusted()
         _ = permissionService.requestIfNeeded(
-            prompt: automaticPermissionPromptingEnabled,
+            prompt: promptForPermissions
+                && automaticPermissionPromptingEnabled
+                && !automaticPermissionPromptSuppressedForOnboarding,
             inputMonitoringRequired: shouldRequestInputMonitoring
         )
         captureCoordinator.refreshInputMonitoring(
@@ -521,6 +555,58 @@ final class ShortcutManager {
             inputMonitoringRequired: inputMonitoringRequired
         )
         attemptStartIfPermitted()
+    }
+
+    func requestPermissions(for shortcut: AppShortcut) {
+        let route = FirstShortcutOnboardingRoute.route(
+            for: shortcut,
+            hyperKeyEnabled: hyperKeyEnabled
+        )
+        _ = permissionService.requestIfNeeded(
+            prompt: true,
+            inputMonitoringRequired: route.requiresInputMonitoring
+        )
+        attemptStartIfPermitted()
+    }
+
+    func firstShortcutOnboardingReadiness(
+        for shortcut: AppShortcut
+    ) -> FirstShortcutOnboardingReadiness {
+        let status = shortcutCaptureStatus()
+        let route = FirstShortcutOnboardingRoute.route(
+            for: shortcut,
+            hyperKeyEnabled: hyperKeyEnabled
+        )
+        let isAvailable = isShortcutInTriggerIndex(shortcut)
+        let exactStandardBindingRegistered = isAvailable
+            && captureCoordinator.isStandardShortcutRegistered(shortcut)
+        let routeReady: Bool
+        switch route {
+        case .standard:
+            routeReady = exactStandardBindingRegistered
+                && status.accessibilityGranted
+        case .standardFunction:
+            routeReady = exactStandardBindingRegistered
+                && status.accessibilityGranted
+                && status.inputMonitoringGranted
+                && !status.secureInputActive
+        case .hyper:
+            routeReady = isAvailable
+                && status.hyperShortcutsReady
+                && status.inputMonitoringGranted
+                && status.eventTapActive
+                && !status.secureInputActive
+        }
+
+        return FirstShortcutOnboardingReadiness(
+            route: route,
+            shortcutAvailable: isAvailable,
+            accessibilityGranted: status.accessibilityGranted,
+            inputMonitoringGranted: status.inputMonitoringGranted,
+            routeReady: routeReady,
+            shortcutsPaused: status.shortcutsPaused,
+            secureInputActive: status.secureInputActive
+        )
     }
 
     // MARK: - Permission monitoring
@@ -613,7 +699,8 @@ final class ShortcutManager {
             && !imGranted
         {
             _ = permissionService.requestIfNeeded(
-                prompt: automaticPermissionPromptingEnabled,
+                prompt: automaticPermissionPromptingEnabled
+                    && !automaticPermissionPromptSuppressedForOnboarding,
                 inputMonitoringRequired: true
             )
             let refreshedInputMonitoring = permissionService.isInputMonitoringTrusted()
@@ -734,7 +821,8 @@ final class ShortcutManager {
             && permissionService.isAccessibilityTrusted()
         {
             _ = permissionService.requestIfNeeded(
-                prompt: automaticPermissionPromptingEnabled,
+                prompt: automaticPermissionPromptingEnabled
+                    && !automaticPermissionPromptSuppressedForOnboarding,
                 inputMonitoringRequired: true
             )
         }
@@ -850,7 +938,35 @@ final class ShortcutManager {
             // usage for. AppController owns presentation.
             onSearchPaletteTriggered?()
         } else {
-            _ = trigger(match)
+            let shouldCaptureOnboardingContext =
+                shouldCaptureOnboardingTriggerContext?(match) == true
+            let targetWasFrontmost: Bool
+            if shouldCaptureOnboardingContext {
+                let frontmostApplication = NSWorkspace.shared.frontmostApplication
+                let runningProcessIdentifiers = Set(
+                    NSWorkspace.shared.runningApplications.map(\.processIdentifier)
+                )
+                targetWasFrontmost = Self.onboardingTargetWasFrontmost(
+                    targetBundleIdentifier: match.bundleIdentifier,
+                    frontmostBundleIdentifier: frontmostApplication?.bundleIdentifier,
+                    frontmostProcessIdentifier: frontmostApplication?.processIdentifier,
+                    runningProcessIdentifiers: runningProcessIdentifiers
+                )
+            } else {
+                targetWasFrontmost = false
+            }
+            let accepted = trigger(match)
+            if shouldCaptureOnboardingContext {
+                let activationAttempt = accepted
+                    ? appSwitcher.currentActivationAttempt(for: match.bundleIdentifier)
+                    : nil
+                onCapturedShortcutTrigger?(
+                    match,
+                    accepted,
+                    targetWasFrontmost,
+                    activationAttempt
+                )
+            }
         }
         return true
     }
@@ -907,6 +1023,23 @@ final class ShortcutManager {
     func matchedShortcutTraceMessage(for shortcut: AppShortcut) -> String {
         let route = ShortcutCaptureRoute.route(for: shortcut, hyperKeyEnabled: hyperKeyEnabled)
         return "SHORTCUT_TRACE_DECISION event=matched bundle=\(shortcut.bundleIdentifier) route=\(route == .hyper ? "hyper" : "standard")"
+    }
+
+    nonisolated static func onboardingTargetWasFrontmost(
+        targetBundleIdentifier: String,
+        frontmostBundleIdentifier: String?,
+        frontmostProcessIdentifier: pid_t?,
+        runningProcessIdentifiers: Set<pid_t>
+    ) -> Bool {
+        guard frontmostBundleIdentifier == targetBundleIdentifier,
+              let frontmostProcessIdentifier else {
+            return false
+        }
+
+        // `frontmostApplication` can retain a terminated process for the
+        // current run-loop turn. Treat it as frontmost only while that exact
+        // process still appears in the workspace's live process snapshot.
+        return runningProcessIdentifiers.contains(frontmostProcessIdentifier)
     }
 
     func captureBlockedMessage(

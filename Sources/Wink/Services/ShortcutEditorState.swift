@@ -120,6 +120,7 @@ final class ShortcutEditorState {
     private let usageTracker: (any UsageTracking)?
     @ObservationIgnored private var usageRefreshGeneration: UInt64 = 0
     private let onShortcutConfigurationChange: @MainActor () -> Void
+    private let onShortcutAdded: @MainActor (AppShortcut) -> Void
     /// Whether some OTHER profile still holds this shortcut ID. Defaults to
     /// "no" for the single-store case; production wires it to the profile
     /// store, which answers fail-closed.
@@ -144,7 +145,8 @@ final class ShortcutEditorState {
         appBundleLocator: AppBundleLocator = AppBundleLocator(),
         isShortcutRetainedByAnotherProfile: @escaping @MainActor (UUID) -> Bool = { _ in false },
         reserveUsageDeletion: @escaping @MainActor (UUID, Bool) -> Void = { _, _ in },
-        onShortcutConfigurationChange: @escaping @MainActor () -> Void = {}
+        onShortcutConfigurationChange: @escaping @MainActor () -> Void = {},
+        onShortcutAdded: @escaping @MainActor (AppShortcut) -> Void = { _ in }
     ) {
         self.shortcutStore = shortcutStore
         self.shortcutManager = shortcutManager
@@ -156,6 +158,7 @@ final class ShortcutEditorState {
         self.isShortcutRetainedByAnotherProfile = isShortcutRetainedByAnotherProfile
         self.reserveUsageDeletion = reserveUsageDeletion
         self.onShortcutConfigurationChange = onShortcutConfigurationChange
+        self.onShortcutAdded = onShortcutAdded
         self.shortcuts = shortcutStore.shortcuts
         observeShortcutStore()
         Task { await refreshUsageCounts() }
@@ -187,6 +190,7 @@ final class ShortcutEditorState {
         updated.append(candidate)
         guard persist(updated) else { return }
         onShortcutConfigurationChange()
+        onShortcutAdded(candidate)
         conflictMessage = nil
         resetDraft()
         Task { await refreshUsageCounts() }

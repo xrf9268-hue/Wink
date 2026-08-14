@@ -288,6 +288,70 @@ enum ShortcutBannerPresentation: Equatable {
     }
 }
 
+enum FirstShortcutOnboardingLaunchEligibility {
+    static func canStart(isPresented: Bool, canPrepareProfile: Bool) -> Bool {
+        !isPresented && canPrepareProfile
+    }
+}
+
+enum FirstShortcutOnboardingPausePresentation: Equatable {
+    case manual
+    case exception(appName: String?)
+
+    init?(
+        effectivePaused: Bool,
+        manuallyPaused: Bool,
+        autoPauseTriggerAppName: String?
+    ) {
+        guard effectivePaused else { return nil }
+
+        // Exception and manual pauses are independent bits. If both are active,
+        // clearing the manual bit cannot resume capture, so lead with the
+        // exception guidance until the triggering app is no longer frontmost.
+        if let autoPauseTriggerAppName {
+            self = .exception(appName: autoPauseTriggerAppName)
+        } else if manuallyPaused {
+            self = .manual
+        } else {
+            // The effective capture snapshot can arrive one observation turn
+            // before AppPreferences receives the exception app's display name.
+            self = .exception(appName: nil)
+        }
+    }
+
+    var showsResumeAction: Bool {
+        self == .manual
+    }
+
+    var title: String {
+        switch self {
+        case .manual:
+            String(localized: "Resume shortcuts to continue", bundle: WinkResourceBundle.bundle)
+        case let .exception(appName?):
+            String(
+                format: String(localized: "Shortcuts paused by %@", bundle: WinkResourceBundle.bundle),
+                appName
+            )
+        case .exception(nil):
+            String(localized: "Shortcuts paused by an exception rule", bundle: WinkResourceBundle.bundle)
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .manual:
+            String(localized: "The selected route cannot become ready while all shortcuts are paused.", bundle: WinkResourceBundle.bundle)
+        case let .exception(appName?):
+            String(
+                format: String(localized: "Switch away from %@ to resume shortcut capture, or remove it from the exception list.", bundle: WinkResourceBundle.bundle),
+                appName
+            )
+        case .exception(nil):
+            String(localized: "Switch away from the exception app to resume shortcut capture, or remove it from the exception list.", bundle: WinkResourceBundle.bundle)
+        }
+    }
+}
+
 struct ShortcutsTabView: View {
     @Environment(\.winkPalette) private var palette
 
@@ -296,6 +360,7 @@ struct ShortcutsTabView: View {
     var preferences: AppPreferences
     var appListProvider: AppListProvider
     var shortcutStatusProvider: ShortcutStatusProvider
+    @Bindable var firstShortcutOnboarding: FirstShortcutOnboardingState
 
     @State private var showingAppPicker = false
     @State private var filterText = ""
@@ -333,9 +398,25 @@ struct ShortcutsTabView: View {
                 title: String(localized: "Shortcuts", bundle: WinkResourceBundle.bundle),
                 subtitle: String(localized: "Bind a keystroke to launch, toggle, or hide an app.", bundle: WinkResourceBundle.bundle)
             ) {
-                WinkButton(String(localized: "Refresh", bundle: WinkResourceBundle.bundle), systemImage: WinkIcon.refresh.systemName) {
-                    preferences.requestShortcutPermissions()
+                HStack(spacing: 6) {
+                    WinkButton(String(localized: "First Shortcut Guide…", bundle: WinkResourceBundle.bundle)) {
+                        startFirstShortcutOnboarding()
+                    }
+                    .disabled(
+                        !FirstShortcutOnboardingLaunchEligibility.canStart(
+                            isPresented: firstShortcutOnboarding.isPresented,
+                            canPrepareProfile: profileState.canPrepareFirstShortcutOnboarding
+                        )
+                    )
+                    WinkButton(String(localized: "Refresh", bundle: WinkResourceBundle.bundle), systemImage: WinkIcon.refresh.systemName) {
+                        preferences.requestShortcutPermissions()
+                    }
+                    .disabled(!firstShortcutOnboarding.allowsAggregatePermissionRequests)
                 }
+            }
+
+            if firstShortcutOnboarding.isPresented {
+                firstShortcutOnboardingCard
             }
 
             ProfileBar(profileState: profileState, activeShortcuts: editor.shortcuts)
@@ -401,6 +482,7 @@ struct ShortcutsTabView: View {
                             .popover(isPresented: $showingAppPicker, arrowEdge: .bottom) {
                                 AppPickerPopover(
                                     appListProvider: appListProvider,
+                                    includesFrontmostTarget: firstShortcutOnboarding.allowsFrontmostTargetSelection,
                                     onSelect: { entry in
                                         editor.selectedAppName = entry.name
                                         editor.selectedBundleIdentifier = entry.bundleIdentifier
@@ -463,6 +545,7 @@ struct ShortcutsTabView: View {
                 }
                 .padding(14)
             }
+            .disabled(!firstShortcutOnboarding.allowsShortcutComposition)
 
             if let conflictMessage = editor.conflictMessage {
                 Text(conflictMessage)
@@ -495,9 +578,19 @@ struct ShortcutsTabView: View {
         .onAppear {
             accessibilityOptions = .current
             shortcutStatusProvider.track(visibleShortcuts)
+            // Permission/capture changes can land while another Settings tab
+            // owns the view hierarchy, so its onChange observer is unmounted.
+            // Reconcile the exact saved shortcut and live route readiness when
+            // this tab returns instead of retaining a stale permissions page.
+            firstShortcutOnboarding.synchronize(shortcuts: editor.shortcuts)
         }
         .onChange(of: editor.shortcuts) { _, _ in
             shortcutStatusProvider.track(visibleShortcuts)
+            firstShortcutOnboarding.synchronize(shortcuts: editor.shortcuts)
+        }
+        .onChange(of: preferences.shortcutCaptureStatus) { _, _ in
+            guard firstShortcutOnboarding.activeShortcut != nil else { return }
+            firstShortcutOnboarding.refreshReadiness()
         }
         .onReceive(
             NSWorkspace.shared.notificationCenter.publisher(
@@ -509,6 +602,251 @@ struct ShortcutsTabView: View {
     }
 
     @ViewBuilder
+    private var firstShortcutOnboardingCard: some View {
+        switch firstShortcutOnboarding.phase {
+        case .hidden:
+            EmptyView()
+        case .introduction:
+            WinkBanner(
+                kind: .info,
+                title: String(localized: "Switch apps with one shortcut", bundle: WinkResourceBundle.bundle),
+                message: String(
+                    localized: "Choose an app, record one shortcut, and press it once so Wink can verify the real switch.",
+                    bundle: WinkResourceBundle.bundle
+                )
+            ) {
+                HStack(spacing: 6) {
+                    WinkButton(String(localized: "Skip", bundle: WinkResourceBundle.bundle), variant: .ghost) {
+                        firstShortcutOnboarding.skip()
+                    }
+                    WinkButton(String(localized: "Get Started", bundle: WinkResourceBundle.bundle), variant: .primary) {
+                        firstShortcutOnboarding.continueFromIntroduction()
+                    }
+                }
+            }
+        case .configure:
+            WinkBanner(
+                kind: .info,
+                title: String(localized: "Choose one app and record one shortcut", bundle: WinkResourceBundle.bundle),
+                message: String(
+                    localized: "Use New Shortcut below. The guide continues after Add Shortcut saves the binding.",
+                    bundle: WinkResourceBundle.bundle
+                )
+            ) {
+                WinkButton(String(localized: "Skip", bundle: WinkResourceBundle.bundle), variant: .ghost) {
+                    firstShortcutOnboarding.skip()
+                }
+            }
+        case .permissions:
+            onboardingPermissionBanner
+        case let .verification(waitingForActivation):
+            if waitingForActivation {
+                WinkBanner(
+                    kind: .info,
+                    title: String(localized: "Checking the switch…", bundle: WinkResourceBundle.bundle),
+                    message: String(
+                        localized: "Wink matched the saved shortcut and is waiting for the target app to become frontmost.",
+                        bundle: WinkResourceBundle.bundle
+                    )
+                ) {
+                    EmptyView()
+                }
+            } else {
+                WinkBanner(
+                    kind: .info,
+                    title: String(localized: "Press your shortcut once", bundle: WinkResourceBundle.bundle),
+                    message: onboardingVerificationMessage
+                ) {
+                    HStack(spacing: 6) {
+                        WinkButton(String(localized: "Change Shortcut", bundle: WinkResourceBundle.bundle)) {
+                            changeOnboardingShortcut()
+                        }
+                        WinkButton(String(localized: "Skip", bundle: WinkResourceBundle.bundle), variant: .ghost) {
+                            firstShortcutOnboarding.skip()
+                        }
+                    }
+                }
+            }
+        case .success:
+            WinkBanner(
+                kind: .success,
+                title: String(localized: "Shortcut verified", bundle: WinkResourceBundle.bundle),
+                message: String(
+                    localized: "The saved chord reached Wink's normal capture and activation pipeline, and the target became frontmost.",
+                    bundle: WinkResourceBundle.bundle
+                )
+            ) {
+                WinkButton(String(localized: "Finish", bundle: WinkResourceBundle.bundle), variant: .primary) {
+                    firstShortcutOnboarding.finish()
+                }
+            }
+        case let .failure(failure):
+            WinkBanner(
+                kind: .error,
+                title: onboardingFailureTitle(failure),
+                message: onboardingFailureMessage(failure)
+            ) {
+                VStack(alignment: .trailing, spacing: 6) {
+                    HStack(spacing: 6) {
+                        WinkButton(String(localized: "Skip", bundle: WinkResourceBundle.bundle), variant: .ghost) {
+                            firstShortcutOnboarding.skip()
+                        }
+                        WinkButton(String(localized: "Change Shortcut", bundle: WinkResourceBundle.bundle)) {
+                            changeOnboardingShortcut()
+                        }
+                    }
+                    HStack(spacing: 6) {
+                        WinkButton(String(localized: "Open System Settings", bundle: WinkResourceBundle.bundle)) {
+                            firstShortcutOnboarding.openSystemSettings()
+                        }
+                        WinkButton(String(localized: "Retry", bundle: WinkResourceBundle.bundle), variant: .primary) {
+                            firstShortcutOnboarding.retry()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var onboardingPermissionBanner: some View {
+        let readiness = firstShortcutOnboarding.readiness
+        let pausePresentation = FirstShortcutOnboardingPausePresentation(
+            effectivePaused: readiness?.shortcutsPaused == true,
+            manuallyPaused: preferences.shortcutsPaused,
+            autoPauseTriggerAppName: preferences.autoPauseTriggerAppName
+        )
+        let copy = onboardingPermissionCopy(readiness, pausePresentation: pausePresentation)
+
+        WinkBanner(kind: .warn, title: copy.title, message: copy.message) {
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack(spacing: 6) {
+                    WinkButton(String(localized: "Skip", bundle: WinkResourceBundle.bundle), variant: .ghost) {
+                        firstShortcutOnboarding.skip()
+                    }
+                    WinkButton(String(localized: "Change Shortcut", bundle: WinkResourceBundle.bundle)) {
+                        changeOnboardingShortcut()
+                    }
+                }
+                if pausePresentation?.showsResumeAction == true {
+                    HStack(spacing: 6) {
+                        WinkButton(String(localized: "Resume", bundle: WinkResourceBundle.bundle), variant: .primary) {
+                            // Resume this guide without aggregate prompting:
+                            // the selected-route action below owns any needed
+                            // Accessibility/Input Monitoring request.
+                            preferences.setShortcutsPaused(
+                                false,
+                                promptForPermissions: false
+                            )
+                            firstShortcutOnboarding.refreshReadiness()
+                        }
+                    }
+                } else if pausePresentation == nil {
+                    HStack(spacing: 6) {
+                        WinkButton(String(localized: "Open System Settings", bundle: WinkResourceBundle.bundle)) {
+                            firstShortcutOnboarding.openSystemSettings()
+                        }
+                        WinkButton(String(localized: "Request Access", bundle: WinkResourceBundle.bundle), variant: .primary) {
+                            firstShortcutOnboarding.requestPermissions()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func onboardingPermissionCopy(
+        _ readiness: FirstShortcutOnboardingReadiness?,
+        pausePresentation: FirstShortcutOnboardingPausePresentation?
+    ) -> (title: String, message: String) {
+        if let pausePresentation {
+            return (pausePresentation.title, pausePresentation.message)
+        }
+        if firstShortcutOnboarding.selectedRouteIsBlockedBySecureInput {
+            return (
+                String(localized: "Secure Input is active", bundle: WinkResourceBundle.bundle),
+                String(localized: "Leave the secure field, then retry so Wink can observe this shortcut route.", bundle: WinkResourceBundle.bundle)
+            )
+        }
+        if readiness?.accessibilityGranted != true {
+            return (
+                String(localized: "Allow Accessibility", bundle: WinkResourceBundle.bundle),
+                String(localized: "Wink needs Accessibility to activate the selected app.", bundle: WinkResourceBundle.bundle)
+            )
+        }
+        if readiness?.route.requiresInputMonitoring == true,
+           readiness?.inputMonitoringGranted != true {
+            return (
+                String(localized: "Allow Input Monitoring", bundle: WinkResourceBundle.bundle),
+                String(localized: "This shortcut route also needs Input Monitoring to capture the physical press.", bundle: WinkResourceBundle.bundle)
+            )
+        }
+        return (
+            String(localized: "Waiting for shortcut capture", bundle: WinkResourceBundle.bundle),
+            String(localized: "Permission is present, but the selected route is not ready yet. Retry after macOS finishes applying the change.", bundle: WinkResourceBundle.bundle)
+        )
+    }
+
+    private var onboardingVerificationMessage: String {
+        guard let shortcut = firstShortcutOnboarding.activeShortcut else {
+            return String(localized: "Record the shortcut again to continue.", bundle: WinkResourceBundle.bundle)
+        }
+        return String(
+            localized: "Press \(shortcut.displayText) physically. A different app switch or a direct button cannot complete this step.",
+            bundle: WinkResourceBundle.bundle
+        )
+    }
+
+    private func onboardingFailureTitle(_ failure: FirstShortcutOnboardingState.Failure) -> String {
+        switch failure {
+        case .activationRejected:
+            String(localized: "Wink could not start that switch", bundle: WinkResourceBundle.bundle)
+        case .activationTimedOut:
+            String(localized: "The target did not become frontmost", bundle: WinkResourceBundle.bundle)
+        case .shortcutUnavailable:
+            String(localized: "The saved shortcut is unavailable", bundle: WinkResourceBundle.bundle)
+        case .targetAlreadyFrontmost:
+            String(localized: "Switch away from the target first", bundle: WinkResourceBundle.bundle)
+        }
+    }
+
+    private func onboardingFailureMessage(_ failure: FirstShortcutOnboardingState.Failure) -> String {
+        switch failure {
+        case .activationRejected:
+            String(localized: "Check that the app is still installed, then retry or choose a different shortcut.", bundle: WinkResourceBundle.bundle)
+        case .activationTimedOut:
+            String(localized: "Wink received the shortcut, but did not observe the selected app become frontmost before the verification timeout.", bundle: WinkResourceBundle.bundle)
+        case .shortcutUnavailable:
+            String(localized: "The binding is no longer in the active shortcut set. Choose an app and record it again.", bundle: WinkResourceBundle.bundle)
+        case .targetAlreadyFrontmost:
+            String(localized: "Open another app, then retry and press the shortcut so Wink can verify an activation instead of a hide.", bundle: WinkResourceBundle.bundle)
+        }
+    }
+
+    private func changeOnboardingShortcut() {
+        if let shortcutID = firstShortcutOnboarding.activeShortcut?.id {
+            editor.removeShortcut(id: shortcutID)
+            guard !editor.shortcuts.contains(where: { $0.id == shortcutID }) else { return }
+        }
+        firstShortcutOnboarding.changeShortcut()
+    }
+
+    private func startFirstShortcutOnboarding() {
+        guard FirstShortcutOnboardingLaunchEligibility.canStart(
+            isPresented: firstShortcutOnboarding.isPresented,
+            canPrepareProfile: profileState.canPrepareFirstShortcutOnboarding
+        ) else { return }
+        // A draft can predate a manual guide run. Current App persists only a
+        // sentinel and cannot satisfy concrete-target verification, so clear
+        // that selection before the guide begins while preserving real drafts.
+        if editor.selectedBundleIdentifier == AppShortcut.frontmostTargetSentinelBundleIdentifier {
+            editor.selectedAppName = ""
+            editor.selectedBundleIdentifier = ""
+        }
+        firstShortcutOnboarding.startManually()
+    }
+
+    @ViewBuilder
     private var permissionBanner: some View {
         switch ShortcutBannerPresentation(status: preferences.shortcutCaptureStatus) {
         case let .info(title, message):
@@ -517,7 +855,7 @@ struct ShortcutsTabView: View {
             WinkBanner(kind: .success, title: title, message: message)
         case let .warning(title, message, showsAction):
             WinkBanner(kind: .warn, title: title, message: message) {
-                if showsAction {
+                if showsAction && firstShortcutOnboarding.allowsAggregatePermissionRequests {
                     WinkButton(permissionActionTitle, variant: .primary) {
                         preferences.requestShortcutPermissions()
                     }

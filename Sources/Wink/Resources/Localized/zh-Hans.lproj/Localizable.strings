@@ -58,6 +58,10 @@
 	<string>所有应用</string>
 	<key>All shortcuts are paused.</key>
 	<string>所有快捷键均已暂停。</string>
+	<key>Allow Accessibility</key>
+	<string>允许辅助功能</string>
+	<key>Allow Input Monitoring</key>
+	<string>允许输入监控</string>
 	<key>Another profile already uses that name.</key>
 	<string>已有其他配置使用该名称。</string>
 	<key>App is currently running</key>
@@ -86,18 +90,28 @@
 	<string>浏览...</string>
 	<key>Cancel</key>
 	<string>取消</string>
+	<key>Change Shortcut</key>
+	<string>更改快捷键</string>
 	<key>Check for Updates…</key>
 	<string>检查更新…</string>
+	<key>Check that the app is still installed, then retry or choose a different shortcut.</key>
+	<string>请确认应用仍已安装，然后重试或选择其他快捷键。</string>
 	<key>Checking for Updates</key>
 	<string>正在检查更新</string>
 	<key>Checking for updates…</key>
 	<string>正在检查更新…</string>
+	<key>Checking the switch…</key>
+	<string>正在检查切换…</string>
 	<key>Checking, download progress, and installs now happen right here — no more separate update dialogs.</key>
 	<string>检查、下载进度和安装现在都在这里完成 — 不再需要单独的更新对话框。</string>
 	<key>Choose a profile</key>
 	<string>选择一个配置</string>
+	<key>Choose an app, record one shortcut, and press it once so Wink can verify the real switch.</key>
+	<string>选择一个应用，录制一个快捷键并按下一次，让 Wink 验证真实切换。</string>
 	<key>Choose an app…</key>
 	<string>选择一个应用…</string>
+	<key>Choose one app and record one shortcut</key>
+	<string>选择一个应用并录制一个快捷键</string>
 	<key>Choose where to save the diagnostics folder.</key>
 	<string>选择诊断信息文件夹的保存位置。</string>
 	<key>Clear</key>
@@ -190,12 +204,18 @@
 	<string>导入配方失败：%@</string>
 	<key>Filter…</key>
 	<string>筛选…</string>
+	<key>Finish</key>
+	<string>完成</string>
+	<key>First Shortcut Guide…</key>
+	<string>首个快捷键指南…</string>
 	<key>Focus</key>
 	<string>聚焦</string>
 	<key>Full release notes</key>
 	<string>完整发行说明</string>
 	<key>General</key>
 	<string>通用</string>
+	<key>Get Started</key>
+	<string>开始</string>
 	<key>Granted</key>
 	<string>已授权</string>
 	<key>Hand shortcuts back to the system while a listed app (VM, remote desktop) is frontmost.</key>
@@ -280,6 +300,8 @@
 	<string>登录时启动</string>
 	<key>Launch at Login is only available after installing Wink.app in the Applications folder and reopening it.</key>
 	<string>只有将 Wink.app 安装到“应用程序”文件夹并重新打开后，才能使用登录时启动。</string>
+	<key>Leave the secure field, then retry so Wink can observe this shortcut route.</key>
+	<string>离开安全输入字段，然后重试，让 Wink 能观察此快捷键路径。</string>
 	<key>Less work between keypress and app switch, especially with minimized windows.</key>
 	<string>从按键到应用切换所需的处理更少，尤其是最小化窗口时。</string>
 	<key>Limited · Secure Input</key>
@@ -340,12 +362,16 @@
 	<string>好</string>
 	<key>Open Login Items Settings</key>
 	<string>打开登录项设置</string>
+	<key>Open System Settings</key>
+	<string>打开系统设置</string>
 	<key>Open Wink Settings</key>
 	<string>打开 Wink 设置</string>
 	<key>Open Wink Settings at ${tab}</key>
 	<string>在 ${tab} 打开 Wink 设置</string>
 	<key>Open Wink Settings to an optional tab.</key>
 	<string>打开 Wink 设置，可选择指定标签页。</string>
+	<key>Open another app, then retry and press the shortcut so Wink can verify an activation instead of a hide.</key>
+	<string>请先打开另一个应用，然后重试并按下快捷键，让 Wink 验证激活而不是隐藏。</string>
 	<key>Opens Wink in the menu bar when you sign in.</key>
 	<string>登录时在菜单栏中打开 Wink。</string>
 	<key>Optional</key>
@@ -364,16 +390,22 @@
 	<string>已暂停</string>
 	<key>Paused · %@</key>
 	<string>已暂停 · %@</string>
+	<key>Permission is present, but the selected route is not ready yet. Retry after macOS finishes applying the change.</key>
+	<string>权限已具备，但所选路径尚未就绪。请在 macOS 完成应用更改后重试。</string>
 	<key>Permissions</key>
 	<string>权限</string>
 	<key>Preparing the downloaded update…</key>
 	<string>正在准备已下载的更新…</string>
 	<key>Preparing update…</key>
 	<string>正在准备更新…</string>
+	<key>Press %@ physically. A different app switch or a direct button cannot complete this step.</key>
+	<string>请实际按下 %@。切换其他应用或使用直接按钮都无法完成此步骤。</string>
 	<key>Press a key combination…</key>
 	<string>按下一个组合键…</string>
 	<key>Press once to open or focus the target app, press again to hide it.</key>
 	<string>按一次打开或聚焦目标应用，再按一次将其隐藏。</string>
+	<key>Press your shortcut once</key>
+	<string>按一次你的快捷键</string>
 	<key>Privacy</key>
 	<string>隐私</string>
 	<key>Profile</key>
@@ -392,6 +424,8 @@
 	<string>最近使用</string>
 	<key>Recipes import into the active profile. Profiles stay on this Mac; recipes are how you share bindings.</key>
 	<string>配方会导入到当前配置中。配置只保存在这台 Mac 上；配方则用于分享绑定。</string>
+	<key>Record the shortcut again to continue.</key>
+	<string>请重新录制快捷键以继续。</string>
 	<key>Recording…</key>
 	<string>录制中…</string>
 	<key>Recover</key>
@@ -416,8 +450,14 @@
 	<string>全局快捷键所需权限</string>
 	<key>Requires at least one modifier (⌘⌥⌃⇧)</key>
 	<string>至少需要一个修饰键（⌘⌥⌃⇧）</string>
+	<key>Resume</key>
+	<string>恢复</string>
 	<key>Resume Wink</key>
 	<string>恢复 Wink</string>
+	<key>Resume shortcuts to continue</key>
+	<string>恢复快捷键以继续</string>
+	<key>Retry</key>
+	<string>重试</string>
 	<key>Reveal Log</key>
 	<string>显示日志</string>
 	<key>Review</key>
@@ -440,6 +480,8 @@
 	<string>搜索快捷键</string>
 	<key>Search with Wink</key>
 	<string>使用 Wink 搜索</string>
+	<key>Secure Input is active</key>
+	<string>安全输入已启用</string>
 	<key>Settings Tab</key>
 	<string>设置标签页</string>
 	<key>Settings…</key>
@@ -454,18 +496,26 @@
 	<string>快捷键捕获需要注意</string>
 	<key>Shortcut capture ready</key>
 	<string>快捷键捕获就绪</string>
+	<key>Shortcut verified</key>
+	<string>快捷键已验证</string>
 	<key>Shortcuts</key>
 	<string>快捷键</string>
 	<key>Shortcuts are not loaded and changes cannot be saved. Check that your home folder is available, then relaunch Wink.</key>
 	<string>快捷键未加载，改动也无法保存。请确认个人文件夹可用，然后重新启动 Wink。</string>
 	<key>Shortcuts paused</key>
 	<string>快捷键已暂停</string>
+	<key>Shortcuts paused by %@</key>
+	<string>快捷键已因 %@ 暂停</string>
+	<key>Shortcuts paused by an exception rule</key>
+	<string>快捷键已因例外规则暂停</string>
 	<key>Show Menu Bar Icon</key>
 	<string>显示菜单栏图标</string>
 	<key>Show Wink Search Palette</key>
 	<string>显示 Wink 搜索面板</string>
 	<key>Show Wink's app search palette.</key>
 	<string>显示 Wink 的应用搜索面板。</string>
+	<key>Skip</key>
+	<string>跳过</string>
 	<key>Skip Conflicts</key>
 	<string>跳过冲突项</string>
 	<key>Skip This Version</key>
@@ -498,6 +548,14 @@
 	<string>建议的快捷键</string>
 	<key>Support</key>
 	<string>支持</string>
+	<key>Switch apps with one shortcut</key>
+	<string>用一个快捷键切换应用</string>
+	<key>Switch away from %@ to resume shortcut capture, or remove it from the exception list.</key>
+	<string>切换离开 %@ 以恢复快捷键捕获，或将其从例外列表中移除。</string>
+	<key>Switch away from the exception app to resume shortcut capture, or remove it from the exception list.</key>
+	<string>切换离开触发例外规则的应用以恢复快捷键捕获，或将其从例外列表中移除。</string>
+	<key>Switch away from the target first</key>
+	<string>请先切换到其他应用</string>
 	<key>Switching profiles discarded the recipe import preview, which was prepared for the previous profile.</key>
 	<string>切换配置已放弃配方导入预览——该预览是针对上一个配置生成的。</string>
 	<key>Switching profiles discarded the shortcut you were about to add.</key>
@@ -520,6 +578,8 @@
 	<string>无法读取该配置的快捷键，Wink 没有切换过去。任何内容都没有被修改或删除。</string>
 	<key>The Settings toggle is live: background checks and downloads, on or off.</key>
 	<string>设置中的开关即刻生效：后台检查与下载，随你开启或关闭。</string>
+	<key>The binding is no longer in the active shortcut set. Choose an app and record it again.</key>
+	<string>此绑定已不在当前快捷键集合中。请选择应用并重新录制。</string>
 	<key>The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again.</key>
 	<string>改动已导入，但 Wink 未能完成切换到修复后的配置。请再试一次导入。</string>
 	<key>The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.</key>
@@ -530,14 +590,24 @@
 	<string>上次自动检查更新失败：%@</string>
 	<key>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</key>
 	<string>无法删除该配置，且 Wink 无法撤销此前已经完成的切换。你现在使用的是“%@”。</string>
+	<key>The saved chord reached Wink's normal capture and activation pipeline, and the target became frontmost.</key>
+	<string>保存的按键组合已进入 Wink 的正常捕获与激活流程，且目标应用已成为最前端应用。</string>
+	<key>The saved shortcut is unavailable</key>
+	<string>保存的快捷键不可用</string>
+	<key>The selected route cannot become ready while all shortcuts are paused.</key>
+	<string>所有快捷键暂停时，所选捕获路径无法就绪。</string>
 	<key>The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.</key>
 	<string>shortcuts.json 兼容文件暂时未能重写；下次成功保存时会刷新它。</string>
+	<key>The target did not become frontmost</key>
+	<string>目标应用未成为最前端应用</string>
 	<key>There is no active profile to keep yet. Import the file first, or choose a profile.</key>
 	<string>目前还没有可保留的当前配置。请先导入该文件，或选择一个配置。</string>
 	<key>There is no diagnostic log yet. Use Wink for a moment and try again.</key>
 	<string>目前还没有诊断日志。先使用 Wink 一段时间后再试。</string>
 	<key>This log was missing or could not be read when the export was created.</key>
 	<string>创建此导出时，该日志缺失或无法读取。</string>
+	<key>This shortcut route also needs Input Monitoring to capture the physical press.</key>
+	<string>此快捷键路径还需要输入监控权限，才能捕获物理按键。</string>
 	<key>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</key>
 	<string>这通常意味着旧版本的 Wink 修改过它，也可能发生在意外关机之后。Wink 目前还未做任何改动。</string>
 	<key>Time saved</key>
@@ -582,6 +652,8 @@
 	<string>Wink 风格的更新体验</string>
 	<key>Usage trends for your saved shortcuts.</key>
 	<string>已保存快捷键的使用趋势。</string>
+	<key>Use New Shortcut below. The guide continues after Add Shortcut saves the binding.</key>
+	<string>使用下方的‘新建快捷键’。‘添加快捷键’保存绑定后，指南会继续。</string>
 	<key>Version %@</key>
 	<string>版本 %@</string>
 	<key>Version %@ is available. Use Check for Updates… to review and install.</key>
@@ -592,6 +664,8 @@
 	<string>查看发行说明</string>
 	<key>W</key>
 	<string>周</string>
+	<key>Waiting for shortcut capture</key>
+	<string>正在等待快捷键捕获</string>
 	<key>What's New in Wink</key>
 	<string>Wink 更新内容</string>
 	<key>When Frontmost</key>
@@ -640,6 +714,8 @@
 	<string>Wink 无法将更改写入磁盘，因此未做任何改动。</string>
 	<key>Wink could not show the Search Palette.</key>
 	<string>Wink 无法显示搜索面板。</string>
+	<key>Wink could not start that switch</key>
+	<string>Wink 无法开始此次切换</string>
 	<key>Wink could not tell which profile was active</key>
 	<string>Wink 无法确定哪个配置处于使用中</string>
 	<key>Wink couldn't disable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
@@ -654,8 +730,14 @@
 	<string>Wink 仍在清除已删除配置的使用记录。请稍后再试。</string>
 	<key>Wink manual pause is cleared.</key>
 	<string>Wink 的手动暂停已解除。</string>
+	<key>Wink matched the saved shortcut and is waiting for the target app to become frontmost.</key>
+	<string>Wink 已匹配保存的快捷键，正在等待目标应用成为最前端应用。</string>
 	<key>Wink needs Accessibility access to route global shortcuts.</key>
 	<string>Wink 需要辅助功能权限才能路由全局快捷键。</string>
+	<key>Wink needs Accessibility to activate the selected app.</key>
+	<string>Wink 需要辅助功能权限来激活所选应用。</string>
+	<key>Wink received the shortcut, but did not observe the selected app become frontmost before the verification timeout.</key>
+	<string>Wink 已收到快捷键，但在验证超时前未观察到所选应用成为最前端应用。</string>
 	<key>Wink shortcuts are paused.</key>
 	<string>Wink 快捷键已暂停。</string>
 	<key>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</key>

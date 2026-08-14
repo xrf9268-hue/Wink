@@ -52,7 +52,8 @@ struct WinkApp: App {
                 insightsViewModel: services.insightsViewModel,
                 appListProvider: services.appListProvider,
                 shortcutStatusProvider: services.shortcutStatusProvider,
-                settingsLauncher: services.settingsLauncher
+                settingsLauncher: services.settingsLauncher,
+                firstShortcutOnboarding: services.firstShortcutOnboarding
             )
             .frame(
                 width: SettingsWindowMetrics.width,

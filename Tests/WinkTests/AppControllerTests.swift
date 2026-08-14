@@ -29,7 +29,7 @@ func startupSequenceAppliesPersistedHyperStateBeforeStartingShortcutManager() {
         setHyperKeyEnabled: { enabled in
             events.append("setHyper:\(enabled)")
         },
-        startShortcutManager: {
+        startShortcutManager: { _ in
             events.append("startShortcutManager")
         }
     )
@@ -41,6 +41,50 @@ func startupSequenceAppliesPersistedHyperStateBeforeStartingShortcutManager() {
         "readHyperEnabled",
         "reapplyHyper",
         "setHyper:true",
+        "startShortcutManager",
+    ])
+}
+
+@Test @MainActor
+func startupSequencePreparesOnboardingBeforeCaptureAndPropagatesPromptSuppression() {
+    var events: [String] = []
+    var receivedSuppression = false
+
+    AppController.runStartupSequence(
+        startUpdateService: { events.append("startUpdateService") },
+        loadShortcuts: {
+            events.append("load")
+            return []
+        },
+        replaceShortcuts: { _ in events.append("replace") },
+        reapplyHyperIfNeeded: {
+            events.append("reapplyHyper")
+            return false
+        },
+        isHyperEnabled: {
+            events.append("readHyperEnabled")
+            return false
+        },
+        setHyperKeyEnabled: { enabled in events.append("setHyper:\(enabled)") },
+        prepareFirstShortcutOnboarding: {
+            events.append("prepareOnboarding")
+            return true
+        },
+        startShortcutManager: { suppressAutomaticPermissionPrompt in
+            events.append("startShortcutManager")
+            receivedSuppression = suppressAutomaticPermissionPrompt
+        }
+    )
+
+    #expect(receivedSuppression)
+    #expect(events == [
+        "startUpdateService",
+        "load",
+        "replace",
+        "readHyperEnabled",
+        "reapplyHyper",
+        "setHyper:false",
+        "prepareOnboarding",
         "startShortcutManager",
     ])
 }
@@ -71,7 +115,7 @@ func startupSequenceDisablesHyperRoutingWhenPersistedReapplyFails() {
         setHyperKeyEnabled: { enabled in
             events.append("setHyper:\(enabled)")
         },
-        startShortcutManager: {
+        startShortcutManager: { _ in
             events.append("startShortcutManager")
         }
     )
@@ -85,26 +129,6 @@ func startupSequenceDisablesHyperRoutingWhenPersistedReapplyFails() {
         "setHyper:false",
         "startShortcutManager",
     ])
-}
-
-@Test @MainActor
-func consumeFirstLaunchFlagReturnsTrueOnceForFreshInstall() throws {
-    let suiteName = "AppControllerTests.firstLaunch.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-
-    #expect(AppController.consumeFirstLaunchFlag(userDefaults: defaults, hasExistingShortcuts: false) == true)
-    #expect(AppController.consumeFirstLaunchFlag(userDefaults: defaults, hasExistingShortcuts: false) == false)
-}
-
-@Test @MainActor
-func consumeFirstLaunchFlagSilentlyMarksMigratingUsersOnboarded() throws {
-    let suiteName = "AppControllerTests.firstLaunch.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-
-    #expect(AppController.consumeFirstLaunchFlag(userDefaults: defaults, hasExistingShortcuts: true) == false)
-    #expect(AppController.consumeFirstLaunchFlag(userDefaults: defaults, hasExistingShortcuts: false) == false)
 }
 
 @Test @MainActor
@@ -133,7 +157,7 @@ func startupSequenceStartsUpdateServiceBeforeShortcutManager() {
         setHyperKeyEnabled: { enabled in
             events.append("setHyper:\(enabled)")
         },
-        startShortcutManager: {
+        startShortcutManager: { _ in
             events.append("startShortcutManager")
         }
     )
@@ -175,7 +199,7 @@ func startupSequenceAppliesPersistedPreferencesBeforeStartingShortcutManager() {
         preparePreferences: {
             events.append("preparePreferences")
         },
-        startShortcutManager: {
+        startShortcutManager: { _ in
             events.append("startShortcutManager")
         }
     )
@@ -210,7 +234,7 @@ func duplicatePersistencePayloadNeverPublishesIntoSettingsModels() async throws 
         reapplyHyperIfNeeded: { false },
         isHyperEnabled: { false },
         setHyperKeyEnabled: { _ in },
-        startShortcutManager: { didStartShortcutManager = true }
+        startShortcutManager: { _ in didStartShortcutManager = true }
     )
 
     #expect(didReplaceShortcuts == false)

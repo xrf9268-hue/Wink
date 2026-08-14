@@ -9,6 +9,24 @@ enum ShortcutCaptureRoute: Equatable, Sendable {
     }
 }
 
+extension FirstShortcutOnboardingRoute {
+    static func route(for shortcut: AppShortcut, hyperKeyEnabled: Bool) -> Self {
+        if ShortcutCaptureRoute.route(for: shortcut, hyperKeyEnabled: hyperKeyEnabled) == .hyper {
+            return .hyper
+        }
+
+        let key = shortcut.keyEquivalent.lowercased()
+        let isFunctionRow = key.first == "f"
+            && key.dropFirst().allSatisfy(\.isNumber)
+            && (Int(key.dropFirst()).map { (1...20).contains($0) } ?? false)
+        if shortcut.modifierFlags.contains(where: { $0.caseInsensitiveCompare("function") == .orderedSame }),
+           isFunctionRow {
+            return .standardFunction
+        }
+        return .standard
+    }
+}
+
 struct ShortcutCaptureSnapshot: Equatable, Sendable {
     let carbonHotKeysRegistered: Bool
     let eventTapActive: Bool
@@ -213,6 +231,28 @@ final class ShortcutCaptureCoordinator {
             standardRegistrationFailures: standardRegistrationState.failures,
             hyperShortcutCount: hyperShortcuts.count
         )
+    }
+
+    /// Whether this exact standard-route chord is live in Carbon. Aggregate
+    /// readiness is deliberately insufficient here: one unrelated failed
+    /// registration or Fn+F-row observer can degrade the provider while an
+    /// ordinary selected chord remains registered and usable.
+    func isStandardShortcutRegistered(_ shortcut: AppShortcut) -> Bool {
+        let keyPress = KeyPress(
+            keyCode: keyMatcher.trigger(for: shortcut).keyCode,
+            modifiers: NSEvent.ModifierFlags(
+                rawValue: keyMatcher.trigger(for: shortcut).modifierMask
+            )
+        )
+        guard !capturePaused,
+              standardShortcuts.contains(keyPress),
+              standardProvider.isRunning else {
+            return false
+        }
+
+        let registrationState = standardProvider.registrationState
+        return registrationState.handlerState.isInstalled
+            && !registrationState.failures.contains(where: { $0.keyPress == keyPress })
     }
 
     private func rebuildRoutes() {

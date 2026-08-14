@@ -41,6 +41,7 @@ struct AppPickerPopover: View {
     @Environment(\.winkPalette) private var palette
 
     @Bindable var appListProvider: AppListProvider
+    var includesFrontmostTarget = true
     let onSelect: (AppEntry) -> Void
     let onBrowse: () -> Void
 
@@ -72,12 +73,14 @@ struct AppPickerPopover: View {
     private func computeSections() -> Sections {
         let all = appListProvider.filteredApps(query: searchText)
         guard searchText.isEmpty else {
-            let special = displayName(for: AppEntry.frontmostTarget)
-                .localizedCaseInsensitiveContains(searchText) ? [AppEntry.frontmostTarget] : []
+            let special = includesFrontmostTarget
+                && displayName(for: AppEntry.frontmostTarget).localizedCaseInsensitiveContains(searchText)
+                ? [AppEntry.frontmostTarget]
+                : []
             let flat = special + all
             return Sections(special: special, recent: [], nonRecent: [], all: all, flat: flat)
         }
-        let special = [AppEntry.frontmostTarget]
+        let special = includesFrontmostTarget ? [AppEntry.frontmostTarget] : []
         let recent = appListProvider.recentApps
         let recentIDs = Set(recent.map(\.bundleIdentifier))
         let nonRecent = all.filter { !recentIDs.contains($0.bundleIdentifier) }
