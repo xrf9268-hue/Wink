@@ -297,7 +297,14 @@ final class AppSwitcher: AppSwitching {
         let hideGeneration: Int
         let processIdentifier: pid_t
         let shortcut: AppShortcut
-        let settledExpiration: CFAbsoluteTime?
+        let focusIntentGeneration: Int
+        let expiresAt: CFAbsoluteTime
+        var pendingForegroundActivation: PendingForegroundActivation?
+    }
+
+    private struct PendingForegroundActivation {
+        let generation: Int
+        let processIdentifier: pid_t
     }
 
     private let frontmostTracker: FrontmostApplicationTracker
@@ -315,6 +322,8 @@ final class AppSwitcher: AppSwitching {
     private var frontmostTargetBehavior: FrontmostTargetBehavior = .toggle
     private var dispatchedHideRequests: [String: DispatchedHideRequest] = [:]
     private var supersededHideFocusRecoveries: [String: SupersededHideFocusRecovery] = [:]
+    private var nextFocusHideRecoveryIntentGeneration = 0
+    private var nextForegroundActivationGeneration = 0
 
     /// Re-entry guard: prevents nested calls to toggleApplication on the same run loop turn.
     private var isToggling = false
@@ -334,13 +343,22 @@ final class AppSwitcher: AppSwitching {
     private let deactivationConfirmationInitialDelay: TimeInterval = 0.05
     private let deactivationConfirmationPollInterval: TimeInterval = 0.05
     private let deactivationConfirmationTimeout: TimeInterval = 0.3
+    // `hide()` has no completion token, so a superseding focus needs longer
+    // ownership than the 300 ms observation ladder. It still cannot be
+    // permanent: after this intent window, a later Cmd-H/self-hide is newer
+    // user/app intent and must win.
+    private let focusHideRecoveryIntentWindow: TimeInterval = 2.0
     // nonisolated(unsafe): written only while @MainActor-isolated (from init)
     // but read from the nonisolated deinit below, where NotificationCenter.removeObserver
     // is thread-safe.
+    private nonisolated(unsafe) var workspaceActivationObserver: Any?
     private nonisolated(unsafe) var workspaceHideObserver: Any?
     private nonisolated(unsafe) var workspaceTerminationObserver: Any?
 
     deinit {
+        if let workspaceActivationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(workspaceActivationObserver)
+        }
         if let workspaceHideObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceHideObserver)
         }
@@ -388,6 +406,19 @@ final class AppSwitcher: AppSwitching {
         self.sessionCoordinator.startObservingWorkspaceNotifications()
         self.windowCycleCoordinator.startObservingWorkspaceNotifications()
         self.sessionCoordinator.setFrontmostTargetBehavior(frontmostTargetBehavior)
+        workspaceActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            MainActor.assumeIsolated { [weak self] in
+                guard let self, let application else { return }
+                self.handleWorkspaceActivationNotification(
+                    processIdentifier: application.processIdentifier
+                )
+            }
+        }
         workspaceHideObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didHideApplicationNotification,
             object: nil,
@@ -597,25 +628,7 @@ final class AppSwitcher: AppSwitching {
             return false
         }
 
-        return markStableAndSettleFocusRecovery(
-            for: bundleIdentifier,
-            generation: generation
-        ) != nil
-    }
-
-    @discardableResult
-    private func markStableAndSettleFocusRecovery(
-        for bundleIdentifier: String,
-        generation: Int? = nil
-    ) -> ToggleSessionCoordinator.Session? {
-        guard let stableSession = sessionCoordinator.markStable(
-            for: bundleIdentifier,
-            generation: generation
-        ) else {
-            return nil
-        }
-        markSupersededHideFocusRecoverySettled(for: bundleIdentifier)
-        return stableSession
+        return sessionCoordinator.markStable(for: bundleIdentifier, generation: generation) != nil
     }
 
     func schedulePendingConfirmation(
@@ -822,10 +835,6 @@ final class AppSwitcher: AppSwitching {
             }
 
             if self.confirmationClient.now() - state.startedAt >= self.deactivationConfirmationTimeout {
-                self.clearDispatchedHideRequest(
-                    for: state.bundleIdentifier,
-                    generation: state.generation
-                )
                 self.cancelPendingDeactivation(for: state.bundleIdentifier)
                 self.logToggleTrace(
                     family: .confirmation,
@@ -954,6 +963,93 @@ final class AppSwitcher: AppSwitching {
         return message
     }
 
+    func handleWorkspaceActivationNotification(processIdentifier activatedProcessIdentifier: pid_t) {
+        // `didActivate(B)` can mean either that the user selected B or that an
+        // outstanding hide of A made macOS choose B automatically. Preserve
+        // A's recovery in the latter case; if A is still unhidden, the process
+        // activation is newer foreground intent and cancels the recovery.
+        // Compare pids rather than bundle identifiers so another instance of
+        // the same app cannot masquerade as the recovery target.
+        for bundleIdentifier in Array(supersededHideFocusRecoveries.keys) {
+            guard let recovery = supersededHideFocusRecoveries[bundleIdentifier] else {
+                continue
+            }
+            guard recovery.processIdentifier != activatedProcessIdentifier else {
+                if recovery.pendingForegroundActivation != nil {
+                    var reactivatedRecovery = recovery
+                    reactivatedRecovery.pendingForegroundActivation = nil
+                    supersededHideFocusRecoveries[bundleIdentifier] = reactivatedRecovery
+                }
+                continue
+            }
+            guard let recoveringApplication = appLookupClient
+                .runningApplications(bundleIdentifier)
+                .first(where: { $0.processIdentifier == recovery.processIdentifier }) else {
+                supersededHideFocusRecoveries.removeValue(forKey: bundleIdentifier)
+                continue
+            }
+            // If the target is already hidden, this activation is the ordinary
+            // foreground handoff caused by the outstanding hide. There is no
+            // external foreground candidate to resolve, so didHide keeps its
+            // one-shot recovery ownership.
+            guard !applicationObservation.applicationState(for: recoveringApplication).isHidden else {
+                continue
+            }
+            nextForegroundActivationGeneration += 1
+            let candidate = PendingForegroundActivation(
+                generation: nextForegroundActivationGeneration,
+                processIdentifier: activatedProcessIdentifier
+            )
+            var pendingRecovery = recovery
+            pendingRecovery.pendingForegroundActivation = candidate
+            supersededHideFocusRecoveries[bundleIdentifier] = pendingRecovery
+
+            let expectedFocusIntentGeneration = recovery.focusIntentGeneration
+            let expectedProcessIdentifier = recovery.processIdentifier
+            // NSRunningApplication's time-varying properties are cached for
+            // the current main-run-loop turn. Observe on the next turn so a
+            // hide-caused activation sees the recovering process as hidden.
+            confirmationClient.schedule(deactivationConfirmationPollInterval) { [weak self] in
+                guard let self,
+                      let currentRecovery = self.supersededHideFocusRecoveries[bundleIdentifier],
+                      currentRecovery.focusIntentGeneration == expectedFocusIntentGeneration,
+                      currentRecovery.processIdentifier == expectedProcessIdentifier,
+                      currentRecovery.pendingForegroundActivation?.generation == candidate.generation,
+                      currentRecovery.pendingForegroundActivation?.processIdentifier
+                        == candidate.processIdentifier else {
+                    return
+                }
+                if self.confirmationClient.now() > currentRecovery.expiresAt {
+                    self.clearSupersededHideFocusRecoveryOwnership(for: bundleIdentifier)
+                    return
+                }
+                guard let recoveringApplication = self.appLookupClient
+                    .runningApplications(bundleIdentifier)
+                    .first(where: { $0.processIdentifier == expectedProcessIdentifier }) else {
+                    self.supersededHideFocusRecoveries.removeValue(forKey: bundleIdentifier)
+                    return
+                }
+                guard self.applicationObservation.currentFrontmostProcessIdentifier()
+                        == candidate.processIdentifier else {
+                    // Notification delivery may lag the workspace state. If B
+                    // is no longer actually frontmost, its older callback must
+                    // not cancel recovery that protects the current focus of A.
+                    var reactivatedRecovery = currentRecovery
+                    reactivatedRecovery.pendingForegroundActivation = nil
+                    self.supersededHideFocusRecoveries[bundleIdentifier] = reactivatedRecovery
+                    return
+                }
+                guard !self.applicationObservation.applicationState(for: recoveringApplication).isHidden else {
+                    var settledRecovery = currentRecovery
+                    settledRecovery.pendingForegroundActivation = nil
+                    self.supersededHideFocusRecoveries[bundleIdentifier] = settledRecovery
+                    return
+                }
+                self.supersededHideFocusRecoveries.removeValue(forKey: bundleIdentifier)
+            }
+        }
+    }
+
     @discardableResult
     func handleWorkspaceHideNotification(application: NSRunningApplication) -> String? {
         guard let bundleIdentifier = application.bundleIdentifier else {
@@ -981,16 +1077,23 @@ final class AppSwitcher: AppSwitching {
             )
             return nil
         }
-        if let settledExpiration = recovery.settledExpiration,
-           confirmationClient.now() > settledExpiration {
+        guard confirmationClient.now() <= recovery.expiresAt else {
             clearSupersededHideFocusRecoveryOwnership(for: bundleIdentifier)
             return nil
         }
-
+        guard recovery.pendingForegroundActivation == nil else {
+            // A pid-distinct app became frontmost while the recovering target
+            // was still unhidden. If the old hide lands before the next-turn
+            // state check, notification ordering is the only observable intent
+            // boundary: the foreground selection wins and must not be reversed.
+            clearSupersededHideFocusRecoveryOwnership(for: bundleIdentifier)
+            return nil
+        }
         // `hide()` has no completion token. A focus request that superseded an
-        // already-dispatched hide therefore retains one-shot ownership only
-        // through the focus settlement window. Clear before re-entering the
-        // activation pipeline so the recovery cannot inherit stale ownership.
+        // already-dispatched hide therefore retains one-shot ownership through
+        // a distinct focus-intent window, not merely the transport observation
+        // deadline. Clear before re-entering the activation pipeline so the
+        // recovery cannot inherit stale ownership.
         clearDispatchedHideOwnership(
             for: bundleIdentifier,
             processIdentifier: application.processIdentifier
@@ -1053,20 +1156,6 @@ final class AppSwitcher: AppSwitching {
         }
     }
 
-    private func markSupersededHideFocusRecoverySettled(
-        for bundleIdentifier: String
-    ) {
-        guard let recovery = supersededHideFocusRecoveries[bundleIdentifier] else {
-            return
-        }
-        supersededHideFocusRecoveries[bundleIdentifier] = SupersededHideFocusRecovery(
-            hideGeneration: recovery.hideGeneration,
-            processIdentifier: recovery.processIdentifier,
-            shortcut: recovery.shortcut,
-            settledExpiration: confirmationClient.now() + deactivationConfirmationTimeout
-        )
-    }
-
     private func supersedeFocusRecoveries(except bundleIdentifier: String) {
         // A newer activation intent for another target outranks an older
         // focus request. Keep the dispatched-hide record itself: if the user
@@ -1088,17 +1177,26 @@ final class AppSwitcher: AppSwitching {
             clearDispatchedHideOwnership(for: shortcut.bundleIdentifier)
             return nil
         }
-        if let existingRecovery = supersededHideFocusRecoveries[shortcut.bundleIdentifier] {
-            if let settledExpiration = existingRecovery.settledExpiration,
-               confirmationClient.now() > settledExpiration {
-                clearSupersededHideFocusRecoveryOwnership(
-                    for: shortcut.bundleIdentifier
-                )
+        let now = confirmationClient.now()
+        nextFocusHideRecoveryIntentGeneration += 1
+        let focusIntentGeneration = nextFocusHideRecoveryIntentGeneration
+        if let recovery = supersededHideFocusRecoveries[shortcut.bundleIdentifier] {
+            guard recovery.hideGeneration == request.generation,
+                  now <= recovery.expiresAt else {
+                clearDispatchedHideOwnership(for: shortcut.bundleIdentifier)
                 return nil
             }
+            supersededHideFocusRecoveries[shortcut.bundleIdentifier] = SupersededHideFocusRecovery(
+                hideGeneration: recovery.hideGeneration,
+                processIdentifier: recovery.processIdentifier,
+                shortcut: recovery.shortcut,
+                focusIntentGeneration: focusIntentGeneration,
+                expiresAt: now + focusHideRecoveryIntentWindow,
+                pendingForegroundActivation: nil
+            )
             return deactivationConfirmationTimeout
         }
-        guard confirmationClient.now() - request.dispatchedAt <= deactivationConfirmationTimeout else {
+        guard now - request.dispatchedAt <= focusHideRecoveryIntentWindow else {
             clearDispatchedHideOwnership(for: shortcut.bundleIdentifier)
             return nil
         }
@@ -1112,10 +1210,12 @@ final class AppSwitcher: AppSwitching {
                 modifierFlags: [],
                 frontmostBehaviorOverride: .focus
             ),
-            settledExpiration: nil
+            focusIntentGeneration: focusIntentGeneration,
+            expiresAt: now + focusHideRecoveryIntentWindow,
+            pendingForegroundActivation: nil
         )
-        // The delay is the fast observation path. A stable confirmation then
-        // keeps didHide ownership for one additional bounded settlement window.
+        // The delay is only the fast observation path. Ownership itself is
+        // bounded by the newer focus intent, not the hide observation deadline.
         return deactivationConfirmationTimeout
     }
 
@@ -1461,7 +1561,7 @@ final class AppSwitcher: AppSwitching {
                     // it before its confirmation ladder can re-raise the
                     // first window over the user's cycled choice.
                     if pendingActivationState(for: shortcut.bundleIdentifier) != nil,
-                       markStableAndSettleFocusRecovery(for: shortcut.bundleIdentifier) != nil {
+                       sessionCoordinator.markStable(for: shortcut.bundleIdentifier) != nil {
                         logToggleTrace(
                             family: .decision,
                             bundleIdentifier: shortcut.bundleIdentifier,
@@ -1663,7 +1763,7 @@ final class AppSwitcher: AppSwitching {
                 activationPath: session.activationPath,
                 sessionSnapshot: session
             )
-            guard let stableSession = markStableAndSettleFocusRecovery(
+            guard let stableSession = sessionCoordinator.markStable(
                 for: shortcut.bundleIdentifier,
                 generation: session.generation
             ) else {
@@ -3107,7 +3207,7 @@ extension AppSwitcher {
         // first window over the user's explicit choice (same rule as #347's
         // cycle promotion).
         if pendingActivationState(for: session.bundleIdentifier) != nil,
-           markStableAndSettleFocusRecovery(for: session.bundleIdentifier) != nil {
+           sessionCoordinator.markStable(for: session.bundleIdentifier) != nil {
             logToggleTrace(
                 family: .decision,
                 bundleIdentifier: session.bundleIdentifier,

@@ -2390,9 +2390,9 @@ func focusOverrideRecoversWhenDispatchedHideSettlesAfterFocus(
         scheduler.runNext()
         #expect(activationCalls == 1)
     } else {
-        // First confirmation succeeds, then the asynchronous hide lands later
-        // inside the bounded post-settlement ownership window. A same-target
-        // activation inside that window must not discard the recovery.
+        // First confirmation succeeds, then the asynchronous hide lands later.
+        // A same-target activation while completion is outstanding must not
+        // discard the one-shot recovery ownership.
         scheduler.runNext()
         #expect(switcher.stableActivationState?.bundleIdentifier == bundleIdentifier)
         if !targetIsFrontmostAtFocus {
@@ -2433,9 +2433,10 @@ func focusOverrideRecoversWhenDispatchedHideSettlesAfterFocus(
     #expect(scheduler.pendingCount == 0)
 }
 
-@Test(arguments: [false, true]) @MainActor
-func staleHideOwnershipDoesNotOverrideALaterUserHide(
-    focusBeforeHideTimeout: Bool
+@Test(arguments: [false, true], [false, true]) @MainActor
+func completionBoundHideRecoveryRespectsExternalForegroundIntent(
+    externalForegroundWins: Bool,
+    recoveryIntentExpires: Bool
 ) {
     guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
           let bundleIdentifier = frontmostApp.bundleIdentifier else {
@@ -2525,11 +2526,11 @@ func staleHideOwnershipDoesNotOverrideALaterUserHide(
     scheduler.runNext()
     #expect(hideCalls == 1)
 
-    if !focusBeforeHideTimeout {
-        clock.time += 0.31
-        scheduler.runNext()
-        #expect(switcher.pendingDeactivationState == nil)
-    }
+    // The observation deadline may expire before AppKit delivers the
+    // asynchronous hide completion. That timeout must not discard ownership.
+    clock.time += 0.31
+    scheduler.runNext()
+    #expect(switcher.pendingDeactivationState == nil)
 
     #expect(switcher.toggleApplication(
         for: AppShortcut(
@@ -2543,41 +2544,212 @@ func staleHideOwnershipDoesNotOverrideALaterUserHide(
     ))
     #expect(activationCalls == 1)
 
-    if focusBeforeHideTimeout {
-        scheduler.runNext()
-        guard let focusState = switcher.pendingActivationState else {
-            Issue.record("Expected focus activation to remain pending before direct promotion")
-            return
+    scheduler.runNext()
+    #expect(switcher.stableActivationState?.bundleIdentifier == bundleIdentifier)
+
+    // Prove ownership outlives the 300 ms transport observation ladder while
+    // still expiring so a later manual Cmd-H/self-hide can win.
+    clock.time += recoveryIntentExpires ? 2.01 : 1.0
+    let hideArrivesBeforeForegroundResolution = externalForegroundWins && !recoveryIntentExpires
+    var hideWasHandledBeforeForegroundResolution = false
+    if externalForegroundWins {
+        switcher.handleWorkspaceActivationNotification(
+            processIdentifier: frontmostApp.processIdentifier + 10_000
+        )
+        #expect(scheduler.pendingDelays == [0.05])
+        if hideArrivesBeforeForegroundResolution {
+            // The external selection is recorded synchronously. A completion
+            // of the older hide in the 50 ms state-settlement gap must not
+            // steal focus back before that candidate resolves.
+            observedFrontmostBundleIdentifier = nil
+            applicationState = .init(isActive: false, isHidden: true)
+            #expect(switcher.handleWorkspaceHideNotification(application: frontmostApp) == nil)
+            #expect(activationCalls == 1)
+            hideWasHandledBeforeForegroundResolution = true
         }
-        #expect(switcher.promotePendingActivationIfCurrent(
-            bundleIdentifier: bundleIdentifier,
-            generation: focusState.generation,
-            snapshot: ActivationObservationSnapshot(
-                targetBundleIdentifier: bundleIdentifier,
-                observedFrontmostBundleIdentifier: bundleIdentifier,
-                targetIsActive: true,
-                targetIsHidden: false,
-                visibleWindowCount: 1,
-                hasFocusedWindow: true,
-                hasMainWindow: true,
-                windowObservationSucceeded: true,
-                windowObservationFailureReason: nil,
-                classification: .regularWindowed,
-                classificationReason: "visible focused main window"
-            )
-        ))
-        // A cycle or picker may promote the session before the scheduled
-        // confirmation executes. That direct path must still bound ownership
-        // of the superseded asynchronous hide.
-        clock.time += 0.31
         scheduler.runNext()
+    } else {
+        // A target-process activation preserves ownership, and when the old
+        // hide later makes macOS activate some other process before didHide,
+        // the now-hidden target proves that activation was hide-caused.
+        switcher.handleWorkspaceActivationNotification(
+            processIdentifier: frontmostApp.processIdentifier
+        )
     }
     #expect(scheduler.pendingCount == 0)
 
+    if !hideWasHandledBeforeForegroundResolution {
+        observedFrontmostBundleIdentifier = nil
+        applicationState = .init(isActive: false, isHidden: true)
+        if !externalForegroundWins {
+            switcher.handleWorkspaceActivationNotification(
+                processIdentifier: frontmostApp.processIdentifier + 10_000
+            )
+            // The target is already hidden, so this is the system's automatic
+            // foreground handoff and does not create an external candidate.
+            #expect(scheduler.pendingCount == 0)
+        }
+        if externalForegroundWins || recoveryIntentExpires {
+            #expect(switcher.handleWorkspaceHideNotification(application: frontmostApp) == nil)
+            #expect(activationCalls == 1)
+        } else {
+            #expect(
+                switcher.handleWorkspaceHideNotification(application: frontmostApp)
+                    == "late_hide_focus_recovery_started"
+            )
+            #expect(activationCalls == 2)
+            #expect(switcher.handleWorkspaceHideNotification(application: frontmostApp) == nil)
+            scheduler.runAll()
+            #expect(switcher.stableActivationState?.bundleIdentifier == bundleIdentifier)
+        }
+    }
+    #expect(scheduler.pendingCount == 0)
+}
+
+@Test(arguments: [false, true]) @MainActor
+func targetReactivationOrNewerFocusInvalidatesPendingForegroundCancellation(
+    renewsFocus: Bool
+) {
+    guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+          let bundleIdentifier = frontmostApp.bundleIdentifier else {
+        Issue.record("Expected a frontmost application with a bundle identifier for focus intent test")
+        return
+    }
+
+    var observedFrontmostBundleIdentifier: String? = bundleIdentifier
+    var observedFrontmostProcessIdentifier: pid_t? = frontmostApp.processIdentifier
+    var applicationState = ApplicationObservation.ApplicationState(
+        isActive: true,
+        isHidden: false
+    )
+    var activationCalls = 0
+    let clock = MutableClock(time: CFAbsoluteTimeGetCurrent())
+    let scheduler = ManualConfirmationScheduler()
+    let switcher = AppSwitcher(
+        frontmostTracker: makeTrackerForAppSwitcherTests(),
+        applicationObservation: ApplicationObservation(client: .init(
+            currentFrontmostBundleIdentifier: { observedFrontmostBundleIdentifier },
+            currentFrontmostProcessIdentifier: { observedFrontmostProcessIdentifier },
+            windowObservation: { _ in
+                .init(
+                    windows: nil,
+                    visibleWindowCount: 1,
+                    hasFocusedWindow: true,
+                    hasMainWindow: true,
+                    windowsReadSucceeded: true,
+                    failureReason: nil
+                )
+            },
+            activationPolicy: { _ in .regular },
+            applicationState: { _ in applicationState }
+        )),
+        activationClient: .init(activateFrontProcess: { _, _ in
+            activationCalls += 1
+            observedFrontmostBundleIdentifier = bundleIdentifier
+            observedFrontmostProcessIdentifier = frontmostApp.processIdentifier
+            applicationState = .init(isActive: true, isHidden: false)
+            return .success(ProcessSerialNumber())
+        }),
+        hideRequestClient: .init(hideApplication: { _ in true }),
+        appLookupClient: .init(
+            runningApplications: { _ in [frontmostApp] },
+            applicationURL: { _ in nil }
+        ),
+        confirmationClient: .init(
+            now: { clock.time },
+            schedule: { delay, operation in
+                scheduler.schedule(after: delay, operation)
+            }
+        )
+    )
+    switcher.setFrontmostTargetBehavior(.hide)
+
+    let pending = switcher.acceptPendingActivation(
+        for: bundleIdentifier,
+        startedAt: clock.time,
+        pid: frontmostApp.processIdentifier
+    )
+    #expect(switcher.promotePendingActivationIfCurrent(
+        bundleIdentifier: bundleIdentifier,
+        generation: pending.generation,
+        snapshot: ActivationObservationSnapshot(
+            targetBundleIdentifier: bundleIdentifier,
+            observedFrontmostBundleIdentifier: bundleIdentifier,
+            targetIsActive: true,
+            targetIsHidden: false,
+            visibleWindowCount: 1,
+            hasFocusedWindow: true,
+            hasMainWindow: true,
+            windowObservationSucceeded: true,
+            windowObservationFailureReason: nil,
+            classification: .regularWindowed,
+            classificationReason: "visible focused main window"
+        )
+    ))
+    #expect(switcher.toggleApplication(for: AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "h",
+        modifierFlags: ["command"]
+    )))
+    scheduler.runNext()
+    clock.time += 0.31
+    scheduler.runNext()
+
+    let focusShortcut = AppShortcut(
+        appName: frontmostApp.localizedName ?? "Frontmost",
+        bundleIdentifier: bundleIdentifier,
+        keyEquivalent: "",
+        modifierFlags: [],
+        frontmostBehaviorOverride: .focus
+    )
+    #expect(switcher.toggleApplication(for: focusShortcut, bypassCooldown: true))
+    #expect(activationCalls == 1)
+    scheduler.runNext()
+    #expect(switcher.stableActivationState?.bundleIdentifier == bundleIdentifier)
+
+    if renewsFocus {
+        // Renew just after the original hide-dispatch window, while the first
+        // focus intent is still live. The renewal must extend ownership from
+        // the current focus intent instead of expiring it from dispatch time.
+        clock.time += 1.8
+    }
+
+    // B becomes frontmost and queues a next-turn state check for A.
+    observedFrontmostBundleIdentifier = nil
+    observedFrontmostProcessIdentifier = frontmostApp.processIdentifier + 10_000
+    applicationState = .init(isActive: false, isHidden: false)
+    switcher.handleWorkspaceActivationNotification(
+        processIdentifier: frontmostApp.processIdentifier + 10_000
+    )
+    #expect(scheduler.pendingDelays == [0.05])
+
+    if renewsFocus {
+        // A newer explicit focus of A re-arms the same outstanding hide under
+        // a new focus-intent generation. B's queued callback must not clear it.
+        #expect(switcher.toggleApplication(for: focusShortcut, bypassCooldown: true))
+        #expect(activationCalls == 2)
+        #expect(scheduler.pendingDelays == [0.05, 0.3])
+    } else {
+        // Even if didActivate(A) delivery lags, the workspace source of truth
+        // proves B is no longer current. B's callback must retain recovery.
+        observedFrontmostBundleIdentifier = bundleIdentifier
+        observedFrontmostProcessIdentifier = frontmostApp.processIdentifier
+        applicationState = .init(isActive: true, isHidden: false)
+        #expect(scheduler.pendingDelays == [0.05])
+    }
+    scheduler.runNext()
+
     observedFrontmostBundleIdentifier = nil
     applicationState = .init(isActive: false, isHidden: true)
-    #expect(switcher.handleWorkspaceHideNotification(application: frontmostApp) == nil)
-    #expect(activationCalls == 1)
+    #expect(
+        switcher.handleWorkspaceHideNotification(application: frontmostApp)
+            == "late_hide_focus_recovery_started"
+    )
+    #expect(activationCalls == (renewsFocus ? 3 : 2))
+    scheduler.runAll()
+    #expect(switcher.stableActivationState?.bundleIdentifier == bundleIdentifier)
+    #expect(scheduler.pendingCount == 0)
 }
 
 @Test @MainActor
@@ -3138,9 +3310,9 @@ func appSwitcherDeinitRemovesWorkspaceObservers() {
         let switcher = AppSwitcher(frontmostTracker: makeTrackerForAppSwitcherTests())
         weakSwitcher = switcher
     }
-    // Strong ref dropped at end of scope; nonisolated deinit must remove both
-    // the workspaceHideObserver and the activation/termination observers that
-    // sessionCoordinator installed on behalf of the switcher.
+    // Strong ref dropped at end of scope; nonisolated deinit must remove the
+    // switcher's activation/hide observers and the activation/termination
+    // observers installed by its session coordinator.
     #expect(weakSwitcher == nil, "AppSwitcher should deallocate after scope exit")
 
     // Posting notifications after release must be safe; a leaked observer block

@@ -181,6 +181,7 @@ struct ApplicationObservation {
 
     struct Client: Sendable {
         let currentFrontmostBundleIdentifier: @MainActor () -> String?
+        let currentFrontmostProcessIdentifier: @MainActor () -> pid_t?
         let windowObservation: @MainActor (NSRunningApplication) -> WindowObservation
         let activationPolicy: @MainActor (NSRunningApplication) -> NSApplication.ActivationPolicy
         let applicationState: @MainActor (NSRunningApplication) -> ApplicationState
@@ -189,6 +190,7 @@ struct ApplicationObservation {
 
         init(
             currentFrontmostBundleIdentifier: @escaping @MainActor () -> String?,
+            currentFrontmostProcessIdentifier: (@MainActor () -> pid_t?)? = nil,
             windowObservation: @escaping @MainActor (NSRunningApplication) -> WindowObservation,
             activationPolicy: @escaping @MainActor (NSRunningApplication) -> NSApplication.ActivationPolicy,
             applicationState: (@MainActor (NSRunningApplication) -> ApplicationState)? = nil,
@@ -198,6 +200,7 @@ struct ApplicationObservation {
             }
         ) {
             self.currentFrontmostBundleIdentifier = currentFrontmostBundleIdentifier
+            self.currentFrontmostProcessIdentifier = currentFrontmostProcessIdentifier ?? { nil }
             self.windowObservation = windowObservation
             self.activationPolicy = activationPolicy
             self.applicationState = applicationState ?? { app in
@@ -308,6 +311,16 @@ struct ApplicationObservation {
         )
     }
 
+    @MainActor
+    func applicationState(for app: NSRunningApplication) -> ApplicationState {
+        client.applicationState(app)
+    }
+
+    @MainActor
+    func currentFrontmostProcessIdentifier() -> pid_t? {
+        client.currentFrontmostProcessIdentifier()
+    }
+
     private func classify(
         bundleIdentifier: String?,
         activationPolicy: NSApplication.ActivationPolicy,
@@ -347,6 +360,9 @@ extension ApplicationObservation.Client {
     static let live = ApplicationObservation.Client(
         currentFrontmostBundleIdentifier: {
             NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        },
+        currentFrontmostProcessIdentifier: {
+            NSWorkspace.shared.frontmostApplication?.processIdentifier
         },
         windowObservation: { app in
             #if WINK_AX_WINDOW_OBSERVATION_FAULT_INJECTION
