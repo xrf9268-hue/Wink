@@ -254,5 +254,6 @@ enum WinkURLCommand: Equatable, Hashable, Sendable {
             || (0x61 ... 0x7A).contains(byte)
             || byte == 0x2D
             || byte == 0x2E
+            || byte == 0x5F
     }
 }

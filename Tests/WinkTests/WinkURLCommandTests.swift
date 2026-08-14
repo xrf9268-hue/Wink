@@ -12,6 +12,7 @@ struct WinkURLCommandTests {
             ("WINK://TOGGLE?bundle=COM.Google.Chrome", .toggle(bundleIdentifier: "COM.Google.Chrome")),
             ("wink://toggle/?bundle=com.apple.Safari", .toggle(bundleIdentifier: "com.apple.Safari")),
             ("wink://toggle?bundle=com.apple%2ESafari", .toggle(bundleIdentifier: "com.apple.Safari")),
+            ("wink://toggle?bundle=com.apple.Image_Capture", .toggle(bundleIdentifier: "com.apple.Image_Capture")),
             ("wink://pause", .pause),
             ("WINK://Resume", .resume),
             ("wink://SEARCH", .search),
@@ -20,6 +21,7 @@ struct WinkURLCommandTests {
             ("wink://open-settings?tab=general", .openSettings(tab: .general)),
             ("wink://open-settings?tab=insights", .openSettings(tab: .insights)),
             ("wink://focus?bundle=com.apple.Safari", .focus(bundleIdentifier: "com.apple.Safari")),
+            ("wink://focus?bundle=com.apple.Image_Capture", .focus(bundleIdentifier: "com.apple.Image_Capture")),
         ]
 
         for (rawValue, expected) in accepted {

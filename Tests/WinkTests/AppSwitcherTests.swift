@@ -2545,8 +2545,32 @@ func staleHideOwnershipDoesNotOverrideALaterUserHide(
 
     if focusBeforeHideTimeout {
         scheduler.runNext()
-        scheduler.runNext()
+        guard let focusState = switcher.pendingActivationState else {
+            Issue.record("Expected focus activation to remain pending before direct promotion")
+            return
+        }
+        #expect(switcher.promotePendingActivationIfCurrent(
+            bundleIdentifier: bundleIdentifier,
+            generation: focusState.generation,
+            snapshot: ActivationObservationSnapshot(
+                targetBundleIdentifier: bundleIdentifier,
+                observedFrontmostBundleIdentifier: bundleIdentifier,
+                targetIsActive: true,
+                targetIsHidden: false,
+                visibleWindowCount: 1,
+                hasFocusedWindow: true,
+                hasMainWindow: true,
+                windowObservationSucceeded: true,
+                windowObservationFailureReason: nil,
+                classification: .regularWindowed,
+                classificationReason: "visible focused main window"
+            )
+        ))
+        // A cycle or picker may promote the session before the scheduled
+        // confirmation executes. That direct path must still bound ownership
+        // of the superseded asynchronous hide.
         clock.time += 0.31
+        scheduler.runNext()
     }
     #expect(scheduler.pendingCount == 0)
 

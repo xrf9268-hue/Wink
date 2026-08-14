@@ -597,7 +597,25 @@ final class AppSwitcher: AppSwitching {
             return false
         }
 
-        return sessionCoordinator.markStable(for: bundleIdentifier, generation: generation) != nil
+        return markStableAndSettleFocusRecovery(
+            for: bundleIdentifier,
+            generation: generation
+        ) != nil
+    }
+
+    @discardableResult
+    private func markStableAndSettleFocusRecovery(
+        for bundleIdentifier: String,
+        generation: Int? = nil
+    ) -> ToggleSessionCoordinator.Session? {
+        guard let stableSession = sessionCoordinator.markStable(
+            for: bundleIdentifier,
+            generation: generation
+        ) else {
+            return nil
+        }
+        markSupersededHideFocusRecoverySettled(for: bundleIdentifier)
+        return stableSession
     }
 
     func schedulePendingConfirmation(
@@ -654,9 +672,6 @@ final class AppSwitcher: AppSwitching {
                 generation: state.generation,
                 snapshot: snapshot
             ) {
-                self.markSupersededHideFocusRecoverySettled(
-                    for: state.bundleIdentifier
-                )
                 self.logToggleTrace(
                     family: .confirmation,
                     bundleIdentifier: state.bundleIdentifier,
@@ -1446,7 +1461,7 @@ final class AppSwitcher: AppSwitching {
                     // it before its confirmation ladder can re-raise the
                     // first window over the user's cycled choice.
                     if pendingActivationState(for: shortcut.bundleIdentifier) != nil,
-                       sessionCoordinator.markStable(for: shortcut.bundleIdentifier) != nil {
+                       markStableAndSettleFocusRecovery(for: shortcut.bundleIdentifier) != nil {
                         logToggleTrace(
                             family: .decision,
                             bundleIdentifier: shortcut.bundleIdentifier,
@@ -1648,7 +1663,7 @@ final class AppSwitcher: AppSwitching {
                 activationPath: session.activationPath,
                 sessionSnapshot: session
             )
-            guard let stableSession = sessionCoordinator.markStable(
+            guard let stableSession = markStableAndSettleFocusRecovery(
                 for: shortcut.bundleIdentifier,
                 generation: session.generation
             ) else {
@@ -3092,7 +3107,7 @@ extension AppSwitcher {
         // first window over the user's explicit choice (same rule as #347's
         // cycle promotion).
         if pendingActivationState(for: session.bundleIdentifier) != nil,
-           sessionCoordinator.markStable(for: session.bundleIdentifier) != nil {
+           markStableAndSettleFocusRecovery(for: session.bundleIdentifier) != nil {
             logToggleTrace(
                 family: .decision,
                 bundleIdentifier: session.bundleIdentifier,
