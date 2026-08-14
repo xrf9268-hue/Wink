@@ -16,6 +16,7 @@ Ordinary CI verifies the package structure, smoke-tests the Sparkle ZIP/appcast 
 - Apple Developer account
 - Xcode command-line tools installed
 - A `Developer ID Application` certificate exported as `.p12`
+- The registered App Group identifier `group.com.wink.app`
 - App Store Connect API key for `notarytool`
 - Sparkle EdDSA keypair generated with `generate_keys`
 - A Cloudflare R2 bucket or public prefix for update artifacts
@@ -312,6 +313,53 @@ rm -f /tmp/wink-key.pem /tmp/wink.p12 /tmp/wink-cert.pem /tmp/wink-cert.cnf
 (`-legacy` matters: macOS `security import` rejects OpenSSL 3's default
 PKCS#12 encoding with "MAC verification failed".)
 
+### Focus Filter extension and App Group signing
+
+`scripts/package-app.sh` embeds `WinkFocusIntentsExtension.appex` under
+`Wink.app/Contents/Extensions`, extracts its App Intents metadata separately,
+signs the extension first, and signs the host last. Both signatures must carry:
+
+```text
+com.apple.security.application-groups = [group.com.wink.app]
+```
+
+The extension additionally carries `com.apple.security.app-sandbox = true`.
+The host remains unsandboxed; adding the shared group does not change Wink's
+Accessibility/Input Monitoring policy. `codesign --verify --deep --strict`
+must cover the nested extension, and release/notarization validation must also
+inspect both effective entitlement sets:
+
+```bash
+codesign -d --entitlements :- build/Wink.app
+codesign -d --entitlements :- \
+  build/Wink.app/Contents/Extensions/WinkFocusIntentsExtension.appex
+```
+
+Developer ID distribution signs the host and extension with the same release
+identity and includes the same App Group claim in both finished signatures.
+Wink's `group.com.wink.app` identifier must be registered in the Apple
+Developer account before release. It does **not** require an embedded
+provisioning profile solely for App Group access: Apple classifies
+`com.apple.security.application-groups`, App Sandbox, and Hardened Runtime as
+unrestricted macOS entitlements, and a Mac app that claims no restricted
+entitlements needs no profile. See Apple's
+[TN3125](https://developer.apple.com/documentation/Technotes/tn3125-inside-code-signing-provisioning-profiles)
+and [App Group registration guide](https://developer.apple.com/help/account/identifiers/register-an-app-group/).
+
+Accordingly, the release workflow validates the finished code signatures and
+effective entitlements directly; it does not invent profile secrets or reject
+a legitimate Developer ID build because a profile omits an unrestricted
+entitlement. If Wink later adopts a restricted entitlement, add and validate
+the provisioning profile required by that specific capability.
+
+A package where the extension is
+missing, signed by another identity/team, lacks its metadata, or has a
+different group is not a usable Focus Filter build even if the main
+executable launches. Ad-hoc signing remains a packaging fallback, but it is not
+release/notarization proof and may not provide a stable shared-container
+identity; use the stable local `Wink` identity for runtime validation and real
+Developer ID credentials for release candidates.
+
 ### Sparkle update ZIP
 
 ```bash
@@ -403,7 +451,7 @@ The workflow fails if the Git tag does not match `CFBundleShortVersionString` (s
 Secret requirements are split into two groups (issue #283):
 
 - **Core (always required):** the two Sparkle keys and the five R2 credentials. If any is missing, the workflow exits successfully with a summary that lists the missing secrets and publishes nothing.
-- **Apple (optional as a complete set):** the four signing secrets (including `KEYCHAIN_PASSWORD`) and the three notarytool secrets. All seven present → Developer ID signing plus notarization (`signing_mode=developer-id`). All seven absent → ad-hoc interim mode (`signing_mode=adhoc`). A partial set fails the run instead of silently degrading.
+- **Apple (optional as a complete set):** the four certificate/signing secrets (including `KEYCHAIN_PASSWORD`) and three notarytool secrets. All seven present → Developer ID signing plus notarization (`signing_mode=developer-id`). All seven absent → ad-hoc interim mode (`signing_mode=adhoc`). A partial set fails the run instead of silently degrading.
 
 ### Ad-hoc interim mode
 

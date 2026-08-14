@@ -748,24 +748,22 @@ the new set; Hyper enablement itself is global and untouched (Non-goals).
 - Deleting a profile deletes usage only for the IDs it exclusively owns (D6), and the
   delete confirmation says so.
 
-### D12 — Manual vs. future automatic switching
+### D12 — Manual vs. Focus-selected switching
 
-v1 ships manual switching only. It nonetheless fixes the precedence contract now, so #438
-cannot invent one later:
+v1 shipped manual switching only. Issue #438 adds Focus automation with this precedence
+contract:
 
-- A **manual** switch sets `manualOverride = (profileID, timestamp)` and always wins.
-- An **automatic** (Focus-selected) switch is applied only when no manual override is in
-  effect for the current Focus session.
-- Leaving the Focus mode restores the profile that was active before it **only if the
-  automatic selection still owns the active profile**. If the user manually chose a different
-  profile during the session, that choice stands and nothing is restored — otherwise the
-  "a manual switch always wins" rule above would be contradicted by the exit path, and the
-  user's most recent explicit decision would be the one discarded. Either way the restore
-  never selects a third profile.
+- A Focus-selected profile is an **overlay** on the manual profile and wins while that
+  Focus filter is active.
+- A manual switch during the Focus session updates the exact saved base profile but does
+  not displace the active overlay.
+- Leaving the Focus mode restores the latest saved manual base through the ordinary profile
+  transaction. The restore marker is cleared only after that commit succeeds, so a transient
+  failure remains retryable and never selects a third profile.
 - `canApplyExternalSwitch` is `false` while a recorder session or a pending recipe-import
   preview is live (D14). Automatic switches **defer**; they never cancel user drafts.
-- v1 implements the seam and returns `false`/no-op for the automatic case. #438 supplies
-  the trigger only.
+- v1 introduced the external-switch seam; #438 supplies the Focus trigger, durable overlay
+  state, and restoration policy without adding a second profile-apply path.
 
 ### D13 — CRUD rules
 
@@ -1027,7 +1025,7 @@ packaged-app validation.
 | V13 | Palette per-profile | Profile A has a palette trigger, B does not; switch A→B→A; assert trigger index membership follows and no ID churn |
 | V14 | **runtime** Live switch with real capture | Packaged app, standard + Hyper bindings live: switch, assert old chords stop and new chords fire; record SHA, bundle path, executable SHA-256, registrations/readiness, activation evidence |
 | V15 | **runtime** Switch under a live Hyper hold / picker | Switch while the picker is open; assert dismissal with no stray toggle |
-| V15b | Focus exit respects a later manual switch | Automatic A→B, manual B→C during the session, Focus ends → assert C stays active and nothing is restored |
+| V15b | Focus overlay restores the latest manual base | Automatic A→B, manual B→C during the session → assert B remains effective; Focus ends → assert C is restored through the ordinary profile transaction |
 | V13c | Recover preserves a downgrade edit | Damaged manifest plus an externally edited `shortcuts.json` → Recover → assert the edit survives as a preserved copy |
 | V16 | **runtime** Relaunch after switch | Switch, quit, relaunch; assert the same profile is active and armed |
 

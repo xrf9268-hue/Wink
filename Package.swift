@@ -8,7 +8,11 @@ let package = Package(
         .macOS(.v15)
     ],
     products: [
-        .executable(name: "Wink", targets: ["Wink"])
+        .executable(name: "Wink", targets: ["Wink"]),
+        .executable(
+            name: "WinkFocusIntentsExtension",
+            targets: ["WinkFocusIntentsExtension"]
+        ),
     ],
     dependencies: [
         // 2.9.5 is the floor: 2.9.1 is affected by CVE-2026-47122 and
@@ -21,6 +25,7 @@ let package = Package(
             name: "Wink",
             dependencies: [
                 "WinkIntents",
+                "WinkFocusShared",
                 .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/Wink",
@@ -55,9 +60,24 @@ let package = Package(
             name: "WinkIntents",
             path: "Sources/WinkIntents"
         ),
+        .target(
+            name: "WinkFocusShared",
+            path: "Sources/WinkFocusShared"
+        ),
+        .target(
+            name: "WinkFocusIntents",
+            dependencies: ["WinkFocusShared"],
+            path: "Sources/WinkFocusIntents"
+        ),
+        .executableTarget(
+            name: "WinkFocusIntentsExtension",
+            dependencies: ["WinkFocusIntents"],
+            path: "Sources/WinkFocusIntentsExtension",
+            exclude: ["Info.plist", "entitlements.plist"]
+        ),
         .testTarget(
             name: "WinkTests",
-            dependencies: ["Wink", "WinkIntents"],
+            dependencies: ["Wink", "WinkIntents", "WinkFocusShared", "WinkFocusIntents"],
             path: "Tests/WinkTests"
         )
     ]

@@ -128,6 +128,32 @@ struct LocalizationTests {
     }
 
     @Test
+    func zhHansResolvesFocusFilterStateAndRecoveryCopy() throws {
+        let sub = try subBundle(forLocalization: "zh-Hans")
+        let keys = [
+            "Focus Filter",
+            "%@ (Focus pending)",
+            "Paused · Focus",
+            "Shortcuts paused by Focus",
+            "Shortcuts paused by Focus and another reason",
+            "Change or deactivate the Focus Filter, then clear the remaining pause reason before shortcut capture can resume.",
+            "Wink · Paused",
+            "Focus is using “%@”.",
+            "Focus ended and Wink restored “%@”.",
+            "%@ (restore after Focus)",
+            "The active Focus Filter refers to a profile that no longer exists. Wink kept the current profile instead of choosing another one.",
+            "Wink cannot access its Focus Filter shared container. The app and extension must be signed with the same App Group entitlement.",
+            "This Wink Focus Filter data uses unsupported schema version %lld.",
+        ]
+
+        for key in keys {
+            let translated = sub.localizedString(forKey: key, value: "«miss»", table: nil)
+            #expect(translated != "«miss»", "missing zh-Hans Focus Filter entry for \(key)")
+            #expect(translated != key, "zh-Hans Focus Filter entry for \(key) is still English")
+        }
+    }
+
+    @Test
     func zhHansResolvesAFormatKey() throws {
         let sub = try subBundle(forLocalization: "zh-Hans")
         let format = sub.localizedString(forKey: "Paused · %@", value: "«miss»", table: nil)

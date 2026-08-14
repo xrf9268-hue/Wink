@@ -51,6 +51,9 @@ final class AppPreferences {
     private(set) var launchAtLoginMutationFailure: LaunchAtLoginMutationFailure?
     private(set) var hyperKeyEnabled: Bool = false
     private(set) var shortcutsPaused: Bool = false
+    /// Runtime-only third pause reason owned by the active Focus Filter.
+    /// It never writes the manual `shortcutsPaused` preference.
+    private(set) var focusPauseActive: Bool = false
     /// Exception rules: shortcut capture auto-pauses while one of these
     /// bundle ids is frontmost. Composes with (never overrides) the
     /// manual pause above.
@@ -352,6 +355,13 @@ final class AppPreferences {
     func setAutoPauseTrigger(appName: String?) {
         guard autoPauseTriggerAppName != appName else { return }
         autoPauseTriggerAppName = appName
+    }
+
+    func setFocusPauseActive(_ active: Bool) {
+        guard focusPauseActive != active else { return }
+        shortcutManager.setFocusPaused(active)
+        focusPauseActive = active
+        refreshPermissions()
     }
 
     func refreshLaunchAtLoginStatus() {

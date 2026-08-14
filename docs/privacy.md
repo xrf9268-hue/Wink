@@ -8,6 +8,7 @@ Wink is a local-first macOS utility. This page describes the behavior in the cur
 - local usage-insights data used to render the Insights tab
 - local settings such as Hyper-key state, launch-at-login state, selected Settings tab, and other UI preferences
 - imported or exported shortcut recipe files only when you explicitly choose a file in the open/save panels
+- the current Focus Filter parameters, stable profile identifiers, and a profile-name catalog in Wink's local App Group container, so the system extension can apply and later restore your configured profile even while the main app is not running
 
 ## Permissions
 
@@ -17,6 +18,11 @@ Wink may ask for:
 - `Input Monitoring`, only when your current enabled shortcut set requires the Hyper-key event-tap path
 
 These permissions are used locally on your Mac to capture and route shortcuts. They are not analytics permissions and do not send shortcut events to a Wink server.
+
+Configuring a Wink Focus Filter does not add a new privacy permission. The
+App Intents extension and main app share only local Focus/profile state through
+their signed App Group; Wink does not request Screen Recording for this feature
+and does not infer behavior from the name of your Focus.
 
 ## Network access
 

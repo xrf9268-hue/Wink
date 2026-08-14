@@ -2,8 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>%@ (Focus pending)</key>
+	<string>%@（等待专注模式应用）</string>
+	<key>%@ (Focus)</key>
+	<string>%@（专注模式）</string>
 	<key>%@ (can't be read)</key>
 	<string>%@（无法读取）</string>
+	<key>%@ (restore after Focus)</key>
+	<string>%@（专注模式结束后恢复）</string>
 	<key>%@ Last checked %@.</key>
 	<string>%@ 上次检查时间：%@。</string>
 	<key>%@ copy</key>
@@ -40,6 +46,8 @@
 	<string>30 天</string>
 	<key>7 days</key>
 	<string>7 天</string>
+	<key>A Focus profile change is waiting for the current shortcut edit to finish.</key>
+	<string>专注模式的配置切换正在等待当前快捷键编辑完成。</string>
 	<key>A copy of the unreadable file was saved to %@.</key>
 	<string>无法读取的文件已备份到 %@。</string>
 	<key>A password field or secure prompt is capturing keyboard input. Hyper and Fn-based shortcuts may not fire until it ends; other standard shortcuts keep working.</key>
@@ -78,6 +86,8 @@
 	<string>应用不可用</string>
 	<key>Application names and bundle identifiers are included. They are what make a report useful, and they reveal which apps you have shortcuts for.</key>
 	<string>应用名称和 Bundle ID 会包含在内。它们让报告有价值，同时也会暴露你为哪些应用设置了快捷键。</string>
+	<key>Apply a specific Wink shortcut profile and optionally pause all shortcuts while this Focus is active.</key>
+	<string>在此专注模式启用时应用指定的 Wink 快捷键配置，并可选择暂停所有快捷键。</string>
 	<key>Apps you switch to often that have no shortcut yet. Add one in Shortcuts.</key>
 	<string>你经常切换但尚未设置快捷键的应用。可以在“快捷键”中添加。</string>
 	<key>Assumes ~3 seconds per activation.</key>
@@ -100,6 +110,10 @@
 	<string>取消</string>
 	<key>Change Shortcut</key>
 	<string>更改快捷键</string>
+	<key>Change or deactivate the Focus Filter in System Settings to resume shortcut capture.</key>
+	<string>请在“系统设置”中更改或停用专注模式过滤器，以恢复快捷键捕获。</string>
+	<key>Change or deactivate the Focus Filter, then clear the remaining pause reason before shortcut capture can resume.</key>
+	<string>请更改或停用专注模式过滤器，然后清除其余暂停原因，快捷键捕获才会恢复。</string>
 	<key>Check for Updates…</key>
 	<string>检查更新…</string>
 	<key>Check that the app is still installed, then retry or choose a different shortcut.</key>
@@ -118,6 +132,8 @@
 	<string>选择一个应用，录制一个快捷键并按下一次，让 Wink 验证真实切换。</string>
 	<key>Choose an app…</key>
 	<string>选择一个应用…</string>
+	<key>Choose another Profile above to change what Wink restores when Focus ends. The Focus profile stays active until then.</key>
+	<string>可在上方选择其他配置，以更改专注模式结束后要恢复的配置；在此之前，专注模式配置会保持启用。</string>
 	<key>Choose one app and record one shortcut</key>
 	<string>选择一个应用并录制一个快捷键</string>
 	<key>Choose where to save the diagnostics folder.</key>
@@ -220,6 +236,16 @@
 	<string>首个快捷键指南…</string>
 	<key>Focus</key>
 	<string>聚焦</string>
+	<key>Focus Filter</key>
+	<string>专注模式过滤器</string>
+	<key>Focus ended and Wink restored “%@”.</key>
+	<string>专注模式已结束，Wink 已恢复“%@”。</string>
+	<key>Focus is using the profile “%@”. Manual profile changes will be restored when Focus ends.</key>
+	<string>专注模式正在使用配置“%@”。手动选择的配置会在专注模式结束后恢复。</string>
+	<key>Focus is using “%@”.</key>
+	<string>专注模式正在使用“%@”</string>
+	<key>Focus keeps “%@” active. Wink will restore “%@” when Focus ends.</key>
+	<string>专注模式会继续使用“%@”。结束后，Wink 将恢复“%@”。</string>
 	<key>Full release notes</key>
 	<string>完整发行说明</string>
 	<key>General</key>
@@ -326,6 +352,8 @@
 	<string>全局快捷键路由的总开关。</string>
 	<key>Most used</key>
 	<string>使用最多</string>
+	<key>Name</key>
+	<string>名称</string>
 	<key>Needed</key>
 	<string>待授权</string>
 	<key>Needed for the current shortcut configuration.</key>
@@ -388,6 +416,8 @@
 	<string>可选</string>
 	<key>Past 7 days</key>
 	<string>过去 7 天</string>
+	<key>Pause Shortcuts</key>
+	<string>暂停快捷键</string>
 	<key>Pause Wink</key>
 	<string>暂停 Wink</string>
 	<key>Pause all Wink shortcuts.</key>
@@ -400,6 +430,8 @@
 	<string>已暂停</string>
 	<key>Paused · %@</key>
 	<string>已暂停 · %@</string>
+	<key>Paused · Focus</key>
+	<string>已暂停 · 专注模式</string>
 	<key>Permission is present, but the selected route is not ready yet. Retry after macOS finishes applying the change.</key>
 	<string>权限已具备，但所选路径尚未就绪。请在 macOS 完成应用更改后重试。</string>
 	<key>Permissions</key>
@@ -460,6 +492,12 @@
 	<string>全局快捷键所需权限</string>
 	<key>Requires at least one modifier (⌘⌥⌃⇧)</key>
 	<string>至少需要一个修饰键（⌘⌥⌃⇧）</string>
+	<key>Restored “%@”. This Focus still pauses shortcuts.</key>
+	<string>已恢复“%@”。当前专注模式仍会暂停快捷键。</string>
+	<key>Restoring the pre-Focus profile</key>
+	<string>正在恢复专注模式前的配置</string>
+	<key>Restoring the profile from before Focus is waiting for the current shortcut edit to finish.</key>
+	<string>恢复专注模式前配置的操作正在等待当前快捷键编辑完成。</string>
 	<key>Resume</key>
 	<string>恢复</string>
 	<key>Resume Wink</key>
@@ -504,6 +542,8 @@
 	<string>可分享的快捷键集合</string>
 	<key>Shortcut</key>
 	<string>快捷键</string>
+	<key>Shortcut Profile</key>
+	<string>快捷键配置</string>
 	<key>Shortcut capture needs attention</key>
 	<string>快捷键捕获需要注意</string>
 	<key>Shortcut capture ready</key>
@@ -518,6 +558,10 @@
 	<string>快捷键已暂停</string>
 	<key>Shortcuts paused by %@</key>
 	<string>快捷键已因 %@ 暂停</string>
+	<key>Shortcuts paused by Focus</key>
+	<string>快捷键已被专注模式暂停</string>
+	<key>Shortcuts paused by Focus and another reason</key>
+	<string>快捷键已因专注模式和另一项原因暂停</string>
 	<key>Shortcuts paused by an exception rule</key>
 	<string>快捷键已因例外规则暂停</string>
 	<key>Show Menu Bar Icon</key>
@@ -588,8 +632,12 @@
 	<string>该配置已不存在。</string>
 	<key>That profile’s shortcuts could not be read, so Wink did not switch to it. Nothing was changed or deleted.</key>
 	<string>无法读取该配置的快捷键，Wink 没有切换过去。任何内容都没有被修改或删除。</string>
+	<key>The Focus Filter refers to a profile that no longer exists.</key>
+	<string>专注模式过滤器引用的配置已不存在。</string>
 	<key>The Settings toggle is live: background checks and downloads, on or off.</key>
 	<string>设置中的开关即刻生效：后台检查与下载，随你开启或关闭。</string>
+	<key>The active Focus Filter refers to a profile that no longer exists. Wink kept the current profile instead of choosing another one.</key>
+	<string>当前专注模式过滤器引用的配置已不存在。Wink 保留了当前配置，没有擅自选择其他配置。</string>
 	<key>The binding is no longer in the active shortcut set. Choose an app and record it again.</key>
 	<string>此绑定已不在当前快捷键集合中。请选择应用并重新录制。</string>
 	<key>The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again.</key>
@@ -602,6 +650,8 @@
 	<string>上次自动检查更新失败：%@</string>
 	<key>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</key>
 	<string>无法删除该配置，且 Wink 无法撤销此前已经完成的切换。你现在使用的是“%@”。</string>
+	<key>The profile saved for restoration after Focus no longer exists. Wink kept the current profile instead of choosing another one.</key>
+	<string>专注模式结束后要恢复的配置已不存在。Wink 保留了当前配置，没有擅自选择其他配置。</string>
 	<key>The saved chord reached Wink's normal capture and activation pipeline, and the target became frontmost.</key>
 	<string>保存的按键组合已进入 Wink 的正常捕获与激活流程，且目标应用已成为最前端应用。</string>
 	<key>The saved shortcut is unavailable</key>
@@ -616,8 +666,12 @@
 	<string>目前还没有可保留的当前配置。请先导入该文件，或选择一个配置。</string>
 	<key>There is no diagnostic log yet. Use Wink for a moment and try again.</key>
 	<string>目前还没有诊断日志。先使用 Wink 一段时间后再试。</string>
+	<key>This Wink Focus Filter data uses unsupported schema version %lld.</key>
+	<string>此 Wink 专注模式过滤器数据使用了不受支持的架构版本 %lld。</string>
 	<key>This log was missing or could not be read when the export was created.</key>
 	<string>创建此导出时，该日志缺失或无法读取。</string>
+	<key>This profile is in use by the current Focus Filter and cannot be deleted until Focus ends.</key>
+	<string>当前专注模式过滤器正在使用此配置，专注模式结束前无法删除。</string>
 	<key>This shortcut route also needs Input Monitoring to capture the physical press.</key>
 	<string>此快捷键路径还需要输入监控权限，才能捕获物理按键。</string>
 	<key>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</key>
@@ -664,6 +718,8 @@
 	<string>Wink 风格的更新体验</string>
 	<key>Usage trends for your saved shortcuts.</key>
 	<string>已保存快捷键的使用趋势。</string>
+	<key>Use ${profile}, pause: ${pauseShortcuts}</key>
+	<string>使用 ${profile}，暂停：${pauseShortcuts}</string>
 	<key>Use New Shortcut below. The guide continues after Add Shortcut saves the binding.</key>
 	<string>使用下方的‘新建快捷键’。‘添加快捷键’保存绑定后，指南会继续。</string>
 	<key>Version %@</key>
@@ -692,6 +748,8 @@
 	<string>Wink %@ 已下载完成。现在重新启动即可完成安装，或继续使用 — 它将在 Wink 退出时安装。</string>
 	<key>Wink %@ is the latest version.</key>
 	<string>Wink %@ 已是最新版本。</string>
+	<key>Wink Focus Filter</key>
+	<string>Wink 专注模式过滤器</string>
 	<key>Wink Search Palette is open.</key>
 	<string>Wink 搜索面板已打开。</string>
 	<key>Wink Settings did not become visible.</key>
@@ -706,14 +764,22 @@
 	<string>Wink 始终保留至少一个配置。</string>
 	<key>Wink and macOS versions, how Wink is signed, and which shortcut routes are currently ready.</key>
 	<string>Wink 与 macOS 版本、Wink 的签名方式，以及当前哪些快捷键通道已就绪。</string>
+	<key>Wink cannot access its Focus Filter shared container. The app and extension must be signed with the same App Group entitlement.</key>
+	<string>Wink 无法访问专注模式过滤器的共享容器。应用与扩展必须使用相同的 App Group 权限签名。</string>
 	<key>Wink cannot reach its storage folder</key>
 	<string>Wink 无法访问其存储文件夹</string>
 	<key>Wink cannot reach its storage folder, so profiles cannot be changed.</key>
 	<string>Wink 无法访问其存储文件夹，因此无法更改配置。</string>
 	<key>Wink checks for updates automatically and asks before downloading.</key>
 	<string>Wink 会自动检查更新，并在下载前征求你的同意。</string>
+	<key>Wink could not apply the Focus Filter because there is no resolved profile to restore later.</key>
+	<string>没有可供之后恢复的已确定配置，因此 Wink 无法应用专注模式过滤器。</string>
 	<key>Wink could not pause shortcuts.</key>
 	<string>Wink 无法暂停快捷键。</string>
+	<key>Wink could not read the Focus Filter profile catalog.</key>
+	<string>Wink 无法读取专注模式过滤器的配置目录。</string>
+	<key>Wink could not read the saved Focus Filter state, so it left the current profile and pause reasons unchanged.</key>
+	<string>Wink 无法读取保存的专注模式过滤器状态，因此保留了当前配置和暂停原因。</string>
 	<key>Wink could not read your previous shortcuts file</key>
 	<string>Wink 无法读取你之前的快捷键文件</string>
 	<key>Wink could not read your profile list</key>
@@ -722,8 +788,12 @@
 	<string>Wink 无法读取你的配置列表，在恢复之前无法进行任何更改。</string>
 	<key>Wink could not resume shortcuts.</key>
 	<string>Wink 无法恢复快捷键。</string>
+	<key>Wink could not save Focus Filter state. The current profile was left unchanged.</key>
+	<string>Wink 无法保存专注模式过滤器状态，当前配置保持不变。</string>
 	<key>Wink could not save the change to disk, so nothing was changed.</key>
 	<string>Wink 无法将更改写入磁盘，因此未做任何改动。</string>
+	<key>Wink could not save the profile that should be restored after Focus ends.</key>
+	<string>Wink 无法保存专注模式结束后应恢复的配置。</string>
 	<key>Wink could not show the Search Palette.</key>
 	<string>Wink 无法显示搜索面板。</string>
 	<key>Wink could not start that switch</key>
@@ -742,6 +812,8 @@
 	<string>Wink 仍在清除已删除配置的使用记录。请稍后再试。</string>
 	<key>Wink manual pause is cleared.</key>
 	<string>Wink 的手动暂停已解除。</string>
+	<key>Wink · Paused</key>
+	<string>Wink · 已暂停</string>
 	<key>Wink matched the saved shortcut and is waiting for the target app to become frontmost.</key>
 	<string>Wink 已匹配保存的快捷键，正在等待目标应用成为最前端应用。</string>
 	<key>Wink needs Accessibility access to route global shortcuts.</key>
@@ -754,6 +826,8 @@
 	<string>Wink 快捷键已暂停。</string>
 	<key>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</key>
 	<string>Wink 以一个空配置启动。旧文件未被改动，仍可修复或导入。</string>
+	<key>Wink will restore “%@” as soon as the current shortcut edit is finished.</key>
+	<string>当前快捷键编辑完成后，Wink 将恢复“%@”。</string>
 	<key>Wink: Permission Lost</key>
 	<string>Wink：权限丢失</string>
 	<key>You can have at most %lld profiles.</key>
@@ -770,6 +844,8 @@
 	<string>无法读取</string>
 	<key>for a Hyper shortcut.</key>
 	<string>即可触发 Hyper 快捷键。</string>
+	<key>restore after Focus</key>
+	<string>专注模式结束后恢复</string>
 	<key>shortcuts.json was changed outside Wink</key>
 	<string>shortcuts.json 在 Wink 之外被修改过</string>
 	<key>to act as</key>

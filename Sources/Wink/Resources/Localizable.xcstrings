@@ -1,6 +1,265 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@ (Focus)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "%@ (Focus)" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%@（专注模式）" } }
+      }
+    },
+    "%@ (Focus pending)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "%@ (Focus pending)" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%@（等待专注模式应用）" } }
+      }
+    },
+    "%@ (restore after Focus)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "%@ (restore after Focus)" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "%@（专注模式结束后恢复）" } }
+      }
+    },
+    "A Focus profile change is waiting for the current shortcut edit to finish.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "A Focus profile change is waiting for the current shortcut edit to finish." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "专注模式的配置切换正在等待当前快捷键编辑完成。" } }
+      }
+    },
+    "Apply a specific Wink shortcut profile and optionally pause all shortcuts while this Focus is active.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Apply a specific Wink shortcut profile and optionally pause all shortcuts while this Focus is active." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "在此专注模式启用时应用指定的 Wink 快捷键配置，并可选择暂停所有快捷键。" } }
+      }
+    },
+    "Change or deactivate the Focus Filter in System Settings to resume shortcut capture.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Change or deactivate the Focus Filter in System Settings to resume shortcut capture." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请在“系统设置”中更改或停用专注模式过滤器，以恢复快捷键捕获。" } }
+      }
+    },
+    "Change or deactivate the Focus Filter, then clear the remaining pause reason before shortcut capture can resume.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Change or deactivate the Focus Filter, then clear the remaining pause reason before shortcut capture can resume." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请更改或停用专注模式过滤器，然后清除其余暂停原因，快捷键捕获才会恢复。" } }
+      }
+    },
+    "Choose another Profile above to change what Wink restores when Focus ends. The Focus profile stays active until then.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Choose another Profile above to change what Wink restores when Focus ends. The Focus profile stays active until then." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "可在上方选择其他配置，以更改专注模式结束后要恢复的配置；在此之前，专注模式配置会保持启用。" } }
+      }
+    },
+    "Focus ended and Wink restored “%@”.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Focus ended and Wink restored “%@”." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "专注模式已结束，Wink 已恢复“%@”。" } }
+      }
+    },
+    "Focus Filter": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Focus Filter" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "专注模式过滤器" } }
+      }
+    },
+    "Focus is using the profile “%@”. Manual profile changes will be restored when Focus ends.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Focus is using the profile “%@”. Manual profile changes will be restored when Focus ends." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "专注模式正在使用配置“%@”。手动选择的配置会在专注模式结束后恢复。" } }
+      }
+    },
+    "Focus is using “%@”.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Focus is using “%@”." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "专注模式正在使用“%@”" } }
+      }
+    },
+    "Focus keeps “%@” active. Wink will restore “%@” when Focus ends.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Focus keeps “%@” active. Wink will restore “%@” when Focus ends." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "专注模式会继续使用“%@”。结束后，Wink 将恢复“%@”。" } }
+      }
+    },
+    "Name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Name" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "名称" } }
+      }
+    },
+    "Pause Shortcuts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Pause Shortcuts" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂停快捷键" } }
+      }
+    },
+    "Paused · Focus": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Paused · Focus" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已暂停 · 专注模式" } }
+      }
+    },
+    "Restored “%@”. This Focus still pauses shortcuts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Restored “%@”. This Focus still pauses shortcuts." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已恢复“%@”。当前专注模式仍会暂停快捷键。" } }
+      }
+    },
+    "Restoring the pre-Focus profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Restoring the pre-Focus profile" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在恢复专注模式前的配置" } }
+      }
+    },
+    "Restoring the profile from before Focus is waiting for the current shortcut edit to finish.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Restoring the profile from before Focus is waiting for the current shortcut edit to finish." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "恢复专注模式前配置的操作正在等待当前快捷键编辑完成。" } }
+      }
+    },
+    "Shortcut Profile": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Shortcut Profile" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "快捷键配置" } }
+      }
+    },
+    "Shortcuts paused by Focus": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Shortcuts paused by Focus" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "快捷键已被专注模式暂停" } }
+      }
+    },
+    "Shortcuts paused by Focus and another reason": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Shortcuts paused by Focus and another reason" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "快捷键已因专注模式和另一项原因暂停" } }
+      }
+    },
+    "The Focus Filter refers to a profile that no longer exists.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The Focus Filter refers to a profile that no longer exists." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "专注模式过滤器引用的配置已不存在。" } }
+      }
+    },
+    "The active Focus Filter refers to a profile that no longer exists. Wink kept the current profile instead of choosing another one.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The active Focus Filter refers to a profile that no longer exists. Wink kept the current profile instead of choosing another one." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前专注模式过滤器引用的配置已不存在。Wink 保留了当前配置，没有擅自选择其他配置。" } }
+      }
+    },
+    "The profile saved for restoration after Focus no longer exists. Wink kept the current profile instead of choosing another one.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The profile saved for restoration after Focus no longer exists. Wink kept the current profile instead of choosing another one." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "专注模式结束后要恢复的配置已不存在。Wink 保留了当前配置，没有擅自选择其他配置。" } }
+      }
+    },
+    "This profile is in use by the current Focus Filter and cannot be deleted until Focus ends.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This profile is in use by the current Focus Filter and cannot be deleted until Focus ends." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前专注模式过滤器正在使用此配置，专注模式结束前无法删除。" } }
+      }
+    },
+    "This Wink Focus Filter data uses unsupported schema version %lld.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This Wink Focus Filter data uses unsupported schema version %lld." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "此 Wink 专注模式过滤器数据使用了不受支持的架构版本 %lld。" } }
+      }
+    },
+    "Use ${profile}, pause: ${pauseShortcuts}": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Use ${profile}, pause: ${pauseShortcuts}" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用 ${profile}，暂停：${pauseShortcuts}" } }
+      }
+    },
+    "Wink Focus Filter": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink Focus Filter" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 专注模式过滤器" } }
+      }
+    },
+    "Wink cannot access its Focus Filter shared container. The app and extension must be signed with the same App Group entitlement.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink cannot access its Focus Filter shared container. The app and extension must be signed with the same App Group entitlement." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 无法访问专注模式过滤器的共享容器。应用与扩展必须使用相同的 App Group 权限签名。" } }
+      }
+    },
+    "Wink could not apply the Focus Filter because there is no resolved profile to restore later.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink could not apply the Focus Filter because there is no resolved profile to restore later." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "没有可供之后恢复的已确定配置，因此 Wink 无法应用专注模式过滤器。" } }
+      }
+    },
+    "Wink could not read the Focus Filter profile catalog.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink could not read the Focus Filter profile catalog." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 无法读取专注模式过滤器的配置目录。" } }
+      }
+    },
+    "Wink could not read the saved Focus Filter state, so it left the current profile and pause reasons unchanged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink could not read the saved Focus Filter state, so it left the current profile and pause reasons unchanged." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 无法读取保存的专注模式过滤器状态，因此保留了当前配置和暂停原因。" } }
+      }
+    },
+    "Wink could not save Focus Filter state. The current profile was left unchanged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink could not save Focus Filter state. The current profile was left unchanged." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 无法保存专注模式过滤器状态，当前配置保持不变。" } }
+      }
+    },
+    "Wink could not save the profile that should be restored after Focus ends.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink could not save the profile that should be restored after Focus ends." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 无法保存专注模式结束后应恢复的配置。" } }
+      }
+    },
+    "Wink will restore “%@” as soon as the current shortcut edit is finished.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink will restore “%@” as soon as the current shortcut edit is finished." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前快捷键编辑完成后，Wink 将恢复“%@”。" } }
+      }
+    },
+    "restore after Focus": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "restore after Focus" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "专注模式结束后恢复" } }
+      }
+    },
     "Allow Accessibility": {
       "extractionState": "manual",
       "localizations": {
@@ -398,6 +657,13 @@
       "localizations": {
         "en": { "stringUnit": { "state": "translated", "value": "Wink manual pause is cleared." } },
         "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 的手动暂停已解除。" } }
+      }
+    },
+    "Wink · Paused": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink · Paused" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink · 已暂停" } }
       }
     },
     "Wink Settings is open.": {

@@ -15,6 +15,18 @@ struct DiscardedProfileSwitchDrafts: Equatable, Sendable {
     }
 }
 
+enum ProfileDeletionPreparationResult: Equatable, Sendable {
+    case ready
+    case profileInUse
+    case failed(String)
+}
+
+enum ManualProfileSelectionDuringFocusResult: Equatable, Sendable {
+    case focusOverlayActive
+    case manualProfileApplied
+    case failed
+}
+
 /// Observable profile list, active selection, and recovery state, plus the
 /// user-facing actions that mutate them.
 ///
@@ -47,6 +59,16 @@ final class ShortcutProfileState {
     /// profile. Unlike the profile ID, this cannot return to an old value
     /// after an A → B → A sequence.
     private(set) var activeProfileRevision = 0
+    /// Effective profile forced by an active Focus Filter, plus the user's
+    /// exact base selection to restore when that overlay ends.
+    private(set) var focusProfileID: UUID?
+    private(set) var manualProfileIDDuringFocus: UUID?
+    private(set) var focusRestorePending = false
+    private var profileCatalogPublicationError: String?
+    private var focusFilterErrorMessage: String?
+    private var focusFilterStatusMessage: String?
+    private var activePointerDurabilityError: String?
+    private var lastProfileSwitchStatus: (profileID: UUID, message: String?)?
     private(set) var unreadableProfileIDs: Set<UUID> = []
     private(set) var orphanProfileIDs: Set<UUID> = []
     private(set) var duplicateShortcutIDs: Set<UUID> = []
@@ -66,6 +88,18 @@ final class ShortcutProfileState {
     private let prepareForSwitch: @MainActor () -> DiscardedProfileSwitchDrafts
     private let hasUnsavedEditorWork: @MainActor () -> Bool
     private let onProfileApplied: @MainActor () -> Void
+    @ObservationIgnored
+    var onManualProfileSelectionDuringFocus: (@MainActor (UUID) -> ManualProfileSelectionDuringFocusResult)?
+    @ObservationIgnored
+    var onRecoveryChoiceAppliedDuringFocus: (@MainActor () -> Void)?
+    @ObservationIgnored
+    var onProfilesChanged: (@MainActor ([ShortcutProfile]) -> String?)?
+    @ObservationIgnored
+    var onPrepareProfileDeletion: (@MainActor (UUID, [ShortcutProfile]) -> ProfileDeletionPreparationResult)?
+    @ObservationIgnored
+    private var profileCatalogPublicationDeferralDepth = 0
+    @ObservationIgnored
+    private var profileCatalogPublicationDeferred = false
 
     init(
         store: ShortcutProfileStore,
@@ -87,6 +121,29 @@ final class ShortcutProfileState {
 
     var activeProfile: ShortcutProfile? {
         profiles.first { $0.id == activeProfileID }
+    }
+
+    var focusProfile: ShortcutProfile? {
+        profiles.first { $0.id == focusProfileID }
+    }
+
+    var manualProfileDuringFocus: ShortcutProfile? {
+        profiles.first { $0.id == manualProfileIDDuringFocus }
+    }
+
+    var hasFocusProfileOverlay: Bool {
+        focusProfileID != nil || focusRestorePending
+    }
+
+    var isFocusProfileApplied: Bool {
+        guard let focusProfileID else { return false }
+        return activeProfileID == focusProfileID
+    }
+
+    func canDeleteProfile(_ profileID: UUID) -> Bool {
+        canDeleteProfiles
+            && profileID != focusProfileID
+            && profileID != manualProfileIDDuringFocus
     }
 
     /// False while the profile list is quarantined: every mutation is blocked
@@ -268,10 +325,227 @@ final class ShortcutProfileState {
     // MARK: - Switching
 
     func switchToProfile(_ profileID: UUID) {
-        guard profileID != activeProfileID || recovery != .none else { return }
+        if focusProfileID != nil {
+            let resolvesRecoveryChoice: Bool
+            switch recovery {
+            case .activeProfileAmbiguous, .activeProfileUnreadable:
+                resolvesRecoveryChoice = true
+            default:
+                resolvesRecoveryChoice = false
+            }
+            let selectionResult = selectManualProfileDuringFocus(profileID)
+            guard selectionResult != .failed else { return }
+            if selectionResult == .manualProfileApplied {
+                return
+            }
+            if resolvesRecoveryChoice {
+                // Recovery explicitly asks the user to choose the restore base.
+                // Resolve that transaction, then reapply Focus synchronously in
+                // the SAME main-actor turn. Carbon/EventTap delivery is queued
+                // onto this actor, so it cannot observe the recovery choice's
+                // shortcuts between these two applies.
+                if applyProfile(profileID, requiresExternalReadiness: false) {
+                    onRecoveryChoiceAppliedDuringFocus?()
+                }
+            }
+            return
+        }
+        if focusRestorePending {
+            // Focus has already ended, but an automatic restore was deferred.
+            // A manual choice is allowed to discard drafts; first persist that
+            // exact choice as the new restore target, so a crash between the
+            // shared write and active-pointer commit still retries the user's
+            // choice instead of resurrecting the older base.
+            guard validateProfileReference(profileID) else { return }
+            let selectionResult = onManualProfileSelectionDuringFocus?(profileID) ?? .failed
+            guard selectionResult != .failed else {
+                if errorMessage == nil {
+                    errorMessage = String(
+                        localized: "Wink could not save the profile that should be restored after Focus ends.",
+                        bundle: WinkResourceBundle.bundle
+                    )
+                }
+                return
+            }
+            // A new Focus may have activated after this method observed the
+            // deferred-restore flag. The coordinator has synchronously
+            // reconciled it before returning this result, so never overwrite
+            // that effective Focus profile with the manual selection.
+            return
+        }
+        _ = applyProfile(profileID, requiresExternalReadiness: false)
+    }
+
+    /// Applies a Focus-driven effective profile through the same validated,
+    /// commit-before-mutate transaction as a manual switch, but refuses while
+    /// an editor draft or blocking recovery state exists.
+    @discardableResult
+    func applyExternalProfile(_ profileID: UUID) -> Bool {
+        applyProfile(profileID, requiresExternalReadiness: true)
+    }
+
+    /// The user explicitly chose this profile while an ended Focus still had
+    /// a pending automatic restore. Manual intent may discard drafts just like
+    /// an ordinary profile switch; the coordinator calls this only while it
+    /// holds the shared Focus-state lock.
+    @discardableResult
+    func applyManualProfileAfterFocusEnds(_ profileID: UUID) -> Bool {
+        applyProfile(profileID, requiresExternalReadiness: false)
+    }
+
+    /// Completes the second half of an explicit recovery choice. The manual
+    /// apply immediately before this call has already discarded editor drafts;
+    /// consulting the automatic-switch readiness seam again could leave that
+    /// temporary base profile armed until another observation turn.
+    @discardableResult
+    func reapplyFocusProfileAfterRecoveryChoice(_ profileID: UUID) -> Bool {
+        applyProfile(profileID, requiresExternalReadiness: false)
+    }
+
+    /// Focus restoration clears its cross-process retry marker only after the
+    /// restored active pointer and parent directory have reached stable
+    /// storage. A failure leaves the marker intact for the coordinator's
+    /// bounded retry ladder.
+    @discardableResult
+    func makeActiveProfilePointerDurable(_ profileID: UUID) -> Bool {
+        do {
+            try store.makeCurrentActivePointerDurable(profileID)
+            removeTrackedMessage(activePointerDurabilityError, from: &errorMessage)
+            activePointerDurabilityError = nil
+            return true
+        } catch {
+            removeTrackedMessage(activePointerDurabilityError, from: &errorMessage)
+            let message = userFacingMessage(for: error)
+            activePointerDurabilityError = message
+            appendErrorMessage(message)
+            return false
+        }
+    }
+
+    func setFocusOverlay(
+        profileID: UUID?,
+        manualProfileID: UUID?,
+        restorePending: Bool = false
+    ) {
+        focusProfileID = profileID
+        manualProfileIDDuringFocus = manualProfileID
+        focusRestorePending = restorePending
+    }
+
+    func clearFocusOverlay() {
+        focusProfileID = nil
+        manualProfileIDDuringFocus = nil
+        focusRestorePending = false
+    }
+
+    func reportFocusFilterError(_ message: String) {
+        removeTrackedMessage(focusFilterErrorMessage, from: &errorMessage)
+        focusFilterErrorMessage = message
+        appendErrorMessage(message)
+    }
+
+    func clearFocusFilterReporting() {
+        removeTrackedMessage(focusFilterErrorMessage, from: &errorMessage)
+        removeTrackedMessage(focusFilterStatusMessage, from: &statusMessage)
+        focusFilterErrorMessage = nil
+        focusFilterStatusMessage = nil
+    }
+
+    func reportProfileCatalogPublicationError(_ message: String?) {
+        if let previous = profileCatalogPublicationError,
+           let existing = errorMessage {
+            let remainder = existing
+                .replacingOccurrences(of: previous, with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            errorMessage = remainder.isEmpty ? nil : remainder
+        }
+        profileCatalogPublicationError = message
+        if let message {
+            appendErrorMessage(message)
+        }
+    }
+
+    func reportFocusFilterStatus(_ message: String?) {
+        removeTrackedMessage(focusFilterErrorMessage, from: &errorMessage)
+        focusFilterErrorMessage = nil
+        removeTrackedMessage(focusFilterStatusMessage, from: &statusMessage)
+        // The compatibility warning belongs to the profile commit, not to the
+        // Focus overlay. Every Focus-owned status transition must carry it
+        // forward until a later successful mirror write replaces it.
+        let mirrorWarning = compatibilityMirrorWarning(in: statusMessage)
+        focusFilterStatusMessage = message
+        let carriesMirrorWarning = message.map { message in
+            mirrorWarning.map(message.contains) ?? false
+        } ?? false
+        statusMessage = [message, carriesMirrorWarning ? nil : mirrorWarning]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        if statusMessage?.isEmpty == true {
+            statusMessage = nil
+        }
+    }
+
+    @discardableResult
+    private func selectManualProfileDuringFocus(
+        _ profileID: UUID
+    ) -> ManualProfileSelectionDuringFocusResult {
+        guard validateProfileReference(profileID) else { return .failed }
+        let result = onManualProfileSelectionDuringFocus?(profileID) ?? .failed
+        guard result != .failed else {
+            if errorMessage == nil {
+                errorMessage = String(
+                    localized: "Wink could not save the profile that should be restored after Focus ends.",
+                    bundle: WinkResourceBundle.bundle
+                )
+            }
+            return .failed
+        }
+        manualProfileIDDuringFocus = profileID
+        if result == .focusOverlayActive,
+           isFocusProfileApplied,
+           let focusProfile {
+            errorMessage = profileCatalogPublicationError
+            let profileName = profiles.first(where: { $0.id == profileID })?.name ?? ""
+            reportFocusFilterStatus(
+                String(
+                    localized: "Focus keeps “\(focusProfile.name)” active. Wink will restore “\(profileName)” when Focus ends.",
+                    bundle: WinkResourceBundle.bundle
+                )
+            )
+        }
+        return result
+    }
+
+    private func validateProfileReference(_ profileID: UUID) -> Bool {
+        do {
+            _ = try store.loadProfileForActivation(profileID)
+            return true
+        } catch {
+            if case ShortcutProfileStore.StoreError.profileUnreadable(let id, _) = error {
+                if unreadableProfileIDs.insert(id).inserted {
+                    errorMessage = userFacingMessage(for: error)
+                    publishProfilesChanged()
+                    return false
+                }
+            }
+            errorMessage = userFacingMessage(for: error)
+            return false
+        }
+    }
+
+    @discardableResult
+    private func applyProfile(
+        _ profileID: UUID,
+        requiresExternalReadiness: Bool
+    ) -> Bool {
+        guard profileID != activeProfileID || recovery != .none else { return true }
+        if requiresExternalReadiness, !canApplyExternalSwitch {
+            return false
+        }
         guard isMutable else {
             errorMessage = recoveryBlockedMessage
-            return
+            return false
         }
 
         // Everything that can refuse the switch runs FIRST, and writes nothing:
@@ -290,10 +564,14 @@ final class ShortcutProfileState {
             // picker disables the row instead of offering a switch that
             // fails identically forever.
             if case ShortcutProfileStore.StoreError.profileUnreadable(let id, _) = error {
-                unreadableProfileIDs.insert(id)
+                if unreadableProfileIDs.insert(id).inserted {
+                    errorMessage = userFacingMessage(for: error)
+                    publishProfilesChanged()
+                    return false
+                }
             }
             errorMessage = userFacingMessage(for: error)
-            return
+            return false
         }
 
         let mirrorRestored: Bool
@@ -302,7 +580,7 @@ final class ShortcutProfileState {
         } catch {
             // Nothing written, nothing applied, and nothing discarded.
             errorMessage = userFacingMessage(for: error)
-            return
+            return false
         }
 
         // Past the last abort point: the pointer is durable, so the switch is
@@ -311,7 +589,10 @@ final class ShortcutProfileState {
         // persist-then-mutate ordering an ordinary save already uses.
         let discarded = prepareForSwitch()
         setActiveProfileID(profileID)
-        unreadableProfileIDs.remove(profileID)
+        errorMessage = profileCatalogPublicationError
+        if unreadableProfileIDs.remove(profileID) != nil {
+            publishProfilesChanged()
+        }
         // A successful switch resolves the ACTIVE-PROFILE recovery states
         // (an ambiguous pointer, an unreadable active profile) — but the
         // legacy-migration notice is not about the active profile: the
@@ -325,7 +606,6 @@ final class ShortcutProfileState {
         // no observable state mixes the outgoing store with the incoming index.
         shortcutManager.applyLoadedShortcuts(payload.shortcuts, source: .profileSwitch)
         onProfileApplied()
-        errorMessage = nil
         // The switch committed either way — a stale mirror never rolls it
         // back — but full success must not be claimed while shortcuts.json
         // still describes the previous profile. Same caveat as recovery and
@@ -340,6 +620,16 @@ final class ShortcutProfileState {
             )
             statusMessage = [base, caveat].compactMap { $0 }.joined(separator: " ")
         }
+        lastProfileSwitchStatus = (profileID, statusMessage)
+        return true
+    }
+
+    /// The most recent real profile apply owns this message. Focus restoration
+    /// reads it after its separate durability barrier, including on a retry
+    /// where the runtime profile already changed in the previous attempt.
+    func profileSwitchStatus(for profileID: UUID) -> String? {
+        guard lastProfileSwitchStatus?.profileID == profileID else { return nil }
+        return lastProfileSwitchStatus?.message
     }
 
     // MARK: - CRUD
@@ -364,7 +654,8 @@ final class ShortcutProfileState {
                 duplicating: duplicatingActiveProfile ? activeProfileID : nil
             )
             profiles = store.manifest?.profiles ?? profiles
-            errorMessage = nil
+            errorMessage = profileCatalogPublicationError
+            publishProfilesChanged()
             statusMessage = String(
                 localized: "Created the profile “\(created.name)”.",
                 bundle: WinkResourceBundle.bundle
@@ -399,22 +690,33 @@ final class ShortcutProfileState {
         )
     }
 
-    func renameProfile(_ profileID: UUID, to rawName: String) {
+    @discardableResult
+    func renameProfile(_ profileID: UUID, to rawName: String) -> Bool {
         guard isMutable else {
             errorMessage = recoveryBlockedMessage
-            return
+            return false
         }
         do {
             _ = try store.renameProfile(profileID, to: rawName)
             profiles = store.manifest?.profiles ?? profiles
-            errorMessage = nil
+            errorMessage = profileCatalogPublicationError
+            publishProfilesChanged()
+            return true
         } catch {
             errorMessage = userFacingMessage(for: error)
+            return false
         }
     }
 
     func deleteProfile(_ profileID: UUID) {
-        guard canDeleteProfiles else {
+        guard canDeleteProfile(profileID) else {
+            if profileID == focusProfileID || profileID == manualProfileIDDuringFocus {
+                errorMessage = String(
+                    localized: "This profile is in use by the current Focus Filter and cannot be deleted until Focus ends.",
+                    bundle: WinkResourceBundle.bundle
+                )
+                return
+            }
             errorMessage = isMutable ? lastProfileMessage : recoveryBlockedMessage
             return
         }
@@ -441,6 +743,38 @@ final class ShortcutProfileState {
         } catch {
             errorMessage = userFacingMessage(for: error)
             return
+        }
+
+        // The extension validates SetFocusFilterIntent against this catalog
+        // while Wink may be absent. Remove the UUID there BEFORE committing the
+        // manifest delete; otherwise a crash (or a failed post-delete publish)
+        // leaves System Settings able to report success for a profile that no
+        // longer exists. A publication failure blocks the delete, fail-closed.
+        let catalogWasInvalidated: Bool
+        if let onPrepareProfileDeletion {
+            switch onPrepareProfileDeletion(
+                profileID,
+                profiles.filter { $0.id != profileID }
+            ) {
+            case .ready:
+                catalogWasInvalidated = true
+            case .profileInUse:
+                errorMessage = String(
+                    localized: "This profile is in use by the current Focus Filter and cannot be deleted until Focus ends.",
+                    bundle: WinkResourceBundle.bundle
+                )
+                return
+            case let .failed(message):
+                reportProfileCatalogPublicationError(message)
+                return
+            }
+        } else if let onProfilesChanged {
+            let catalogError = onProfilesChanged(profiles.filter { $0.id != profileID })
+            reportProfileCatalogPublicationError(catalogError)
+            guard catalogError == nil else { return }
+            catalogWasInvalidated = true
+        } else {
+            catalogWasInvalidated = false
         }
 
         var discarded = DiscardedProfileSwitchDrafts()
@@ -542,15 +876,27 @@ final class ShortcutProfileState {
                     bundle: WinkResourceBundle.bundle
                 )
                 statusMessage = deleteStatus.isEmpty ? nil : deleteStatus
+                publishProfilesChanged()
                 return
             }
 
             drainPendingUsageDeletions()
 
-            errorMessage = nil
+            errorMessage = profileCatalogPublicationError
             statusMessage = deleteStatus.isEmpty ? nil : deleteStatus
+            publishProfilesChanged()
         } catch {
-            errorMessage = userFacingMessage(for: error)
+            let deleteError = userFacingMessage(for: error)
+            if catalogWasInvalidated {
+                // The manifest still contains the profile. Restore the catalog
+                // immediately; if that also fails, retain both errors so the UI
+                // never claims either durable surface is healthy.
+                reportProfileCatalogPublicationError(onProfilesChanged?(profiles) ?? nil)
+            }
+            errorMessage = deleteError
+            if let profileCatalogPublicationError {
+                appendErrorMessage(profileCatalogPublicationError)
+            }
             // The drafts were cleared before the store was asked, so a failure
             // here must still say what went — otherwise the UI reports that
             // nothing changed while the user's recording is gone.
@@ -601,7 +947,7 @@ final class ShortcutProfileState {
             apply(recovered)
             shortcutManager.applyLoadedShortcuts(recovered.activeShortcuts, source: .profileSwitch)
             onProfileApplied()
-            errorMessage = nil
+            errorMessage = profileCatalogPublicationError
             let base = String(
                 localized: "Started a new profile list. Your unreadable file was kept alongside it.",
                 bundle: WinkResourceBundle.bundle
@@ -614,6 +960,7 @@ final class ShortcutProfileState {
             statusMessage = mirrorRestored
                 ? base
                 : "\(base) \(String(localized: "The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.", bundle: WinkResourceBundle.bundle))"
+            publishProfilesChanged()
         } catch {
             errorMessage = userFacingMessage(for: error)
         }
@@ -628,7 +975,7 @@ final class ShortcutProfileState {
             // arm right now. Leaving it marked unreadable would keep every
             // picker disabling a profile that is now perfectly loadable, until
             // the next relaunch says otherwise.
-            unreadableProfileIDs.remove(mirror.profileID)
+            let repairedUnreadableProfile = unreadableProfileIDs.remove(mirror.profileID) != nil
             var discarded = DiscardedProfileSwitchDrafts()
             if let adopted {
                 // The store re-commits the pointer when this import is what
@@ -651,7 +998,10 @@ final class ShortcutProfileState {
                 onProfileApplied()
             }
             pendingForeignMirror = nil
-            errorMessage = nil
+            errorMessage = profileCatalogPublicationError
+            if repairedUnreadableProfile {
+                publishProfilesChanged()
+            }
             let imported = String(
                 localized: "Imported the changes made outside Wink.",
                 bundle: WinkResourceBundle.bundle
@@ -674,9 +1024,13 @@ final class ShortcutProfileState {
             // else would ever unmark the repaired profile until relaunch —
             // every picker keeps disabling a profile that loads fine. Probe
             // with the same strict read startup classifies with.
+            let repairedUnreadableProfile: Bool
             if unreadableProfileIDs.contains(mirror.profileID),
                (try? store.shortcuts(in: mirror.profileID)) != nil {
                 unreadableProfileIDs.remove(mirror.profileID)
+                repairedUnreadableProfile = true
+            } else {
+                repairedUnreadableProfile = false
             }
             if pendingForeignMirror == nil {
                 // Reclassification dissolved the offer. That covers more
@@ -686,7 +1040,7 @@ final class ShortcutProfileState {
                 // path shares: nothing importable remains, and nothing was
                 // silently discarded. "Review it and try again" with no
                 // banner would be an instruction pointing at nothing.
-                errorMessage = nil
+                errorMessage = profileCatalogPublicationError
                 statusMessage = String(
                     localized: "That file changed again — Wink re-checked it, and there is nothing left to import.",
                     bundle: WinkResourceBundle.bundle
@@ -697,9 +1051,65 @@ final class ShortcutProfileState {
                     bundle: WinkResourceBundle.bundle
                 )
             }
+            if repairedUnreadableProfile {
+                publishProfilesChanged()
+            }
         } catch {
             errorMessage = userFacingMessage(for: error)
         }
+    }
+
+    private func publishProfilesChanged() {
+        guard profileCatalogPublicationDeferralDepth == 0 else {
+            profileCatalogPublicationDeferred = true
+            return
+        }
+        reportProfileCatalogPublicationError(onProfilesChanged?(profiles) ?? nil)
+    }
+
+    /// A Focus reconciliation holds the App Group lock across its synchronous
+    /// profile apply. Validation can discover a newly unreadable profile and
+    /// normally republishes the catalog immediately; defer that nested shared
+    /// store access until the outer transaction has released its lock.
+    func withDeferredProfileCatalogPublication<Result>(
+        _ body: () throws -> Result
+    ) rethrows -> Result {
+        profileCatalogPublicationDeferralDepth += 1
+        defer {
+            profileCatalogPublicationDeferralDepth -= 1
+            if profileCatalogPublicationDeferralDepth == 0,
+               profileCatalogPublicationDeferred {
+                profileCatalogPublicationDeferred = false
+                Task { @MainActor [weak self] in
+                    self?.publishProfilesChanged()
+                }
+            }
+        }
+        return try body()
+    }
+
+    private func appendErrorMessage(_ message: String) {
+        guard let existing = errorMessage, !existing.isEmpty, existing != message else {
+            errorMessage = message
+            return
+        }
+        errorMessage = "\(existing) \(message)"
+    }
+
+    private func removeTrackedMessage(_ message: String?, from target: inout String?) {
+        guard let message, let existing = target else { return }
+        let remainder = existing
+            .replacingOccurrences(of: message, with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        target = remainder.isEmpty ? nil : remainder
+    }
+
+    private func compatibilityMirrorWarning(in message: String?) -> String? {
+        let warning = String(
+            localized: "The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.",
+            bundle: WinkResourceBundle.bundle
+        )
+        return message?.contains(warning) == true ? warning : nil
     }
 
     /// True only when there is an active profile whose bindings could replace
@@ -722,7 +1132,7 @@ final class ShortcutProfileState {
             return
         }
         pendingForeignMirror = nil
-        errorMessage = nil
+        errorMessage = profileCatalogPublicationError
     }
 
     // MARK: - Messages
