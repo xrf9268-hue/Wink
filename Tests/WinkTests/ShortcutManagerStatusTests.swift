@@ -177,9 +177,27 @@ private final class FakeHyperCaptureProvider: HyperShortcutCaptureProvider {
 
 @MainActor
 private struct FakeAppSwitcher: AppSwitching {
+    static let activationAttempt = AppActivationAttemptSnapshot(
+        identity: AppActivationAttemptIdentity(
+            bundleIdentifier: "com.apple.Safari",
+            attemptID: UUID(uuidString: "6A25D235-C783-4BC9-98A7-CB2B20C6D6C5")!,
+            generation: 7
+        ),
+        isConfirmed: false
+    )
+
     @discardableResult
     func toggleApplication(for shortcut: AppShortcut, bypassCooldown: Bool) -> Bool {
         true
+    }
+
+    func currentActivationAttempt(
+        for bundleIdentifier: String
+    ) -> AppActivationAttemptSnapshot? {
+        guard bundleIdentifier == Self.activationAttempt.identity.bundleIdentifier else {
+            return nil
+        }
+        return Self.activationAttempt
     }
 }
 
@@ -233,6 +251,181 @@ private func alternateStandardShortcut() -> AppShortcut {
         keyEquivalent: "t",
         modifierFlags: ["command", "shift"]
     )
+}
+
+@Test @MainActor
+func wholeShortcutSetApplyNotifiesSynchronouslyAfterCaptureReconfiguration() {
+    let context = makeShortcutManager(permissionService: FakePermissionService(ax: true, input: true))
+    var applied: [[AppShortcut]] = []
+    context.manager.onShortcutSetApplied = { shortcuts in
+        applied.append(shortcuts)
+        #expect(context.standardProvider.registrationState.desiredShortcutCount == shortcuts.count)
+    }
+
+    let shortcuts = [standardShortcut(), alternateStandardShortcut()]
+    context.manager.applyLoadedShortcuts(shortcuts, source: .profileSwitch)
+
+    #expect(applied == [shortcuts])
+}
+
+@Test
+func onboardingFrontmostSnapshotRequiresTheExactProcessToStillBeRunning() {
+    #expect(ShortcutManager.onboardingTargetWasFrontmost(
+        targetBundleIdentifier: "com.apple.Safari",
+        frontmostBundleIdentifier: "com.apple.Safari",
+        frontmostProcessIdentifier: 101,
+        runningProcessIdentifiers: [101, 202]
+    ))
+    #expect(!ShortcutManager.onboardingTargetWasFrontmost(
+        targetBundleIdentifier: "com.apple.Safari",
+        frontmostBundleIdentifier: "com.apple.Safari",
+        frontmostProcessIdentifier: 101,
+        runningProcessIdentifiers: [202]
+    ))
+    #expect(!ShortcutManager.onboardingTargetWasFrontmost(
+        targetBundleIdentifier: "com.apple.Safari",
+        frontmostBundleIdentifier: "com.apple.TextEdit",
+        frontmostProcessIdentifier: 101,
+        runningProcessIdentifiers: [101]
+    ))
+}
+
+@Test @MainActor
+func onboardingPermissionRequestsAreScopedToTheSelectedTransport() {
+    let permissions = MutablePermissionService(ax: false, input: false)
+    let context = makeShortcutManager(
+        permissionService: permissions,
+        automaticPermissionPromptingEnabled: false
+    )
+    let standard = standardShortcut()
+    let standardFunction = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "f5",
+        modifierFlags: ["function"]
+    )
+    let hyper = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "h",
+        modifierFlags: ["command", "option", "control", "shift"]
+    )
+
+    context.manager.requestPermissions(for: standard)
+    context.manager.requestPermissions(for: standardFunction)
+    context.manager.setHyperKeyEnabled(true)
+    context.manager.requestPermissions(for: hyper)
+
+    #expect(permissions.requestedPromptFlags == [true, true, true])
+    #expect(permissions.requestedInputMonitoringFlags == [false, true, true])
+}
+
+@Test @MainActor
+func onboardingStandardReadinessIsScopedToTheSelectedCarbonRegistration() throws {
+    let standardProvider = FakeCaptureProvider()
+    let context = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        standardProvider: standardProvider,
+        automaticPermissionPromptingEnabled: false
+    )
+    let selected = standardShortcut()
+    let unrelated = alternateStandardShortcut()
+    standardProvider.failingShortcuts = [
+        KeyPress(keyCode: UInt16(kVK_ANSI_T), modifiers: [.command, .shift])
+    ]
+
+    try context.manager.save(shortcuts: [selected, unrelated])
+    context.manager.start()
+
+    #expect(context.manager.firstShortcutOnboardingReadiness(for: selected).routeReady)
+    #expect(!context.manager.firstShortcutOnboardingReadiness(for: unrelated).routeReady)
+    #expect(!context.manager.shortcutCaptureStatus().standardShortcutsReady)
+}
+
+@Test @MainActor
+func unrelatedFnInputMonitoringRequirementDoesNotBlockOrdinaryOnboardingChord() throws {
+    let standardProvider = FakeCaptureProvider()
+    standardProvider.inputMonitoringRequired = true
+    let context = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        standardProvider: standardProvider,
+        automaticPermissionPromptingEnabled: false
+    )
+    let ordinary = standardShortcut()
+    let functionRow = AppShortcut(
+        appName: "Safari",
+        bundleIdentifier: "com.apple.Safari",
+        keyEquivalent: "f5",
+        modifierFlags: ["function"]
+    )
+
+    try context.manager.save(shortcuts: [ordinary, functionRow])
+    context.manager.start()
+
+    #expect(context.manager.firstShortcutOnboardingReadiness(for: ordinary).routeReady)
+    #expect(!context.manager.firstShortcutOnboardingReadiness(for: functionRow).routeReady)
+    #expect(!context.manager.shortcutCaptureStatus().standardShortcutsReady)
+}
+
+@Test @MainActor
+func capturedShortcutObserverRunsOnlyForTheRealMatchPath() throws {
+    let context = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        automaticPermissionPromptingEnabled: false
+    )
+    let shortcut = standardShortcut()
+    try context.manager.save(shortcuts: [shortcut])
+    context.manager.start()
+
+    var captured: [(UUID, Bool, AppActivationAttemptSnapshot?)] = []
+    context.manager.shouldCaptureOnboardingTriggerContext = { $0.id == shortcut.id }
+    context.manager.onCapturedShortcutTrigger = { matched, accepted, _, activationAttempt in
+        captured.append((matched.id, accepted, activationAttempt))
+    }
+
+    #expect(context.manager.trigger(shortcut))
+    #expect(captured.isEmpty)
+
+    context.standardProvider.emit(
+        KeyPress(
+            keyCode: UInt16(kVK_ANSI_S),
+            modifiers: [.command, .shift]
+        )
+    )
+
+    #expect(captured.count == 1)
+    #expect(captured.first?.0 == shortcut.id)
+    #expect(captured.first?.1 == true)
+    #expect(captured.first?.2 == FakeAppSwitcher.activationAttempt)
+}
+
+@Test @MainActor
+func ordinaryCapturedShortcutSkipsOnboardingContextWhenNoAttemptIsActive() throws {
+    let context = makeShortcutManager(
+        permissionService: FakePermissionService(ax: true, input: false),
+        automaticPermissionPromptingEnabled: false
+    )
+    let shortcut = standardShortcut()
+    try context.manager.save(shortcuts: [shortcut])
+    context.manager.start()
+
+    var preflightCount = 0
+    var capturedCount = 0
+    context.manager.shouldCaptureOnboardingTriggerContext = { _ in
+        preflightCount += 1
+        return false
+    }
+    context.manager.onCapturedShortcutTrigger = { _, _, _, _ in capturedCount += 1 }
+
+    context.standardProvider.emit(
+        KeyPress(
+            keyCode: UInt16(kVK_ANSI_S),
+            modifiers: [.command, .shift]
+        )
+    )
+
+    #expect(preflightCount == 1)
+    #expect(capturedCount == 0)
 }
 
 private func hyperShortcut() -> AppShortcut {
@@ -598,6 +791,39 @@ func resumeRebuildsAvailableShortcutSetAfterAvailabilityChangesWhilePaused() thr
     context.manager.setShortcutsPaused(false)
 
     #expect(context.standardProvider.registeredShortcuts == [alternateStandardShortcutKeyPress()])
+}
+
+@Test @MainActor
+func onboardingResumeDoesNotPromptForUnrelatedTapDependentRoutes() throws {
+    let permissionService = MutablePermissionService(ax: true, input: false)
+    let standardProvider = FakeCaptureProvider()
+    standardProvider.inputMonitoringRequired = true
+    let context = makeShortcutManager(
+        permissionService: permissionService,
+        standardProvider: standardProvider,
+        automaticPermissionPromptingEnabled: true
+    )
+    let functionRow = AppShortcut(
+        appName: "Terminal",
+        bundleIdentifier: "com.apple.Terminal",
+        keyEquivalent: "f5",
+        modifierFlags: ["function"]
+    )
+    try context.manager.save(shortcuts: [standardShortcut(), functionRow])
+    context.manager.start()
+    context.manager.setShortcutsPaused(true)
+    permissionService.requestCallCount = 0
+    permissionService.requestedPromptFlags.removeAll()
+    permissionService.requestedInputMonitoringFlags.removeAll()
+
+    context.manager.setShortcutsPaused(false, promptForPermissions: false)
+
+    #expect(permissionService.requestCallCount == 1)
+    #expect(permissionService.requestedPromptFlags == [false])
+    // The aggregate configuration still includes a tap-dependent Fn route,
+    // but the onboarding Resume control merely restores capture. Its
+    // selected-route action owns any subsequent permission prompt.
+    #expect(permissionService.requestedInputMonitoringFlags == [true])
 }
 
 @Test @MainActor
@@ -1042,6 +1268,55 @@ func startSuppressesAutomaticPermissionPromptsWhenDisabledForThisLaunch() throws
     #expect(status.hyperShortcutsReady == false)
     #expect(standardProvider.startCallCount == 0)
     #expect(hyperProvider.startCallCount == 0)
+}
+
+@Test @MainActor
+func onboardingLaunchSuppressesOtherwiseEnabledAutomaticPermissionPrompt() {
+    let permissionService = MutablePermissionService(ax: false, input: false)
+    let (manager, _, _, _) = makeShortcutManager(
+        permissionService: permissionService,
+        automaticPermissionPromptingEnabled: true
+    )
+
+    manager.start(suppressAutomaticPermissionPrompt: true)
+
+    #expect(permissionService.requestedPromptFlags == [false])
+    #expect(permissionService.requestedInputMonitoringFlags == [false])
+}
+
+@Test @MainActor
+func onboardingSuppressesLaterAggregatePromptsButAllowsTheSelectedRouteRequest() throws {
+    let permissionService = MutablePermissionService(ax: false, input: false)
+    let standardProvider = FakeCaptureProvider()
+    standardProvider.inputMonitoringRequired = true
+    let context = makeShortcutManager(
+        permissionService: permissionService,
+        standardProvider: standardProvider,
+        automaticPermissionPromptingEnabled: true
+    )
+    let functionRow = AppShortcut(
+        appName: "Terminal",
+        bundleIdentifier: "com.apple.Terminal",
+        keyEquivalent: "f5",
+        modifierFlags: ["function"]
+    )
+    try context.manager.save(shortcuts: [standardShortcut(), functionRow])
+    context.manager.setAutomaticPermissionPromptSuppressedForOnboarding(true)
+    context.manager.start(suppressAutomaticPermissionPrompt: true)
+    permissionService.requestedPromptFlags.removeAll()
+    permissionService.requestedInputMonitoringFlags.removeAll()
+
+    // Accessibility is granted while the guide is still presenting a plain
+    // standard binding. The aggregate Fn route must not produce an unrelated
+    // Input Monitoring prompt from the periodic reconciliation path.
+    permissionService.ax = true
+    context.manager.checkPermissionChange()
+    #expect(permissionService.requestedPromptFlags == [false])
+    #expect(permissionService.requestedInputMonitoringFlags == [true])
+
+    context.manager.requestPermissions(for: standardShortcut())
+    #expect(permissionService.requestedPromptFlags == [false, true])
+    #expect(permissionService.requestedInputMonitoringFlags == [true, false])
 }
 
 @Test @MainActor

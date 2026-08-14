@@ -94,6 +94,7 @@ struct SettingsView: View {
     var appListProvider: AppListProvider
     var shortcutStatusProvider: ShortcutStatusProvider
     @Bindable var settingsLauncher: SettingsLauncher
+    @Bindable var firstShortcutOnboarding: FirstShortcutOnboardingState
 
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var usageRefreshCoalescer = SettingsUsageRefreshCoalescer()
@@ -185,7 +186,8 @@ struct SettingsView: View {
                 profileState: profileState,
                 preferences: preferences,
                 appListProvider: appListProvider,
-                shortcutStatusProvider: shortcutStatusProvider
+                shortcutStatusProvider: shortcutStatusProvider,
+                firstShortcutOnboarding: firstShortcutOnboarding
             )
         case .insights:
             InsightsTabView(viewModel: insightsViewModel)

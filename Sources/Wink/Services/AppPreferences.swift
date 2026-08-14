@@ -300,12 +300,15 @@ final class AppPreferences {
         refreshLaunchAtLoginStatus()
     }
 
-    func setShortcutsPaused(_ paused: Bool) {
+    func setShortcutsPaused(_ paused: Bool, promptForPermissions: Bool = true) {
         guard paused != shortcutsPaused else {
             return
         }
 
-        shortcutManager.setShortcutsPaused(paused)
+        shortcutManager.setShortcutsPaused(
+            paused,
+            promptForPermissions: promptForPermissions
+        )
         userDefaults.set(paused, forKey: Self.shortcutsPausedDefaultsKey)
         shortcutsPaused = paused
         refreshPermissions()

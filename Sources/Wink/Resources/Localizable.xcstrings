@@ -1,6 +1,293 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Allow Accessibility": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Allow Accessibility" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "允许辅助功能" } }
+      }
+    },
+    "Allow Input Monitoring": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Allow Input Monitoring" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "允许输入监控" } }
+      }
+    },
+    "Change Shortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Change Shortcut" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "更改快捷键" } }
+      }
+    },
+    "Check that the app is still installed, then retry or choose a different shortcut.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Check that the app is still installed, then retry or choose a different shortcut." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请确认应用仍已安装，然后重试或选择其他快捷键。" } }
+      }
+    },
+    "Checking the switch…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Checking the switch…" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在检查切换…" } }
+      }
+    },
+    "Choose an app, record one shortcut, and press it once so Wink can verify the real switch.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Choose an app, record one shortcut, and press it once so Wink can verify the real switch." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "选择一个应用，录制一个快捷键并按下一次，让 Wink 验证真实切换。" } }
+      }
+    },
+    "Choose one app and record one shortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Choose one app and record one shortcut" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "选择一个应用并录制一个快捷键" } }
+      }
+    },
+    "Finish": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Finish" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "完成" } }
+      }
+    },
+    "First Shortcut Guide…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "First Shortcut Guide…" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "首个快捷键指南…" } }
+      }
+    },
+    "Get Started": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Get Started" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "开始" } }
+      }
+    },
+    "Leave the secure field, then retry so Wink can observe this shortcut route.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Leave the secure field, then retry so Wink can observe this shortcut route." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "离开安全输入字段，然后重试，让 Wink 能观察此快捷键路径。" } }
+      }
+    },
+    "Open System Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Open System Settings" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "打开系统设置" } }
+      }
+    },
+    "Open another app, then retry and press the shortcut so Wink can verify an activation instead of a hide.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Open another app, then retry and press the shortcut so Wink can verify an activation instead of a hide." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请先打开另一个应用，然后重试并按下快捷键，让 Wink 验证激活而不是隐藏。" } }
+      }
+    },
+    "Permission is present, but the selected route is not ready yet. Retry after macOS finishes applying the change.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Permission is present, but the selected route is not ready yet. Retry after macOS finishes applying the change." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "权限已具备，但所选路径尚未就绪。请在 macOS 完成应用更改后重试。" } }
+      }
+    },
+    "Press %@ physically. A different app switch or a direct button cannot complete this step.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Press %@ physically. A different app switch or a direct button cannot complete this step." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请实际按下 %@。切换其他应用或使用直接按钮都无法完成此步骤。" } }
+      }
+    },
+    "Press your shortcut once": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Press your shortcut once" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "按一次你的快捷键" } }
+      }
+    },
+    "Record the shortcut again to continue.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Record the shortcut again to continue." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请重新录制快捷键以继续。" } }
+      }
+    },
+    "Resume": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Resume" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "恢复" } }
+      }
+    },
+    "Resume shortcuts to continue": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Resume shortcuts to continue" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "恢复快捷键以继续" } }
+      }
+    },
+    "Shortcuts paused by %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Shortcuts paused by %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "快捷键已因 %@ 暂停" } }
+      }
+    },
+    "Shortcuts paused by an exception rule": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Shortcuts paused by an exception rule" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "快捷键已因例外规则暂停" } }
+      }
+    },
+    "Retry": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Retry" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "重试" } }
+      }
+    },
+    "Secure Input is active": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Secure Input is active" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "安全输入已启用" } }
+      }
+    },
+    "Shortcut verified": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Shortcut verified" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "快捷键已验证" } }
+      }
+    },
+    "Skip": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Skip" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "跳过" } }
+      }
+    },
+    "Switch apps with one shortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Switch apps with one shortcut" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "用一个快捷键切换应用" } }
+      }
+    },
+    "Switch away from the target first": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Switch away from the target first" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请先切换到其他应用" } }
+      }
+    },
+    "Switch away from %@ to resume shortcut capture, or remove it from the exception list.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Switch away from %@ to resume shortcut capture, or remove it from the exception list." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "切换离开 %@ 以恢复快捷键捕获，或将其从例外列表中移除。" } }
+      }
+    },
+    "Switch away from the exception app to resume shortcut capture, or remove it from the exception list.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Switch away from the exception app to resume shortcut capture, or remove it from the exception list." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "切换离开触发例外规则的应用以恢复快捷键捕获，或将其从例外列表中移除。" } }
+      }
+    },
+    "The binding is no longer in the active shortcut set. Choose an app and record it again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The binding is no longer in the active shortcut set. Choose an app and record it again." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "此绑定已不在当前快捷键集合中。请选择应用并重新录制。" } }
+      }
+    },
+    "The saved chord reached Wink's normal capture and activation pipeline, and the target became frontmost.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The saved chord reached Wink's normal capture and activation pipeline, and the target became frontmost." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "保存的按键组合已进入 Wink 的正常捕获与激活流程，且目标应用已成为最前端应用。" } }
+      }
+    },
+    "The saved shortcut is unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The saved shortcut is unavailable" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "保存的快捷键不可用" } }
+      }
+    },
+    "The selected route cannot become ready while all shortcuts are paused.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The selected route cannot become ready while all shortcuts are paused." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "所有快捷键暂停时，所选捕获路径无法就绪。" } }
+      }
+    },
+    "The target did not become frontmost": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The target did not become frontmost" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "目标应用未成为最前端应用" } }
+      }
+    },
+    "This shortcut route also needs Input Monitoring to capture the physical press.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "This shortcut route also needs Input Monitoring to capture the physical press." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "此快捷键路径还需要输入监控权限，才能捕获物理按键。" } }
+      }
+    },
+    "Use New Shortcut below. The guide continues after Add Shortcut saves the binding.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Use New Shortcut below. The guide continues after Add Shortcut saves the binding." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用下方的‘新建快捷键’。‘添加快捷键’保存绑定后，指南会继续。" } }
+      }
+    },
+    "Waiting for shortcut capture": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Waiting for shortcut capture" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在等待快捷键捕获" } }
+      }
+    },
+    "Wink could not start that switch": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink could not start that switch" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 无法开始此次切换" } }
+      }
+    },
+    "Wink matched the saved shortcut and is waiting for the target app to become frontmost.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink matched the saved shortcut and is waiting for the target app to become frontmost." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 已匹配保存的快捷键，正在等待目标应用成为最前端应用。" } }
+      }
+    },
+    "Wink needs Accessibility to activate the selected app.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink needs Accessibility to activate the selected app." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 需要辅助功能权限来激活所选应用。" } }
+      }
+    },
+    "Wink received the shortcut, but did not observe the selected app become frontmost before the verification timeout.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Wink received the shortcut, but did not observe the selected app become frontmost before the verification timeout." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Wink 已收到快捷键，但在验证超时前未观察到所选应用成为最前端应用。" } }
+      }
+    },
     "Open Wink Settings": {
       "extractionState": "manual",
       "localizations": {

@@ -11,6 +11,7 @@ flowchart LR
     P["P(PersistenceService)\nshortcuts.json"]
     S["S(ShortcutStore)\n内存快捷键"]
     U["U(Settings UI / ShortcutEditorState / AppPreferences)\n编辑快捷键与通用设置"]
+    N["N(FirstShortcutOnboardingState)\n首个快捷键引导 / 精确验证"]
     R["R(LaunchAtLoginService)\n登录项状态"]
     Y["Y(SparkleUpdateService)\n更新检查 / appcast"]
     X["X(UsageTracker)\n使用统计"]
@@ -39,6 +40,7 @@ flowchart LR
   U --> R
   U --> Y
   U --> X
+  U --> N
 
   A --> P
   A --> S
@@ -46,6 +48,7 @@ flowchart LR
   A --> M
   A --> R
   A --> Y
+  A --> N
 
   P --> S
   S --> M
@@ -57,6 +60,7 @@ flowchart LR
   Q --> E
   C1 --> M
   E --> M
+  M --> N
 
   M --> W
   W <--> T1
@@ -89,6 +93,7 @@ Responsibilities:
 - start global shortcut handling
 - keep menu bar insertion bound to the persisted `menuBarIconVisible` preference
 - present Settings and reactivate Wink when first-launch, menu-bar, or reopen entry points request it
+- prepare the optional first-shortcut guide before capture startup, suppress automatic permission prompts until a fresh empty-install user opts into a concrete route, restore an unfinished exact-shortcut attempt across relaunch, and leave existing users exempt
 - publish four App Intents/App Shortcuts and register their action dependency before launch completes
 - route menu-bar, URL, shortcut-trigger, and App Intent pause/search/settings actions through one main-actor executor; result-bearing App Intents verify the requested state before returning success
 - keep Settings' ordinary first-launch/reopen and one-way URL paths queue-capable while App Intent execution uses `openIfReady` and fails explicitly rather than reporting success for queued work
@@ -119,6 +124,7 @@ Responsibilities:
 - `SettingsNavigation`
 - `SettingsView` (`NavigationSplitView`: Shortcuts / Insights / General)
 - `ShortcutEditorState`
+- `FirstShortcutOnboardingState`
 - `AppPreferences`
 - `UpdateServicing`
 - `ShortcutRecorderView`
@@ -132,6 +138,9 @@ Responsibilities:
 - persist the selected Settings tab and reopen that tab on the next Settings launch
 - choose target applications
 - record shortcuts
+- guide a fresh user through one ordinary app binding, request only the selected transport's permissions, and require a physical capture/match plus a current frontmost-app confirmation before persisting completion; explicit Skip is the only alternate completion path
+- commit a separate in-progress marker before presenting any fresh or manual run, then keep the in-progress shortcut UUID in `UserDefaults`; the marker outranks older completion/nonempty-store exemptions, and the UUID is restored before capture startup but checked for availability only after providers and the trigger index are live, so permission denial, later grant, retry, alternate mutations, and relaunch cannot silently finish or verify a different binding
+- expose the guide again from Settings without forcing it on upgrades or users who already have shortcuts
 - display saved bindings with inline usage stats
 - export/import shareable shortcut recipes from Settings
 - preview import conflicts and unresolved targets before mutating persisted shortcuts
@@ -192,10 +201,15 @@ Responsibilities:
 - normalize captured key events
 - map between key codes and human-readable shortcut symbols
 - match incoming events against stored bindings
+- report readiness for the exact saved chord and emit its match plus dispatch acceptance to onboarding only from the real provider-delivery path; unrelated registration failures and direct Settings/menu actions never emit this proof signal, and returning to the Shortcuts tab re-reconciles readiness in case its unmounted observer missed a permission transition
+- preflight onboarding before collecting workspace trigger context: only the exact UUID currently awaiting a physical verification match may enumerate live process IDs or snapshot the frontmost app, so ordinary shortcut dispatch retains its existing hot-path cost; this snapshot rejects a press that started with the target frontmost and would enter a hide lane
+- complete onboarding only from AppSwitcher's observation-backed stable-confirmation callback for the exact activation attempt ID and generation returned by the accepted physical press; same-bundle Dock/Cmd-Tab activations have no matching ownership and cannot succeed, the window picker's anti-reraise pending-session promotion deliberately emits no confirmation, and the guide's deadline extends beyond the activation coordinator's full production ceiling
+- gate the ordinary shortcut composer until the onboarding introduction advances to Configure, and omit the press-time-only Current App pseudo-target for every presented guide phase because its sentinel cannot be verified as a concrete target bundle
+- disable aggregate permission requests for every presented guide phase; only the selected route's onboarding action may prompt, while shared status surfaces can perform a non-prompting refresh
 - encode/decode shareable recipe JSON with explicit schema-version checks
 - classify imported recipe entries into ready/conflict/unresolved plans before persistence
 - keep provider callback work lightweight and always hop back to the main actor before app toggling
-- apply a whole shortcut set through one seam, `ShortcutManager.applyLoadedShortcuts(_:source:)`: an ordinary save and a profile switch run the same synchronous main-actor block, so no observable state mixes one set's store with another's trigger index. That property comes from the actor isolation, not from timing, which is why a profile switch introduces no second capture-synchronization stack
+- apply a whole shortcut set through one seam, `ShortcutManager.applyLoadedShortcuts(_:source:)`: an ordinary save and a profile switch run the same synchronous main-actor block, so no observable state mixes one set's store with another's trigger index. That property comes from the actor isolation, not from timing, which is why a profile switch introduces no second capture-synchronization stack; the seam synchronously reconciles first-shortcut onboarding after the providers hold the incoming set, so menu-bar profile switches invalidate stale verification ownership even while the Shortcuts tab is unmounted
 - report capture readiness as capability-aware state instead of a single global boolean:
   - Accessibility granted
   - Input Monitoring granted
@@ -338,7 +352,7 @@ App launch
   -> ShortcutCaptureCoordinator syncs providers for the current standard/Hyper split
   -> CarbonHotKeyProvider starts the Fn/F-row observer when needed, then registers enabled standard shortcuts; unavailable observation fails only affected Fn+F-row bindings closed
   -> EventTapCaptureProvider/EventTapManager starts only when Input Monitoring is granted and Hyper-routed shortcuts exist
-  -> if this is a fresh install with no saved shortcuts, AppController.openSettings() routes through SettingsLauncher + openSettings()
+  -> if this is a fresh install with a successfully loaded active profile and no saved shortcuts, AppController.openSettings() routes through SettingsLauncher + openSettings(); recovery placeholders never enter first-shortcut onboarding
 ```
 
 ### 1b. App Intent flow

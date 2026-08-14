@@ -39,6 +39,39 @@ func savingShortcutChangesInvokesConfigurationChangeHandler() {
     #expect(callbackCount == 2)
 }
 
+@Test @MainActor
+func successfulComposerSaveReportsTheExactCreatedShortcutForOnboarding() {
+    let shortcutStore = ShortcutStore()
+    let manager = ShortcutManager(
+        shortcutStore: shortcutStore,
+        persistenceService: TestPersistenceHarness().makePersistenceService(),
+        appSwitcher: FakeAppSwitcher(),
+        captureCoordinator: ShortcutCaptureCoordinator(
+            standardProvider: FakeCaptureProvider(),
+            hyperProvider: FakeHyperCaptureProvider()
+        ),
+        permissionService: FakePermissionService(ax: true, input: false),
+        diagnosticClient: .init(log: { _ in })
+    )
+    var added: AppShortcut?
+    let editor = ShortcutEditorState(
+        shortcutStore: shortcutStore,
+        shortcutManager: manager,
+        onShortcutAdded: { added = $0 }
+    )
+    editor.selectedAppName = "Safari"
+    editor.selectedBundleIdentifier = "com.apple.Safari"
+    editor.recordedShortcut = RecordedShortcut(
+        keyEquivalent: "s",
+        modifierFlags: ["command", "shift"]
+    )
+
+    editor.addShortcut()
+
+    #expect(added?.id == shortcutStore.shortcuts.first?.id)
+    #expect(added?.bundleIdentifier == "com.apple.Safari")
+}
+
 @MainActor
 private func makeFailingSaveEditorContext(
     existingShortcuts: [AppShortcut]

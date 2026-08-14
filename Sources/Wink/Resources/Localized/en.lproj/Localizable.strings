@@ -54,6 +54,10 @@
 	<string>All Apps</string>
 	<key>All shortcuts are paused.</key>
 	<string>All shortcuts are paused.</string>
+	<key>Allow Accessibility</key>
+	<string>Allow Accessibility</string>
+	<key>Allow Input Monitoring</key>
+	<string>Allow Input Monitoring</string>
 	<key>Another profile already uses that name.</key>
 	<string>Another profile already uses that name.</string>
 	<key>App is currently running</key>
@@ -82,18 +86,28 @@
 	<string>Browse...</string>
 	<key>Cancel</key>
 	<string>Cancel</string>
+	<key>Change Shortcut</key>
+	<string>Change Shortcut</string>
 	<key>Check for Updates…</key>
 	<string>Check for Updates…</string>
+	<key>Check that the app is still installed, then retry or choose a different shortcut.</key>
+	<string>Check that the app is still installed, then retry or choose a different shortcut.</string>
 	<key>Checking for Updates</key>
 	<string>Checking for Updates</string>
 	<key>Checking for updates…</key>
 	<string>Checking for updates…</string>
+	<key>Checking the switch…</key>
+	<string>Checking the switch…</string>
 	<key>Checking, download progress, and installs now happen right here — no more separate update dialogs.</key>
 	<string>Checking, download progress, and installs now happen right here — no more separate update dialogs.</string>
 	<key>Choose a profile</key>
 	<string>Choose a profile</string>
+	<key>Choose an app, record one shortcut, and press it once so Wink can verify the real switch.</key>
+	<string>Choose an app, record one shortcut, and press it once so Wink can verify the real switch.</string>
 	<key>Choose an app…</key>
 	<string>Choose an app…</string>
+	<key>Choose one app and record one shortcut</key>
+	<string>Choose one app and record one shortcut</string>
 	<key>Choose where to save the diagnostics folder.</key>
 	<string>Choose where to save the diagnostics folder.</string>
 	<key>Clear</key>
@@ -186,12 +200,18 @@
 	<string>Failed to import recipe: %@</string>
 	<key>Filter…</key>
 	<string>Filter…</string>
+	<key>Finish</key>
+	<string>Finish</string>
+	<key>First Shortcut Guide…</key>
+	<string>First Shortcut Guide…</string>
 	<key>Focus</key>
 	<string>Focus</string>
 	<key>Full release notes</key>
 	<string>Full release notes</string>
 	<key>General</key>
 	<string>General</string>
+	<key>Get Started</key>
+	<string>Get Started</string>
 	<key>Granted</key>
 	<string>Granted</string>
 	<key>Hand shortcuts back to the system while a listed app (VM, remote desktop) is frontmost.</key>
@@ -276,6 +296,8 @@
 	<string>Launch at Login</string>
 	<key>Launch at Login is only available after installing Wink.app in the Applications folder and reopening it.</key>
 	<string>Launch at Login is only available after installing Wink.app in the Applications folder and reopening it.</string>
+	<key>Leave the secure field, then retry so Wink can observe this shortcut route.</key>
+	<string>Leave the secure field, then retry so Wink can observe this shortcut route.</string>
 	<key>Less work between keypress and app switch, especially with minimized windows.</key>
 	<string>Less work between keypress and app switch, especially with minimized windows.</string>
 	<key>Limited · Secure Input</key>
@@ -336,12 +358,16 @@
 	<string>OK</string>
 	<key>Open Login Items Settings</key>
 	<string>Open Login Items Settings</string>
+	<key>Open System Settings</key>
+	<string>Open System Settings</string>
 	<key>Open Wink Settings</key>
 	<string>Open Wink Settings</string>
 	<key>Open Wink Settings at ${tab}</key>
 	<string>Open Wink Settings at ${tab}</string>
 	<key>Open Wink Settings to an optional tab.</key>
 	<string>Open Wink Settings to an optional tab.</string>
+	<key>Open another app, then retry and press the shortcut so Wink can verify an activation instead of a hide.</key>
+	<string>Open another app, then retry and press the shortcut so Wink can verify an activation instead of a hide.</string>
 	<key>Opens Wink in the menu bar when you sign in.</key>
 	<string>Opens Wink in the menu bar when you sign in.</string>
 	<key>Optional</key>
@@ -360,16 +386,22 @@
 	<string>Paused</string>
 	<key>Paused · %@</key>
 	<string>Paused · %@</string>
+	<key>Permission is present, but the selected route is not ready yet. Retry after macOS finishes applying the change.</key>
+	<string>Permission is present, but the selected route is not ready yet. Retry after macOS finishes applying the change.</string>
 	<key>Permissions</key>
 	<string>Permissions</string>
 	<key>Preparing the downloaded update…</key>
 	<string>Preparing the downloaded update…</string>
 	<key>Preparing update…</key>
 	<string>Preparing update…</string>
+	<key>Press %@ physically. A different app switch or a direct button cannot complete this step.</key>
+	<string>Press %@ physically. A different app switch or a direct button cannot complete this step.</string>
 	<key>Press a key combination…</key>
 	<string>Press a key combination…</string>
 	<key>Press once to open or focus the target app, press again to hide it.</key>
 	<string>Press once to open or focus the target app, press again to hide it.</string>
+	<key>Press your shortcut once</key>
+	<string>Press your shortcut once</string>
 	<key>Privacy</key>
 	<string>Privacy</string>
 	<key>Profile</key>
@@ -388,6 +420,8 @@
 	<string>Recently Used</string>
 	<key>Recipes import into the active profile. Profiles stay on this Mac; recipes are how you share bindings.</key>
 	<string>Recipes import into the active profile. Profiles stay on this Mac; recipes are how you share bindings.</string>
+	<key>Record the shortcut again to continue.</key>
+	<string>Record the shortcut again to continue.</string>
 	<key>Recording…</key>
 	<string>Recording…</string>
 	<key>Recover</key>
@@ -412,8 +446,14 @@
 	<string>Required for global shortcuts</string>
 	<key>Requires at least one modifier (⌘⌥⌃⇧)</key>
 	<string>Requires at least one modifier (⌘⌥⌃⇧)</string>
+	<key>Resume</key>
+	<string>Resume</string>
 	<key>Resume Wink</key>
 	<string>Resume Wink</string>
+	<key>Resume shortcuts to continue</key>
+	<string>Resume shortcuts to continue</string>
+	<key>Retry</key>
+	<string>Retry</string>
 	<key>Reveal Log</key>
 	<string>Reveal Log</string>
 	<key>Review</key>
@@ -436,6 +476,8 @@
 	<string>Search shortcuts</string>
 	<key>Search with Wink</key>
 	<string>Search with Wink</string>
+	<key>Secure Input is active</key>
+	<string>Secure Input is active</string>
 	<key>Settings Tab</key>
 	<string>Settings Tab</string>
 	<key>Settings…</key>
@@ -450,18 +492,26 @@
 	<string>Shortcut capture needs attention</string>
 	<key>Shortcut capture ready</key>
 	<string>Shortcut capture ready</string>
+	<key>Shortcut verified</key>
+	<string>Shortcut verified</string>
 	<key>Shortcuts</key>
 	<string>Shortcuts</string>
 	<key>Shortcuts are not loaded and changes cannot be saved. Check that your home folder is available, then relaunch Wink.</key>
 	<string>Shortcuts are not loaded and changes cannot be saved. Check that your home folder is available, then relaunch Wink.</string>
 	<key>Shortcuts paused</key>
 	<string>Shortcuts paused</string>
+	<key>Shortcuts paused by %@</key>
+	<string>Shortcuts paused by %@</string>
+	<key>Shortcuts paused by an exception rule</key>
+	<string>Shortcuts paused by an exception rule</string>
 	<key>Show Menu Bar Icon</key>
 	<string>Show Menu Bar Icon</string>
 	<key>Show Wink Search Palette</key>
 	<string>Show Wink Search Palette</string>
 	<key>Show Wink's app search palette.</key>
 	<string>Show Wink's app search palette.</string>
+	<key>Skip</key>
+	<string>Skip</string>
 	<key>Skip Conflicts</key>
 	<string>Skip Conflicts</string>
 	<key>Skip This Version</key>
@@ -494,6 +544,14 @@
 	<string>Suggested shortcuts</string>
 	<key>Support</key>
 	<string>Support</string>
+	<key>Switch apps with one shortcut</key>
+	<string>Switch apps with one shortcut</string>
+	<key>Switch away from %@ to resume shortcut capture, or remove it from the exception list.</key>
+	<string>Switch away from %@ to resume shortcut capture, or remove it from the exception list.</string>
+	<key>Switch away from the exception app to resume shortcut capture, or remove it from the exception list.</key>
+	<string>Switch away from the exception app to resume shortcut capture, or remove it from the exception list.</string>
+	<key>Switch away from the target first</key>
+	<string>Switch away from the target first</string>
 	<key>Switching profiles discarded the recipe import preview, which was prepared for the previous profile.</key>
 	<string>Switching profiles discarded the recipe import preview, which was prepared for the previous profile.</string>
 	<key>Switching profiles discarded the shortcut you were about to add.</key>
@@ -516,6 +574,8 @@
 	<string>That profile’s shortcuts could not be read, so Wink did not switch to it. Nothing was changed or deleted.</string>
 	<key>The Settings toggle is live: background checks and downloads, on or off.</key>
 	<string>The Settings toggle is live: background checks and downloads, on or off.</string>
+	<key>The binding is no longer in the active shortcut set. Choose an app and record it again.</key>
+	<string>The binding is no longer in the active shortcut set. Choose an app and record it again.</string>
 	<key>The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again.</key>
 	<string>The changes were imported, but Wink could not finish switching to the repaired profile. Try the import again.</string>
 	<key>The changes were imported, but the shortcuts.json compatibility file could not be rewritten. Try the import again.</key>
@@ -526,14 +586,24 @@
 	<string>The last automatic update check failed: %@</string>
 	<key>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</key>
 	<string>The profile could not be deleted, and Wink could not undo the switch it had already made. You are now on “%@”.</string>
+	<key>The saved chord reached Wink's normal capture and activation pipeline, and the target became frontmost.</key>
+	<string>The saved chord reached Wink's normal capture and activation pipeline, and the target became frontmost.</string>
+	<key>The saved shortcut is unavailable</key>
+	<string>The saved shortcut is unavailable</string>
+	<key>The selected route cannot become ready while all shortcuts are paused.</key>
+	<string>The selected route cannot become ready while all shortcuts are paused.</string>
 	<key>The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.</key>
 	<string>The shortcuts.json compatibility file could not be rewritten yet; it will be refreshed by the next successful save.</string>
+	<key>The target did not become frontmost</key>
+	<string>The target did not become frontmost</string>
 	<key>There is no active profile to keep yet. Import the file first, or choose a profile.</key>
 	<string>There is no active profile to keep yet. Import the file first, or choose a profile.</string>
 	<key>There is no diagnostic log yet. Use Wink for a moment and try again.</key>
 	<string>There is no diagnostic log yet. Use Wink for a moment and try again.</string>
 	<key>This log was missing or could not be read when the export was created.</key>
 	<string>This log was missing or could not be read when the export was created.</string>
+	<key>This shortcut route also needs Input Monitoring to capture the physical press.</key>
+	<string>This shortcut route also needs Input Monitoring to capture the physical press.</string>
 	<key>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</key>
 	<string>This usually means an older version of Wink edited it. It can also happen after an unexpected shutdown. Wink has changed nothing yet.</string>
 	<key>Time saved</key>
@@ -578,6 +648,8 @@
 	<string>Updates, the Wink way</string>
 	<key>Usage trends for your saved shortcuts.</key>
 	<string>Usage trends for your saved shortcuts.</string>
+	<key>Use New Shortcut below. The guide continues after Add Shortcut saves the binding.</key>
+	<string>Use New Shortcut below. The guide continues after Add Shortcut saves the binding.</string>
 	<key>Version %@</key>
 	<string>Version %@</string>
 	<key>Version %@ is available. Use Check for Updates… to review and install.</key>
@@ -588,6 +660,8 @@
 	<string>View release notes</string>
 	<key>W</key>
 	<string>W</string>
+	<key>Waiting for shortcut capture</key>
+	<string>Waiting for shortcut capture</string>
 	<key>What's New in Wink</key>
 	<string>What's New in Wink</string>
 	<key>When Frontmost</key>
@@ -636,6 +710,8 @@
 	<string>Wink could not save the change to disk, so nothing was changed.</string>
 	<key>Wink could not show the Search Palette.</key>
 	<string>Wink could not show the Search Palette.</string>
+	<key>Wink could not start that switch</key>
+	<string>Wink could not start that switch</string>
 	<key>Wink could not tell which profile was active</key>
 	<string>Wink could not tell which profile was active</string>
 	<key>Wink couldn't disable Launch at Login: %@. Try again, or manage it in System Settings › Login Items.</key>
@@ -650,8 +726,14 @@
 	<string>Wink is still clearing usage history for a deleted profile. Try again in a moment.</string>
 	<key>Wink manual pause is cleared.</key>
 	<string>Wink manual pause is cleared.</string>
+	<key>Wink matched the saved shortcut and is waiting for the target app to become frontmost.</key>
+	<string>Wink matched the saved shortcut and is waiting for the target app to become frontmost.</string>
 	<key>Wink needs Accessibility access to route global shortcuts.</key>
 	<string>Wink needs Accessibility access to route global shortcuts.</string>
+	<key>Wink needs Accessibility to activate the selected app.</key>
+	<string>Wink needs Accessibility to activate the selected app.</string>
+	<key>Wink received the shortcut, but did not observe the selected app become frontmost before the verification timeout.</key>
+	<string>Wink received the shortcut, but did not observe the selected app become frontmost before the verification timeout.</string>
 	<key>Wink shortcuts are paused.</key>
 	<string>Wink shortcuts are paused.</string>
 	<key>Wink started with an empty profile. Your old file was not changed, so it can still be repaired or imported.</key>

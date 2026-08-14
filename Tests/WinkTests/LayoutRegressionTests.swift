@@ -436,7 +436,8 @@ struct LayoutRegressionTests {
                 profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
-                shortcutStatusProvider: context.shortcutStatusProvider
+                shortcutStatusProvider: context.shortcutStatusProvider,
+                firstShortcutOnboarding: context.firstShortcutOnboarding
             ),
             size: NSSize(width: 700, height: 430)
         )
@@ -461,7 +462,8 @@ struct LayoutRegressionTests {
                 profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
-                shortcutStatusProvider: context.shortcutStatusProvider
+                shortcutStatusProvider: context.shortcutStatusProvider,
+                firstShortcutOnboarding: context.firstShortcutOnboarding
             ),
             size: NSSize(width: 700, height: 430)
         )
@@ -487,7 +489,8 @@ struct LayoutRegressionTests {
                 profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
-                shortcutStatusProvider: context.shortcutStatusProvider
+                shortcutStatusProvider: context.shortcutStatusProvider,
+                firstShortcutOnboarding: context.firstShortcutOnboarding
             ),
             size: NSSize(width: 700, height: 640)
         )
@@ -514,7 +517,8 @@ struct LayoutRegressionTests {
                 profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
-                shortcutStatusProvider: context.shortcutStatusProvider
+                shortcutStatusProvider: context.shortcutStatusProvider,
+                firstShortcutOnboarding: context.firstShortcutOnboarding
             ),
             size: NSSize(width: 700, height: 640)
         )
@@ -589,7 +593,8 @@ struct LayoutRegressionTests {
                 profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
-                shortcutStatusProvider: context.shortcutStatusProvider
+                shortcutStatusProvider: context.shortcutStatusProvider,
+                firstShortcutOnboarding: context.firstShortcutOnboarding
             ),
             size: NSSize(width: 700, height: 430)
         )
@@ -615,7 +620,8 @@ struct LayoutRegressionTests {
                 insightsViewModel: context.insightsViewModel,
                 appListProvider: context.appListProvider,
                 shortcutStatusProvider: context.shortcutStatusProvider,
-                settingsLauncher: context.settingsLauncher
+                settingsLauncher: context.settingsLauncher,
+                firstShortcutOnboarding: context.firstShortcutOnboarding
             ),
             size: NSSize(width: 900, height: 640)
         )
@@ -827,7 +833,8 @@ struct LayoutRegressionTests {
                 profileState: context.profileState,
                 preferences: context.preferences,
                 appListProvider: context.appListProvider,
-                shortcutStatusProvider: context.shortcutStatusProvider
+                shortcutStatusProvider: context.shortcutStatusProvider,
+                firstShortcutOnboarding: context.firstShortcutOnboarding
             ),
             size: NSSize(width: 700, height: 430)
         )
@@ -1125,6 +1132,7 @@ private final class ShortcutsTabLayoutContext {
     let preferences: AppPreferences
     let appListProvider: AppListProvider
     let shortcutStatusProvider: ShortcutStatusProvider
+    let firstShortcutOnboarding: FirstShortcutOnboardingState
 
     init(shortcutCount: Int) {
         let shortcuts = (0..<shortcutCount).map { index in
@@ -1184,6 +1192,11 @@ private final class ShortcutsTabLayoutContext {
             workspaceNotificationCenter: NotificationCenter(),
             appNotificationCenter: NotificationCenter()
         )
+        firstShortcutOnboarding = FirstShortcutOnboardingState(
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            legacyCompletionDefaultsKey: AppController.firstLaunchCompletedDefaultsKey,
+            client: .inert
+        )
     }
 }
 
@@ -1199,6 +1212,7 @@ private final class SettingsViewLayoutContext {
     let appListProvider: AppListProvider
     let shortcutStatusProvider: ShortcutStatusProvider
     let settingsLauncher = SettingsLauncher(userDefaults: UserDefaults(suiteName: UUID().uuidString)!)
+    let firstShortcutOnboarding: FirstShortcutOnboardingState
 
     init() {
         let shortcut = AppShortcut(
@@ -1257,6 +1271,11 @@ private final class SettingsViewLayoutContext {
             ),
             workspaceNotificationCenter: NotificationCenter(),
             appNotificationCenter: NotificationCenter()
+        )
+        firstShortcutOnboarding = FirstShortcutOnboardingState(
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            legacyCompletionDefaultsKey: AppController.firstLaunchCompletedDefaultsKey,
+            client: .inert
         )
     }
 }

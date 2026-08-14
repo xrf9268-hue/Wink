@@ -320,6 +320,9 @@ final class AppSwitcher: AppSwitching {
     private let windowCycleClient: WindowCycleClient
     private let windowCycleCoordinator: WindowCycleCoordinator
     private let cycleHUDClient: CycleHUDClient
+    private var activationConfirmationObserver: (
+        @MainActor @Sendable (AppActivationAttemptIdentity) -> Void
+    )?
     private var frontmostTargetBehavior: FrontmostTargetBehavior = .toggle
     private var dispatchedHideRequests: [String: DispatchedHideRequest] = [:]
     private var supersededHideFocusRecoveries: [String: SupersededHideFocusRecovery] = [:]
@@ -463,6 +466,28 @@ final class AppSwitcher: AppSwitching {
 
     func invalidateWindowCycleSession(reason: String) {
         windowCycleCoordinator.invalidate(reason: reason)
+    }
+
+    func currentActivationAttempt(
+        for bundleIdentifier: String
+    ) -> AppActivationAttemptSnapshot? {
+        guard let session = sessionCoordinator.session(for: bundleIdentifier),
+              session.phase == .launching
+                || session.phase == .activating
+                || session.phase == .degraded
+                || session.phase == .activeStable else {
+            return nil
+        }
+        return AppActivationAttemptSnapshot(
+            identity: activationAttemptIdentity(for: session),
+            isConfirmed: session.phase == .activeStable
+        )
+    }
+
+    func setActivationConfirmationObserver(
+        _ observer: (@MainActor @Sendable (AppActivationAttemptIdentity) -> Void)?
+    ) {
+        activationConfirmationObserver = observer
     }
 
     var pendingActivationState: PendingActivationState? {
@@ -629,7 +654,35 @@ final class AppSwitcher: AppSwitching {
             return false
         }
 
-        return sessionCoordinator.markStable(for: bundleIdentifier, generation: generation) != nil
+        return markSessionStable(for: bundleIdentifier, generation: generation) != nil
+    }
+
+    private func activationAttemptIdentity(
+        for session: ToggleSessionCoordinator.Session
+    ) -> AppActivationAttemptIdentity {
+        AppActivationAttemptIdentity(
+            bundleIdentifier: session.bundleIdentifier,
+            attemptID: session.attemptID,
+            generation: session.generation
+        )
+    }
+
+    @discardableResult
+    private func markSessionStable(
+        for bundleIdentifier: String,
+        generation: Int? = nil,
+        notifiesActivationConfirmation: Bool = true
+    ) -> ToggleSessionCoordinator.Session? {
+        guard let session = sessionCoordinator.markStable(
+            for: bundleIdentifier,
+            generation: generation
+        ) else {
+            return nil
+        }
+        if notifiesActivationConfirmation {
+            activationConfirmationObserver?(activationAttemptIdentity(for: session))
+        }
+        return session
     }
 
     func schedulePendingConfirmation(
@@ -1576,7 +1629,7 @@ final class AppSwitcher: AppSwitching {
                     // it before its confirmation ladder can re-raise the
                     // first window over the user's cycled choice.
                     if pendingActivationState(for: shortcut.bundleIdentifier) != nil,
-                       sessionCoordinator.markStable(for: shortcut.bundleIdentifier) != nil {
+                       markSessionStable(for: shortcut.bundleIdentifier) != nil {
                         logToggleTrace(
                             family: .decision,
                             bundleIdentifier: shortcut.bundleIdentifier,
@@ -1778,7 +1831,7 @@ final class AppSwitcher: AppSwitching {
                 activationPath: session.activationPath,
                 sessionSnapshot: session
             )
-            guard let stableSession = sessionCoordinator.markStable(
+            guard let stableSession = markSessionStable(
                 for: shortcut.bundleIdentifier,
                 generation: session.generation
             ) else {
@@ -3226,7 +3279,10 @@ extension AppSwitcher {
         // first window over the user's explicit choice (same rule as #347's
         // cycle promotion).
         if pendingActivationState(for: session.bundleIdentifier) != nil,
-           sessionCoordinator.markStable(for: session.bundleIdentifier) != nil {
+           markSessionStable(
+               for: session.bundleIdentifier,
+               notifiesActivationConfirmation: false
+           ) != nil {
             logToggleTrace(
                 family: .decision,
                 bundleIdentifier: session.bundleIdentifier,

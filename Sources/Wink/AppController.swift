@@ -13,6 +13,7 @@ final class AppController {
         let appListProvider: AppListProvider
         let shortcutStatusProvider: ShortcutStatusProvider
         let settingsLauncher: SettingsLauncher
+        let firstShortcutOnboarding: FirstShortcutOnboardingState
     }
 
     struct MenuBarSceneServices {
@@ -177,6 +178,59 @@ final class AppController {
         updateService: updateService,
         userDefaults: userDefaults
     )
+    private lazy var firstShortcutOnboarding: FirstShortcutOnboardingState = {
+        let client = FirstShortcutOnboardingState.Client(
+            readiness: { [weak self] shortcut in
+                self?.shortcutManager.firstShortcutOnboardingReadiness(for: shortcut)
+                    ?? FirstShortcutOnboardingReadiness(
+                        route: .standard,
+                        shortcutAvailable: false,
+                        accessibilityGranted: false,
+                        inputMonitoringGranted: false,
+                        routeReady: false,
+                        shortcutsPaused: false,
+                        secureInputActive: false
+                    )
+            },
+            requestPermissions: { [weak self] shortcut in
+                self?.shortcutManager.requestPermissions(for: shortcut)
+                self?.appPreferences.refreshPermissions()
+            },
+            openSystemSettings: { destination in
+                let pane: String
+                switch destination {
+                case .accessibility:
+                    pane = "Privacy_Accessibility"
+                case .inputMonitoring:
+                    pane = "Privacy_ListenEvent"
+                }
+                guard let url = URL(
+                    string: "x-apple.systempreferences:com.apple.preference.security?\(pane)"
+                ) else { return }
+                NSWorkspace.shared.open(url)
+            },
+            setAutomaticPermissionPromptSuppressed: { [weak self] suppressed in
+                self?.shortcutManager.setAutomaticPermissionPromptSuppressedForOnboarding(
+                    suppressed
+                )
+            },
+            scheduleVerificationTimeout: { delay, operation in
+                Task { @MainActor in
+                    try? await Task.sleep(for: delay)
+                    guard !Task.isCancelled else { return }
+                    operation()
+                }
+            },
+            log: { message in
+                DiagnosticLog.log(message)
+            }
+        )
+        return FirstShortcutOnboardingState(
+            userDefaults: userDefaults,
+            legacyCompletionDefaultsKey: Self.firstLaunchCompletedDefaultsKey,
+            client: client
+        )
+    }()
     private lazy var actionExecutor = WinkActionExecutor(client: .init(
         isShortcutsPaused: { [weak self] in
             self?.appPreferences.shortcutsPaused ?? false
@@ -248,6 +302,9 @@ final class AppController {
         },
         onShortcutConfigurationChange: { [weak self] in
             self?.appPreferences.refreshPermissions()
+        },
+        onShortcutAdded: { [weak self] shortcut in
+            self?.firstShortcutOnboarding.shortcutWasAdded(shortcut)
         }
     )
     private lazy var profileState = ShortcutProfileState(
@@ -340,7 +397,8 @@ final class AppController {
         insightsViewModel: insightsViewModel,
         appListProvider: appListProvider,
         shortcutStatusProvider: settingsShortcutStatusProvider,
-        settingsLauncher: settingsLauncher
+        settingsLauncher: settingsLauncher,
+        firstShortcutOnboarding: firstShortcutOnboarding
     )
     private lazy var menuBarSceneServicesStorage = MenuBarSceneServices(
         shortcutStore: shortcutStore,
@@ -531,6 +589,29 @@ final class AppController {
         shortcutManager.onRecordingSessionKeyPress = { [weak self] keyPress in
             self?.shortcutEditor.handleRecordingSessionKeyPress(keyPress)
         }
+        shortcutManager.shouldCaptureOnboardingTriggerContext = { [weak self] shortcut in
+            self?.firstShortcutOnboarding.isAwaitingPhysicalVerification(for: shortcut.id) == true
+        }
+        shortcutManager.onCapturedShortcutTrigger = { [weak self] shortcut, accepted, targetWasFrontmost, activationAttempt in
+            self?.firstShortcutOnboarding.capturedShortcutTriggered(
+                shortcut,
+                accepted: accepted,
+                targetWasFrontmost: targetWasFrontmost,
+                activationAttempt: activationAttempt
+            )
+        }
+        shortcutManager.onShortcutSetApplied = { [weak self] shortcuts in
+            self?.firstShortcutOnboarding.synchronize(shortcuts: shortcuts)
+        }
+        appSwitcher.setActivationConfirmationObserver { [weak self] identity in
+            self?.firstShortcutOnboarding.activationAttemptDidConfirm(identity)
+        }
+
+        // Read the legacy state before onboarding potentially records an
+        // explicit Skip/success (or exempts an already-configured upgrade), so
+        // the What's New gate still distinguishes a fresh install.
+        let hasLaunchedBefore = userDefaults.bool(forKey: Self.firstLaunchCompletedDefaultsKey)
+        var shouldPresentFirstShortcutOnboarding = false
 
         Self.runStartupSequence(
             startUpdateService: { _ = updateService },
@@ -552,18 +633,29 @@ final class AppController {
             isHyperEnabled: { hyperKeyService.isEnabled },
             setHyperKeyEnabled: { shortcutManager.setHyperKeyEnabled($0) },
             preparePreferences: { _ = appPreferences },
-            startShortcutManager: { shortcutManager.start() }
+            prepareFirstShortcutOnboarding: {
+                guard profileState.canPrepareFirstShortcutOnboarding else {
+                    return false
+                }
+                shouldPresentFirstShortcutOnboarding = firstShortcutOnboarding.prepareForLaunch(
+                    shortcuts: shortcutStore.shortcuts,
+                    hasLegacyCompletion: hasLaunchedBefore
+                )
+                return shouldPresentFirstShortcutOnboarding
+            },
+            startShortcutManager: { suppressAutomaticPermissionPrompt in
+                shortcutManager.start(
+                    suppressAutomaticPermissionPrompt: suppressAutomaticPermissionPrompt
+                )
+            }
         )
 
-        // Read the onboarded state before consumeFirstLaunchFlag marks it, so
-        // the What's New gate can tell a fresh install from an upgrade.
-        let hasLaunchedBefore = userDefaults.bool(forKey: Self.firstLaunchCompletedDefaultsKey)
-
-        if Self.consumeFirstLaunchFlag(
-            userDefaults: userDefaults,
-            hasExistingShortcuts: !shortcutStore.shortcuts.isEmpty
-        ) {
-            openSettings()
+        if shouldPresentFirstShortcutOnboarding {
+            // Pending attempts were restored before capture started so the
+            // launch prompt could be suppressed. Refresh once more against
+            // the now-live provider state before presenting the guide.
+            firstShortcutOnboarding.refreshReadiness()
+            openSettings(tab: .shortcuts)
         }
 
         let currentVersion = Self.currentVersionString()
@@ -612,7 +704,8 @@ final class AppController {
         isHyperEnabled: @MainActor () -> Bool,
         setHyperKeyEnabled: @MainActor (Bool) -> Void,
         preparePreferences: @MainActor () -> Void = {},
-        startShortcutManager: @MainActor () -> Void
+        prepareFirstShortcutOnboarding: @MainActor () -> Bool = { false },
+        startShortcutManager: @MainActor (_ suppressAutomaticPermissionPrompt: Bool) -> Void
     ) {
         startUpdateService()
         do {
@@ -626,20 +719,8 @@ final class AppController {
         let isHyperMappingApplied = reapplyHyperIfNeeded()
         setHyperKeyEnabled(isHyperEnabled && isHyperMappingApplied)
         preparePreferences()
-        startShortcutManager()
-    }
-
-    /// Returns true exactly once per install, and only when no shortcuts exist yet.
-    /// Marks the flag synchronously so a crash in the caller's follow-up work won't
-    /// cause a re-prompt. Existing users upgrading from a pre-flag build (who already
-    /// have shortcuts) get silently marked as onboarded without seeing the prompt.
-    static func consumeFirstLaunchFlag(
-        userDefaults: UserDefaults,
-        hasExistingShortcuts: Bool
-    ) -> Bool {
-        guard !userDefaults.bool(forKey: firstLaunchCompletedDefaultsKey) else { return false }
-        userDefaults.set(true, forKey: firstLaunchCompletedDefaultsKey)
-        return !hasExistingShortcuts
+        let suppressAutomaticPermissionPrompt = prepareFirstShortcutOnboarding()
+        startShortcutManager(suppressAutomaticPermissionPrompt)
     }
 
     /// Returns true exactly once per version change on an already-onboarded

@@ -1344,6 +1344,15 @@ func promotionToStableNotifiesCoordinator() {
         for: "com.apple.Safari",
         startedAt: clock.time
     )
+    let confirmationRecorder = ActivationConfirmationRecorder()
+    switcher.setActivationConfirmationObserver { identity in
+        confirmationRecorder.identities.append(identity)
+    }
+    let pendingAttempt = switcher.currentActivationAttempt(for: "com.apple.Safari")
+    #expect(pendingAttempt?.isConfirmed == false)
+    #expect(pendingAttempt?.identity.attemptID == coordinator.session(
+        for: "com.apple.Safari"
+    )?.attemptID)
     clock.time = 101
     let stableSnapshot = ActivationObservationSnapshot(
         targetBundleIdentifier: "com.apple.Safari",
@@ -1367,6 +1376,11 @@ func promotionToStableNotifiesCoordinator() {
 
     #expect(promoted == true)
     #expect(coordinator.session(for: "com.apple.Safari")?.phase == .activeStable)
+    #expect(switcher.currentActivationAttempt(
+        for: "com.apple.Safari"
+    )?.isConfirmed == true)
+    #expect(confirmationRecorder.identities.count == 1)
+    #expect(confirmationRecorder.identities.first == pendingAttempt?.identity)
 }
 
 @Test @MainActor
@@ -3477,6 +3491,11 @@ private final class MutableClock {
 private final class FallbackActivationRecorder: @unchecked Sendable {
     var openedURLs: [URL] = []
     var activatesFlags: [Bool] = []
+}
+
+@MainActor
+private final class ActivationConfirmationRecorder {
+    var identities: [AppActivationAttemptIdentity] = []
 }
 
 @MainActor

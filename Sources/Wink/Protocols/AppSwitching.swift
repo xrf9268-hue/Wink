@@ -1,6 +1,17 @@
 import CoreGraphics
 import Foundation
 
+struct AppActivationAttemptIdentity: Equatable, Sendable {
+    let bundleIdentifier: String
+    let attemptID: UUID
+    let generation: Int
+}
+
+struct AppActivationAttemptSnapshot: Equatable, Sendable {
+    let identity: AppActivationAttemptIdentity
+    let isConfirmed: Bool
+}
+
 @MainActor
 protocol AppSwitching {
     /// - Parameter bypassCooldown: see `AppSwitcher.toggleApplication` — the
@@ -30,6 +41,21 @@ protocol AppSwitching {
     /// ladder cannot re-raise a different window over the user's choice.
     @discardableResult
     func focusPickedWindow(windowID: CGWindowID, session: WindowPickerSession) -> Bool
+
+    /// Exact activation-session ownership for callers that must distinguish a
+    /// Wink-triggered activation from an unrelated Dock/Cmd-Tab switch to the
+    /// same bundle. `isConfirmed` closes the race where confirmation completes
+    /// before the caller can install its own wait state.
+    func currentActivationAttempt(
+        for bundleIdentifier: String
+    ) -> AppActivationAttemptSnapshot?
+
+    /// Receives successful AppSwitcher confirmation transitions with their
+    /// exact attempt identity. Raw workspace activation notifications are not
+    /// an equivalent signal because they have no Wink-attempt ownership.
+    func setActivationConfirmationObserver(
+        _ observer: (@MainActor @Sendable (AppActivationAttemptIdentity) -> Void)?
+    )
 }
 
 extension AppSwitching {
@@ -50,4 +76,12 @@ extension AppSwitching {
 
     @discardableResult
     func focusPickedWindow(windowID: CGWindowID, session: WindowPickerSession) -> Bool { false }
+
+    func currentActivationAttempt(
+        for bundleIdentifier: String
+    ) -> AppActivationAttemptSnapshot? { nil }
+
+    func setActivationConfirmationObserver(
+        _ observer: (@MainActor @Sendable (AppActivationAttemptIdentity) -> Void)?
+    ) {}
 }
