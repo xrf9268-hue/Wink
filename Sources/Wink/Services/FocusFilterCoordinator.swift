@@ -398,11 +398,9 @@ final class FocusFilterCoordinator {
                 localized: "Focus ended and Wink restored “\(profileName)”.",
                 bundle: WinkResourceBundle.bundle
             )
-        profileState.reportFocusFilterStatus(
-            [restoredStatus, profileSwitchStatus]
-                .compactMap { $0 }
-                .filter { !$0.isEmpty }
-                .joined(separator: " ")
+        profileState.reportCompletedFocusFilterStatus(
+            restoredStatus,
+            profileSwitchStatus: profileSwitchStatus
         )
         diagnosticClient.log(
             "FOCUS_FILTER restore=applied reason=\(reason) profileId=\(manualProfileID.uuidString)"

@@ -486,6 +486,36 @@ final class ShortcutProfileState {
         }
     }
 
+    /// A completed restore is useful history after Focus has become inactive,
+    /// so it must not remain owned by the live Focus overlay. In particular,
+    /// the profile switch may have discarded editor work; a duplicate Darwin
+    /// notification that observes the already-cleared shared marker must not
+    /// erase that warning through `clearFocusFilterReporting()`.
+    func reportCompletedFocusFilterStatus(
+        _ message: String,
+        profileSwitchStatus: String?
+    ) {
+        removeTrackedMessage(focusFilterErrorMessage, from: &errorMessage)
+        focusFilterErrorMessage = nil
+        removeTrackedMessage(focusFilterStatusMessage, from: &statusMessage)
+        focusFilterStatusMessage = nil
+
+        let mirrorWarning = compatibilityMirrorWarning(in: statusMessage)
+        let carriesMirrorWarning = [message, profileSwitchStatus]
+            .compactMap { $0 }
+            .contains { status in
+                mirrorWarning.map(status.contains) ?? false
+            }
+        statusMessage = [
+            message,
+            profileSwitchStatus,
+            carriesMirrorWarning ? nil : mirrorWarning,
+        ]
+        .compactMap { $0 }
+        .filter { !$0.isEmpty }
+        .joined(separator: " ")
+    }
+
     @discardableResult
     private func selectManualProfileDuringFocus(
         _ profileID: UUID

@@ -625,6 +625,11 @@ struct FocusFilterCoordinatorTests {
         context.profileState.switchToProfile(personalID)
         await Task.yield()
 
+        // The extension notification can arrive after the manual transaction
+        // has already cleared its shared restore marker. Replaying that final
+        // inactive state must not erase the completed restore or its warning.
+        context.coordinator.reconcile(reason: "test-warning-repeated-inactive")
+
         #expect(context.profileState.activeProfileID == personalID)
         #expect(!context.profileState.focusRestorePending)
         #expect(context.profileState.statusMessage?.contains("Focus ended") == true)
