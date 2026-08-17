@@ -1,0 +1,40 @@
+name: URL Fuzzing
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/url-fuzzing.yml'
+      - 'Fuzzing/**'
+      - 'Sources/Wink/Models/WinkURLCommand.swift'
+      - 'scripts/fuzz-url.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  url-fuzzing:
+    name: URL Fuzzing
+    # GitHub's standard macos-15 label is arm64; macos-15-intel is the x86_64
+    # label. The fuzzing script still verifies arm64 at runtime and fails closed.
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install llvm@17
+        run: brew list llvm@17 >/dev/null 2>&1 || brew install llvm@17
+
+      - name: Replay committed URL corpus
+        run: scripts/fuzz-url.sh replay
+
+      - name: Run bounded URL fuzzing smoke
+        run: scripts/fuzz-url.sh smoke 60
