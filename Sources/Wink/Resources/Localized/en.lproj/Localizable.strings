@@ -124,6 +124,8 @@
 	<string>Checking, download progress, and installs now happen right here — no more separate update dialogs.</string>
 	<key>Choose a profile</key>
 	<string>Choose a profile</string>
+	<key>Choose a profile before duplicating it.</key>
+	<string>Choose a profile before duplicating it.</string>
 	<key>Choose an app, record one shortcut, and press it once so Wink can verify the real switch.</key>
 	<string>Choose an app, record one shortcut, and press it once so Wink can verify the real switch.</string>
 	<key>Choose an app…</key>
@@ -178,6 +180,8 @@
 	<string>D</string>
 	<key>Default</key>
 	<string>Default</string>
+	<key>Delete</key>
+	<string>Delete</string>
 	<key>Delete Profile</key>
 	<string>Delete Profile</string>
 	<key>Delete Shortcut</key>
@@ -190,6 +194,8 @@
 	<string>Disabled</string>
 	<key>Dismiss</key>
 	<string>Dismiss</string>
+	<key>Done</key>
+	<string>Done</string>
 	<key>Download and install new versions in the background.</key>
 	<string>Download and install new versions in the background.</string>
 	<key>Downloading Update</key>
@@ -238,8 +244,8 @@
 	<string>Focus ended and Wink restored “%@”.</string>
 	<key>Focus is using the profile “%@”. Manual profile changes will be restored when Focus ends.</key>
 	<string>Focus is using the profile “%@”. Manual profile changes will be restored when Focus ends.</string>
-	<key>Focus is using “%@”.</key>
-	<string>Focus is using “%@”.</string>
+	<key>Focus is using “%@”</key>
+	<string>Focus is using “%@”</string>
 	<key>Focus keeps “%@” active. Wink will restore “%@” when Focus ends.</key>
 	<string>Focus keeps “%@” active. Wink will restore “%@” when Focus ends.</string>
 	<key>Full release notes</key>
@@ -474,6 +480,8 @@
 	<string>Release Notes</string>
 	<key>Remove %@</key>
 	<string>Remove %@</string>
+	<key>Rename</key>
+	<string>Rename</string>
 	<key>Rename Profile</key>
 	<string>Rename Profile</string>
 	<key>Replace Existing</key>

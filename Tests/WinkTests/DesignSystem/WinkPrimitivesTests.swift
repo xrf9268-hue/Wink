@@ -59,6 +59,43 @@ struct WinkPrimitivesTests {
     }
 
     @Test @MainActor
+    func menuFieldLabelIsTheSameHeightAsTheButtonBesideIt() {
+        // The reason the primitive exists: the Profile dropdown was a stock
+        // Picker (~22pt, system-accent chevron well) sitting between a Wink
+        // button and, one card down, the target-app field at 28.
+        for size in [WinkControlSize.small, .medium] {
+            let field = NSHostingView(rootView:
+                WinkMenuFieldLabel("Default", size: size).winkChromeRoot()
+            )
+            field.layoutSubtreeIfNeeded()
+
+            let button = NSHostingView(rootView:
+                WinkButton("Manage…", size: size) { }.winkChromeRoot()
+            )
+            button.layoutSubtreeIfNeeded()
+
+            #expect(field.fittingSize.height == size.height)
+            #expect(field.fittingSize.height == button.fittingSize.height)
+        }
+    }
+
+    @Test @MainActor
+    func menuFieldRendersWithLeadingContentAndPlaceholder() {
+        let view = NSHostingView(rootView:
+            WinkMenuField("Choose an app…", isPlaceholder: true) {
+                Button("Safari") { }
+            } leading: {
+                WinkStatusDot(color: .green, size: 6)
+            }
+            .winkChromeRoot()
+        )
+        view.frame = NSRect(x: 0, y: 0, width: 220, height: 28)
+        view.layoutSubtreeIfNeeded()
+
+        #expect(view.fittingSize.height == WinkControlSize.medium.height)
+    }
+
+    @Test @MainActor
     func hyperBadgeRenders() {
         let view = NSHostingView(rootView:
             WinkHyperBadge().winkChromeRoot()

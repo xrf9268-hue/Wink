@@ -104,68 +104,98 @@ struct WinkAppIcon: View {
 
 /// Typeset "Wink" with the lowercase i replaced by a winking tittle.
 /// Used in the menu bar popover header and Updates card.
+///
+/// Both fragments are `verbatim`. A bare `Text("W")` is a `LocalizedStringKey`
+/// resolved against the main bundle, and the app ships a real "W" key — the
+/// Insights range abbreviation for Week — so the wordmark rendered as "周ink"
+/// in Chinese. A brand name is never a translatable string.
 struct WinkWordmark: View {
     var size: CGFloat = 20
     var color: Color = .primary
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
-            Text("W")
+            Text(verbatim: "W")
                 .font(.system(size: size, weight: .semibold))
                 .foregroundStyle(color)
 
             WinkingI(size: size, color: color)
 
-            Text("nk")
+            Text(verbatim: "nk")
                 .font(.system(size: size, weight: .semibold))
                 .foregroundStyle(color)
         }
         .kerning(-0.5)
         .accessibilityElement()
-        .accessibilityLabel("Wink")
+        .accessibilityLabel(Text(verbatim: "Wink"))
     }
 }
 
-/// Lowercase i with the dot replaced by a winking arc. Sized relative
-/// to the surrounding wordmark so it always tracks visual cap height.
-private struct WinkingI: View {
+/// Lowercase i with the dot replaced by a winking arc.
+///
+/// Proportions are fractions of the wordmark's font size, taken from SF Pro:
+/// the stem rises to **x-height**, and the tittle floats a clear gap above it,
+/// topping out at cap height so the mark sits level with the "W" and "k".
+///
+/// The stem used to be drawn at `0.7 × size` — that is SF Pro's *cap* height,
+/// which made the glyph as tall as the "W" beside it and pushed the tittle
+/// down until it touched the stem. The wordmark read "WInk", not "Wink".
+struct WinkingI: View {
     let size: CGFloat
     let color: Color
 
+    /// All fractions of the wordmark's point size.
+    ///
+    /// `stemHeight` is SF Pro's x-height. The stem plus the gap plus the arc
+    /// come to 0.74 — just past cap height (0.70), which is where a real
+    /// tittle sits relative to the "k" beside it.
+    private static let stemHeight: CGFloat = 0.52
+    private static let stemWidth: CGFloat = 0.11
+    private static let tittleGap: CGFloat = 0.06
+    private static let tittleHeight: CGFloat = 0.16
+    private static let tittleWidth: CGFloat = 0.40
+    private static let tittleStroke: CGFloat = 0.075
+
     var body: some View {
-        let stemWidth = max(1.5, size * 0.11)
-        let stemHeight = size * 0.7
-        let tittleWidth = size * 0.44
-        let tittleHeight = size * 0.28
+        let stemWidth = max(1.5, size * Self.stemWidth)
+        let tittleWidth = size * Self.tittleWidth
 
-        ZStack {
-            // i stem — Capsule keeps round caps consistent with SF Pro.
-            Capsule()
-                .fill(color)
-                .frame(width: stemWidth, height: stemHeight)
-                .offset(y: size * 0.05)
-
+        VStack(spacing: size * Self.tittleGap) {
             // Winking tittle — same concave-up arc as Twin's closed eye.
             Canvas { context, canvasSize in
-                let sx = canvasSize.width / 16
-                let sy = canvasSize.height / 10
+                let strokeWidth = max(1.2, size * Self.tittleStroke)
+                // Round caps overhang the path by half the stroke, so the
+                // path itself has to sit a half-stroke inside the box.
+                let inset = strokeWidth / 2
+                // A quadratic's midpoint is ¼·start + ½·control + ¼·end, so
+                // this control lands the apex exactly one inset above the
+                // bottom edge — the arc fills its box without clipping.
+                let control = 2 * canvasSize.height - 3 * inset
+
                 var path = Path()
-                path.move(to: CGPoint(x: 2 * sx, y: 3 * sy))
+                path.move(to: CGPoint(x: inset, y: inset))
                 path.addQuadCurve(
-                    to: CGPoint(x: 14 * sx, y: 3 * sy),
-                    control: CGPoint(x: 8 * sx, y: 9 * sy)
+                    to: CGPoint(x: canvasSize.width - inset, y: inset),
+                    control: CGPoint(x: canvasSize.width / 2, y: control)
                 )
-                let strokeWidth = 2.4 * min(sx, sy)
                 context.stroke(
                     path,
                     with: .color(color),
                     style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                 )
             }
-            .frame(width: tittleWidth, height: tittleHeight)
-            .offset(y: -size * 0.32)
+            .frame(width: tittleWidth, height: size * Self.tittleHeight)
+
+            // i stem — Capsule keeps round caps consistent with SF Pro.
+            Capsule()
+                .fill(color)
+                .frame(width: stemWidth, height: size * Self.stemHeight)
         }
-        .frame(width: max(stemWidth, tittleWidth), height: size)
+        .frame(width: max(stemWidth, tittleWidth))
+        // A shape has no text baseline of its own, so the HStack would fall
+        // back to this view's bottom edge — which is already the stem's foot.
+        // Stating it keeps that true if the stack ever gains padding.
+        .alignmentGuide(.firstTextBaseline) { $0[.bottom] }
         .accessibilityHidden(true)
     }
 }

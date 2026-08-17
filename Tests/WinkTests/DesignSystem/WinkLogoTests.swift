@@ -161,6 +161,61 @@ struct WinkLogoTests {
         #expect(view.fittingSize.width > 0)
         #expect(view.fittingSize.height > 0)
     }
+
+    @Test
+    func wordmarkFragmentsAreVerbatimAndSoCannotBeTranslated() throws {
+        let source = try String(
+            contentsOf: repoRoot.appending(path: "Sources/Wink/UI/DesignSystem/WinkLogo.swift"),
+            encoding: .utf8
+        )
+        // The file documents the bug it is guarding against, and that prose
+        // quotes the very literal the negative assertions forbid.
+        let code = source
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+
+        // A bare Text with a string literal is a LocalizedStringKey resolved
+        // against the main bundle, and the app ships a real "W" key — the
+        // Insights range abbreviation for Week — so the wordmark rendered as
+        // "周ink" in Chinese. See the matching catalog test in
+        // LocalizationTests.
+        #expect(code.contains(#"Text(verbatim: "W")"#))
+        #expect(code.contains(#"Text(verbatim: "nk")"#))
+        #expect(!code.contains(#"Text("W")"#))
+        #expect(!code.contains(#"Text("nk")"#))
+    }
+
+    @Test @MainActor
+    func winkingIKeepsTheTittleClearOfAnXHeightStem() throws {
+        let size: CGFloat = 120
+        let view = NSHostingView(rootView: WinkingI(size: size, color: .black))
+        view.layoutSubtreeIfNeeded()
+        let bitmap = try renderBitmap(WinkingI(size: size, color: .black), size: view.fittingSize)
+
+        let inkedRows = (0..<bitmap.pixelsHigh).map { rowHasInk($0, in: bitmap) }
+        let firstInked = try #require(inkedRows.firstIndex(of: true))
+        let lastInked = try #require(inkedRows.lastIndex(of: true))
+
+        // The arc is a separate mark floating above the stem. When the stem
+        // was drawn at cap height (0.70 instead of x-height 0.52) the two
+        // touched, and the wordmark read "WInk".
+        let gap = inkedRows[firstInked...lastInked].firstIndex(of: false)
+        let gapRow = try #require(gap)
+
+        // That gap belongs just above x-height: everything below it is stem,
+        // so the stem must be roughly half the glyph, not all of it.
+        let stemFraction = CGFloat(lastInked - gapRow) / CGFloat(bitmap.pixelsHigh)
+        #expect(stemFraction > 0.55)
+        #expect(stemFraction < 0.80)
+    }
+}
+
+private func rowHasInk(_ y: Int, in bitmap: NSBitmapImageRep) -> Bool {
+    for x in 0..<bitmap.pixelsWide where (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 {
+        return true
+    }
+    return false
 }
 
 @MainActor

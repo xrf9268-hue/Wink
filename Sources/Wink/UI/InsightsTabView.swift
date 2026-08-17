@@ -38,13 +38,16 @@ struct InsightsTabView: View {
 
     @Bindable var viewModel: InsightsViewModel
     private let onSuggestedAppSelected: @MainActor (InsightsViewModel.SuggestedApp) -> Void
+    private let onReviewUnusedShortcuts: @MainActor () -> Void
 
     init(
         viewModel: InsightsViewModel,
-        onSuggestedAppSelected: (@MainActor (InsightsViewModel.SuggestedApp) -> Void)? = nil
+        onSuggestedAppSelected: (@MainActor (InsightsViewModel.SuggestedApp) -> Void)? = nil,
+        onReviewUnusedShortcuts: (@MainActor () -> Void)? = nil
     ) {
         self.viewModel = viewModel
         self.onSuggestedAppSelected = onSuggestedAppSelected ?? { _ in }
+        self.onReviewUnusedShortcuts = onReviewUnusedShortcuts ?? { }
     }
 
     var body: some View {
@@ -73,7 +76,10 @@ struct InsightsTabView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     mostUsedCard
 
-                    InsightsUnusedNudge(appNames: viewModel.unusedShortcutNames)
+                    InsightsUnusedNudge(
+                        appNames: viewModel.unusedShortcutNames,
+                        onReview: onReviewUnusedShortcuts
+                    )
 
                     suggestedShortcutsCard
                 }

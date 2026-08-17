@@ -450,8 +450,14 @@ struct ShortcutsTabView: View {
                             Button {
                                 showingAppPicker = true
                             } label: {
-                                HStack(spacing: 8) {
-                                    if editor.selectedBundleIdentifier.isEmpty {
+                                // Same chrome as the Profile dropdown, from the
+                                // same primitive — but a Button, because the
+                                // picker is a searchable popover, not a menu.
+                                if editor.selectedBundleIdentifier.isEmpty {
+                                    WinkMenuFieldLabel(
+                                        String(localized: "Choose an app…", bundle: WinkResourceBundle.bundle),
+                                        isPlaceholder: true
+                                    ) {
                                         RoundedRectangle(cornerRadius: 3, style: .continuous)
                                             .fill(palette.appPlaceholderSwatchBg)
                                             .frame(width: 18, height: 18)
@@ -459,39 +465,20 @@ struct ShortcutsTabView: View {
                                                 WinkIcon.plus.image(size: 10)
                                                     .foregroundStyle(.white)
                                             }
-
-                                        Text("Choose an app…", bundle: WinkResourceBundle.bundle)
-                                            .font(WinkType.bodyText)
-                                            .foregroundStyle(palette.textTertiary)
-                                    } else {
-                                        AppIconView(bundleIdentifier: editor.selectedBundleIdentifier, size: 20)
-                                        // `selectedAppName` holds the locale-stable name for a
-                                        // pseudo-target selection (it becomes the persisted
-                                        // appName on Add) — resolve the localized label here,
-                                        // display-only.
-                                        Text(
-                                            editor.selectedBundleIdentifier == AppShortcut.frontmostTargetSentinelBundleIdentifier
-                                                ? AppShortcut.frontmostTargetDisplayName
-                                                : editor.selectedAppName
-                                        )
-                                            .font(WinkType.bodyText)
-                                            .foregroundStyle(palette.textPrimary)
-                                            .lineLimit(1)
                                     }
-
-                                    Spacer(minLength: 8)
-
-                                    WinkIcon.chevronDown.image(size: 11)
-                                        .foregroundStyle(palette.textSecondary)
+                                } else {
+                                    // `selectedAppName` holds the locale-stable name for a
+                                    // pseudo-target selection (it becomes the persisted
+                                    // appName on Add) — resolve the localized label here,
+                                    // display-only.
+                                    WinkMenuFieldLabel(
+                                        editor.selectedBundleIdentifier == AppShortcut.frontmostTargetSentinelBundleIdentifier
+                                            ? AppShortcut.frontmostTargetDisplayName
+                                            : editor.selectedAppName
+                                    ) {
+                                        AppIconView(bundleIdentifier: editor.selectedBundleIdentifier, size: 20)
+                                    }
                                 }
-                                .padding(.horizontal, 8)
-                                .frame(height: 28)
-                                .background(palette.controlBg)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .stroke(palette.controlBorder, lineWidth: 0.5)
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                             }
                             .buttonStyle(.plain)
                             .popover(isPresented: $showingAppPicker, arrowEdge: .bottom) {

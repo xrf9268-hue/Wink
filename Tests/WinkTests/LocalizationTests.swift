@@ -49,6 +49,42 @@ struct LocalizationTests {
         #expect(sub.localizedString(forKey: "Ready", value: "«miss»", table: nil) == "就绪")
     }
 
+    /// Every `String(localized:)` / `Text(_:bundle:)` call site must name a key
+    /// the catalog actually ships.
+    ///
+    /// The per-feature tests in this file assert that a hand-listed key
+    /// resolves — which cannot catch a *call site* whose key was never added,
+    /// or one that drifted a character away from the entry written for it.
+    /// Both had shipped: the Manage Profiles sheet's Rename/Delete/Done
+    /// buttons had no catalog entries at all, and the Focus banner asked for
+    /// `Focus is using “%@”` while the catalog held `Focus is using “%@”.`
+    /// with a trailing period. All four rendered in English for Chinese users
+    /// with every test in this file green.
+    @Test
+    func everyCatalogCallSiteHasAKey() throws {
+        let known = Set(try catalogKeys().map(Self.canonicalized))
+        var orphans: [String] = []
+
+        for file in try swiftSources() {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            for site in Self.catalogCallSites(in: text)
+            where !known.contains(Self.canonicalized(site.key)) {
+                orphans.append("\(file.lastPathComponent):\(site.line)  \(site.key)")
+            }
+        }
+
+        #expect(
+            orphans.isEmpty,
+            """
+            These call sites ask for a key the String Catalog does not have, \
+            so they render their English literal in every locale. Add the key \
+            to Sources/Wink/Resources/Localizable.xcstrings and run \
+            scripts/gen-localizations.sh:
+            \(orphans.sorted().joined(separator: "\n"))
+            """
+        )
+    }
+
     @Test
     func appIntentResultsAndFailuresResolveInZhHans() throws {
         let sub = try subBundle(forLocalization: "zh-Hans")
@@ -138,7 +174,12 @@ struct LocalizationTests {
             "Shortcuts paused by Focus and another reason",
             "Change or deactivate the Focus Filter, then clear the remaining pause reason before shortcut capture can resume.",
             "Wink · Paused",
-            "Focus is using “%@”.",
+            // No trailing period: banner titles in this UI do not take one,
+            // and the catalog's periodful variant matched no call site at all
+            // — this list pinned a key the app never looked up, so the banner
+            // rendered in English while the test stayed green. See
+            // `everyCatalogCallSiteHasAKey`, which now catches that class.
+            "Focus is using “%@”",
             "Focus ended and Wink restored “%@”.",
             "%@ (restore after Focus)",
             "The active Focus Filter refers to a profile that no longer exists. Wink kept the current profile instead of choosing another one.",
@@ -275,9 +316,185 @@ struct LocalizationTests {
         // Latin option identifier; InsightsPeriod.segmentLabel is the
         // localized on-screen label and must resolve to the Screen
         // Time-style abbreviations in zh-Hans.
+        //
+        // These single-letter keys are also why brand marks must use
+        // `Text(verbatim:)`: a bare `Text("W")` anywhere in the app resolves
+        // through this catalog and renders 周. That is exactly how the
+        // wordmark shipped as "周ink" — see `WinkWordmark`.
         let sub = try subBundle(forLocalization: "zh-Hans")
         #expect(sub.localizedString(forKey: "D", value: "«miss»", table: nil) == "日")
         #expect(sub.localizedString(forKey: "W", value: "«miss»", table: nil) == "周")
         #expect(sub.localizedString(forKey: "M", value: "«miss»", table: nil) == "月")
     }
+
+    // MARK: - Call-site scanning
+
+    private struct CatalogCallSite {
+        let key: String
+        let line: Int
+    }
+
+    /// Interpolations and format placeholders both collapse to one sentinel,
+    /// so `"Imported \(count) shortcuts"` matches the catalog's
+    /// `"Imported %lld shortcuts"` without the test having to infer which
+    /// specifier the compiler picked.
+    ///
+    /// Known limit, accepted: because `%@` and `%lld` collapse together, this
+    /// scan cannot see a call site whose interpolation changed *type* while
+    /// the catalog kept the old specifier. Telling those apart needs the
+    /// interpolation's Swift type, which a lexical scan does not have. The
+    /// check is scoped to what it can prove — that a key exists at all.
+    private static let placeholder: Character = "\u{1}"
+
+    private static func canonicalized(_ key: String) -> String {
+        var out = ""
+        var rest = Substring(key)
+        while let percent = rest.firstIndex(of: "%") {
+            out.append(contentsOf: rest[rest.startIndex..<percent])
+            var i = rest.index(after: percent)
+            if i < rest.endIndex, rest[i] == "%" {          // literal "%%"
+                out.append("%")
+                rest = rest[rest.index(after: i)...]
+                continue
+            }
+            while i < rest.endIndex, !"@dfsl".contains(rest[i]) { i = rest.index(after: i) }
+            while i < rest.endIndex, "dfsl".contains(rest[i]) { i = rest.index(after: i) }
+            if i < rest.endIndex, rest[i] == "@" { i = rest.index(after: i) }
+            out.append(placeholder)
+            rest = rest[i...]
+        }
+        out.append(contentsOf: rest)
+        return out
+    }
+
+    /// The literal always follows one of these labels, but not always on the
+    /// same line — `Text(\n    "…",\n    bundle: …)` is common in this
+    /// codebase, so the scan skips whitespace before demanding the quote.
+    /// Anchoring on `Text("` instead silently skipped six live call sites.
+    ///
+    /// A trigger that is not followed by a string literal (`Text(verbatim:)`,
+    /// `Text(someVariable)`, the words `String(localized:)` inside prose) just
+    /// fails the quote check and is dropped.
+    private static let triggers = ["localized:", "Text("]
+
+    private static func catalogCallSites(in text: String) -> [CatalogCallSite] {
+        let chars = Array(text)
+        var sites: [CatalogCallSite] = []
+
+        for trigger in triggers {
+            let pattern = Array(trigger)
+            var start = 0
+            while let hit = index(of: pattern, in: chars, from: start) {
+                start = hit + pattern.count
+
+                var quote = hit + pattern.count
+                while quote < chars.count, chars[quote].isWhitespace { quote += 1 }
+                guard quote < chars.count, chars[quote] == "\"" else { continue }
+                guard let literal = readLiteral(chars, from: quote) else { continue }
+
+                // Only call sites that route through the app's catalog: a
+                // literal without `bundle:` is not a catalog lookup at all.
+                let tailEnd = min(literal.end + 80, chars.count)
+                let tail = String(chars[literal.end..<tailEnd])
+                guard tail.contains("bundle:") else { continue }
+                sites.append(
+                    CatalogCallSite(
+                        key: literal.key,
+                        line: chars[0..<hit].reduce(1) { $1 == "\n" ? $0 + 1 : $0 }
+                    )
+                )
+            }
+        }
+        return sites
+    }
+
+    private static func index(of pattern: [Character], in chars: [Character], from: Int) -> Int? {
+        guard pattern.count <= chars.count else { return nil }
+        var i = from
+        while i <= chars.count - pattern.count {
+            if Array(chars[i..<(i + pattern.count)]) == pattern { return i }
+            i += 1
+        }
+        return nil
+    }
+
+    /// `chars[quote]` is the opening quote. Returns nil for anything this
+    /// simple reader cannot state with confidence (multi-line or raw strings),
+    /// which is a skipped call site, never a false failure.
+    private static func readLiteral(
+        _ chars: [Character],
+        from quote: Int
+    ) -> (key: String, end: Int)? {
+        var key = ""
+        var i = quote + 1
+        while i < chars.count {
+            switch chars[i] {
+            case "\\":
+                guard i + 1 < chars.count else { return nil }
+                if chars[i + 1] == "(" {
+                    var depth = 1
+                    i += 2
+                    while i < chars.count, depth > 0 {
+                        if chars[i] == "(" { depth += 1 }
+                        if chars[i] == ")" { depth -= 1 }
+                        i += 1
+                    }
+                    key.append(placeholder)
+                } else {
+                    key.append(["n": "\n", "t": "\t", "\"": "\"", "\\": "\\"][chars[i + 1]] ?? chars[i + 1])
+                    i += 2
+                }
+            case "\"":
+                return (key, i + 1)
+            case "\n":
+                return nil
+            default:
+                key.append(chars[i])
+                i += 1
+            }
+        }
+        return nil
+    }
+
+    private func swiftSources() throws -> [URL] {
+        let root = repoRoot.appending(path: "Sources/Wink")
+        let all = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)
+        return (all?.allObjects as? [URL] ?? []).filter { $0.pathExtension == "swift" }
+    }
+
+    /// English is the source language, so its compiled table holds every key
+    /// the catalog defines.
+    ///
+    /// Deliberately the **default table only**. `AppShortcuts.strings` is a
+    /// separate table reached solely through App Intents phrase declarations,
+    /// never through the call sites this scan finds; unioning it in would let
+    /// a default-table lookup pass because the key happens to exist in a table
+    /// that lookup will never consult. `appShortcutPhrasesPreserveTheApplicationToken`
+    /// covers that table on its own.
+    ///
+    /// Both file types are required: a catalog entry with plural variations
+    /// compiles into `.stringsdict` and is absent from `.strings` entirely, so
+    /// reading only the latter reports live plural keys as orphans.
+    private func catalogKeys() throws -> [String] {
+        var keys: [String] = []
+        let localized = repoRoot.appending(path: "Sources/Wink/Resources/Localized/en.lproj")
+
+        let url = localized.appending(path: "Localizable.strings")
+        let dictionary = try #require(
+            NSDictionary(contentsOf: url) as? [String: Any],
+            "could not read \(url.lastPathComponent) — run scripts/gen-localizations.sh"
+        )
+        keys.append(contentsOf: dictionary.keys)
+
+        let plurals = localized.appending(path: "Localizable.stringsdict")
+        if let plurals = NSDictionary(contentsOf: plurals) as? [String: Any] {
+            keys.append(contentsOf: plurals.keys)
+        }
+        return keys
+    }
 }
+
+private let repoRoot = URL(filePath: #filePath)
+    .deletingLastPathComponent()
+    .deletingLastPathComponent()
+    .deletingLastPathComponent()

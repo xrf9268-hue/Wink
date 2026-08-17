@@ -128,6 +128,8 @@
 	<string>检查、下载进度和安装现在都在这里完成 — 不再需要单独的更新对话框。</string>
 	<key>Choose a profile</key>
 	<string>选择一个配置</string>
+	<key>Choose a profile before duplicating it.</key>
+	<string>请先选择要复制的配置。</string>
 	<key>Choose an app, record one shortcut, and press it once so Wink can verify the real switch.</key>
 	<string>选择一个应用，录制一个快捷键并按下一次，让 Wink 验证真实切换。</string>
 	<key>Choose an app…</key>
@@ -182,6 +184,8 @@
 	<string>日</string>
 	<key>Default</key>
 	<string>默认</string>
+	<key>Delete</key>
+	<string>删除</string>
 	<key>Delete Profile</key>
 	<string>删除配置</string>
 	<key>Delete Shortcut</key>
@@ -194,6 +198,8 @@
 	<string>已禁用</string>
 	<key>Dismiss</key>
 	<string>知道了</string>
+	<key>Done</key>
+	<string>完成</string>
 	<key>Download and install new versions in the background.</key>
 	<string>在后台下载并安装新版本。</string>
 	<key>Downloading Update</key>
@@ -242,7 +248,7 @@
 	<string>专注模式已结束，Wink 已恢复“%@”。</string>
 	<key>Focus is using the profile “%@”. Manual profile changes will be restored when Focus ends.</key>
 	<string>专注模式正在使用配置“%@”。手动选择的配置会在专注模式结束后恢复。</string>
-	<key>Focus is using “%@”.</key>
+	<key>Focus is using “%@”</key>
 	<string>专注模式正在使用“%@”</string>
 	<key>Focus keeps “%@” active. Wink will restore “%@” when Focus ends.</key>
 	<string>专注模式会继续使用“%@”。结束后，Wink 将恢复“%@”。</string>
@@ -478,6 +484,8 @@
 	<string>更新日志</string>
 	<key>Remove %@</key>
 	<string>移除 %@</string>
+	<key>Rename</key>
+	<string>重命名</string>
 	<key>Rename Profile</key>
 	<string>重命名配置</string>
 	<key>Replace Existing</key>

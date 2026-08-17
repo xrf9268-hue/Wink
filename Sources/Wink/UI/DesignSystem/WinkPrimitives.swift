@@ -213,7 +213,10 @@ struct WinkHyperBadge: View {
         let font: Font = (size == .small)
             ? .system(size: 9.5, weight: .bold)
             : .system(size: 10.5, weight: .bold)
-        Text("HYPER")
+        // `verbatim` for the same reason the wordmark uses it: a bare literal
+        // is a LocalizedStringKey, and "Hyper" is a product term that stays
+        // Latin in every locale (see `WinkWordmark`).
+        Text(verbatim: "HYPER")
             .font(font)
             .tracking(0.4)
             .lineLimit(1)
@@ -377,51 +380,55 @@ enum WinkButtonVariant: Sendable {
     case primary, secondary, ghost, danger
 }
 
-struct WinkButton: View {
-    enum Size { case small, medium }
+/// The two control heights the design system uses. `small` is the toolbar
+/// row (buttons that sit beside a title); `medium` is the form-field row,
+/// which every field in the New Shortcut card already draws at 28.
+///
+/// Shared so a button and the dropdown beside it cannot drift apart.
+enum WinkControlSize: Sendable {
+    case small, medium
 
+    var height: CGFloat {
+        switch self {
+        case .small: return 24
+        case .medium: return 28
+        }
+    }
+}
+
+/// A button's visual body, without the button. Split out so `WinkMenuButton`
+/// can wear the identical chrome instead of copying its metrics.
+struct WinkButtonLabel: View {
     @Environment(\.winkPalette) private var palette
     let label: String
     var variant: WinkButtonVariant = .secondary
-    var size: Size = .small
-    let systemImage: String?
-    let action: () -> Void
-
-    init(
-        _ label: String,
-        variant: WinkButtonVariant = .secondary,
-        size: Size = .small,
-        systemImage: String? = nil,
-        action: @escaping () -> Void
-    ) {
-        self.label = label
-        self.variant = variant
-        self.size = size
-        self.systemImage = systemImage
-        self.action = action
-    }
+    var size: WinkControlSize = .small
+    var systemImage: String?
+    /// Draws the trailing disclosure chevron a menu trigger needs.
+    var showsMenuIndicator: Bool = false
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: size == .small ? 11 : 12, weight: .medium))
-                }
-                Text(label)
-                    .font(.system(size: size == .small ? 12 : 13, weight: .medium))
+        HStack(spacing: 5) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: size == .small ? 11 : 12, weight: .medium))
             }
-            .padding(.horizontal, size == .small ? 11 : 14)
-            .frame(height: size == .small ? 24 : 28)
-            .foregroundStyle(foreground)
-            .background(background)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(border, lineWidth: 0.5)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            Text(label)
+                .font(.system(size: size == .small ? 12 : 13, weight: .medium))
+            if showsMenuIndicator {
+                WinkIcon.chevronDown.image(size: size == .small ? 9 : 10)
+                    .foregroundStyle(palette.textSecondary)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, size == .small ? 11 : 14)
+        .frame(height: size.height)
+        .foregroundStyle(foreground)
+        .background(background)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(border, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
     private var foreground: Color {
@@ -449,6 +456,195 @@ struct WinkButton: View {
         case .ghost: return .clear
         case .danger: return palette.redBorderSoft
         }
+    }
+}
+
+struct WinkButton: View {
+    typealias Size = WinkControlSize
+
+    let label: String
+    var variant: WinkButtonVariant = .secondary
+    var size: Size = .small
+    let systemImage: String?
+    let action: () -> Void
+
+    init(
+        _ label: String,
+        variant: WinkButtonVariant = .secondary,
+        size: Size = .small,
+        systemImage: String? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.label = label
+        self.variant = variant
+        self.size = size
+        self.systemImage = systemImage
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            WinkButtonLabel(
+                label: label,
+                variant: variant,
+                size: size,
+                systemImage: systemImage
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// A `WinkButton` that opens a menu instead of firing an action — for
+/// "Add Profile"-style triggers, where the control is a button that happens to
+/// offer choices, not a field showing the current one (that is `WinkMenuField`).
+///
+/// See `WinkMenuField` for why the modifier stack is what it is.
+struct WinkMenuButton<Content: View>: View {
+    let label: String
+    var variant: WinkButtonVariant = .secondary
+    var size: WinkControlSize = .small
+    var systemImage: String?
+    @ViewBuilder var content: () -> Content
+
+    init(
+        _ label: String,
+        variant: WinkButtonVariant = .secondary,
+        size: WinkControlSize = .small,
+        systemImage: String? = nil,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.label = label
+        self.variant = variant
+        self.size = size
+        self.systemImage = systemImage
+        self.content = content
+    }
+
+    var body: some View {
+        Menu {
+            content()
+        } label: {
+            WinkButtonLabel(
+                label: label,
+                variant: variant,
+                size: size,
+                systemImage: systemImage,
+                showsMenuIndicator: true
+            )
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .fixedSize()
+    }
+}
+
+// MARK: - Menu field (dropdown)
+
+/// The chrome every Wink dropdown wears, without the trigger.
+///
+/// A stock `Picker`/`Menu` renders as an `NSPopUpButton`: system height,
+/// system corner radius, and a chevron well filled with the *system* accent.
+/// Wink's accent is amber (see `DesignTokens`), so a stock control is the one
+/// place in the window that paints system blue, and its ~22pt height never
+/// lines up with the 28pt fields beside it. Draw this instead.
+///
+/// Split from `WinkMenuField` because not every dropdown is a `Menu`: the
+/// target-app field opens a searchable `AppPickerPopover` from a `Button` and
+/// needs the same chrome around a different trigger.
+struct WinkMenuFieldLabel<Leading: View>: View {
+    @Environment(\.winkPalette) private var palette
+
+    let title: String
+    var isPlaceholder: Bool = false
+    var size: WinkControlSize = .medium
+    @ViewBuilder var leading: () -> Leading
+
+    init(
+        _ title: String,
+        isPlaceholder: Bool = false,
+        size: WinkControlSize = .medium,
+        @ViewBuilder leading: @escaping () -> Leading = { EmptyView() }
+    ) {
+        self.title = title
+        self.isPlaceholder = isPlaceholder
+        self.size = size
+        self.leading = leading
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            leading()
+
+            Text(title)
+                .font(WinkType.bodyText)
+                .foregroundStyle(isPlaceholder ? palette.textTertiary : palette.textPrimary)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            WinkIcon.chevronDown.image(size: 11)
+                .foregroundStyle(palette.textSecondary)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: size.height)
+        .background(palette.controlBg)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(palette.controlBorder, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+}
+
+/// The common case: a `Menu` wearing `WinkMenuFieldLabel`.
+///
+/// All three modifiers are load-bearing, and the tempting
+/// `.menuStyle(.borderlessButton)` used elsewhere in the app is **not** one of
+/// them — that style measures itself rather than its label, reporting 70×16
+/// for a 96×28 field, so the chrome gets drawn at a size the layout never
+/// reserved. `.menuStyle(.button)` adopts the label's geometry exactly, and
+/// `.buttonStyle(.plain)` strips the bezel that style would otherwise draw
+/// behind it. `.buttonStyle(.plain)` *without* an explicit menu style also
+/// measures correctly but silently stops responding to clicks, so keep the
+/// pair together. `.menuIndicator(.hidden)` then suppresses the system
+/// chevron, which would otherwise sit beside the one the label draws.
+struct WinkMenuField<Leading: View, Content: View>: View {
+    let title: String
+    var isPlaceholder: Bool = false
+    var size: WinkControlSize = .medium
+    @ViewBuilder var content: () -> Content
+    @ViewBuilder var leading: () -> Leading
+
+    init(
+        _ title: String,
+        isPlaceholder: Bool = false,
+        size: WinkControlSize = .medium,
+        @ViewBuilder content: @escaping () -> Content,
+        @ViewBuilder leading: @escaping () -> Leading = { EmptyView() }
+    ) {
+        self.title = title
+        self.isPlaceholder = isPlaceholder
+        self.size = size
+        self.content = content
+        self.leading = leading
+    }
+
+    var body: some View {
+        Menu {
+            content()
+        } label: {
+            WinkMenuFieldLabel(
+                title,
+                isPlaceholder: isPlaceholder,
+                size: size,
+                leading: leading
+            )
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
     }
 }
 
