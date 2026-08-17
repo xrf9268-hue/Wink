@@ -217,6 +217,9 @@ struct SettingsView: View {
                         editor: editor,
                         settingsLauncher: settingsLauncher
                     )
+                },
+                onReviewUnusedShortcuts: {
+                    settingsLauncher.open(tab: .shortcuts)
                 }
             )
         case .general:

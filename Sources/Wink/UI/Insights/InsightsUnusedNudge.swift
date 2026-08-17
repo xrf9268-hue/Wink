@@ -3,7 +3,10 @@ import SwiftUI
 
 struct InsightsUnusedNudge: View {
     let appNames: [String]
-    var onReview: () -> Void = {}
+    /// Deliberately not defaulted. It used to be `= {}`, and the one call site
+    /// never passed anything — so the Review button rendered, took the click,
+    /// and did nothing. A default no-op on a visible control hides that.
+    let onReview: () -> Void
 
     var body: some View {
         if !appNames.isEmpty {

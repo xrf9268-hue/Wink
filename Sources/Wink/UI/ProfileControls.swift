@@ -64,28 +64,44 @@ struct ProfileBar: View {
                 .font(WinkType.sectionLabel)
                 .foregroundStyle(palette.textSecondary)
 
-            Picker(
-                String(localized: "Profile", bundle: WinkResourceBundle.bundle),
-                selection: profileSelection
+            // Wink chrome, not a stock Picker: this sits one card above the
+            // target-app field, which is the same control at the same size,
+            // and an NSPopUpButton matches neither its shape nor its height.
+            WinkMenuField(
+                selectedProfileName.isEmpty ? placeholderTitle : selectedProfileName,
+                isPlaceholder: selectedProfileName.isEmpty
             ) {
                 ForEach(profileState.profiles) { profile in
-                    Text(profileRowLabel(profile))
-                        .tag(Optional(profile.id))
-                        // Matches the manager list and the menu bar, which
-                        // already refuse these rows. `switchToProfile` rejects
-                        // them regardless — a Picker row is not a reliable
-                        // place to enforce a rule — but offering a row that
-                        // cannot be chosen is its own defect.
-                        .disabled(profileState.unreadableProfileIDs.contains(profile.id))
+                    // A Toggle, not a Button: it is what puts the mark in the
+                    // menu's native check column, so every row's text stays on
+                    // the same left edge whether or not it is the active one.
+                    // Turning the active row *off* is not a state a profile
+                    // list has — there is always exactly one — so an off
+                    // transition is deliberately dropped.
+                    Toggle(isOn: Binding(
+                        get: { profile.id == profileSelection.wrappedValue },
+                        set: { isOn in
+                            guard isOn else { return }
+                            profileState.switchToProfile(profile.id)
+                        }
+                    )) {
+                        Text(profileRowLabel(profile))
+                    }
+                    // Matches the manager list and the menu bar, which already
+                    // refuse these rows. `switchToProfile` rejects them
+                    // regardless — a menu row is not a reliable place to
+                    // enforce a rule — but offering a row that cannot be
+                    // chosen is its own defect.
+                    .disabled(profileState.unreadableProfileIDs.contains(profile.id))
                 }
             }
-            .labelsHidden()
             .frame(maxWidth: 220, alignment: .leading)
             .accessibilityLabel(Text("Profile", bundle: WinkResourceBundle.bundle))
             .accessibilityValue(Text(selectedProfileName))
 
             WinkButton(
                 String(localized: "Manage…", bundle: WinkResourceBundle.bundle),
+                size: .medium,
                 systemImage: "slider.horizontal.3"
             ) {
                 showingManager = true
@@ -118,6 +134,13 @@ struct ProfileBar: View {
             profiles: profileState.profiles,
             selectedProfileID: profileSelection.wrappedValue
         )
+    }
+
+    /// A nil selection is reachable (`manualProfileIDDuringFocus` is optional),
+    /// and the old Picker rendered it as an empty well. Say what the control
+    /// is for instead — the string already exists for the recovery menu.
+    private var placeholderTitle: String {
+        String(localized: "Choose a profile", bundle: WinkResourceBundle.bundle)
     }
 
     @ViewBuilder
@@ -254,18 +277,16 @@ struct ProfileBar: View {
 
     @ViewBuilder
     private var profilePickerMenu: some View {
-        Menu {
+        // Sits inside a recovery banner alongside Recover/Dismiss buttons, so
+        // it wears button chrome rather than field chrome.
+        WinkMenuButton(placeholderTitle) {
             ForEach(profileState.profiles) { profile in
                 Button(profileRowLabel(profile)) {
                     profileState.switchToProfile(profile.id)
                 }
                 .disabled(profileState.unreadableProfileIDs.contains(profile.id))
             }
-        } label: {
-            Text("Choose a profile", bundle: WinkResourceBundle.bundle)
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
         .accessibilityLabel(Text("Choose a profile", bundle: WinkResourceBundle.bundle))
     }
 
@@ -360,7 +381,9 @@ struct ProfileManagerSheet: View {
             }
 
             HStack(spacing: 8) {
-                Menu {
+                WinkMenuButton(
+                    String(localized: "Add Profile", bundle: WinkResourceBundle.bundle)
+                ) {
                     Button {
                         profileState.createProfile(
                             named: profileState.suggestedDuplicateName(),
@@ -378,11 +401,8 @@ struct ProfileManagerSheet: View {
                     } label: {
                         Text("New empty profile", bundle: WinkResourceBundle.bundle)
                     }
-                } label: {
-                    Text("Add Profile", bundle: WinkResourceBundle.bundle)
                 }
                 .disabled(!profileState.canCreateProfile)
-                .fixedSize()
                 .accessibilityLabel(Text("Add Profile", bundle: WinkResourceBundle.bundle))
 
                 WinkButton(String(localized: "Rename", bundle: WinkResourceBundle.bundle)) {

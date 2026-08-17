@@ -78,10 +78,10 @@
         "zh-Hans": { "stringUnit": { "state": "translated", "value": "专注模式正在使用配置“%@”。手动选择的配置会在专注模式结束后恢复。" } }
       }
     },
-    "Focus is using “%@”.": {
+    "Focus is using “%@”": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Focus is using “%@”." } },
+        "en": { "stringUnit": { "state": "translated", "value": "Focus is using “%@”" } },
         "zh-Hans": { "stringUnit": { "state": "translated", "value": "专注模式正在使用“%@”" } }
       }
     },
@@ -1559,6 +1559,23 @@
         }
       }
     },
+    "Choose a profile before duplicating it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a profile before duplicating it."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先选择要复制的配置。"
+          }
+        }
+      }
+    },
     "Choose an app…": {
       "extractionState": "manual",
       "localizations": {
@@ -1934,6 +1951,23 @@
         }
       }
     },
+    "Delete": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除"
+          }
+        }
+      }
+    },
     "Delete Profile": {
       "extractionState": "manual",
       "localizations": {
@@ -2032,6 +2066,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "知道了"
+          }
+        }
+      }
+    },
+    "Done": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "完成"
           }
         }
       }
@@ -4056,6 +4107,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "移除 %@"
+          }
+        }
+      }
+    },
+    "Rename": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名"
           }
         }
       }
