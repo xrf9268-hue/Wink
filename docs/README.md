@@ -13,6 +13,7 @@ This directory maps the maintainer-facing docs for Wink. Last reviewed: 2026-04-
 - [`../AGENTS.md`](../AGENTS.md)
 - [`handoff-notes.md`](./handoff-notes.md) — current runtime validation status, packaged-app caveats, latest toggle trace signatures, and the exact 2026-04-09 Safari launch/relaunch validation evidence
 - [`lessons-learned.md`](./lessons-learned.md) — operational pitfalls, including session ownership across relaunches and the no-window success policy for regular apps
+- [`fuzzing-feasibility.md`](./fuzzing-feasibility.md) — issue #444's experimental macOS URL-parser fuzzing path, Apple-toolchain limitation, optional CI workflow, and revisit criteria
 
 ## Automation
 - [`github-automation.md`](./github-automation.md) — GitHub-native PR and Project workflows that close the issue/project-status gap
