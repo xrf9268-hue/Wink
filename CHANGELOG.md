@@ -4,6 +4,30 @@ Newest first. One `## X.Y.Z` section per release, written by hand **before** run
 `scripts/bump-version.sh X.Y.Z`. `scripts/release-notes.sh X.Y.Z` extracts a section as the
 GitHub Release body; the release workflow fails if the tagged version has no section here.
 
+## 0.7.4
+
+Wink, not 周Ink.
+
+- **The app's own name, spelled right** — in Chinese, the "W" of the Wink
+  wordmark was being sent through the translation catalog, where "W" is
+  the Insights abbreviation for "week". The app introduced itself as
+  周Ink in the menu bar popover and the About card. The lowercase "i" was
+  also drawn as tall as a capital, so the winking mark above it had
+  nowhere to sit; it now has the proportions of a real lowercase i.
+- **Settings controls match each other** — the Profile dropdown and the
+  Add Profile button were plain macOS controls dropped into a window
+  built from Wink's own: a different height from the fields beside them,
+  a different corner, and the only system blue in an otherwise amber app.
+  They now wear the same chrome as everything around them, and the
+  Profile menu marks the active profile in the native check column.
+- **Chinese where there was English** — the Manage Profiles sheet showed
+  Rename, Delete, and Done untranslated, and the Focus banner title fell
+  back to English because the text it asked for and the text that had
+  been translated differed by a single period.
+- **The Review button reviews** — in Insights, the "unused shortcuts this
+  week" card offered a Review button that rendered, took the click, and
+  did nothing at all. It now opens Shortcuts.
+
 ## 0.7.3
 
 Suggestions worth suggesting.
