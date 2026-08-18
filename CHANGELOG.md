@@ -6,27 +6,42 @@ GitHub Release body; the release workflow fails if the tagged version has no sec
 
 ## 0.7.4
 
-Wink, not 周Ink.
+Different shortcuts for different work.
 
-- **The app's own name, spelled right** — in Chinese, the "W" of the Wink
-  wordmark was being sent through the translation catalog, where "W" is
-  the Insights abbreviation for "week". The app introduced itself as
-  周Ink in the menu bar popover and the About card. The lowercase "i" was
-  also drawn as tall as a capital, so the winking mark above it had
-  nowhere to sit; it now has the proportions of a real lowercase i.
-- **Settings controls match each other** — the Profile dropdown and the
-  Add Profile button were plain macOS controls dropped into a window
-  built from Wink's own: a different height from the fields beside them,
-  a different corner, and the only system blue in an otherwise amber app.
-  They now wear the same chrome as everything around them, and the
-  Profile menu marks the active profile in the native check column.
-- **Chinese where there was English** — the Manage Profiles sheet showed
-  Rename, Delete, and Done untranslated, and the Focus banner title fell
-  back to English because the text it asked for and the text that had
-  been translated differed by a single period.
-- **The Review button reviews** — in Insights, the "unused shortcuts this
-  week" card offered a Review button that rendered, took the click, and
-  did nothing at all. It now opens Shortcuts.
+- **Profiles** — your bindings are now a named set, and you can keep
+  several of them. One profile is active at a time, and switching swaps
+  the entire set at once, so a "Work" profile and a "Gaming" profile can
+  never half-apply. Manage them from the Shortcuts tab. Profiles stay on
+  this Mac; recipes are still how you share bindings with someone else.
+- **Focus Filters** — hand a profile to a macOS Focus. Turn on Do Not
+  Disturb, or any Focus you've set up, and Wink switches to the profile
+  you chose, then restores the one you were using when Focus ends. Add it
+  under System Settings → Focus → Focus Filters.
+- **Wink in Shortcuts.app** — four actions for your automations: Pause
+  Wink, Resume Wink, Show Search Palette, and Open Settings to a specific
+  tab.
+- **`wink://` links** — the same actions as plain URLs, plus `focus` to
+  bring a named app forward. Anything that can open a link can now drive
+  Wink: a script, Raycast, a Stream Deck button.
+- **A first shortcut that's proven to work** — new installs get an
+  optional guide that goes past asking for permissions. It waits until
+  your exact chord is actually live, then confirms your app really did
+  come to the front before calling it done. Skippable, and existing
+  setups are untouched.
+- **Diagnostics you can read before you send** — General → Diagnostics
+  saves everything Wink knows about your setup to a file you review
+  yourself. Nothing is uploaded, and the docs gained a troubleshooting
+  chapter that walks through what's in it.
+- **The menu and Insights do something when clicked** — shortcuts listed
+  in the menu bar now fire from there, and an Insights suggestion takes
+  you to the composer with the app already filled in.
+- **Sparkle updated to 2.9.5**, clearing three published advisories in
+  the 2.x series.
+- Settings polish, including three fixes worth naming: in Chinese the app
+  introduced itself as 周Ink (its own wordmark was being run through the
+  translation catalog), several profile controls didn't match the window
+  around them, and the Review button on the Insights "unused shortcuts"
+  card took your click and did nothing.
 
 ## 0.7.3
 
