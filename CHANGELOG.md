@@ -15,8 +15,9 @@ Different shortcuts for different work.
   this Mac; recipes are still how you share bindings with someone else.
 - **Focus Filters** — hand a profile to a macOS Focus. Turn on Do Not
   Disturb, or any Focus you've set up, and Wink switches to the profile
-  you chose, then restores the one you were using when Focus ends. Add it
-  under System Settings → Focus → Focus Filters.
+  you chose, then restores your last manual pick when Focus ends — choose
+  a different profile while Focus is on and that becomes what it returns
+  to. Add it under System Settings → Focus → Focus Filters.
 - **Wink in Shortcuts.app** — four actions for your automations: Pause
   Wink, Resume Wink, Show Search Palette, and Open Settings to a specific
   tab.
@@ -29,9 +30,12 @@ Different shortcuts for different work.
   come to the front before calling it done. Skippable, and existing
   setups are untouched.
 - **Diagnostics you can read before you send** — General → Diagnostics
-  saves everything Wink knows about your setup to a file you review
-  yourself. Nothing is uploaded, and the docs gained a troubleshooting
-  chapter that walks through what's in it.
+  writes a report — versions, signing and capture state, shortcut counts,
+  launch-at-login status, and a bounded tail of recent logs — and shows
+  you its exact contents first. App names and bundle identifiers are in
+  there; your user name, home folder, passwords, and tokens are not.
+  Nothing is uploaded. The docs gained a troubleshooting chapter that
+  walks through reading it.
 - **The menu and Insights do something when clicked** — shortcuts listed
   in the menu bar now fire from there, and an Insights suggestion takes
   you to the composer with the app already filled in.
